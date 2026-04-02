@@ -8,6 +8,7 @@ Description:
 
 import math
 import logging
+import os
 import time
 import random
 
@@ -70,9 +71,108 @@ class VectorizedCarrierSystem:
         # 信号存储
         self.signals = self._initialize_signal_storage_per_carrier(len(all_charges), read_out_contact)
         self._signal_warning_logged = False
+        debug_electrode = os.getenv("RASER_DEBUG_ELECTRODE")
+        self._debug_signal_electrode = int(debug_electrode) - 1 if debug_electrode else None
+        self._debug_signal_limit = int(os.getenv("RASER_DEBUG_SIGNAL_LIMIT", "8"))
+        self._debug_signal_counter = 0
         
         logger.info(f"向量化系统初始化: {len(all_charges)}个{carrier_type}")
         logger.info(f"探测器尺寸: {my_d.l_x:.1f} × {my_d.l_y:.1f} × {my_d.l_z:.1f} um")
+
+    def _log_signal_debug_single(self, carrier_idx, carrier_electrode_signals, path_reduced,
+                                 x_span, y_span, electrode_idx, j, k, charges,
+                                 U_w_1, U_w_2, dU_w, signals):
+        """打印单电极配置下指定读出电极的局部权重势调试信息"""
+        if self._debug_signal_electrode is None:
+            return
+        if self._debug_signal_counter >= self._debug_signal_limit:
+            return
+
+        for step_idx in range(min(len(path_reduced) - 1, len(signals))):
+            x_num = path_reduced[step_idx][4] + (j - x_span)
+            y_num = path_reduced[step_idx][5] + (k - y_span)
+
+            if x_num < 0 or y_num < 0:
+                continue
+
+            target_electrode = x_num * self.my_d.y_ele_num + y_num
+            if target_electrode != self._debug_signal_electrode:
+                continue
+
+            logger.info(
+                "DEBUG_SIGNAL ele=%d carrier=%s idx=%d step=%d q=%.6e "
+                "pos1=(%.3f, %.3f, %.3f) pos2=(%.3f, %.3f, %.3f) "
+                "Uw1=%.6e Uw2=%.6e dUw=%.6e signal=%.6e",
+                target_electrode + 1,
+                self.carrier_type,
+                carrier_idx,
+                step_idx,
+                charges[step_idx],
+                path_reduced[step_idx][0],
+                path_reduced[step_idx][1],
+                path_reduced[step_idx][2],
+                path_reduced[step_idx + 1][0],
+                path_reduced[step_idx + 1][1],
+                path_reduced[step_idx + 1][2],
+                U_w_1[step_idx],
+                U_w_2[step_idx],
+                dU_w[step_idx],
+                signals[step_idx],
+            )
+            self._debug_signal_counter += 1
+            if self._debug_signal_counter >= self._debug_signal_limit:
+                return
+
+    def _log_signal_summary_single(self, carrier_idx, path_reduced, x_span, y_span, j, k,
+                                   charges, U_w_1, U_w_2, dU_w, signals):
+        """打印单个载流子在指定读出电极上的累计 dUw / signal 信息"""
+        if self._debug_signal_electrode is None:
+            return
+
+        selected_steps = []
+        for step_idx in range(min(len(path_reduced) - 1, len(signals))):
+            x_num = path_reduced[step_idx][4] + (j - x_span)
+            y_num = path_reduced[step_idx][5] + (k - y_span)
+            if x_num < 0 or y_num < 0:
+                continue
+            target_electrode = x_num * self.my_d.y_ele_num + y_num
+            if target_electrode == self._debug_signal_electrode:
+                selected_steps.append(step_idx)
+
+        if not selected_steps:
+            return
+
+        first_idx = selected_steps[0]
+        last_idx = selected_steps[-1]
+        sum_duw = sum(dU_w[idx] for idx in selected_steps)
+        sum_signal = sum(signals[idx] for idx in selected_steps)
+        q_value = charges[first_idx]
+        q_theory = -q_value * self.e0 * (U_w_2[last_idx] - U_w_1[first_idx])
+        ratio = sum_signal / q_theory if abs(q_theory) > 0 else float("nan")
+
+        logger.info(
+            "DEBUG_QCHECK ele=%d carrier=%s idx=%d steps=%d q=%.6e "
+            "Uw_start=%.6e Uw_end=%.6e deltaUw=%.6e "
+            "Q_theory=%.6e Q_code=%.6e ratio=%.6e "
+            "start=(%.3f, %.3f, %.3f) end=(%.3f, %.3f, %.3f)",
+            self._debug_signal_electrode + 1,
+            self.carrier_type,
+            carrier_idx,
+            len(selected_steps),
+            q_value,
+            U_w_1[first_idx],
+            U_w_2[last_idx],
+            sum_duw,
+            q_theory,
+            sum_signal,
+            ratio,
+            path_reduced[first_idx][0],
+            path_reduced[first_idx][1],
+            path_reduced[first_idx][2],
+            path_reduced[last_idx + 1][0],
+            path_reduced[last_idx + 1][1],
+            path_reduced[last_idx + 1][2],
+        )
 
     def _initialize_params(self, my_d):
         params = {}
@@ -692,6 +792,34 @@ class VectorizedCarrierSystem:
                         
                         # 计算信号
                         signals = [q * e0 * du for q, du in zip(charges, dU_w)]
+                        self._log_signal_debug_single(
+                            carrier_idx,
+                            carrier_electrode_signals,
+                            path_reduced,
+                            x_span,
+                            y_span,
+                            electrode_idx,
+                            j,
+                            k,
+                            charges,
+                            U_w_1,
+                            U_w_2,
+                            dU_w,
+                            signals,
+                        )
+                        self._log_signal_summary_single(
+                            carrier_idx,
+                            path_reduced,
+                            x_span,
+                            y_span,
+                            j,
+                            k,
+                            charges,
+                            U_w_1,
+                            U_w_2,
+                            dU_w,
+                            signals,
+                        )
                         
                         # 存储到这个载流子的对应电极
                         carrier_electrode_signals[electrode_idx] = signals

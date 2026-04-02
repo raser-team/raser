@@ -256,8 +256,8 @@ class WaveformStatistics():
         tag = str(my_d.voltage)+str(my_d.irradiation_flux)+str(my_d.g4experiment)+str(my_d.amplifier)
 
         for file in files:
-            if tag not in file:
-                continue
+            #if tag not in file:
+            #    continue
             
             path = os.path.join(input_path, file)
             file_pointer = ROOT.TFile(path, "READ")
