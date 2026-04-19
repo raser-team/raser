@@ -1,0 +1,40 @@
+{
+    "geant4_model": "gdml_import",
+    "total_events": 1,
+    "object": {},
+    "world": "G4_Galactic",
+    "world_half_size_um": 2000000,
+    "par_type": "proton",
+    "par_energy": 3000,
+    "maxstep": 2,
+    "g4_vis": false,
+    "par_in": [
+        0,
+        0,
+        -60000
+    ],
+    "par_out": [
+        0,
+        0,
+        10000
+    ],
+    "par_randx": 300,
+    "par_randy": 300,
+    "gdml": {
+        "file": "pcb_readout.gdml",
+        "top_volume": "LV_Board_0jgr",
+        "validate": false,
+        "auto_center": false,
+        "position_um": [
+            -156000,
+            95000,
+            10000
+        ],
+        "rotation_xyz": [
+            0,
+            0,
+            0
+        ],
+        "placement_name": "PCB_Readout"
+    }
+}

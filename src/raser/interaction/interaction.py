@@ -48,6 +48,12 @@ class GeneralG4Interaction:
 
         self.geant4_model = g4_dic['geant4_model']
         detector_material=my_d.device_dict['material']
+
+        if (self.geant4_model == 'gdml_import'
+                and MyDetectorConstruction is GeneralDetectorConstruction):
+            from .g4_gdml_import import GDMLDetectorConstruction
+            MyDetectorConstruction = GDMLDetectorConstruction
+
         my_g4d = MyDetectorConstruction(my_d,g4_dic,detector_material,g4_dic['maxstep'])
 
         g4_vis = g4_vis or g4_dic['g4_vis']
