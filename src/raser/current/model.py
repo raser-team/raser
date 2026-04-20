@@ -10,8 +10,12 @@ Description:  Define physical models for different materials
 """ Define Material """
 
 import math
-import matplotlib.pyplot as plt
 import os
+
+try:
+    import matplotlib.pyplot as plt
+except ImportError:
+    plt = None
 
 from ..util.output import output
 
@@ -182,6 +186,9 @@ class Material:
         return mu
     
     def draw_velocity(self, temperature, Neff):
+        if plt is None:
+            raise RuntimeError("matplotlib is required for draw_velocity")
+
         x_field = []
         y_electron_mob = []
         y_hole_mob = []
@@ -285,7 +292,7 @@ class Material:
                 _beta = 0.265283
 
             # hole
-            if( charges < 0):
+            if( charges > 0):
                 a = 0.243 # V-1
                 b = 6.53e5 # V/cm
                 c = 5.35e-4 # K-1

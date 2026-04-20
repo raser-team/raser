@@ -173,7 +173,7 @@ class CalCurrent:
             self._apply_smoothing()
 
         self.det_model = my_d.det_model
-        if "lgad" in self.det_model:
+        if getattr(my_d, "has_avalanche", False):
             self.gain_current = CalCurrentGain(my_d, my_f, self)
             for i in range(self.read_ele_num):
                 self.sum_cu[i].Add(self.gain_current.negative_cu[i])
@@ -416,6 +416,52 @@ class CalCurrent:
         self._savgol_kernel = kernel
         return self._savgol_kernel
 
+    def _get_active_time_window(self, histograms, padding_bins=10, threshold_ratio=1e-3, max_fraction=0.3):
+        active_bins = []
+        max_abs_value = 0.0
+        nbins = None
+
+        for hist in histograms:
+            if hist is None:
+                continue
+            if nbins is None:
+                nbins = hist.GetNbinsX()
+            else:
+                nbins = min(nbins, hist.GetNbinsX())
+            max_abs_value = max(
+                max_abs_value,
+                abs(hist.GetMaximum()),
+                abs(hist.GetMinimum()),
+            )
+
+        if nbins is None or max_abs_value <= 0:
+            return None
+
+        threshold = max_abs_value * threshold_ratio
+        for bin_idx in range(1, nbins + 1):
+            for hist in histograms:
+                if hist is None:
+                    continue
+                if abs(hist.GetBinContent(bin_idx)) > threshold:
+                    active_bins.append(bin_idx)
+                    break
+
+        if not active_bins:
+            return None
+
+        first_bin = max(1, active_bins[0] - padding_bins)
+        last_bin = min(nbins, active_bins[-1] + padding_bins)
+        xmin = histograms[0].GetBinLowEdge(first_bin)
+        xmax = histograms[0].GetBinLowEdge(last_bin + 1)
+        full_xmin = histograms[0].GetXaxis().GetXmin()
+        full_xmax = histograms[0].GetXaxis().GetXmax()
+        full_span = full_xmax - full_xmin
+        active_span = xmax - xmin
+
+        if full_span <= 0 or active_span >= max_fraction * full_span:
+            return None
+        return xmin, xmax
+
     def draw_currents(self, path, tag=""):
         """
         @description:
@@ -471,7 +517,7 @@ class CalCurrent:
             self.sum_cu[read_ele_num].SetLineWidth(2)
             c.Update()
 
-            if "lgad" in self.det_model:
+            if hasattr(self, "gain_current"):
                 self.gain_current.positive_cu[read_ele_num].Draw("SAME HIST")
                 self.gain_current.negative_cu[read_ele_num].Draw("SAME HIST")
                 self.gain_current.positive_cu[read_ele_num].SetLineColor(617)#kMagneta+1
@@ -479,7 +525,9 @@ class CalCurrent:
                 self.gain_current.positive_cu[read_ele_num].SetLineWidth(2)
                 self.gain_current.negative_cu[read_ele_num].SetLineWidth(2)
 
-            if "strip" in self.det_model or "pixel" in self.det_model:
+            has_cross_talk = hasattr(self, "cross_talk_cu") and read_ele_num < len(self.cross_talk_cu)
+
+            if ("strip" in self.det_model or "pixel" in self.det_model) and has_cross_talk:
                 # make sure you run cross_talk() first and attached cross_talk_cu to self
                 self.cross_talk_cu[read_ele_num].Draw("SAME HIST")
                 self.cross_talk_cu[read_ele_num].SetLineColor(420)#kGreen+4
@@ -489,11 +537,11 @@ class CalCurrent:
             legend.AddEntry(self.negative_cu[read_ele_num], "electron", "l")
             legend.AddEntry(self.positive_cu[read_ele_num], "hole", "l")
 
-            if "lgad" in self.det_model:
+            if hasattr(self, "gain_current"):
                 legend.AddEntry(self.gain_current.negative_cu[read_ele_num], "electron gain", "l")
                 legend.AddEntry(self.gain_current.positive_cu[read_ele_num], "hole gain", "l")
 
-            if "strip" in self.det_model:
+            if "strip" in self.det_model and has_cross_talk:
                 legend.AddEntry(self.cross_talk_cu[read_ele_num], "cross talk", "l")
 
             legend.AddEntry(self.sum_cu[read_ele_num], "total", "l")
@@ -506,6 +554,21 @@ class CalCurrent:
 
             c.SaveAs(path+'/'+tag+"No_"+str(read_ele_num+1)+"electrode"+"_basic_infor.pdf")
             c.SaveAs(path+'/'+tag+"No_"+str(read_ele_num+1)+"electrode"+"_basic_infor.root")
+
+            active_window = self._get_active_time_window([
+                self.negative_cu[read_ele_num],
+                self.positive_cu[read_ele_num],
+                self.sum_cu[read_ele_num],
+            ])
+            if active_window is not None:
+                xmin, xmax = active_window
+                for hist in (self.negative_cu[read_ele_num], self.positive_cu[read_ele_num], self.sum_cu[read_ele_num]):
+                    hist.GetXaxis().SetRangeUser(xmin, xmax)
+                c.Update()
+                c.SaveAs(path+'/'+tag+"No_"+str(read_ele_num+1)+"electrode"+"_basic_infor_zoom.pdf")
+                c.SaveAs(path+'/'+tag+"No_"+str(read_ele_num+1)+"electrode"+"_basic_infor_zoom.root")
+                for hist in (self.negative_cu[read_ele_num], self.positive_cu[read_ele_num], self.sum_cu[read_ele_num]):
+                    hist.GetXaxis().UnZoom()
             del c
 
     def charge_collection_strip(self, path):
@@ -564,7 +627,7 @@ class CalCurrentGain(CalCurrent):
         self.electron_system = None
         self.hole_system = None
         
-        gain_rate = my_d.gain_rate
+        gain_rate = getattr(my_d, "gain_rate", 0.0)
         logger.info("gain_rate=%s", gain_rate)
         
         # 创建增益载流子
@@ -573,29 +636,36 @@ class CalCurrentGain(CalCurrent):
         gain_hole_charges = []
         gain_times = []
         gain_signals = []
-        
-        if my_d.voltage < 0:  # p层在d=0，空穴倍增为电子
-            if my_current.hole_system:
-                for i in range(len(my_current.hole_system.positions)):
-                    last_pos = my_current.hole_system.paths[i][-1]
-                    gain_positions.append([last_pos[0], last_pos[1], my_d.avalanche_bond])
-                    gain_electron_charges.append(-my_current.hole_system.charges[i] * gain_rate)
-                    gain_hole_charges.append(my_current.hole_system.charges[i] * gain_rate)
-                    gain_times.append(last_pos[3])
-                    gain_signals.append([])
-            else:
-                logger.warning("No hole system found for gain calculation in p-layer multiplication.")
-        else:  # n层在d=0，电子倍增为空穴
-            if my_current.electron_system:
-                for i in range(len(my_current.electron_system.positions)):
-                    last_pos = my_current.electron_system.paths[i][-1]
-                    gain_positions.append([last_pos[0], last_pos[1], my_d.avalanche_bond])
-                    gain_hole_charges.append(-my_current.electron_system.charges[i] * gain_rate)
-                    gain_electron_charges.append(my_current.electron_system.charges[i] * gain_rate)
-                    gain_times.append(last_pos[3])
-                    gain_signals.append([])
-            else:
-                logger.warning("No electron system found for gain calculation in n-layer multiplication.")
+
+        gain_algorithm = getattr(my_d, "gain_algorithm", "planar_integral")
+        if gain_algorithm == "planar_integral":
+            self._build_planar_gain_carriers(
+                my_d,
+                my_current,
+                gain_rate,
+                gain_positions,
+                gain_electron_charges,
+                gain_hole_charges,
+                gain_times,
+                gain_signals
+            )
+        else:
+            self._build_local_gain_carriers(
+                my_d,
+                my_f,
+                my_current,
+                gain_positions,
+                gain_electron_charges,
+                gain_hole_charges,
+                gain_times,
+                gain_signals
+            )
+
+        logger.info(
+            "gain carriers generated: algorithm=%s, pairs=%d",
+            gain_algorithm,
+            len(gain_positions)
+        )
 
         # 创建增益载流子系统
         if gain_electron_charges:
@@ -625,6 +695,464 @@ class CalCurrentGain(CalCurrent):
         
         # 计算电流
         self.get_current(my_d.x_ele_num, my_d.y_ele_num, self.read_out_contact)
+
+    def _build_planar_gain_carriers(self, my_d, my_current, gain_rate, gain_positions,
+                                    gain_electron_charges, gain_hole_charges,
+                                    gain_times, gain_signals):
+        if my_d.avalanche_bond is None:
+            raise ValueError("planar_integral gain algorithm requires `avalanche_bond` in detector settings")
+
+        if my_d.voltage < 0:  # p层在d=0，空穴倍增为电子
+            if my_current.hole_system:
+                for i in range(len(my_current.hole_system.positions)):
+                    last_pos = my_current.hole_system.paths[i][-1]
+                    gain_positions.append([last_pos[0], last_pos[1], my_d.avalanche_bond])
+                    gain_electron_charges.append(-my_current.hole_system.charges[i] * gain_rate)
+                    gain_hole_charges.append(my_current.hole_system.charges[i] * gain_rate)
+                    gain_times.append(last_pos[3])
+                    gain_signals.append([])
+            else:
+                logger.warning("No hole system found for gain calculation in p-layer multiplication.")
+        else:  # n层在d=0，电子倍增为空穴
+            if my_current.electron_system:
+                for i in range(len(my_current.electron_system.positions)):
+                    last_pos = my_current.electron_system.paths[i][-1]
+                    gain_positions.append([last_pos[0], last_pos[1], my_d.avalanche_bond])
+                    gain_hole_charges.append(-my_current.electron_system.charges[i] * gain_rate)
+                    gain_electron_charges.append(my_current.electron_system.charges[i] * gain_rate)
+                    gain_times.append(last_pos[3])
+                    gain_signals.append([])
+            else:
+                logger.warning("No electron system found for gain calculation in n-layer multiplication.")
+
+    def _build_local_gain_carriers(self, my_d, my_f, my_current, gain_positions,
+                                   gain_electron_charges, gain_hole_charges,
+                                   gain_times, gain_signals):
+        material = Material(my_d.material, avalanche_model=my_d.avalanche_model)
+        cal_coefficient = material.cal_coefficient
+        min_pairs = max(float(getattr(my_d, "gain_pair_threshold", 0.05)), 0.0)
+        max_carriers = int(getattr(my_d, "gain_max_carriers", 50000))
+        top_n = max(int(getattr(my_d, "gain_diagnostics_top_n", 5)), 0)
+        diagnostics = {
+            "segments_total": 0,
+            "segments_with_alpha": 0,
+            "segments_above_threshold": 0,
+            "field_eval_errors": 0,
+            "max_field": 0.0,
+            "max_alpha": 0.0,
+            "max_segment_exponent": 0.0,
+            "max_substeps": 1,
+            "max_raw_gain_pairs": 0.0,
+            "max_effective_gain_pairs": 0.0,
+            "max_running_parent_pairs": 0.0,
+            "total_raw_gain_pairs": 0.0,
+            "total_effective_gain_pairs": 0.0,
+            "total_emitted_gain_pairs": 0.0,
+            "total_below_threshold_pairs": 0.0,
+            "carrier_limit_reached": False,
+            "top_segments_limit": top_n,
+            "top_field_segments": [],
+            "top_gain_segments": [],
+            "temperature": my_d.temperature,
+            "local_gain_max_exponent": max(float(getattr(my_d, "local_gain_max_exponent", 0.5)), 0.0),
+            "local_gain_emit_slices": max(1, int(getattr(my_d, "local_gain_emit_slices", 2))),
+            "local_gain_field_method": getattr(my_d, "local_gain_field_method", "potential_gradient"),
+            "local_gain_field_neighbors": max(8, int(getattr(my_d, "local_gain_field_neighbors", 128))),
+            "local_gain_field_max": max(0.0, float(getattr(my_d, "local_gain_field_max", 1.0e6))),
+            "local_gain_integration_step_um": max(0.02, float(getattr(my_d, "local_gain_integration_step_um", 0.25))),
+            "local_gain_integration_max_steps": max(1, int(getattr(my_d, "local_gain_integration_max_steps", 16))),
+            "local_gain_cascade": bool(getattr(my_d, "local_gain_cascade", False))
+        }
+
+        self._build_local_gain_carriers_from_system(
+            getattr(my_current, "electron_system", None),
+            my_d,
+            my_f,
+            cal_coefficient,
+            min_pairs,
+            max_carriers,
+            diagnostics,
+            gain_positions,
+            gain_electron_charges,
+            gain_hole_charges,
+            gain_times,
+            gain_signals
+        )
+        self._build_local_gain_carriers_from_system(
+            getattr(my_current, "hole_system", None),
+            my_d,
+            my_f,
+            cal_coefficient,
+            min_pairs,
+            max_carriers,
+            diagnostics,
+            gain_positions,
+            gain_electron_charges,
+            gain_hole_charges,
+            gain_times,
+            gain_signals
+        )
+        logger.info(
+            "local gain diagnostics: segments=%d, alpha>0=%d, above_threshold=%d, field_errors=%d, "
+            "max_field=%.3e V/cm, max_alpha=%.3e cm^-1, max_segment_exponent=%.3e, "
+            "max_substeps=%d, max_parent_pairs=%.3e, max_raw_gain_pairs=%.3e, max_gain_pairs=%.3e, "
+            "total_raw_gain_pairs=%.3e, total_gain_pairs=%.3e, emitted_gain_pairs=%.3e, "
+            "below_threshold_pairs=%.3e, threshold=%.3e, exp_cap=%.3e, cascade=%s, field_method=%s",
+            diagnostics["segments_total"],
+            diagnostics["segments_with_alpha"],
+            diagnostics["segments_above_threshold"],
+            diagnostics["field_eval_errors"],
+            diagnostics["max_field"],
+            diagnostics["max_alpha"],
+            diagnostics["max_segment_exponent"],
+            diagnostics["max_substeps"],
+            diagnostics["max_running_parent_pairs"],
+            diagnostics["max_raw_gain_pairs"],
+            diagnostics["max_effective_gain_pairs"],
+            diagnostics["total_raw_gain_pairs"],
+            diagnostics["total_effective_gain_pairs"],
+            diagnostics["total_emitted_gain_pairs"],
+            diagnostics["total_below_threshold_pairs"],
+            min_pairs,
+            diagnostics["local_gain_max_exponent"],
+            diagnostics["local_gain_cascade"],
+            diagnostics["local_gain_field_method"]
+        )
+        self._log_local_gain_segments(
+            diagnostics["top_field_segments"],
+            "local gain strongest-field segments",
+            top_n
+        )
+        self._log_local_gain_segments(
+            diagnostics["top_gain_segments"],
+            "local gain strongest-gain segments",
+            top_n
+        )
+        if hasattr(my_f, "get_cache_stats"):
+            cache_stats = my_f.get_cache_stats()
+            if cache_stats.get("gain_hits", 0) or cache_stats.get("gain_misses", 0):
+                logger.info(
+                    "local gain field cache: hits=%d, misses=%d, fallbacks=%d, errors=%d, entries=%d",
+                    cache_stats.get("gain_hits", 0),
+                    cache_stats.get("gain_misses", 0),
+                    cache_stats.get("gain_fallbacks", 0),
+                    cache_stats.get("gain_errors", 0),
+                    cache_stats.get("gain_entries", 0)
+                )
+
+    def _build_local_gain_segment_entry(self, carrier_system, carrier_idx, x_mid, y_mid, z_mid,
+                                        segment_length_um, e_norm, alpha, parent_charge, t1):
+        return {
+            "carrier_type": carrier_system.carrier_type,
+            "carrier_idx": int(carrier_idx),
+            "x_um": float(x_mid),
+            "y_um": float(y_mid),
+            "z_um": float(z_mid),
+            "length_um": float(segment_length_um),
+            "field_v_per_cm": float(e_norm),
+            "alpha_cm_inv": float(alpha),
+            "parent_pairs": float(parent_charge),
+            "running_parent_pairs": float(parent_charge),
+            "time_ns": float(t1 * self.delta_t * 1e9),
+            "segment_exponent": 0.0,
+            "substeps": 1,
+            "emit_slices": 1,
+            "gain_pairs": 0.0,
+            "raw_gain_pairs": 0.0
+        }
+
+    def _record_local_gain_segment(self, bucket, limit, score, segment):
+        if limit <= 0 or not np.isfinite(score):
+            return
+
+        entry = dict(segment)
+        entry["score"] = float(score)
+        bucket.append(entry)
+        bucket.sort(key=lambda item: item["score"], reverse=True)
+        if len(bucket) > limit:
+            del bucket[limit:]
+
+    def _log_local_gain_segments(self, segments, title, top_n):
+        if not segments or top_n <= 0:
+            return
+
+        logger.info("%s (top %d):", title, len(segments))
+        for idx, segment in enumerate(segments, start=1):
+            logger.info(
+                "  #%d carrier=%s[%d], pos=(%.2f, %.2f, %.2f) um, len=%.3f um, t=%.3f ns, "
+                "field=%.3e V/cm, alpha=%.3e cm^-1, exponent=%.3e, substeps=%d, emit_slices=%d, "
+                "gain_pairs=%.3e, raw_gain_pairs=%.3e, parent_pairs=%.3e",
+                idx,
+                segment["carrier_type"],
+                segment["carrier_idx"],
+                segment["x_um"],
+                segment["y_um"],
+                segment["z_um"],
+                segment["length_um"],
+                segment["time_ns"],
+                segment["field_v_per_cm"],
+                segment["alpha_cm_inv"],
+                segment.get("segment_exponent", 0.0),
+                int(segment.get("substeps", 1)),
+                int(segment.get("emit_slices", 1)),
+                segment["gain_pairs"],
+                segment.get("raw_gain_pairs", segment["gain_pairs"]),
+                segment["parent_pairs"]
+            )
+
+    def _calculate_local_gain_pairs(self, parent_charge, alpha, segment_length_um, max_exponent):
+        segment_exponent = max(alpha * segment_length_um * 1e-4, 0.0)
+        return self._calculate_local_gain_pairs_from_exponent(parent_charge, segment_exponent, max_exponent)
+
+    def _calculate_local_gain_pairs_from_exponent(self, parent_charge, segment_exponent, max_exponent):
+        segment_exponent = max(float(segment_exponent), 0.0)
+        if not math.isfinite(segment_exponent):
+            return 0.0, 1, 0.0, 0.0
+        if segment_exponent <= 0 or parent_charge <= 0:
+            return 0.0, 1, 0.0, 0.0
+
+        raw_gain_pairs = parent_charge * math.expm1(min(segment_exponent, 50.0))
+        if max_exponent <= 0:
+            substeps = 1
+        else:
+            substeps = max(1, int(math.ceil(segment_exponent / max_exponent)))
+        # Splitting is only an emission/discretization control. It must not
+        # change the total avalanche charge implied by the integrated exponent.
+        stabilized_gain_pairs = raw_gain_pairs
+        return segment_exponent, substeps, raw_gain_pairs, stabilized_gain_pairs
+
+    def _get_local_gain_field(self, my_f, x, y, z, diagnostics):
+        if hasattr(my_f, "get_gain_e_field_cached"):
+            return my_f.get_gain_e_field_cached(
+                x,
+                y,
+                z,
+                diagnostics["local_gain_field_method"],
+                diagnostics["local_gain_field_neighbors"],
+                diagnostics["local_gain_field_max"]
+            )
+        return my_f.get_e_field_cached(x, y, z)
+
+    def _integrate_local_gain_exponent(self, my_f, cal_coefficient, charge_sign,
+                                       x0, y0, z0, x1, y1, z1, segment_length_um,
+                                       diagnostics):
+        step_um = diagnostics["local_gain_integration_step_um"]
+        max_steps = diagnostics["local_gain_integration_max_steps"]
+        sample_count = min(max(1, int(math.ceil(segment_length_um / step_um))), max_steps)
+        exponent = 0.0
+        max_field = 0.0
+        max_alpha = 0.0
+        weighted_field = 0.0
+        weighted_alpha = 0.0
+
+        for sample_idx in range(sample_count):
+            fraction = (sample_idx + 0.5) / sample_count
+            x_sample = x0 + fraction * (x1 - x0)
+            y_sample = y0 + fraction * (y1 - y0)
+            z_sample = z0 + fraction * (z1 - z0)
+            e_field = self._get_local_gain_field(my_f, x_sample, y_sample, z_sample, diagnostics)
+            if e_field is None:
+                raise ValueError("local gain field evaluation returned None")
+            e_norm = Vector(*e_field).get_length()
+            if not math.isfinite(e_norm):
+                raise ValueError("local gain field evaluation returned non-finite field")
+            alpha = cal_coefficient(e_norm, charge_sign, diagnostics["temperature"])
+            if not math.isfinite(alpha):
+                alpha = 0.0
+            ds_um = segment_length_um / sample_count
+            exponent += max(alpha, 0.0) * ds_um * 1e-4
+            max_field = max(max_field, e_norm)
+            max_alpha = max(max_alpha, alpha)
+            weighted_field += e_norm * ds_um
+            weighted_alpha += alpha * ds_um
+
+        return {
+            "exponent": exponent,
+            "max_field": max_field,
+            "max_alpha": max_alpha,
+            "mean_field": weighted_field / segment_length_um,
+            "mean_alpha": weighted_alpha / segment_length_um,
+            "samples": sample_count,
+        }
+
+    def _clip_gain_position_to_detector(self, x, y, z, my_d):
+        margin = 1e-3
+        return [
+            min(max(float(x), margin), max(float(my_d.l_x) - margin, margin)),
+            min(max(float(y), margin), max(float(my_d.l_y) - margin, margin)),
+            min(max(float(z), margin), max(float(my_d.l_z) - margin, margin)),
+        ]
+
+    def _append_local_gain_carrier_slices(self, x0, y0, z0, t0, x1, y1, z1, t1, gain_pairs,
+                                          max_emit_slices, my_d, gain_positions, gain_electron_charges,
+                                          gain_hole_charges, gain_times, gain_signals):
+        emit_slices = max(1, int(max_emit_slices))
+        per_slice_pairs = gain_pairs / emit_slices
+        for slice_idx in range(emit_slices):
+            fraction = (slice_idx + 0.5) / emit_slices
+            x_slice = x0 + fraction * (x1 - x0)
+            y_slice = y0 + fraction * (y1 - y0)
+            z_slice = z0 + fraction * (z1 - z0)
+            t_slice = t0 + fraction * (t1 - t0)
+            gain_positions.append(self._clip_gain_position_to_detector(x_slice, y_slice, z_slice, my_d))
+            gain_electron_charges.append(-per_slice_pairs)
+            gain_hole_charges.append(per_slice_pairs)
+            gain_times.append(int(round(t_slice)))
+            gain_signals.append([])
+        return emit_slices
+
+    def _build_local_gain_carriers_from_system(self, carrier_system, my_d, my_f, cal_coefficient,
+                                               min_pairs, max_carriers, diagnostics, gain_positions,
+                                               gain_electron_charges, gain_hole_charges,
+                                               gain_times, gain_signals):
+        if carrier_system is None:
+            return
+
+        max_reached = False
+        for carrier_idx, path in enumerate(carrier_system.paths):
+            if max_reached:
+                break
+
+            parent_charge = abs(carrier_system.charges[carrier_idx])
+            if parent_charge <= 0 or len(path) < 2:
+                continue
+            running_parent_charge = parent_charge
+
+            charge_sign = -1 if carrier_system.charges[carrier_idx] < 0 else 1
+
+            for point0, point1 in zip(path[:-1], path[1:]):
+                x0, y0, z0, t0 = point0
+                x1, y1, z1, t1 = point1
+                dx = x1 - x0
+                dy = y1 - y0
+                dz = z1 - z0
+                segment_length_um = np.sqrt(dx * dx + dy * dy + dz * dz)
+                if segment_length_um <= 0:
+                    continue
+                diagnostics["segments_total"] += 1
+
+                x_mid = 0.5 * (x0 + x1)
+                y_mid = 0.5 * (y0 + y1)
+                z_mid = 0.5 * (z0 + z1)
+
+                try:
+                    gain_integral = self._integrate_local_gain_exponent(
+                        my_f,
+                        cal_coefficient,
+                        charge_sign,
+                        x0,
+                        y0,
+                        z0,
+                        x1,
+                        y1,
+                        z1,
+                        segment_length_um,
+                        diagnostics
+                    )
+                except Exception:
+                    diagnostics["field_eval_errors"] += 1
+                    continue
+
+                e_norm = gain_integral["max_field"]
+                diagnostics["max_field"] = max(diagnostics["max_field"], e_norm)
+                alpha = gain_integral["max_alpha"]
+                diagnostics["max_alpha"] = max(diagnostics["max_alpha"], alpha)
+                segment_entry = self._build_local_gain_segment_entry(
+                    carrier_system,
+                    carrier_idx,
+                    x_mid,
+                    y_mid,
+                    z_mid,
+                    segment_length_um,
+                    e_norm,
+                    alpha,
+                    running_parent_charge,
+                    t1
+                )
+                if alpha <= 0:
+                    self._record_local_gain_segment(
+                        diagnostics["top_field_segments"],
+                        diagnostics["top_segments_limit"],
+                        e_norm,
+                        segment_entry
+                    )
+                    continue
+                diagnostics["segments_with_alpha"] += 1
+
+                segment_exponent, substeps, raw_gain_pairs, gain_pairs = self._calculate_local_gain_pairs_from_exponent(
+                    running_parent_charge,
+                    gain_integral["exponent"],
+                    diagnostics["local_gain_max_exponent"]
+                )
+                diagnostics["max_segment_exponent"] = max(diagnostics["max_segment_exponent"], segment_exponent)
+                diagnostics["max_substeps"] = max(diagnostics["max_substeps"], substeps)
+                diagnostics["max_running_parent_pairs"] = max(diagnostics["max_running_parent_pairs"], running_parent_charge)
+                diagnostics["max_raw_gain_pairs"] = max(diagnostics["max_raw_gain_pairs"], raw_gain_pairs)
+                diagnostics["max_effective_gain_pairs"] = max(diagnostics["max_effective_gain_pairs"], gain_pairs)
+                diagnostics["total_raw_gain_pairs"] += raw_gain_pairs
+                diagnostics["total_effective_gain_pairs"] += gain_pairs
+                segment_entry["segment_exponent"] = float(segment_exponent)
+                segment_entry["substeps"] = int(substeps)
+                segment_entry["raw_gain_pairs"] = float(raw_gain_pairs)
+                segment_entry["gain_pairs"] = float(gain_pairs)
+                if max_carriers > 0:
+                    remaining_capacity = max_carriers - len(gain_positions)
+                    if remaining_capacity <= 0:
+                        logger.warning(
+                            "Gain carrier generation reached configured limit (%d). Truncating local avalanche carriers.",
+                            max_carriers
+                        )
+                        diagnostics["carrier_limit_reached"] = True
+                        max_reached = True
+                        break
+                    emit_slices = min(substeps, diagnostics["local_gain_emit_slices"], remaining_capacity)
+                else:
+                    emit_slices = min(substeps, diagnostics["local_gain_emit_slices"])
+                emit_slices = max(1, emit_slices)
+                segment_entry["emit_slices"] = int(emit_slices)
+                self._record_local_gain_segment(
+                    diagnostics["top_field_segments"],
+                    diagnostics["top_segments_limit"],
+                    e_norm,
+                    segment_entry
+                )
+                self._record_local_gain_segment(
+                    diagnostics["top_gain_segments"],
+                    diagnostics["top_segments_limit"],
+                    gain_pairs,
+                    segment_entry
+                )
+                if gain_pairs < min_pairs:
+                    diagnostics["total_below_threshold_pairs"] += gain_pairs
+                    if diagnostics["local_gain_cascade"]:
+                        running_parent_charge += gain_pairs
+                    continue
+                diagnostics["segments_above_threshold"] += 1
+
+                self._append_local_gain_carrier_slices(
+                    x0, y0, z0, t0,
+                    x1, y1, z1, t1,
+                    gain_pairs,
+                    emit_slices,
+                    my_d,
+                    gain_positions,
+                    gain_electron_charges,
+                    gain_hole_charges,
+                    gain_times,
+                    gain_signals
+                )
+                diagnostics["total_emitted_gain_pairs"] += gain_pairs
+                if diagnostics["local_gain_cascade"]:
+                    running_parent_charge += gain_pairs
+
+                if max_carriers > 0 and len(gain_positions) >= max_carriers:
+                    logger.warning(
+                        "Gain carrier generation reached configured limit (%d). Truncating local avalanche carriers.",
+                        max_carriers
+                    )
+                    diagnostics["carrier_limit_reached"] = True
+                    max_reached = True
+                    break
 
     def current_define(self,read_ele_num):
         """
@@ -683,7 +1211,7 @@ class CalCurrentLaser(CalCurrent):
             self.negative_cu[i] = convolved_negative_cu
             self.sum_cu[i] = convolved_sum_cu
 
-            if my_d.det_model == "lgad":
+            if hasattr(self, "gain_current"):
                 convolved_gain_positive_cu = ROOT.TH1F("convolved_gain_charge+","Gain Positive Current",
                                         self.n_bin, self.t_start, self.t_end)
                 convolved_gain_negative_cu = ROOT.TH1F("convolved_gain_charge-","Gain Negative Current",
