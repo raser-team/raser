@@ -42,7 +42,7 @@ PYMTL_VERILATOR_INCLUDE_DIR="/usr/local/share/verilator/include"
 EOF
 
 export PATH=$PATH
-export IMGFILE=$dir_raser/img/raser-2.5.2.sif
+export IMGFILE=$dir_raser/img/raser_latest.sif
 export BINDPATH=$dir_raser,$dir_geant4_data,$GEANT4_INSTALL
 # For vscode users entering .sif, the symbol links should be converted into real paths
 
