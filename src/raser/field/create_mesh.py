@@ -130,7 +130,7 @@ class DevsimMesh():
         devsim.edge_from_node_model(device=self.device, region=self.region, node_model="Acceptors")
         devsim.edge_from_node_model(device=self.device, region=self.region, node_model="NetDoping")
         devsim.edge_from_node_model(device=self.device, region=self.region, node_model="Donors")
-
+        
     def drawDoping(self, path):
         if self.dimension == 1:
             fig1=plt.figure(num=1,figsize=(4,4))
@@ -149,3 +149,4 @@ class DevsimMesh():
             pass
         elif self.dimension == 3:
             pass
+        

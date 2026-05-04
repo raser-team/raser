@@ -26,7 +26,7 @@ def energy_deposition(my_g4v):
         2021/08/31
     """
     c1=ROOT.TCanvas("c1","canvas1",1000,1000)
-    h1 = ROOT.TH1F("Edep_device", "Energy deposition in SiC", 100, 0., 0.1)
+    h1 = ROOT.TH1F("Edep_device", "Energy deposition in Diamond", 100, 0., 10)
     for i in range (len(my_g4v.edep_devices)):
         h1.Fill(my_g4v.edep_devices[i])
     g1 = ROOT.TF1("m1","landau",0,0.1)
@@ -34,9 +34,10 @@ def energy_deposition(my_g4v):
     print("MPV:%s"%g1.GetParameter(1))
     h1.Draw()
     now = time.strftime("%Y_%m%d_%H%M")
-    c1.SaveAs("output/particle/dep_SiC"+"_"+now+"_energy.pdf")
-    c1.SaveAs("output/particle/dep_SiC"+"_"+now+"_energy.root")
+    #c1.SaveAs("output/signal/dep_Diamond"+"_"+now+"_energy.pdf")
+    #c1.SaveAs("output/signal/dep_Diamond"+"_"+now+"_energy.root")
 
+    
 def draw_scat_angle(evnets_angle,angle,model):
     """Draw scatting angle of events"""
     c1=ROOT.TCanvas("c1","canvas1",1000,1000)

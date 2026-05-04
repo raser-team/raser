@@ -85,7 +85,33 @@ def CreateSiliconConstant(T, device, region):
     devsim.set_parameter(device=device, region=region, name="p1", value=N_i)
     devsim.set_parameter(device=device, region=region, name="taun", value=7e-3)
     devsim.set_parameter(device=device, region=region, name="taup", value=7e-3)
+def CreateDiamondConstant(T, device, region):
+    # define SiliconCarbide parameters
+    N_c = 1.8e19 * pow(T / 300, 1.5)  # cm^-3
+    N_v = 1.5e19 * pow(T / 300, 1.5)  # cm^-3
+    devsim.set_parameter(device=device, region=region, name="N_c", value=N_c)
+    devsim.set_parameter(device=device, region=region, name="N_v", value=N_v)
 
+    E_g = 5.47 * 1.6e-19  # J
+    devsim.set_parameter(device=device, region=region, name="E_g", value=E_g)
+
+    epsilon_r = 5.7  # 相对介电常数
+    eps_0 = 8.85e-14  # F/cm^2
+    devsim.set_parameter(device=device, region=region, name="eps", value=epsilon_r)
+    devsim.set_parameter(device=device, region=region, name="Permittivity", value=epsilon_r * eps_0)
+
+    k = 1.3806503e-23  # J/K
+    N_i = pow(N_c * N_v, 0.5) * math.exp(-E_g / (2 * k * T))
+    devsim.set_parameter(device=device, region=region, name="n_i", value=N_i)
+
+    devsim.set_parameter(device=device, region=region, name="mu_n", value=110)
+    devsim.set_parameter(device=device, region=region, name="mu_p", value=1100)
+
+    devsim.set_parameter(device=device, region=region, name="n1", value=N_i)
+    devsim.set_parameter(device=device, region=region, name="p1", value=N_i)
+    devsim.set_parameter(device=device, region=region, name="taun", value=5e-6)
+    devsim.set_parameter(device=device, region=region, name="taup", value=10e-6)
+    
 def CreateFineExponentialModels(T, device, region):
     epsilon_model_in = 10 * 1.6 * 1e-19  # J
     epsilon_model_ip = 7 * 1.6 * 1e-19
@@ -194,7 +220,9 @@ def create_parameter(MyDetector, device, region):
         CreateVanOvenstraetenImpact(T, device, region)
     elif devsim.get_material(device=device, region=region) == "gas":
         CreateGasConstant(T, device, region)
-
+    elif devsim.get_material(device=device, region=region) == "Diamond":
+        CreateDiamondConstant(T, device, region)
+        
     if "parameter" in MyDetector.device_dict:
         devsim.set_parameter(device=device, region=region,
                              name=MyDetector.device_dict['parameter']['name'],

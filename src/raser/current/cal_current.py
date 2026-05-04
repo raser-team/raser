@@ -36,14 +36,14 @@ t_start = 0
 
 t_end = {
     1: 5e-9,
-    2: 50e-9,
-    3: 50e-9
+    2: 1e-6,
+    3: 1e-6
 }
 
 delta_t = {
     1: 2e-12,  # simulation time step
-    2: 20e-12,
-    3: 20e-12
+    2: 50e-12,
+    3: 50e-12
 }
 
 t_tol = 1e-20

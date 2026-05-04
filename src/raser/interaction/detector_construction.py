@@ -54,7 +54,21 @@ class GeneralDetectorConstruction(g4b.G4VUserDetectorConstruction):
                         "tub" : {}
                         }
             self.create_binary_compounds(detector)
-            
+        if(detector_material=='Diamond'):
+            detector={
+                        "name" : "Device",
+                        "material" : "G4_C",
+                        "density" : 3.52,
+                        "side_x" : my_d.l_x,
+                        "side_y" : my_d.l_y,
+                        "side_z" : my_d.l_z,
+                        "colour" : [1,0,0],
+                        "position_x" : 0,
+                        "position_y" : 0,
+                        "position_z" : my_d.l_z/2.0,
+                        }
+            self.create_elemental(detector)  
+
         if(g4_dic['object']):
             for object_type in g4_dic['object']:
                 if(object_type=="elemental"):

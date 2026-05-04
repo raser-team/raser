@@ -80,9 +80,9 @@ def batch_loop(my_d, my_f, my_g4, g4_seed, total_events, instance_number):
     tree.Branch("amplifier", amplifier_str)
 
     current_time_bin = 50e-12 # TODO: relate this to setting in calcurrent.py
-    current_duration = 1000e-9
+    current_duration = 1e-6
     amplified_waveform_time_bin = 50e-12 # TODO: relate this to setting in readout.py
-    amplified_waveform_duration = 1000e-9
+    amplified_waveform_duration = 1e-6
     # TODO: make the time setting match the .tran in the .cir file
     current = [ROOT.TH1F("current_%s"%(i), "current_%s"%(i), int(current_duration/current_time_bin), 0, current_duration) for i in range(my_d.read_ele_num)]
     cross_talked_current = [ROOT.TH1F("cross_talked_current_%s"%(i), "cross_talked_current_%s"%(i), int(current_duration/current_time_bin), 0, current_duration) for i in range(my_d.read_ele_num)]
@@ -131,12 +131,11 @@ def batch_loop(my_d, my_f, my_g4, g4_seed, total_events, instance_number):
     detection_efficiency =  effective_number/(end_n-start_n) 
     print("detection_efficiency=%s"%detection_efficiency)
 
-    file_path = os.path.join(output(__file__, my_d.det_name, 'batch'),
-                             "signal_"+
+    file_path = os.path.join(my_d.subfile_path+
+                             "sweep"+
                              str(instance_number)+
                              str(my_d.voltage)+
-                             str(my_d.irradiation_flux)+
-                             str(my_d.bound)+
+                             #str(my_d.irradiation_flux, my_d.bound)+
                              str(my_d.g4experiment)+
                              str(my_d.amplifier)+
                              ".root")
@@ -145,8 +144,10 @@ def batch_loop(my_d, my_f, my_g4, g4_seed, total_events, instance_number):
     file.Close()
 
 def main(kwargs):
+    #监测点
+    print("Starting sweep...")
+    #
     det_name = kwargs['det_name']
-    my_d = bdv.Detector(det_name)
     
     my_d = bdv.Detector(det_name)
     if kwargs['voltage'] != None:
@@ -161,15 +162,24 @@ def main(kwargs):
     if kwargs['amplifier'] != None:
         my_d.amplifier = kwargs['amplifier']
 
-    my_f = devfield.DevsimField(my_d.device, my_d.dimension, my_d.voltage, my_d.read_out_contact, is_plugin=my_d.is_plugin(), irradiation_flux=my_d.irradiation_flux, bounds=my_d.bound) 
+    if kwargs['subfile_path'] != None:
+        my_d.subfile_path = kwargs['subfile_path']
+
+
+    my_f = devfield.DevsimField(my_d.device, my_d.dimension, my_d.voltage, 
+    my_d.read_out_contact, is_plugin=my_d.is_plugin(), 
+    irradiation_flux=my_d.irradiation_flux, bounds=my_d.bound) 
+
     if "lgad" in my_d.det_model:
         my_d.gain_rate_cal(my_f)
 
     geant4_json = os.getenv("RASER_SETTING_PATH")+"/g4experiment/" + my_d.g4experiment + ".json"
     with open(geant4_json) as f:
         g4_dic = json.load(f)
-    total_events = int(g4_dic['total_events'])
 
+    total_events = int(g4_dic['total_events'])
+        
+        
     job_number = kwargs['job']
     instance_number = job_number
 
@@ -198,4 +208,5 @@ def main(kwargs):
     
     batch_loop(my_d, my_f, my_g4, g4_seed, total_events, instance_number)
     del my_g4
+
 

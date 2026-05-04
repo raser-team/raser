@@ -1,0 +1,88 @@
+{
+        "det_name": "MIM-Diamond_copy",
+        "det_model": "planar",
+        "material": "Diamond",
+        "l_x": 4500,
+        "l_y": 4500,
+        "l_z": 500,
+        "doping": {
+            "Acceptors": "0",
+            "Donors": "0"
+        },
+
+        "bias": {
+            "electrode": "top",
+            "voltage": -300.0
+        },
+        "temperature": 300.0,
+
+                "avalanche_bond" : 175.0,
+    	"avalanche_model" : "vanOverstraeten",
+    	
+        "area_factor": 1,
+        "default_dimension": 2,
+        "read_out_contact": [{"x_span": 0, "y_span": 0, "name": "top"}],
+        "mesh": {
+            "2D_mesh": {
+                "mesh_line": [
+                {"dir": "x", "pos": -0.01, "ps": 1e-3},
+                {"dir": "x", "pos": 0, "ps": 1e-3},
+                {"dir": "x", "pos": 0.05, "ps": 1e-3},
+                {"dir": "x", "pos": 0.06, "ps": 1e-3},
+                {"dir": "y", "pos": -0.225, "ps": 1e-3},
+                {"dir": "y", "pos": 0.225, "ps": 1e-3}
+                ],
+                "region": [
+                    {
+                        "material": "air",
+                        "region": "bottom_air",
+                        "xl": -0.01,
+                        "xh": 0,
+                        "yl": -0.225,
+                        "yh": 0.225
+                    },
+                    {
+                        "material": "Diamond",
+                        "region": "MIM-Diamond_copy",
+                        "xl": 0,
+                        "xh": 0.05,
+                        "yl": -0.225,
+                        "yh": 0.225
+                    },
+                    {
+                        "material": "air",
+                        "region": "top_air",
+                        "xl": 0.05,
+                        "xh": 0.06,
+                        "yl": -0.225,
+                        "yh": 0.225
+                    }
+                ],
+                "contact": [
+                    {
+                        "name": "bot",
+                        "material": "metal",
+                        "region": "MIM-Diamond_copy",
+                        "xl": 0,
+                        "xh": 0,
+                        "yl": -0.225,
+                        "yh": 0.225,
+                        "bloat" : 1e-10
+                    },
+                    {
+                        "name": "top",
+                        "material": "metal",
+                        "region": "MIM-Diamond_copy",
+                        "xl": 0.05,
+                        "xh": 0.05,
+                        "yl": -0.225,
+                        "yh": 0.225,
+                        "bloat" : 1e-10
+                    }
+                ]
+            }
+        },
+        "g4experiment": "charge_collection_diamond_copy",
+        "amplifier": "Charge_Sensitive_UCSC",
+        "daq": "MIM-Diamond"
+    }

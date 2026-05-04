@@ -81,7 +81,7 @@ class VectorizedCarrierSystem:
                 params['temperature'] = self._get_param(my_d, 'temperature', 300.0)
                 params['field_resolution'] = self._resolve_field_resolution(my_d)
                 params['boundary_tolerance'] = self._resolve_boundary_tolerance(my_d)
-                params['max_drift_time'] = 100e-9   # 增加最大漂移时间
+                params['max_drift_time'] = 10000e-9   # 增加最大漂移时间
                 params['min_field_strength'] = self._resolve_min_field_strength(my_d)
                 params['max_vector_steps'] = self._get_param(my_d, 'vector_max_steps', 200000, param_type=int)
                 

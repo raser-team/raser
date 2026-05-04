@@ -22,10 +22,10 @@ def main(amp_name, det_name, file_name, tct=None):
     file_pointer = ROOT.TFile(file_name, "UPDATE")
     tree = file_pointer.Get("tree")
 
-    current_time_bin = 10e-12 # TODO: relate this to setting in calcurrent.py
-    current_duration = 10e-9
-    amplified_waveform_time_bin = 10e-12 # TODO: relate this to setting in readout.py
-    amplified_waveform_duration = 100e-9
+    current_time_bin = 50e-12 # TODO: relate this to setting in calcurrent.py
+    current_duration = 1e-6
+    amplified_waveform_time_bin = 50e-12 # TODO: relate this to setting in readout.py
+    amplified_waveform_duration = 1e-6
     current = [ROOT.TH1F("current_%s"%(i), "current_%s"%(i), int(current_duration/current_time_bin), 0, current_duration) for i in range(my_d.read_ele_num)]
     cross_talked_current = [ROOT.TH1F("cross_talked_current_%s"%(i), "cross_talked_current_%s"%(i), int(current_duration/current_time_bin), 0, current_duration) for i in range(my_d.read_ele_num)]
     amplified_waveform = [ROOT.TH1F("amplified_waveform_%s"%(i), "amplified_waveform_%s"%(i), int(amplified_waveform_duration/amplified_waveform_time_bin), 0, amplified_waveform_duration) for i in range(my_d.read_ele_num)]

@@ -21,9 +21,9 @@ from ..interaction.carrier_list import PixelCarrierListFromG4P
 from ..util.math import Vector
 
 t_bin = 50e-12
-t_end = 10e-9
+t_end = 1e-6
 t_start = 0
-delta_t = 10e-12
+delta_t = 50e-12
 pixel = 25 #um
 min_intensity = 1 # V/cm
 

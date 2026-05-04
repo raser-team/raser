@@ -41,6 +41,21 @@ class Material:
             self.avalanche_model = 'Hatakeyama'
             self.mobility_model = 'Das'
 
+        if self.mat_name == "Diamond":
+            # Diamond material properties
+            self.permittivity = 5.7
+            self.hole_mass = 0.8 * m_e  # Hole effective mass
+            self.electron_mass = 0.2 * m_e  # Electron effective mass
+            self.avalanche_model = 'Hatakeyama'  # Custom model for diamond
+            self.mobility_model = 'Reggiani_diamond'  # Custom model for diamond
+            # Diamond specific properties
+            self.band_gap = 5.47  # eV
+            self.intrinsic_carrier_density = 1.0e-27  # cm^-3 (extremely low)
+            self.critical_electric_field = 1.0e7  # V/cm (breakdown field)
+            # Carrier saturation velocities (cm/s)
+            self.electron_saturation_velocity = 2.7e7
+            self.hole_saturation_velocity = 1.0e7
+
 
     def cal_mobility(self, temperature, input_doping, charge, electric_field):
         """ Define Mobility Model """
@@ -85,7 +100,58 @@ class Material:
                     mu_LIF_n = mu_LI_n / (math.pow(1.0 + math.pow(mu_LI_n * E / v_sat_n, beta_n), 1.0/beta_n))
 
                     mu = mu_LIF_n
+        # Diamond mobility
+        if (self.mat_name == 'Diamond'):
+            if self.mobility_model == "Reggiani_diamond":
+                Neff = abs(Neff)
+                if (charge > 0):  # Holes
+                    # Diamond hole mobility model (based on experimental data)
+                    mu_L_p = 1200 * math.pow(t, -2.5)  # Lattice mobility for holes
+                    mu_min_p = 50.0 * math.pow(t, -1.0)
+                    C_ref_p = 1.0e17  # Reference concentration for holes
+                    alpha_p = 0.5
+                    mu_LI_p = mu_min_p + mu_L_p / (1.0 + math.pow(Neff / C_ref_p, alpha_p))
+                    beta_p = 1.5 * math.pow(t, 0.2)
+                    v_sat_p = self.hole_saturation_velocity * math.pow(t, -0.5)  # Temperature dependent saturation velocity
+                    mu_LIF_p = mu_LI_p / (math.pow(1.0 + math.pow(mu_LI_p * E / v_sat_p, beta_p), 1.0 / beta_p))
+                    mu = mu_LIF_p
+                else:  # Electrons
+                    # Diamond electron mobility model (based on experimental data)
+                    mu_L_n = 1800 * math.pow(t, -2.5)  # Lattice mobility for electrons
+                    mu_min_n = 100.0 * math.pow(t, -1.0)
+                    C_ref_n = 2.0e17  # Reference concentration for electrons
+                    alpha_n = 0.5
+                    mu_LI_n = mu_min_n + mu_L_n / (1.0 + math.pow(Neff / C_ref_n, alpha_n))
+                    beta_n = 1.0 * math.pow(t, 0.3)
+                    v_sat_n = self.electron_saturation_velocity * math.pow(t, -0.5)
+                    mu_LIF_n = mu_LI_n / (math.pow(1.0 + math.pow(mu_LI_n * E / v_sat_n, beta_n), 1.0 / beta_n))
+                    mu = mu_LIF_n
 
+            # Alternative diamond mobility model (simplified)
+            elif self.mobility_model == "Das_diamond":
+                Neff = abs(Neff)
+                if (charge > 0):  # Holes
+                    # Simplified model based on Das for diamond
+                    mu_L_p = 1240 * math.pow(t, -2.0)
+                    mu_min_p = 15.9
+                    C_ref_p = 1.76e18  # Adjusted for diamond
+                    alpha_p = 0.34
+                    mu_LI_p = mu_min_p + mu_L_p / (1.0 + math.pow(Neff / C_ref_p, alpha_p))
+                    beta_p = 1.213 * math.pow(t, 0.17)
+                    v_sat_p = 1.0e7 * math.pow(t, 0.52)
+                    mu_LIF_p = mu_LI_p / (math.pow(1.0 + math.pow(mu_LI_p * E / v_sat_p, beta_p), 1.0 / beta_p))
+                    mu = mu_LIF_p
+
+                else:  # Electrons
+                    mu_L_n = 1947 * math.pow(t, -2.0)
+                    mu_min_n = 0
+                    C_ref_n = 1.94e18  # Adjusted for diamond
+                    alpha_n = 0.61
+                    mu_LI_n = mu_min_n + mu_L_n / (1.0 + math.pow(Neff / C_ref_n, alpha_n))
+                    beta_n = 1 * math.pow(t, 0.66)
+                    v_sat_n = 2.2e7 * math.pow(t, 0.87)
+                    mu_LIF_n = mu_LI_n / (math.pow(1.0 + math.pow(mu_LI_n * E / v_sat_n, beta_n), 1.0 / beta_n))
+                    mu = mu_LIF_n
         # Si mobility
         if(self.mat_name == 'Si'):
             if self.mobility_model == "Selberherr":
@@ -218,7 +284,6 @@ class Material:
 
         E = electric_field # V/cm
         T = temperature # K
-
         # van Overstraeten – de Man Model
         if(self.avalanche_model == 'vanOverstraeten'):
 
@@ -342,6 +407,7 @@ def main():
     mob.draw_velocity(300,5e12)
     mob = Material("SiC")
     mob.draw_velocity(300,5e13)
-
+    mob = Material("Diamond", mobility_model="Das_diamond")
+    mob.draw_velocity(300, 1e14)
 if __name__ == "__main__":
     main()

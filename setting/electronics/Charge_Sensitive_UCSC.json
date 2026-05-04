@@ -1,13 +1,13 @@
 {
     "ele_name": "Charge_Sensitive",
-    "CDet" : 30,
+    "CDet" : 25,
 
-    "t_rise" : 0.7,
-    "t_fall" : 1.1,
-    "trans_imp" : 38,
+    "t_rise" : 7e-3,
+    "t_fall" : 100,
+    "trans_imp" : 5,
 
-    "noise_avg" : -0.133,
-    "noise_rms" : 2.671,
+    "noise_avg" : 0,
+    "noise_rms" : 0,
 
-    "threshold" : 15
+    "threshold" : 0
 }

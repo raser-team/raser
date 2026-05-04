@@ -26,6 +26,8 @@ class CarrierListFromG4P:
             self.energy_loss = 8.4 #ev
         elif (material == "Si"):
             self.energy_loss = 3.6 #ev
+        elif(material == "Diamond"):
+            self.energy_loss =13.1 #eV
 
         if batch == -1 and (my_g4.geant4_model == "time_resolution" or my_g4.geant4_model == "charge_collection" or my_g4.geant4_model == "bmos"  or my_g4.geant4_model == "beta_source"):
             total_step=0
@@ -111,6 +113,8 @@ class PixelCarrierListFromG4P:
             self.energy_loss = 8.4 #ev
         elif (material == "Si"):
             self.energy_loss = 3.6 #ev
+        elif (material == "C"):
+            self.energy_loss = 13.1 #ev
         
         self.track_position, self.ionized_pairs= [],[]
         self.layer= layer
@@ -143,4 +147,3 @@ class PixelCarrierListFromG4P:
     def split_name(self,volume_name):
         parts = volume_name.split('_')
         return int(parts[1]),int(parts[2]),int(parts[4])
-

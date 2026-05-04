@@ -40,6 +40,7 @@ def PotentialOnlyInitialSolution(device, region, paras, circuit_contacts, set_co
     devsim.edge_from_node_model(device=device,region=region,node_model="InitialElectron")
     devsim.edge_from_node_model(device=device,region=region,node_model="InitialHole")
     CreateSiliconPotentialOnly(device, region)
+    CreateDiamondPotentialOnly(device, region)
     if paras["weightfield"]==True:
         try:
             CreateOxidePotentialOnly(device=device, region="SiO2", update_type="default")
@@ -59,6 +60,7 @@ def PotentialOnlyInitialSolution(device, region, paras, circuit_contacts, set_co
         devsim.set_parameter(device=device, name=GetContactBiasName(i), value=0)
         if str(circuit_contacts) in i :
             CreateSiliconPotentialOnlyContact(device, region, i, contact_type, True)
+            CreateDiamondPotentialOnlyContact(device, region, i, contact_type, True)
             if paras["weightfield"]==True:
                 try:
                     CreateOxideContact(device=device, region="SiO2", contact=i)
@@ -70,6 +72,7 @@ def PotentialOnlyInitialSolution(device, region, paras, circuit_contacts, set_co
             ### it is more correct for the bias to be 0, and it looks like there is side effects
             devsim.set_parameter(device=device, name=GetContactBiasName(i), value="0.0")
             CreateSiliconPotentialOnlyContact(device, region, i, contact_type)
+            CreateDiamondPotentialOnlyContact(device, region, i, contact_type)
             if paras["weightfield"]==True:
                 try:
                     CreateOxideContact(device=device, region="SiO2", contact=i)
@@ -100,7 +103,21 @@ def DriftDiffusionInitialSolution(device, region, paras, irradiation_model=None,
     ### Set up equations
     ###
     
-    CreateSiliconDriftDiffusion(device, region, irradiation_model=irradiation_model, irradiation_flux=irradiation_flux, impact_model=impact_model)
+#    CreateSiliconDriftDiffusion(device, region, irradiation_model=irradiation_model, irradiation_flux=irradiation_flux, impact_model=impact_model)
+#    for i in devsim.get_contact_list(device=device):
+#        if set_contact_type and i in set_contact_type:
+#            contact_type = set_contact_type[i]
+#        else:
+#            contact_type = {"type" : "Ohmic"}
+#
+#        if str(circuit_contacts) in i:
+#            devsim.set_parameter(device=device, name=GetContactBiasName(i), value="0.0")
+#            CreateSiliconDriftDiffusionAtContact(device, region, i, contact_type, True)
+#        else:
+#            devsim.set_parameter(device=device, name=GetContactBiasName(i), value="0.0")
+#            CreateSiliconDriftDiffusionAtContact(device, region, i, contact_type)
+
+    CreateDiamondDriftDiffusion(device, region, irradiation_model=irradiation_model, irradiation_flux=irradiation_flux, impact_model=impact_model)
     for i in devsim.get_contact_list(device=device):
         if set_contact_type and i in set_contact_type:
             contact_type = set_contact_type[i]
@@ -109,8 +126,9 @@ def DriftDiffusionInitialSolution(device, region, paras, irradiation_model=None,
 
         if str(circuit_contacts) in i:
             devsim.set_parameter(device=device, name=GetContactBiasName(i), value="0.0")
-            CreateSiliconDriftDiffusionAtContact(device, region, i, contact_type, True)
+            CreateDiamondDriftDiffusionAtContact(device, region, i, contact_type, True)
         else:
             devsim.set_parameter(device=device, name=GetContactBiasName(i), value="0.0")
-            CreateSiliconDriftDiffusionAtContact(device, region, i, contact_type)
+            CreateDiamondDriftDiffusionAtContact(device, region, i, contact_type)
+
 

@@ -63,6 +63,62 @@ def CreateSiliconPotentialOnly(device, region):
     equation(device=device, region=region, name="PotentialEquation", variable_name="Potential",
              node_model="PotentialIntrinsicCharge", edge_model="PotentialEdgeFlux", variable_update="log_damp")
 
+def CreateDiamondPotentialOnly(device, region):
+    '''
+      Creates the physical models for a Diamond region (Poisson equation only)
+      为金刚石区域创建仅电势的物理模型（泊松方程）
+    '''
+    # 检查并创建电势解
+    if not InNodeModelList(device, region, "Potential"):
+        print("Creating Node Solution Potential for Diamond")
+        CreateSolution(device, region, "Potential")
+    
+    # 使用玻尔兹曼统计的本征载流子浓度模型
+    # 由于金刚石禁带很宽(5.47 eV)，本征载流子浓度极低(~10^-27 cm^-3)
+    # 使用精确计算避免数值问题
+    elec_i = "n_i*exp(Potential/Volt_thermal)"
+    hole_i = "n_i^2/IntrinsicElectrons"
+    
+    # 总电荷密度：空穴 - 电子 + 净掺杂
+    # 金刚石通常掺杂浓度较低，注意数值稳定性
+    charge_i = "kahan3(IntrinsicHoles, -IntrinsicElectrons, NetDoping)"
+    
+    # 乘以电子电荷得到电荷密度
+    pcharge_i = "-ElectronCharge * IntrinsicCharge"
+
+    # 创建节点模型及其对电势的导数
+    for i in (
+        ("IntrinsicElectrons", elec_i),
+        ("IntrinsicHoles", hole_i),
+        ("IntrinsicCharge", charge_i),
+        ("PotentialIntrinsicCharge", pcharge_i)
+    ):
+        n = i[0]
+        e = i[1]
+        CreateNodeModel(device, region, n, e)
+        CreateNodeModelDerivative(device, region, n, e, "Potential")
+
+    # 创建边缘模型：电场和电位移通量
+    for i in (
+        ("ElectricField", "(Potential@n0-Potential@n1)*EdgeInverseLength"),
+        ("PotentialEdgeFlux", "Permittivity * ElectricField")
+    ):
+        n = i[0]
+        e = i[1]
+        CreateEdgeModel(device, region, n, e)
+        CreateEdgeModelDerivatives(device, region, n, e, "Potential")
+
+        equation(device=device, region=region, name="PotentialEquation", variable_name="Potential",
+             node_model="PotentialIntrinsicCharge", edge_model="PotentialEdgeFlux", variable_update="log_damp")
+    # 创建电势方程（泊松方程）
+    # 金刚石的高介电常数和宽禁带需要特殊处理
+    #equation(device=device, region=region, name="PotentialEquation", 
+    #         variable_name="Potential",
+    #         node_model="PotentialIntrinsicCharge", 
+    #         edge_model="PotentialEdgeFlux", 
+    #         variable_update="log_damp",
+    #         time_node_model="",  # 静态分析
+    #         enabled=True)
 
 
 def CreateSiliconPotentialOnlyContact(device, region, contact, contact_type, is_circuit=False):
@@ -114,6 +170,116 @@ def CreateSiliconPotentialOnlyContact(device, region, contact, contact_type, is_
                          node_model=contact_model_name, edge_model="",
                          node_charge_model="", edge_charge_model="contactcharge_edge",
                          node_current_model="", edge_current_model="")
+
+def CreateDiamondPotentialOnlyContact(device, region, contact, contact_type, is_circuit=False):
+    '''
+      Creates the potential equation at the contact for Diamond
+      为金刚石创建接触边界条件
+      
+      Args:
+        device: 设备对象
+        region: 区域名称
+        contact: 接触名称
+        contact_type: 接触类型字典，包含类型和参数
+        is_circuit: 是否连接电路
+    '''
+    # 接触电荷计算模型（与硅相同）
+    if not InEdgeModelList(device, region, "contactcharge_edge"):
+        CreateEdgeModel(device, region, "contactcharge_edge", "Permittivity*ElectricField")
+        CreateEdgeModelDerivatives(device, region, "contactcharge_edge", 
+                                   "Permittivity*ElectricField", "Potential")
+
+    # 根据接触类型创建不同的边界条件
+    #if contact_type["type"] == "Schottky":
+        # 肖特基接触 - 金刚石功函数较高(~4.8-5.0 eV)
+    #    workfun = contact_type.get("workfun", 4.8)  # 金属功函数，默认4.8 eV
+    #    affinity = contact_type.get("affinity", 0.38)  # 金刚石电子亲和能，默认0.38 eV
+        
+        # γ参数：肖特基模型修正因子
+        # 金刚石的界面态密度可能较低
+    #    if "gamma" in contact_type:
+    #        gamma = contact_type["gamma"]
+    #    else:
+            # 默认使用标准肖特基模型(γ=1)
+    #        gamma = 1.0
+        
+        # 中带电势（金刚石可能需要调整）
+    #    phi_0 = "E_g/(3*ElectronCharge)"
+        
+        # 肖特基接触模型公式
+    #    contact_model = """
+    #        Potential - {0} + {3}*({1} - {2}) - {3}*E_g/ElectronCharge 
+    #        + ({3}-1)*{4} + Volt_thermal*log(N_v/n_i)
+    #    """.format(GetContactBiasName(contact), workfun, affinity, gamma, phi_0)
+        
+    if contact_type["type"] == "Ohmic":
+        # 欧姆接触 - 金刚石的欧姆接触制备较困难
+        # 通常需要重掺杂或特殊处理
+        celec_model = contact_type.get("celec_model", "n_i*exp(({0}-Potential)/Volt_thermal)".format(GetContactBiasName(contact)))
+        chole_model = contact_type.get("chole_model", "n_i*exp((Potential-{0})/Volt_thermal)".format(GetContactBiasName(contact)))
+        contact_model = """
+            Potential -{0} + ifelse(NetDoping > 0, \
+                        -Volt_thermal*log({1}/n_i), \
+                        Volt_thermal*log({2}/n_i))
+        """.format(GetContactBiasName(contact), celec_model, chole_model)
+        
+    #elif contact_type["type"] == "HydrogenTerminated":
+        # 金刚石特有的氢终端接触
+        # 氢终端金刚石表面形成2D空穴气，具有独特的能带结构
+    #    surface_dipole = contact_type.get("surface_dipole", 1.7)  # 表面偶极层电势降
+        
+    #    contact_model = """
+    #        Potential - {0} + {1} - E_g/(2*ElectronCharge) 
+    #        + Volt_thermal*log(N_v/n_i)
+    #    """.format(GetContactBiasName(contact), surface_dipole)
+        
+    #elif contact_type["type"] == "OxygenTerminated":
+        # 氧终端金刚石表面
+    #    surface_affinity = contact_type.get("surface_affinity", 1.7)  # 表面电子亲和能
+        
+    #    contact_model = """
+    #        Potential - {0} + ({1} - affinity) - E_g/(2*ElectronCharge)
+    #        + Volt_thermal*log(N_v/n_i)
+    #    """.format(GetContactBiasName(contact), surface_affinity)
+        
+    #else:
+    #    contact_model = "Potential - {0}".format(GetContactBiasName(contact))
+        # 默认欧姆接触
+    #    celec_model = "n_i*exp(({0}-Potential)/Volt_thermal)".format(GetContactBiasName(contact))
+    #    chole_model = "n_i*exp((Potential-{0})/Volt_thermal)".format(GetContactBiasName(contact))
+        
+    #    contact_model = """
+    #        Potential -{0} + ifelse(NetDoping > 0, \
+    #                    -Volt_thermal*log({1}/n_i), \
+    #                    Volt_thermal*log({2}/n_i))
+    #    """.format(GetContactBiasName(contact), celec_model, chole_model)
+
+    # 创建接触节点模型
+    contact_model_name = GetContactNodeModelName(contact)
+    CreateContactNodeModel(device, contact, contact_model_name, contact_model)
+    
+    # 创建对电势的导数（通常为1）
+    CreateContactNodeModel(device, contact, "{0}:{1}".format(contact_model_name, "Potential"), "1")
+    
+    # 如果连接电路，创建对电路节点的导数
+    if is_circuit:
+        CreateContactNodeModel(device, contact, 
+                               "{0}:{1}".format(contact_model_name, GetContactBiasName(contact)), 
+                               "-1")
+
+    # 创建接触方程
+    if is_circuit:
+        contact_equation(device=device, contact=contact, name="PotentialEquation",
+                         node_model=contact_model_name, edge_model="",
+                         node_charge_model="", edge_charge_model="contactcharge_edge",
+                         node_current_model="", edge_current_model="", 
+                         circuit_node=GetContactBiasName(contact))
+    else:
+        contact_equation(device=device, contact=contact, name="PotentialEquation",
+                         node_model=contact_model_name, edge_model="",
+                         node_charge_model="", edge_charge_model="contactcharge_edge",
+                         node_current_model="", edge_current_model="")
+
 
 
 def CreateBernoulli (device, region):
@@ -272,6 +438,33 @@ def CreateSiliconDriftDiffusion(device, region, mu_n="mu_n", mu_p="mu_p", irradi
     CreateECE(device, region, mu_n, impact_model=impact_model)
     CreateHCE(device, region, mu_p, impact_model=impact_model)
 
+def CreateDiamondDriftDiffusion(device, region, mu_n="mu_n", mu_p="mu_p", 
+                                irradiation_model=None, irradiation_flux=1e15, 
+                                impact_model=None, incomplete_ionization=True):
+    """
+    金刚石漂移扩散模型 - 简洁版
+    参数:
+    - incomplete_ionization: 金刚石需要考虑不完全电离效应（默认True）
+    """
+    
+    # 1. 辐照模型（与硅类似）
+    if irradiation_model != None:
+        CreateIrradiation(device, region, label=irradiation_model, flux=irradiation_flux)
+    else:
+        CreateNodeModel(device, region, "TrappingRate_n", "0")
+        CreateNodeModel(device, region, "TrappingRate_p", "0")
+    
+    # 2. 如果不完全电离，创建金刚石特有的不完全电离模型
+    #if incomplete_ionization:
+    #    CreateDiamondIncompleteIonization(device, region)
+    
+    # 3. 调用物理模型
+    CreatePE(device, region, irradiation_model)
+    CreateBernoulli(device, region)
+    CreateSRH(device, region, irradiation_model)
+    CreateECE(device, region, mu_n, impact_model=impact_model)
+    CreateHCE(device, region, mu_p, impact_model=impact_model)
+
 
 def CreateSiliconDriftDiffusionAtContact(device, region, contact, contact_type, is_circuit=False): 
     '''
@@ -330,6 +523,147 @@ def CreateSiliconDriftDiffusionAtContact(device, region, contact, contact_type, 
                          node_model=contact_holes_name,
                          edge_current_model="HoleCurrent")
 
+def CreateDiamondDriftDiffusionAtContact(device, region, contact, contact_type, is_circuit=False): 
+    '''
+      Creates contact boundary conditions for Diamond drift-diffusion model
+      为金刚石漂移-扩散模型创建接触边界条件
+      
+      Args:
+        device: 设备对象
+        region: 区域名称
+        contact: 接触名称
+        contact_type: 接触类型字典
+        is_circuit: 是否连接到电路
+    '''
+    # 获取接触偏置名称
+    contact_bias = GetContactBiasName(contact)
+    
+    # 根据接触类型创建不同的边界条件
+    #if contact_type["type"] == "Schottky":
+        # 金刚石肖特基接触（金刚石功函数较高，势垒大）
+    #    workfun = contact_type.get("workfun", 4.8)  # 金属功函数，默认4.8 eV（常用金属）
+    #    affinity = contact_type.get("affinity", 0.38)  # 金刚石电子亲和能，默认0.38 eV
+        
+        # γ参数：考虑界面态影响的修正因子
+        # 金刚石表面态密度较低，通常γ接近1
+    #    if "gamma" in contact_type:
+    #        gamma = contact_type["gamma"]
+    #    else:
+    #        if "delta" in contact_type and "D_s" in contact_type:
+                # Sze模型，考虑界面态
+    #            gamma = ("Permittivity / (Permittivity + "
+    #                    "ElectronCharge*ElectronCharge*{0}*{1})".format(
+    #                    contact_type["delta"], contact_type["D_s"]))
+    #        else:
+    #            gamma = 1.0  # 默认理想肖特基模型
+        
+        # 中带电势（金刚石禁带宽，可能需要调整）
+    #    phi_0 = "E_g/(2*ElectronCharge)"  # 对于金刚石，可能更适合用E_g/2
+        
+        # 肖特基势垒高度计算
+    #    Phi_Bn = ("{2}*({0}-{1}) + (1-{2})*(E_g/ElectronCharge - {3})".format(
+    #             workfun, affinity, gamma, phi_0))
+        
+        # 平衡电子浓度（热电子发射理论）
+        # 金刚石导带有效态密度N_c相对较低
+    #    Equi_Electrons = ("N_c * exp(-({0}) / Volt_thermal)".format(Phi_Bn))
+        
+        # 平衡空穴浓度
+   #     Equi_Holes = ("N_v * exp((-E_g/ElectronCharge + {0}) / Volt_thermal)".format(Phi_Bn))
+        
+        # 边界条件模型
+    #    contact_electrons_model = "Electrons - {0}".format(Equi_Electrons)
+    #    contact_holes_model = "Holes - {0}".format(Equi_Holes)
+        
+    #elif contact_type["type"] == "HydrogenTerminated":
+        # 氢终端金刚石接触（形成欧姆接触或低势垒接触）
+        # 氢终端表面形成2D空穴气，具有独特性质
+        
+        # 表面偶极层电势降（约1.7 eV）
+    #    surface_dipole = contact_type.get("surface_dipole", 1.7)
+        
+        # 氢终端表面电子亲和能变为负值
+    #    surface_affinity = contact_type.get("surface_affinity", -0.38)
+        
+        # 有效势垒高度（通常较低）
+    #    effective_barrier = contact_type.get("effective_barrier", 0.5)
+        
+        # 氢终端接触载流子浓度
+    #    Equi_Electrons = ("N_c * exp(-{0} / Volt_thermal)".format(effective_barrier))
+    #    Equi_Holes = ("N_v * exp(-(E_g/ElectronCharge - {0}) / Volt_thermal)".format(effective_barrier))
+        
+    #    contact_electrons_model = "Electrons - {0}".format(Equi_Electrons)
+    #    contact_holes_model = "Holes - {0}".format(Equi_Holes)
+        
+    if contact_type["type"] == "Ohmic":
+        # 金刚石欧姆接触（通常需要重掺杂或特殊处理）
+        # 假设celecmodel和cholemodel已定义（通常是费米统计）
+        celec_model = contact_type.get("celec_model", 
+                                      "n_i*exp(({0}-Potential)/Volt_thermal)".format(contact_bias))
+        chole_model = contact_type.get("chole_model", 
+                                      "n_i*exp((Potential-{0})/Volt_thermal)".format(contact_bias))
+        
+        # 欧姆接触边界条件
+        contact_electrons_model = "Electrons - ifelse(NetDoping > 0, {0}, n_i^2/{1})".format(celec_model, chole_model)
+        
+        contact_holes_model =  "Holes - ifelse(NetDoping < 0, +{1}, +n_i^2/{0})".format(celec_model, chole_model)
+        
+    #else:
+        # 默认欧姆接触
+    #    celec_model = "n_i*exp(({0}-Potential)/Volt_thermal)".format(contact_bias)
+    #    chole_model = "n_i*exp((Potential-{0})/Volt_thermal)".format(contact_bias)
+ 
+  
+    #    contact_electrons_model = (
+    #        "Electrons - ifelse(NetDoping > 0, "
+    #        "{0}, n_i^2/{1})".format(celec_model, chole_model))
+       
+    #    contact_holes_model = (
+    #        "Holes - ifelse(NetDoping < 0, "
+    #        "+{1}, +n_i^2/{0})".format(celec_model, chole_model))
+        # 创建接触节点模型
+    contact_electrons_name = "{0}nodeelectrons".format(contact)
+    contact_holes_name = "{0}nodeholes".format(contact)
+    
+    CreateContactNodeModel(device, contact, contact_electrons_name, contact_electrons_model)
+    # 创建导数模型（对Electrons的导数为1）
+    CreateContactNodeModel(device, contact, 
+                          "{0}:{1}".format(contact_electrons_name, "Electrons"), "1")
+    
+    CreateContactNodeModel(device, contact, contact_holes_name, contact_holes_model)
+    CreateContactNodeModel(device, contact, 
+                          "{0}:{1}".format(contact_holes_name, "Holes"), "1")
+    
+    # 创建接触边界方程
+    if is_circuit:
+        # 连接到电路的情况
+        contact_equation(device=device, contact=contact, 
+                         name="ElectronContinuityEquation",
+                         node_model=contact_electrons_name,
+                         edge_current_model="ElectronCurrent", 
+                         circuit_node=contact_bias)
+        
+        contact_equation(device=device, contact=contact, 
+                         name="HoleContinuityEquation",
+                         node_model=contact_holes_name,
+                         edge_current_model="HoleCurrent", 
+                         circuit_node=contact_bias)
+    else:
+        # 不连接电路的情况
+        contact_equation(device=device, contact=contact, 
+                         name="ElectronContinuityEquation",
+                         node_model=contact_electrons_name,
+                         edge_current_model="ElectronCurrent")
+        
+        contact_equation(device=device, contact=contact, 
+                         name="HoleContinuityEquation",
+                         node_model=contact_holes_name,
+                         edge_current_model="HoleCurrent")
+    
+    # 金刚石特有的接触效应：场发射（高场下）
+    if contact_type.get("enable_field_emission", False):
+        CreateDiamondFieldEmissionContact(device, region, contact, contact_type) 
+
 
 def CreateOxidePotentialOnly(device, region, update_type="default"):
     '''
@@ -348,6 +682,22 @@ def CreateOxidePotentialOnly(device, region, update_type="default"):
     equation(device=device, region=region, name="PotentialEquation", variable_name="Potential",
              edge_model="PotentialEdgeFlux", variable_update=update_type)
 
+def CreateOxidePotentialOnly(device, region, update_type="default"):
+    '''
+      Create electric field model in oxide
+      Creates Potential solution variable if not available
+    '''
+    if not InNodeModelList(device, region, "Potential"):
+        print("Creating Node Solution Potential")
+        CreateSolution(device, region, "Potential")
+
+    # this needs to remove derivatives w.r.t. independents
+    CreateEdgeModel(device, region, "ElectricField", "(Potential@n0 - Potential@n1)*EdgeInverseLength")
+    CreateEdgeModelDerivatives(device, region, "ElectricField", "(Potential@n0 - Potential@n1)*EdgeInverseLength", "Potential")
+    CreateEdgeModel(device, region, "PotentialEdgeFlux", "Permittivity * ElectricField")
+    CreateEdgeModelDerivatives(device, region, "PotentialEdgeFlux", "Permittivity * ElectricField", "Potential")
+    equation(device=device, region=region, name="PotentialEquation", variable_name="Potential",
+             edge_model="PotentialEdgeFlux", variable_update=update_type)
 
 #in the future, worry about workfunction
 def CreateOxideContact(device, region, contact):
@@ -375,6 +725,12 @@ def CreateSiliconOxideInterface(device, interface):
     model_name = CreateContinuousInterfaceModel(device, interface, "Potential")
     interface_equation(device=device, interface=interface, name="PotentialEquation", interface_model=model_name, type="continuous")
 
+def CreateDiamondOxideInterface(device, interface):
+    '''
+      continuous potential at interface
+    '''
+    model_name = CreateContinuousInterfaceModel(device, interface, "Potential")
+    interface_equation(device=device, interface=interface, name="PotentialEquation", interface_model=model_name, type="continuous")
 #
 ##TODO: similar model for silicon/silicon interface
 ## should use quasi-fermi potential
@@ -388,6 +744,15 @@ def CreateSiliconSiliconInterface(device, interface):
     hname = CreateContinuousInterfaceModel(device, interface, "Holes")
     interface_equation(device=device, interface=interface, name="HoleContinuityEquation", interface_model=hname, type="continuous")
 
+def CreateDiamondDiamondInterface(device, interface):
+    '''
+      Enforces potential, electron, and hole continuity across the interface
+    '''
+    CreateDiamondOxideInterface(device, interface)
+    ename = CreateContinuousInterfaceModel(device, interface, "Electrons")
+    interface_equation(device=device, interface=interface, name="ElectronContinuityEquation", interface_model=ename, type="continuous")
+    hname = CreateContinuousInterfaceModel(device, interface, "Holes")
+    interface_equation(device=device, interface=interface, name="HoleContinuityEquation", interface_model=hname, type="continuous")
 '''
 def CreateMobility(device, region):
 

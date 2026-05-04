@@ -1,0 +1,52 @@
+{
+    "geant4_model": "time_resolution",
+    "total_events": 10000,
+    
+    "object": {
+        "elemental": {
+            "Diamond_detector": {
+                "name": "Diamond_detector",
+                "material": "G4_C",
+                "side_x": 4500,
+                "side_y": 4500,
+                "side_z": 500,
+                "colour": [1, 0, 0],
+                "position_x": 0,
+                "position_y": 0,
+                "position_z": 0
+            },
+            
+            "Top_electrode": {
+                "name": "Top_electrode",
+                "material": "G4_Au",
+                "side_x": 3800,
+                "side_y": 3800,
+                "side_z": 0.1,
+                "colour": [1, 1, 0],
+                "position_x": 0,
+                "position_y": 0,
+                "position_z": 500.1
+            },
+            
+            "Bottom_electrode": {
+                "name": "Bottom_electrode",
+                "material": "G4_Au",
+                "side_x": 3800,
+                "side_y": 3800,
+                "side_z": 0.1,
+                "colour": [1, 1, 0],
+                "position_x": 0,
+                "position_y": 0,
+                "position_z": -0.1
+            }
+        }
+    },
+
+    "world": "G4_Galactic",
+    "par_type": "alpha",
+    "par_energy": 5.48,
+    "maxstep": 1,
+    "g4_vis": false,
+    "par_in": [0, 0, 600],
+    "par_out": [0, 0, -100]
+}

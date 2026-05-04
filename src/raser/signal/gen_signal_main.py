@@ -13,6 +13,7 @@ import time
 import subprocess
 import json
 import random
+import math
 
 import ROOT
 ROOT.gROOT.SetBatch(True)
@@ -67,6 +68,22 @@ def main(kwargs):
     g4_vis = kwargs['g4_vis']
 
     my_f = devfield.DevsimField(my_d.device, my_d.dimension, my_d.voltage, my_d.read_out_contact, is_plugin=my_d.is_plugin(), irradiation_flux=my_d.irradiation_flux, bounds=my_d.bound)
+    targets = [0, 500, 2000, 4000]
+    z_val = 500
+    print("===== 指定点电场值 =====")
+    for val in targets:
+        x = y = val
+        try:
+            e_field = my_f.get_e_field_cached(x, y, z_val)
+            if e_field is not None and len(e_field) == 3:
+                Ex, Ey, Ez = e_field
+                intensity = math.sqrt(Ex*Ex + Ey*Ey + Ez*Ez)
+                print(f"({x},{y},{z_val}): Ex={Ex:.6e}, Ey={Ey:.6e}, Ez={Ez:.6e}, |E|={intensity:.6e}")
+            else:
+                print(f"({x},{y},{z_val}): 无效电场")
+        except Exception as e:
+            print(f"({x},{y},{z_val}): 获取失败 - {e}")
+    print("=========================")
     if "lgad" in my_d.det_model:
         my_d.gain_rate_cal(my_f)
     
@@ -84,7 +101,7 @@ def main(kwargs):
 
     now = time.strftime("%Y_%m%d_%H%M%S")
     path = output(__file__, my_d.det_name, now)
-    #energy_deposition(my_g4)   # Draw Geant4 depostion distribution
+    energy_deposition(my_g4)   # Draw Geant4 depostion distribution
     draw_drift_path(my_d,my_g4,my_f,my_current,path)
     my_current.draw_currents(path) # Draw current
     if "strip" in my_d.det_model or "pixel" in my_d.det_model:
@@ -96,6 +113,8 @@ def main(kwargs):
         my_current.charge_collection_strip(path)
     if 'pixel' in my_d.det_model:
         my_current.charge_collection_pixel(path)
+#    if 'planar'in my_d.det_model:
+#        my_current.charge_collection_planar(path)
     
     del my_f
     end = time.time()

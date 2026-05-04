@@ -100,6 +100,22 @@ parser_tct.add_argument('--job', type=int, help='flag of run in job')
 parser_telescope = subparsers.add_parser('telescope', help='telescope')
 parser_telescope.add_argument('label', help='LABEL to identify telescope files')
 
+parser_sweep = subparsers.add_parser('sweep', help='parameter sweep')
+parser_sweep.add_argument('-l','--label', help='LABEL to identify signal generation method', default='sweep')
+parser_sweep.add_argument('det_name', help='name of the detector')
+parser_sweep.add_argument('-b', '--batch', action='store_true', help='submit sweep jobs to cluster (used with -s)', dest='signal_batch')
+#parser_sweep.add_argument('-p','--parameter',type=str, help='parameter for sweep')
+#parser_sweep.add_argument('-ra','--range',type=str, help='sweeped range')
+#parser_sweep.add_argument('-st','--step',type=int, help='step for sweep')
+#parser_sweep.add_argument('-s','--sweep',type=int, help='instance number for sweep mode')
+#parser_sweep.add_argument('-mem', type=int, help='memory limit of the job in 8GB', default=1)
+parser_sweep.add_argument('-r', '--run', help='run', action="store_true")
+parser_sweep.add_argument('-X', '--Xray', help='Xray energy resolution', action="store_true")
+parser_sweep.add_argument('-vol', '--voltage', type=str, help='bias voltage')
+parser_sweep.add_argument('-irr', '--irradiation', type=str, help='irradiation flux')
+parser_sweep.add_argument('-g4', '--g4experiment', type=str, help='model of Geant4 experiment')
+parser_sweep.add_argument('-amp', '--amplifier', type=str, help='amplifier')
+
 args = parser.parse_args()
 
 if __name__ == "__main__":
@@ -131,3 +147,4 @@ if __name__ == "__main__":
         submodule = importlib.import_module("." + submodule, package=__package__)
         submodule.main(kwargs)
         
+

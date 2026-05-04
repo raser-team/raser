@@ -64,7 +64,7 @@ class Amplifier:
     def __init__(self, currents: list[ROOT.TH1F], amplifier_name: str, seed = 0, CDet = None, is_cut = False):
         self.amplified_currents = []
         self.read_ele_num = len(currents)
-        self.time_unit = 10e-12
+        self.time_unit = 50e-12
         # TODO: need to set the time unit corresponding to the oscilloscope or the TDC 
         # TODO: and consistent with the time unit in gen_signal_batch.py
 
@@ -131,7 +131,9 @@ class Amplifier:
                 tau_fall = t_fall/2.2*1e-9
                 if (tau_rise == tau_fall):
                     tau_rise *= 0.9
-
+                val = tau_fall/(tau_fall+tau_rise) * (math.exp(-t/tau_fall)-math.exp(-t/tau_rise))
+                #if 0 <= t <= 2e-9:
+                    #print(f"pulse_responce: t={t:.3e}, val={val:.3e}")
                 return tau_fall/(tau_fall+tau_rise) * (math.exp(-t/tau_fall)-math.exp(-t/tau_rise))
 
             def scale_Charge_Sensitive(output_Q_max, input_Q_tot):
@@ -144,7 +146,7 @@ class Amplifier:
                     return 0.0
             
                 if mode == 0:
-                    scale = trans_imp * 1e15 * input_Q_tot * Qfrac / output_Q_max     
+                    scale = trans_imp * 1e15 * abs(input_Q_tot) * Qfrac / output_Q_max     
                     # scale = trans_imp/(self.CDet*1e-12) #C_D=3.7pF   
                 elif mode == 1:
                     scale = trans_imp * 1e15 * input_Q_tot / output_Q_max
@@ -212,7 +214,9 @@ class Amplifier:
         for i in range(self.read_ele_num):
             cu = currents[i]
             input_Q_tot = cu.Integral()*cu.GetBinWidth(0)
-            output_Q_max = self.amplified_currents[i].GetMaximum()
+            output_Q_max = max(abs(self.amplified_currents[i].GetMaximum()), 
+                   abs(self.amplified_currents[i].GetMinimum()))
+            #output_Q_max = self.amplified_currents[i].GetMaximum()
             self.amplified_currents[i].Scale(self.scale(output_Q_max, input_Q_tot))
 
     def add_noise(self, seed):
@@ -236,7 +240,7 @@ class Amplifier:
                 self.amplified_currents[i].Reset()
 
     def read_raw_file(self, raws):
-        time_limit = 100e-9
+        time_limit = 1000e-9
         # TODO: make this match the .tran in the .cir file
         # TODO: the time limit should be consistent with the time limit in gen_signal_scan.py
         for i in range(self.read_ele_num):
@@ -357,7 +361,7 @@ class Amplifier:
 def main(name):
     '''main function for readout.py to test the output of the given amplifier'''
 
-    my_th1f = ROOT.TH1F("my_th1f", "my_th1f", 1000, 0, 10e-9)
+    my_th1f = ROOT.TH1F("my_th1f", "my_th1f", 1000, 0, 1e-9)
     # input signal: triangle pulse
     for i in range(101, 301):
         my_th1f.SetBinContent(i, -0.05e-6*(300-i)) # A
