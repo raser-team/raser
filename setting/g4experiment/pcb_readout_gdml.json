@@ -22,13 +22,13 @@
     "par_randy": 300,
     "gdml": {
         "file": "pcb_readout.gdml",
-        "top_volume": "LV_Board_0jgr",
+        "top_volume": "World_Wrapper",
         "validate": false,
         "auto_center": false,
         "position_um": [
-            -156000,
-            95000,
-            10000
+            0,
+            0,
+            0
         ],
         "rotation_xyz": [
             0,

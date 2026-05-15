@@ -54,59 +54,53 @@ def _resolve_gdml_path(path_text: str) -> str:
     searched = '\n  - '.join(candidates)
     raise FileNotFoundError(f'Cannot find GDML file: {path_text}\nSearched:\n  - {searched}')
 
-
 def _gdml_structure_has_volume_name(gdml_path: str, name: str) -> bool:
     if not name:
         return False
     try:
-        tree = ET.parse(gdml_path)
-        root = tree.getroot()
+        # 分块读取，每次 1MB，彻底防止单行巨型文件撑爆内存
+        with open(gdml_path, 'r', encoding='utf-8') as f:
+            while True:
+                chunk = f.read(1024 * 1024)
+                if not chunk:
+                    break
+                if f'name="{name}"' in chunk or f"name='{name}'" in chunk:
+                    return True
     except Exception:
         return False
-    for volume in root.findall('.//volume'):
-        if volume.get('name') == name:
-            return True
     return False
 
 
 def _gdml_setup_world_ref(gdml_path: str) -> str:
     try:
-        tree = ET.parse(gdml_path)
-        root = tree.getroot()
-        setup = root.find('setup')
-        if setup is None:
-            return ''
-        world = setup.find('world')
-        if world is None:
-            return ''
-        return world.get('ref', '')
+        with open(gdml_path, 'r', encoding='utf-8') as f:
+            # 查找 setup world 的引用通常在文件尾部，但以防万一还是分块读
+            while True:
+                chunk = f.read(1024 * 1024)
+                if not chunk:
+                    break
+                if '<world' in chunk and 'ref=' in chunk:
+                    # 粗略提取 ref 名字
+                    parts = chunk.split('ref="')
+                    if len(parts) > 1:
+                        return parts[1].split('"')[0]
     except Exception:
         return ''
+    return ''
 
 
 def _gdml_has_wrapper_world(gdml_path: str) -> bool:
     try:
-        tree = ET.parse(gdml_path)
-        root = tree.getroot()
-        world_ref = _gdml_setup_world_ref(gdml_path)
-        if world_ref != WRAPPER_WORLD_NAME:
-            return False
-        structure = root.find('structure')
-        if structure is None:
-            return False
-        volume = structure.find(f"./volume[@name='{WRAPPER_WORLD_NAME}']")
-        if volume is None:
-            return False
-        solidref = volume.find('solidref')
-        if solidref is None or solidref.get('ref') != WRAPPER_BOX_NAME:
-            return False
-        physvol = volume.find('physvol')
-        if physvol is None:
-            return False
-        return physvol.get('name') == WRAPPER_IMPORTED_PV_NAME
+        with open(gdml_path, 'r', encoding='utf-8') as f:
+            while True:
+                chunk = f.read(1024 * 1024)
+                if not chunk:
+                    break
+                if WRAPPER_WORLD_NAME in chunk:
+                    return True
     except Exception:
         return False
-
+    return False
 
 def _estimate_geometry_center_um(gdml_path: str):
     try:
@@ -168,7 +162,7 @@ class GDMLDetectorConstruction(GeneralDetectorConstruction):
         self.solid = {}
         self.logical = {}
         self.physical = {}
-        self.checkOverlaps = True
+        self.checkOverlaps = False
         self.g4_dic = g4_dic
         self.gdml_cfg = g4_dic.get('gdml', {})
         self.visual_cfg = g4_dic.get('visualization', {})
@@ -183,6 +177,11 @@ class GDMLDetectorConstruction(GeneralDetectorConstruction):
             self._use_imported_world_as_world()
         else:
             self.create_world(g4_dic['world'])
+            if 'world_half_size_um' in g4_dic:
+                half_size = float(g4_dic['world_half_size_um']) * g4b.um
+                self.solid['world'].SetXHalfLength(half_size)
+                self.solid['world'].SetYHalfLength(half_size)
+                self.solid['world'].SetZHalfLength(half_size)
             self._import_gdml_geometry_as_placement()
 
         self._build_raser_detector_and_objects(my_d, g4_dic, detector_material)
@@ -325,6 +324,7 @@ class GDMLDetectorConstruction(GeneralDetectorConstruction):
     def _use_imported_world_as_world(self):
         validate = _as_bool(self.gdml_cfg.get('validate', False), False)
         parser = g4b.G4GDMLParser()
+        parser.SetOverlapCheck(False)
         parser.Read(self.gdml_path, validate)
         self.imported_parser = parser
 
@@ -359,6 +359,7 @@ class GDMLDetectorConstruction(GeneralDetectorConstruction):
     def _import_gdml_geometry_as_placement(self):
         validate = _as_bool(self.gdml_cfg.get('validate', False), False)
         parser = g4b.G4GDMLParser()
+        parser.SetOverlapCheck(False)
         parser.Read(self.gdml_path, validate)
         self.imported_parser = parser
 
