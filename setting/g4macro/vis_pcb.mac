@@ -1,0 +1,7 @@
+/run/initialize
+/vis/open OGLIX
+/vis/drawVolume
+/vis/viewer/set/style wireframe
+/vis/viewer/set/viewpointThetaPhi 60 30
+/vis/viewer/zoom 38
+/vis/viewer/flush

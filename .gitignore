@@ -14,3 +14,6 @@ dist
 
 raser-venv
 img
+# PCB GDML generated files
+setting/g4experiment/pcb_readout.gdml
+setting/g4experiment/pcb_readout_raw.gdml
