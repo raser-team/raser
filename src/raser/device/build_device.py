@@ -84,18 +84,11 @@ class Detector:
                 self.vector_field_resolution = float(self.device_dict["vector_field_resolution"])
             except (TypeError, ValueError):
                 pass
-        if "field_interpolation_bins" in self.device_dict:
-            self.field_interpolation_bins = self.device_dict["field_interpolation_bins"]
         if "vector_field_fallback" in self.device_dict:
             self.vector_field_fallback = self.device_dict["vector_field_fallback"]
         if "vector_max_steps" in self.device_dict:
             try:
                 self.vector_max_steps = int(self.device_dict["vector_max_steps"])
-            except (TypeError, ValueError):
-                pass
-        if "gain_diagnostics_top_n" in self.device_dict:
-            try:
-                self.gain_diagnostics_top_n = int(self.device_dict["gain_diagnostics_top_n"])
             except (TypeError, ValueError):
                 pass
         if "vector_min_field_strength" in self.device_dict:
@@ -138,48 +131,20 @@ class Detector:
             self.read_ele_num = 1
 
         self.gain_rate = 0.0
-        self.has_avalanche_model = 'avalanche_model' in self.device_dict
-        self.has_avalanche = False
-        if self.has_avalanche_model:
-            self.avalanche_model = self.device_dict['avalanche_model']
-            self.avalanche_bond = self.device_dict.get('avalanche_bond')
-            if 'enable_gain' in self.device_dict:
-                enable_gain = bool(self.device_dict.get('enable_gain'))
-            else:
-                enable_gain = (
-                    "lgad" in self.det_model.lower()
-                    or 'gain_algorithm' in self.device_dict
-                )
-            self.has_avalanche = enable_gain
-            default_gain_algorithm = "planar_integral"
-            if self.dimension == 3 or "lgad" not in self.det_model.lower():
-                default_gain_algorithm = "local_path"
-            self.gain_algorithm = self.device_dict.get('gain_algorithm', default_gain_algorithm if enable_gain else None)
-            self.gain_pair_threshold = self.device_dict.get('gain_pair_threshold', 0.05)
-            self.gain_max_carriers = int(self.device_dict.get('gain_max_carriers', 50000))
-            self.local_gain_max_exponent = float(self.device_dict.get('local_gain_max_exponent', 0.5))
-            self.local_gain_emit_slices = max(1, int(self.device_dict.get('local_gain_emit_slices', 2)))
-            default_local_gain_field_method = "point_lsq" if self.dimension == 3 and self.gain_algorithm == "local_path" else "potential_gradient"
-            self.local_gain_field_method = self.device_dict.get('local_gain_field_method', default_local_gain_field_method)
-            self.local_gain_field_neighbors = max(8, int(self.device_dict.get('local_gain_field_neighbors', 128)))
-            self.local_gain_field_max = max(0.0, float(self.device_dict.get('local_gain_field_max', 1.0e6)))
-            self.local_gain_integration_step_um = max(0.02, float(self.device_dict.get('local_gain_integration_step_um', 0.25)))
-            self.local_gain_integration_max_steps = max(1, int(self.device_dict.get('local_gain_integration_max_steps', 16)))
-            self.local_gain_cascade = bool(self.device_dict.get('local_gain_cascade', False))
-        else:
-            self.avalanche_bond = None
-            self.avalanche_model = None
-            self.gain_algorithm = None
-            self.gain_pair_threshold = 0.0
-            self.gain_max_carriers = 0
-            self.local_gain_max_exponent = 0.0
-            self.local_gain_emit_slices = 1
-            self.local_gain_field_method = "potential_gradient"
-            self.local_gain_field_neighbors = 128
-            self.local_gain_field_max = 0.0
-            self.local_gain_integration_step_um = 0.25
-            self.local_gain_integration_max_steps = 16
-            self.local_gain_cascade = False
+        self.avalanche_model = self.device_dict.get('avalanche_model')
+        self.avalanche_bond = self.device_dict.get('avalanche_bond')
+        self.has_avalanche = self.avalanche_model is not None and bool(
+            self.device_dict.get(
+                'enable_gain',
+                "lgad" in self.det_model.lower() or 'gain_algorithm' in self.device_dict,
+            )
+        )
+        default_gain_algorithm = "local_path" if self.dimension == 3 else "planar_integral"
+        self.gain_algorithm = self.device_dict.get('gain_algorithm', default_gain_algorithm)
+        self.gain_pair_threshold = float(self.device_dict.get('gain_pair_threshold', 0.05))
+        self.gain_max_carriers = int(self.device_dict.get('gain_max_carriers', 50000))
+        self.local_gain_emit_slices = max(1, int(self.device_dict.get('local_gain_emit_slices', 1)))
+        self.local_gain_integration_steps = max(1, int(self.device_dict.get('local_gain_integration_steps', 3)))
 
         if "planar" in self.det_model or "lgad" == self.det_model:
             self.p_x = self.device_dict['l_x']
