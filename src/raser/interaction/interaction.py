@@ -48,6 +48,12 @@ class GeneralG4Interaction:
 
         self.geant4_model = g4_dic['geant4_model']
         detector_material=my_d.device_dict['material']
+
+        if (self.geant4_model == 'gdml_import'
+                and MyDetectorConstruction is GeneralDetectorConstruction):
+            from .g4_gdml_import import GDMLDetectorConstruction
+            MyDetectorConstruction = GDMLDetectorConstruction
+
         my_g4d = MyDetectorConstruction(my_d,g4_dic,detector_material,g4_dic['maxstep'])
 
         g4_vis = g4_vis or g4_dic['g4_vis']
@@ -73,11 +79,16 @@ class GeneralG4Interaction:
                                           g4_dic['par_in'], g4_dic['par_out'], g4_dic['par_randx'], g4_dic['par_randy'], g4_dic['par_type'], g4_dic['par_energy'],
                                           self.eventIDs, self.edep_devices, self.p_steps, self.energy_steps, self.events_angles,
                                           self.geant4_model))
-        if g4_vis:    
+        
+        if g4_vis:  
             visManager = g4b.G4VisExecutive()
             visManager.Initialize()
             UImanager = g4b.G4UImanager.GetUIpointer()
-            UImanager.ApplyCommand('/control/execute setting/g4macro/init_vis.mac')
+            
+            if self.geant4_model == 'gdml_import':
+                UImanager.ApplyCommand('/control/execute setting/g4macro/vis_pcb.mac')
+            else:
+                UImanager.ApplyCommand('/control/execute setting/g4macro/init_vis.mac')
         else:
             UImanager = g4b.G4UImanager.GetUIpointer()
             # reduce verbose from physics list

@@ -66,7 +66,7 @@ def main(kwargs):
 
     g4_vis = kwargs['g4_vis']
 
-    my_f = devfield.DevsimField(my_d.device, my_d.dimension, my_d.voltage, my_d.read_out_contact, is_plugin=my_d.is_plugin(), irradiation_flux=my_d.irradiation_flux, bounds=my_d.bound)
+    my_f = devfield.DevsimField(my_d.device, my_d.dimension, my_d.voltage, my_d.read_out_contact, my_d.mesher, is_plugin=my_d.is_plugin(),  irradiation_flux=my_d.irradiation_flux, bounds=my_d.bound)
     if "lgad" in my_d.det_model:
         my_d.gain_rate_cal(my_f)
     
@@ -109,4 +109,3 @@ if __name__ == '__main__':
         key, value = arg.split('=')
         kwargs[key] = value
     main(kwargs)
-    

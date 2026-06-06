@@ -42,7 +42,7 @@ PYMTL_VERILATOR_INCLUDE_DIR="/usr/local/share/verilator/include"
 EOF
 
 export PATH=/cvmfs/common.ihep.ac.cn/software/hepjob/bin:$PATH
-export IMGFILE=/afs/ihep.ac.cn/users/f/fuchenxi/img/raser-2.5.sif
+export IMGFILE=/afs/ihep.ac.cn/users/c/chenguanxing/img/raser_latest.sif
 export BINDPATH=/cvmfs,/etc/condor/condor_config,/etc/condor/config.d,/etc/redhat-release,/run/user,$HOME/.Xauthority,$HOME/.vscode-server,$HOME/vscode-container,$dir_raser
 # notice: if home is binded, then the default path in the apptainer will change from current path to the home path
 # $HOME/.Xauthority for G4 visualization, $HOME/.vscode-server and $HOME/.vscode-container for vscode remote development

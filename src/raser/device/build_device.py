@@ -69,6 +69,13 @@ class Detector:
         self.amplifier = self.device_dict['amplifier']
         self.daq = self.device_dict['daq']
 
+        if "mesh" in self.device_dict:
+            try:
+                self.mesher = self.device_dict['mesh']['mesher']
+            except (TypeError, ValueError, KeyError):
+                self.mesher = None
+        else:
+            self.mesher = None
         if "vector_delta_t" in self.device_dict:
             try:
                 self.vector_delta_t = float(self.device_dict["vector_delta_t"])

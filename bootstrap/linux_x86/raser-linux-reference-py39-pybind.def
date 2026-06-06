@@ -1,0 +1,121 @@
+Bootstrap: docker
+From: ubuntu:24.04
+
+%files
+    pyproject.toml /opt/raser/pyproject.toml
+    requirements-linux-py39-lock.txt /opt/raser/requirements-linux-py39-lock.txt
+    wheels/geant4_pybind-0.1.2-cp39-cp39-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl /opt/raser/geant4_pybind-0.1.2-cp39-cp39-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+
+%environment
+    export LC_ALL=C
+    export LANG=C
+
+    # Python 3.9 runtime inside container
+    export PATH=/opt/py39-venv/bin:/opt/python3.9/bin:$PATH
+    export LD_LIBRARY_PATH=/opt/python3.9/lib:$LD_LIBRARY_PATH
+
+    # External ROOT / Geant4 provided by host
+    export ROOTSYS=${ROOTSYS:-/opt/root}
+    export GEANT4_DIR=${GEANT4_DIR:-/opt/geant4}
+
+    export PATH=$ROOTSYS/bin:$GEANT4_DIR/bin:$PATH
+    export LD_LIBRARY_PATH=$ROOTSYS/lib:$ROOTSYS/lib64:$GEANT4_DIR/lib:$GEANT4_DIR/lib64:$LD_LIBRARY_PATH
+    export PYTHONPATH=$ROOTSYS/lib:$ROOTSYS/lib64:$PYTHONPATH
+
+    # Headless plotting for batch/server environments
+    export MPLBACKEND=${MPLBACKEND:-Agg}
+
+%post
+    set -ex
+    export DEBIAN_FRONTEND=noninteractive
+
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        cmake \
+        git \
+        wget \
+        curl \
+        vim \
+        ca-certificates \
+        pkg-config \
+        ngspice \
+        libboost-all-dev \
+        libice6 \
+        libsm6 \
+        libxext6 \
+        libxrender1 \
+        libglib2.0-0 \
+        libgl1 \
+        libegl1 \
+        libx11-dev \
+        libxpm-dev \
+        libxft-dev \
+        libxext-dev \
+        libgif-dev \
+        libxrender-dev \
+        libxmu-dev \
+        libssl-dev \
+        libttb-dev \
+        zlib1g-dev \
+        libbz2-dev \
+        libreadline-dev \
+        libsqlite3-dev \
+        libncursesw5-dev \
+        xz-utils \
+        tk-dev \
+        libxml2-dev \
+        libxmlsec1-dev \
+        libffi-dev \
+        liblzma-dev \
+        uuid-dev \
+        make \
+        gcc \
+        g++ \
+        libgdbm-dev \
+        libnss3-dev \
+        libgdbm-compat-dev \
+        libdb5.3-dev \
+        libexpat1-dev \
+        tar
+
+    rm -rf /var/lib/apt/lists/*
+
+    mkdir -p /opt/raser
+    mkdir -p /tmp/python-build
+    cd /tmp/python-build
+    rm -f Python-3.9.18.tgz Python-3.9.18.tgz.*
+
+    wget https://www.python.org/ftp/python/3.9.18/Python-3.9.18.tgz
+    tar -xzf Python-3.9.18.tgz
+    cd Python-3.9.18
+
+    ./configure \
+        --prefix=/opt/python3.9 \
+        --enable-shared \
+        --with-ensurepip=install
+
+    make -j"$(nproc)"
+    make install
+
+    ln -sf /opt/python3.9/bin/python3.9 /usr/local/bin/python3.9
+    ln -sf /opt/python3.9/bin/pip3.9 /usr/local/bin/pip3.9
+    ln -sf /opt/python3.9/bin/python3.9 /usr/local/bin/python
+
+    export LD_LIBRARY_PATH=/opt/python3.9/lib:${LD_LIBRARY_PATH}
+    /opt/python3.9/bin/python3.9 --version
+
+    /opt/python3.9/bin/python3.9 -m venv /opt/py39-venv
+    /opt/py39-venv/bin/python -m pip install --upgrade pip setuptools wheel
+
+    if [ -f /opt/raser/requirements-linux-py39-lock.txt ]; then
+        /opt/py39-venv/bin/python -m pip install -r /opt/raser/requirements-linux-py39-lock.txt
+    fi
+
+    /opt/py39-venv/bin/python -m pip install /opt/raser/geant4_pybind-0.1.2-cp39-cp39-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+    /opt/py39-venv/bin/python -m pip install devsim psutil
+
+    rm -rf /tmp/python-build
+
+%runscript
+    exec /bin/bash "$@"

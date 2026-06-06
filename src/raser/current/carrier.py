@@ -240,8 +240,9 @@ class VectorizedCarrierSystem:
     
     def _calculate_reduced_coords(self, x, y, my_d):
         """计算简化坐标"""
-        use_reduced = (self.read_out_contact and 
-                      len(self.read_out_contact) == 1)
+        #use_reduced = (self.read_out_contact and 
+                      #len(self.read_out_contact) == 1)
+        use_reduced = False  # 先不使用简化坐标，直接用全局坐标进行电场计算和边界检查
         
         try:
             my_d.field_shift_x = float(my_d.field_shift_x)

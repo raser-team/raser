@@ -30,14 +30,15 @@ resolution_default_plugin_2d = {'x': 0.1, 'y': 0.1, 'z': 10000.0}
 resolution_default_3d = {'z': 0.5, 'x': 1, 'y': 1}
 
 class DevsimField:
-    def __init__(self, device_name, dimension, voltage, read_out_contact, is_plugin=False, irradiation_flux=0, 
+    def __init__(self, device_name, dimension, voltage, read_out_contact, mesher, is_plugin=False, irradiation_flux=0, 
                  bounds=None, resolution=None):
         self.name = device_name
         self.voltage = voltage
         self.dimension = dimension
         self.read_out_contact = read_out_contact
         self.is_plugin = is_plugin  # 保存插件标志
-        
+        self.mesher = mesher  # 保存mesher标志
+
         # 初始化缓存相关属性
         if self.dimension == 1:
             resolution_default = resolution_default_1d
@@ -262,7 +263,10 @@ class DevsimField:
             else:
                 return self.Doping(z, x)
         elif self.dimension == 3:
-            return self.Doping(x, y, z)
+            if self.mesher == "sde": # SDE使用x,y,z坐标
+                return self.Doping(x, y, z)
+            else :
+                return self.Doping(z, x, y)
     
     def _get_potential(self, x, y, z):
         '''
@@ -278,7 +282,10 @@ class DevsimField:
             else:
                 return self.Potential(z, x)
         elif self.dimension == 3:
-            return self.Potential(x, y, z)
+            if self.mesher == "sde": # SDE使用x,y,z坐标
+                return self.Potential(x, y, z)
+            else:
+                return self.Potential(z, x, y)
     
     def _get_e_field(self, x, y, z):
         '''
@@ -306,11 +313,18 @@ class DevsimField:
                 return (E_x, 0, E_z)
 
         elif self.dimension == 3:
-            nabla_U = calculate_gradient(self.Potential, ['x', 'y', 'z'], [x, y, z])
-            E_x = -1 * nabla_U[0]
-            E_y = -1 * nabla_U[1]
-            E_z = -1 * nabla_U[2]
-            return (E_x, E_y, E_z)
+            if self.mesher == "sde": # SDE使用x,y,z坐标
+                nabla_U = calculate_gradient(self.Potential, ['x', 'y', 'z'], [x, y, z])
+                E_x = -1 * nabla_U[0]
+                E_y = -1 * nabla_U[1]
+                E_z = -1 * nabla_U[2]
+                return (E_x, E_y, E_z)
+            else:
+                nabla_U = calculate_gradient(self.Potential, ['z', 'x', 'y'], [z, x, y])
+                E_z = -1 * nabla_U[0]
+                E_x = -1 * nabla_U[1]
+                E_y = -1 * nabla_U[2]
+                return (E_x, E_y, E_z)
 
     def _get_w_p(self, x, y, z, i): # used in cal current
         x, y, z = x/1e4, y/1e4, z/1e4 # um to cm
@@ -322,7 +336,10 @@ class DevsimField:
             else:
                 U_w = self.WeightingPotential[i](z, x)
         elif self.dimension == 3:
-            U_w = self.WeightingPotential[i](x, y, z)
+            if self.mesher == "sde": # SDE使用x,y,z坐标
+                U_w = self.WeightingPotential[i](x, y, z)
+            else:
+                U_w = self.WeightingPotential[i](z, x, y)
 
         # exclude non-physical values
         if U_w < 0:
@@ -357,8 +374,11 @@ class DevsimField:
                 return self.TrappingRate_n(z, x)
         
         elif self.dimension == 3:
-            return self.TrappingRate_n(x, y, z)
-    
+            if self.mesher == "sde": # SDE使用x,y,z坐标
+                return self.TrappingRate_n(x, y, z)
+            else:
+                return self.TrappingRate_n(z, x, y)
+
     def _get_trap_h(self, x, y, z):
         '''
             input: position in um
@@ -373,7 +393,10 @@ class DevsimField:
             else:
                 return self.TrappingRate_p(z, x)
         elif self.dimension == 3:
-            return self.TrappingRate_p(x, y, z)
+            if self.mesher == "sde": # SDE使用x,y,z坐标
+                return self.TrappingRate_p(x, y, z)
+            else:
+                return self.TrappingRate_p(z, x, y)
 
     # 缓存方法
     def get_e_field_cached(self, x, y, z):

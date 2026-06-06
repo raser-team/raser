@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "raser"
+version = "4.1"
+description = "RASER simulation framework"
+readme = "README.md"
+requires-python = ">=3.9,<3.10"
+license = { text = "MIT" }
+authors = [
+  { name = "RASER Team" }
+]
+keywords = ["raser", "detector", "simulation", "geant4", "devsim", "root"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Operating System :: POSIX :: Linux",
+  "License :: OSI Approved :: MIT License"
+]
+
+dependencies = [
+  "numpy",
+  "scipy",
+  "pandas",
+  "matplotlib",
+  "h5py",
+  "PyYAML",
+  "tqdm",
+  "numba",
+  "joblib",
+  "pylandau",
+  "gmsh",
+  "psutil",
+  "mkl",
+  "devsim"
+]
+
+[project.urls]
+Homepage = "https://github.com/raser-team/raser"
+Repository = "https://github.com/raser-team/raser"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
