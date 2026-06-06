@@ -221,6 +221,9 @@ class Material:
     def cal_coefficient(self, electric_field, charges, temperature):
         """ Define Avalanche Model """
 
+        if self.avalanche_model not in ('vanOverstraeten', 'Okuto', 'Hatakeyama'):
+            raise ValueError("Unsupported avalanche model: {}".format(self.avalanche_model))
+
         coefficient = 0.
 
         E = electric_field # V/cm

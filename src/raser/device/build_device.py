@@ -140,14 +140,19 @@ class Detector:
         self.gain_rate = 0.0
         self.avalanche_model = self.device_dict.get('avalanche_model')
         self.avalanche_bond = self.device_dict.get('avalanche_bond')
-        self.has_avalanche = self.avalanche_model is not None and bool(
+        enable_gain = bool(
             self.device_dict.get(
                 'enable_gain',
                 "lgad" in self.det_model.lower() or 'gain_algorithm' in self.device_dict,
             )
         )
+        if enable_gain and self.avalanche_model is None:
+            raise ValueError("gain is enabled but `avalanche_model` is missing in detector settings")
+        self.has_avalanche = self.avalanche_model is not None and enable_gain
         default_gain_algorithm = "local_path" if self.dimension == 3 else "planar_integral"
         self.gain_algorithm = self.device_dict.get('gain_algorithm', default_gain_algorithm)
+        if self.gain_algorithm not in ("planar_integral", "local_path"):
+            raise ValueError("Unsupported gain_algorithm: {}".format(self.gain_algorithm))
         self.gain_pair_threshold = float(self.device_dict.get('gain_pair_threshold', 0.05))
         self.gain_max_carriers = int(self.device_dict.get('gain_max_carriers', 50000))
         self.local_gain_emit_slices = max(1, int(self.device_dict.get('local_gain_emit_slices', 1)))

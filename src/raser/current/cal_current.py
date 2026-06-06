@@ -653,24 +653,27 @@ class CalCurrentGain(CalCurrent):
         emit_slices = max(1, int(getattr(my_d, "local_gain_emit_slices", 1)))
         samples = max(1, int(getattr(my_d, "local_gain_integration_steps", 3)))
         emitted_segments = 0
+        field_failures = 0
 
         for carrier_system in (my_current.electron_system, my_current.hole_system):
             if carrier_system is None:
                 continue
             for carrier_idx, path in enumerate(carrier_system.paths):
-                if max_carriers > 0 and len(gain_positions) >= max_carriers:
-                    logger.warning("Gain carrier generation reached configured limit (%d).", max_carriers)
-                    return
                 if len(path) < 2:
                     continue
 
-                parent_pairs = abs(carrier_system.charges[carrier_idx])
+                active_pairs = abs(carrier_system.charges[carrier_idx])
+                pending_pairs = 0.0
+                if active_pairs <= 0:
+                    continue
                 charge_sign = -1 if carrier_system.charges[carrier_idx] < 0 else 1
                 for point0, point1 in zip(path[:-1], path[1:]):
                     x0, y0, z0, t0 = point0
                     x1, y1, z1, t1 = point1
-                    segment_length_um = math.sqrt((x1 - x0) ** 2 + (y1 - y0) ** 2 + (z1 - z0) ** 2)
-                    if segment_length_um <= 0:
+                    dx = x1 - x0
+                    dy = y1 - y0
+                    dz = z1 - z0
+                    if dx == 0 and dy == 0 and dz == 0:
                         continue
 
                     exponent = 0.0
@@ -680,41 +683,59 @@ class CalCurrentGain(CalCurrent):
                         y = y0 + fraction * (y1 - y0)
                         z = z0 + fraction * (z1 - z0)
                         try:
-                            field = Vector(*my_f.get_e_field_cached(x, y, z)).get_length()
+                            field_vector = my_f.get_e_field_cached(x, y, z)
+                            field = Vector(*field_vector).get_length()
                         except Exception:
-                            field = 0.0
+                            field_failures += 1
+                            continue
+                        if field <= 0:
+                            continue
+                        direction = 1.0 if charge_sign > 0 else -1.0
+                        drift_length_um = direction * (
+                            dx * field_vector[0] + dy * field_vector[1] + dz * field_vector[2]
+                        ) / field
+                        if drift_length_um <= 0:
+                            continue
                         alpha = cal_coefficient(field, charge_sign, my_d.temperature)
                         if not math.isfinite(alpha):
                             alpha = 0.0
                         alpha = max(alpha, 0.0)
-                        exponent += alpha * (segment_length_um / samples) * 1e-4
+                        exponent += alpha * (drift_length_um / samples) * 1e-4
 
                     if not math.isfinite(exponent):
                         continue
-                    gain_pairs = parent_pairs * math.expm1(min(exponent, 50.0))
-                    if gain_pairs < min_pairs:
+                    exponent = min(exponent, 50.0)
+                    gain_pairs = active_pairs * math.expm1(exponent)
+                    if gain_pairs <= 0:
+                        continue
+                    active_pairs += gain_pairs
+                    pending_pairs += gain_pairs
+                    if pending_pairs < min_pairs:
                         continue
 
                     slices = emit_slices
                     if max_carriers > 0:
-                        slices = min(slices, max_carriers - len(gain_positions))
-                    if slices <= 0:
-                        return
-
+                        capacity = max_carriers - len(gain_positions)
+                        if capacity <= 0:
+                            if gain_positions:
+                                gain_electron_charges[-1] -= pending_pairs
+                                gain_hole_charges[-1] += pending_pairs
+                            logger.warning("Gain carrier generation reached configured limit (%d).", max_carriers)
+                            return
+                        slices = min(slices, capacity)
                     for slice_idx in range(slices):
                         fraction = (slice_idx + 0.5) / slices
-                        gain_positions.append([
-                            x0 + fraction * (x1 - x0),
-                            y0 + fraction * (y1 - y0),
-                            z0 + fraction * (z1 - z0),
-                        ])
-                        gain_electron_charges.append(-gain_pairs / slices)
-                        gain_hole_charges.append(gain_pairs / slices)
+                        gain_positions.append([x0 + fraction * dx, y0 + fraction * dy, z0 + fraction * dz])
+                        gain_electron_charges.append(-pending_pairs / slices)
+                        gain_hole_charges.append(pending_pairs / slices)
                         gain_times.append(int(round(t0 + fraction * (t1 - t0))))
                         gain_signals.append([])
+                    pending_pairs = 0.0
                     emitted_segments += 1
 
         logger.info("local gain emitted segments: %d", emitted_segments)
+        if field_failures:
+            logger.warning("local gain skipped %d field samples because field lookup failed.", field_failures)
 
     def current_define(self,read_ele_num):
         """
