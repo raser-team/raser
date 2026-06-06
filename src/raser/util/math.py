@@ -16,7 +16,7 @@ import numpy as np
 from scipy.interpolate import interp1d as p1d
 from scipy.interpolate import interp2d as p2d
 from scipy.interpolate import interpn as pn
-from scipy.interpolate import griddata
+from scipy.interpolate import griddata, RegularGridInterpolator
 import ROOT
 ROOT.gROOT.SetBatch(True)
 
@@ -87,26 +87,32 @@ def get_common_interpolate_2d(data):
 
 
 def get_common_interpolate_3d(data):
-    values = data['values']
-    points_x = []
-    points_y = []
-    points_z = []
-    for point in data['points']:
-        points_x.append(point[0])
-        points_y.append(point[1])
-        points_z.append(point[2])
-
-    new_x = np.linspace(min(points_x), max(points_x), x_bin_3d)
-    new_y = np.linspace(min(points_y), max(points_y), y_bin_3d)
-    new_z = np.linspace(min(points_z), max(points_z), z_bin_3d)
-    new_points = np.array(np.meshgrid(new_x, new_y, new_z)).T.reshape(-1, 3)
-    new_points_pn = (new_x, new_y, new_z)
-    new_values = griddata((points_x, points_y, points_z), values, new_points, method='linear')
-    new_values_pn = new_values.reshape(x_bin_3d, y_bin_3d, z_bin_3d)
-
+    values = np.asarray(data['values'])
+    points = np.asarray(data['points'])  # shape: (N, 3)
+    points_x = points[:, 0]
+    points_y = points[:, 1]
+    points_z = points[:, 2]
+    x_min, x_max = points_x.min(), points_x.max()
+    y_min, y_max = points_y.min(), points_y.max()
+    z_min, z_max = points_z.min(), points_z.max()
+    new_x = np.linspace(x_min, x_max, x_bin_3d, endpoint=True)
+    new_y = np.linspace(y_min, y_max, y_bin_3d, endpoint=True)
+    new_z = np.linspace(z_min, z_max, z_bin_3d, endpoint=True)
+    grid_x, grid_y, grid_z = np.meshgrid(new_x, new_y, new_z, indexing='xy')
+    new_values = griddata(
+        (points_x, points_y, points_z), values, (grid_x, grid_y, grid_z),
+        method='linear', fill_value=0.0
+    )
+    interpolator = RegularGridInterpolator(
+        (new_x, new_y, new_z), new_values.transpose(1, 0, 2),
+        method='linear', bounds_error=False, fill_value=0.0
+    )
+    
     def f(x, y, z):
-        point = np.array([x, y, z]).reshape(1, -1)
-        return pn(new_points_pn, new_values_pn, point)[0]
+        x_c = np.clip(x, x_min, x_max)
+        y_c = np.clip(y, y_min, y_max)
+        z_c = np.clip(z, z_min, z_max)
+        return interpolator([[x_c, y_c, z_c]])[0]
     return f
 
 def signal_convolution(signal_original: ROOT.TH1F, signal_convolved: ROOT.TH1F, pulse_responce_function_list: list[Callable[[float],float]]):

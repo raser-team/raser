@@ -135,7 +135,8 @@ def batch_loop(my_d, my_f, my_g4, g4_seed, total_events, instance_number):
                              "signal_"+
                              str(instance_number)+
                              str(my_d.voltage)+
-                             str(my_d.irradiation_flux, my_d.bound)+
+                             str(my_d.irradiation_flux)+
+                             str(my_d.bound)+
                              str(my_d.g4experiment)+
                              str(my_d.amplifier)+
                              ".root")
@@ -160,7 +161,7 @@ def main(kwargs):
     if kwargs['amplifier'] != None:
         my_d.amplifier = kwargs['amplifier']
 
-    my_f = devfield.DevsimField(my_d.device, my_d.dimension, my_d.voltage, my_d.read_out_contact, is_plugin=my_d.is_plugin(), irradiation_flux=my_d.irradiation_flux, bounds=my_d.bound) 
+    my_f = devfield.DevsimField(my_d.device, my_d.dimension, my_d.voltage, my_d.read_out_contact, my_d.mesher, is_plugin=my_d.is_plugin(), irradiation_flux=my_d.irradiation_flux, bounds=my_d.bound) 
     if "lgad" in my_d.det_model:
         my_d.gain_rate_cal(my_f)
 
@@ -197,4 +198,3 @@ def main(kwargs):
     
     batch_loop(my_d, my_f, my_g4, g4_seed, total_events, instance_number)
     del my_g4
-

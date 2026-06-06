@@ -102,11 +102,11 @@ class InputWaveform():
             self.data["ToA"] = get_conjoined_time(self.ToA) # TODO: conjoint measurement
             self.data["ToT"] = get_total_amp(self.ToT, 10e-9)
             self.data["amplitude"] = get_total_amp(self.amplitude, self.amplitude_threshold)
-            self.data["charge"] = get_total_amp(self.charge, 1e5)
+            self.data["charge"] = get_total_amp(self.charge, 0.0)
             self.data["ToR"] = get_conjoined_time(self.ToR) # TODO: conjoint measurement
             self.data["gravity_center_ToT"], self.data["cluster_size_ToT"] = get_gravity_center_and_cluster_size(self.ToT, 10e-9) # TODO: assign a proper value for all DAQ systems
             self.data["gravity_center_amplitude"], self.data["cluster_size_amplitude"] = get_gravity_center_and_cluster_size(self.amplitude, self.amplitude_threshold)
-            self.data["gravity_center_charge"], self.data["cluster_charge"] = get_gravity_center_and_cluster_size(self.charge, 1e5) # TODO: assign a proper value for all DAQ systems
+            self.data["gravity_center_charge"], self.data["cluster_charge"] = get_gravity_center_and_cluster_size(self.charge, 0.0) # TODO: assign a proper value for all DAQ systems
 
             if self.data["gravity_center_ToT"] != None:
                 self.data["gravity_center_ToT_error"] = self.data["gravity_center_ToT"] - self.original_x/self.pitch_x
@@ -256,8 +256,8 @@ class WaveformStatistics():
         tag = str(my_d.voltage)+str(my_d.irradiation_flux)+str(my_d.g4experiment)+str(my_d.amplifier)
 
         for file in files:
-            if tag not in file:
-                continue
+            #if tag not in file:
+            #    continue
             
             path = os.path.join(input_path, file)
             file_pointer = ROOT.TFile(path, "READ")
@@ -434,7 +434,7 @@ class WaveformStatistics():
         try:
             x2_min = min(data)
             x2_max = max(data)
-        except IndexError:
+        except (IndexError, ValueError):
             print("No valid data for "+model)
             return
         

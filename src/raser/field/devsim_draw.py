@@ -330,7 +330,12 @@ def draw3D(x, y, z, value, title, v, path):
                              y[i] * unit_conv,  
                              value[i])         
     if graph_xy.GetN() > 0:
-        canvas_xy = ROOT.TCanvas("canvas_xy", f"{title}_XY", 1000, int(1000 * (max(x)-min(x))/(max(y)-min(y))))
+        x_range = max(x) - min(x)
+        y_range = max(y) - min(y)
+        max_xy_range = max(x_range, y_range)
+        canvas_xy = ROOT.TCanvas("canvas_xy", f"{title}_XY", 
+                                int(2000 * x_range / max_xy_range), 
+                                int(2000 * y_range / max_xy_range))
         canvas_xy.SetRightMargin(0.15)
         graph_xy.Draw("CONT4Z")
         graph_xy.GetXaxis().SetTitle("x [um]")
@@ -349,7 +354,12 @@ def draw3D(x, y, z, value, title, v, path):
                              z[i] * unit_conv, 
                              value[i])          
     if graph_yz.GetN() > 0:
-        canvas_yz = ROOT.TCanvas("canvas_yz", f"{title}_YZ", 1000, int(1000 * (max(y)-min(y))/(max(z)-min(z))))
+        y_range = max(y) - min(y)
+        z_range = max(z) - min(z)
+        max_yz_range = max(y_range, z_range)
+        canvas_yz = ROOT.TCanvas("canvas_yz", f"{title}_YZ", 
+                            int(2000 * y_range / max_yz_range), 
+                            int(2000 * z_range / max_yz_range))
         canvas_yz.SetRightMargin(0.15)
         graph_yz.Draw("CONT4Z")
         graph_yz.GetXaxis().SetTitle("y [um]")
@@ -368,7 +378,12 @@ def draw3D(x, y, z, value, title, v, path):
                              z[i] * unit_conv,  
                              value[i])          
     if graph_xz.GetN() > 0:
-        canvas_xz = ROOT.TCanvas("canvas_xz", f"{title}_XZ", 1000, int(1000 * (max(x)-min(x))/(max(z)-min(z))))
+        x_range = max(x) - min(x)
+        z_range = max(z) - min(z)
+        max_xz_range = max(x_range, z_range)
+        canvas_xz = ROOT.TCanvas("canvas_xz", f"{title}_XZ", 
+                                int(2000 * x_range / max_xz_range), 
+                                int(2000 * z_range / max_xz_range))
         canvas_xz.SetRightMargin(0.15)
         graph_xz.Draw("CONT4Z")
         graph_xz.GetXaxis().SetTitle("x [um]")

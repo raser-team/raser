@@ -30,7 +30,8 @@
     "mesh": {
         "tcad_mesh": {
             "file": "/afs/ihep.ac.cn/users/f/fengjian/raser/output/field/pixel_test/200V.tdr"
-        }
+        },
+        "mesher":"sde"
     },
 
     "cross_talk": null,
