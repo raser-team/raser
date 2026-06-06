@@ -33,11 +33,12 @@ class Detector:
     """ 
     def __init__(self, device_name):
         self.det_name = device_name
-        self.device = device_name
-        self.region = device_name
         device_json = os.getenv("RASER_SETTING_PATH")+"/detector/" + device_name + ".json"
         with open(device_json) as f:
             self.device_dict = json.load(f)
+        self.field_source = self.device_dict.get('field_source', device_name)
+        self.device = self.field_source
+        self.region = self.field_source
         self.dimension = self.device_dict['default_dimension']
 
         self.l_x = self.device_dict['l_x'] 
@@ -136,9 +137,26 @@ class Detector:
             self.y_ele_num = 1
             self.read_ele_num = 1
 
-        if "lgad" in self.det_model:
-            self.avalanche_bond = self.device_dict['avalanche_bond']
-            self.avalanche_model = self.device_dict['avalanche_model']
+        self.gain_rate = 0.0
+        self.avalanche_model = self.device_dict.get('avalanche_model')
+        self.avalanche_bond = self.device_dict.get('avalanche_bond')
+        enable_gain = bool(
+            self.device_dict.get(
+                'enable_gain',
+                "lgad" in self.det_model.lower() or 'gain_algorithm' in self.device_dict,
+            )
+        )
+        if enable_gain and self.avalanche_model is None:
+            raise ValueError("gain is enabled but `avalanche_model` is missing in detector settings")
+        self.has_avalanche = self.avalanche_model is not None and enable_gain
+        default_gain_algorithm = "local_path" if self.dimension == 3 else "planar_integral"
+        self.gain_algorithm = self.device_dict.get('gain_algorithm', default_gain_algorithm)
+        if self.gain_algorithm not in ("planar_integral", "local_path"):
+            raise ValueError("Unsupported gain_algorithm: {}".format(self.gain_algorithm))
+        self.gain_pair_threshold = float(self.device_dict.get('gain_pair_threshold', 0.05))
+        self.gain_max_carriers = int(self.device_dict.get('gain_max_carriers', 50000))
+        self.local_gain_emit_slices = max(1, int(self.device_dict.get('local_gain_emit_slices', 1)))
+        self.local_gain_integration_steps = max(1, int(self.device_dict.get('local_gain_integration_steps', 3)))
 
         if "planar" in self.det_model or "lgad" == self.det_model:
             self.p_x = self.device_dict['l_x']
@@ -166,11 +184,16 @@ class Detector:
         # K(x) = exp{int[(alpha_major - alpha_minor) dx]}
 
         # TODO: support non-uniform field in gain layer
-        if "lgad" not in self.det_model:
+        self.gain_rate = 0
+        if not self.has_avalanche:
             self.gain_rate = 0
             return
+        if self.gain_algorithm != "planar_integral":
+            return
+        if self.avalanche_bond is None:
+            raise ValueError("planar_integral gain algorithm requires `avalanche_bond` in detector settings")
         
-        cal_coefficient = Material(self.material).cal_coefficient
+        cal_coefficient = Material(self.material, avalanche_model=self.avalanche_model).cal_coefficient
 
         n = 1001
         if "ilgad" in self.det_model:

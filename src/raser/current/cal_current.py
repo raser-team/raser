@@ -173,7 +173,7 @@ class CalCurrent:
             self._apply_smoothing()
 
         self.det_model = my_d.det_model
-        if "lgad" in self.det_model:
+        if getattr(my_d, "has_avalanche", False):
             self.gain_current = CalCurrentGain(my_d, my_f, self)
             for i in range(self.read_ele_num):
                 self.sum_cu[i].Add(self.gain_current.negative_cu[i])
@@ -471,7 +471,7 @@ class CalCurrent:
             self.sum_cu[read_ele_num].SetLineWidth(2)
             c.Update()
 
-            if "lgad" in self.det_model:
+            if hasattr(self, "gain_current"):
                 self.gain_current.positive_cu[read_ele_num].Draw("SAME HIST")
                 self.gain_current.negative_cu[read_ele_num].Draw("SAME HIST")
                 self.gain_current.positive_cu[read_ele_num].SetLineColor(617)#kMagneta+1
@@ -479,7 +479,8 @@ class CalCurrent:
                 self.gain_current.positive_cu[read_ele_num].SetLineWidth(2)
                 self.gain_current.negative_cu[read_ele_num].SetLineWidth(2)
 
-            if "strip" in self.det_model or "pixel" in self.det_model:
+            has_cross_talk = hasattr(self, "cross_talk_cu") and read_ele_num < len(self.cross_talk_cu)
+            if ("strip" in self.det_model or "pixel" in self.det_model) and has_cross_talk:
                 # make sure you run cross_talk() first and attached cross_talk_cu to self
                 self.cross_talk_cu[read_ele_num].Draw("SAME HIST")
                 self.cross_talk_cu[read_ele_num].SetLineColor(420)#kGreen+4
@@ -489,11 +490,11 @@ class CalCurrent:
             legend.AddEntry(self.negative_cu[read_ele_num], "electron", "l")
             legend.AddEntry(self.positive_cu[read_ele_num], "hole", "l")
 
-            if "lgad" in self.det_model:
+            if hasattr(self, "gain_current"):
                 legend.AddEntry(self.gain_current.negative_cu[read_ele_num], "electron gain", "l")
                 legend.AddEntry(self.gain_current.positive_cu[read_ele_num], "hole gain", "l")
 
-            if "strip" in self.det_model:
+            if "strip" in self.det_model and has_cross_talk:
                 legend.AddEntry(self.cross_talk_cu[read_ele_num], "cross talk", "l")
 
             legend.AddEntry(self.sum_cu[read_ele_num], "total", "l")
@@ -564,38 +565,27 @@ class CalCurrentGain(CalCurrent):
         self.electron_system = None
         self.hole_system = None
         
-        gain_rate = my_d.gain_rate
-        logger.info("gain_rate=%s", gain_rate)
-        
         # 创建增益载流子
         gain_positions = []
         gain_electron_charges = []
         gain_hole_charges = []
         gain_times = []
         gain_signals = []
-        
-        if my_d.voltage < 0:  # p层在d=0，空穴倍增为电子
-            if my_current.hole_system:
-                for i in range(len(my_current.hole_system.positions)):
-                    last_pos = my_current.hole_system.paths[i][-1]
-                    gain_positions.append([last_pos[0], last_pos[1], my_d.avalanche_bond])
-                    gain_electron_charges.append(-my_current.hole_system.charges[i] * gain_rate)
-                    gain_hole_charges.append(my_current.hole_system.charges[i] * gain_rate)
-                    gain_times.append(last_pos[3])
-                    gain_signals.append([])
-            else:
-                logger.warning("No hole system found for gain calculation in p-layer multiplication.")
-        else:  # n层在d=0，电子倍增为空穴
-            if my_current.electron_system:
-                for i in range(len(my_current.electron_system.positions)):
-                    last_pos = my_current.electron_system.paths[i][-1]
-                    gain_positions.append([last_pos[0], last_pos[1], my_d.avalanche_bond])
-                    gain_hole_charges.append(-my_current.electron_system.charges[i] * gain_rate)
-                    gain_electron_charges.append(my_current.electron_system.charges[i] * gain_rate)
-                    gain_times.append(last_pos[3])
-                    gain_signals.append([])
-            else:
-                logger.warning("No electron system found for gain calculation in n-layer multiplication.")
+
+        if getattr(my_d, "gain_algorithm", "planar_integral") == "local_path":
+            self._build_local_gain_carriers(
+                my_d, my_f, my_current,
+                gain_positions, gain_electron_charges, gain_hole_charges, gain_times, gain_signals,
+            )
+        else:
+            gain_rate = getattr(my_d, "gain_rate", 0.0)
+            logger.info("gain_rate=%s", gain_rate)
+            self._build_planar_gain_carriers(
+                my_d, my_current, gain_rate,
+                gain_positions, gain_electron_charges, gain_hole_charges, gain_times, gain_signals,
+            )
+
+        logger.info("gain carriers generated: %d", len(gain_positions))
 
         # 创建增益载流子系统
         if gain_electron_charges:
@@ -625,6 +615,127 @@ class CalCurrentGain(CalCurrent):
         
         # 计算电流
         self.get_current(my_d.x_ele_num, my_d.y_ele_num, self.read_out_contact)
+
+    def _build_planar_gain_carriers(self, my_d, my_current, gain_rate, gain_positions,
+                                    gain_electron_charges, gain_hole_charges,
+                                    gain_times, gain_signals):
+        if my_d.avalanche_bond is None:
+            raise ValueError("planar_integral gain algorithm requires `avalanche_bond` in detector settings")
+
+        if my_d.voltage < 0:  # p层在d=0，空穴倍增为电子
+            source_system = my_current.hole_system
+            electron_sign = -1
+            hole_sign = 1
+        else:  # n层在d=0，电子倍增为空穴
+            source_system = my_current.electron_system
+            electron_sign = 1
+            hole_sign = -1
+
+        if source_system is None:
+            logger.warning("No carrier system found for planar gain calculation.")
+            return
+
+        for i in range(len(source_system.positions)):
+            last_pos = source_system.paths[i][-1]
+            charge = source_system.charges[i] * gain_rate
+            gain_positions.append([last_pos[0], last_pos[1], my_d.avalanche_bond])
+            gain_electron_charges.append(electron_sign * charge)
+            gain_hole_charges.append(hole_sign * charge)
+            gain_times.append(last_pos[3])
+            gain_signals.append([])
+
+    def _build_local_gain_carriers(self, my_d, my_f, my_current, gain_positions,
+                                   gain_electron_charges, gain_hole_charges,
+                                   gain_times, gain_signals):
+        cal_coefficient = Material(my_d.material, avalanche_model=my_d.avalanche_model).cal_coefficient
+        min_pairs = max(float(getattr(my_d, "gain_pair_threshold", 0.05)), 0.0)
+        max_carriers = int(getattr(my_d, "gain_max_carriers", 50000))
+        emit_slices = max(1, int(getattr(my_d, "local_gain_emit_slices", 1)))
+        samples = max(1, int(getattr(my_d, "local_gain_integration_steps", 3)))
+        emitted_segments = 0
+        field_failures = 0
+
+        for carrier_system in (my_current.electron_system, my_current.hole_system):
+            if carrier_system is None:
+                continue
+            for carrier_idx, path in enumerate(carrier_system.paths):
+                if len(path) < 2:
+                    continue
+
+                active_pairs = abs(carrier_system.charges[carrier_idx])
+                pending_pairs = 0.0
+                if active_pairs <= 0:
+                    continue
+                charge_sign = -1 if carrier_system.charges[carrier_idx] < 0 else 1
+                for point0, point1 in zip(path[:-1], path[1:]):
+                    x0, y0, z0, t0 = point0
+                    x1, y1, z1, t1 = point1
+                    dx = x1 - x0
+                    dy = y1 - y0
+                    dz = z1 - z0
+                    if dx == 0 and dy == 0 and dz == 0:
+                        continue
+
+                    exponent = 0.0
+                    for sample_idx in range(samples):
+                        fraction = (sample_idx + 0.5) / samples
+                        x = x0 + fraction * (x1 - x0)
+                        y = y0 + fraction * (y1 - y0)
+                        z = z0 + fraction * (z1 - z0)
+                        try:
+                            field_vector = my_f.get_e_field_cached(x, y, z)
+                            field = Vector(*field_vector).get_length()
+                        except Exception:
+                            field_failures += 1
+                            continue
+                        if field <= 0:
+                            continue
+                        direction = 1.0 if charge_sign > 0 else -1.0
+                        drift_length_um = direction * (
+                            dx * field_vector[0] + dy * field_vector[1] + dz * field_vector[2]
+                        ) / field
+                        if drift_length_um <= 0:
+                            continue
+                        alpha = cal_coefficient(field, charge_sign, my_d.temperature)
+                        if not math.isfinite(alpha):
+                            alpha = 0.0
+                        alpha = max(alpha, 0.0)
+                        exponent += alpha * (drift_length_um / samples) * 1e-4
+
+                    if not math.isfinite(exponent):
+                        continue
+                    exponent = min(exponent, 50.0)
+                    gain_pairs = active_pairs * math.expm1(exponent)
+                    if gain_pairs <= 0:
+                        continue
+                    active_pairs += gain_pairs
+                    pending_pairs += gain_pairs
+                    if pending_pairs < min_pairs:
+                        continue
+
+                    slices = emit_slices
+                    if max_carriers > 0:
+                        capacity = max_carriers - len(gain_positions)
+                        if capacity <= 0:
+                            if gain_positions:
+                                gain_electron_charges[-1] -= pending_pairs
+                                gain_hole_charges[-1] += pending_pairs
+                            logger.warning("Gain carrier generation reached configured limit (%d).", max_carriers)
+                            return
+                        slices = min(slices, capacity)
+                    for slice_idx in range(slices):
+                        fraction = (slice_idx + 0.5) / slices
+                        gain_positions.append([x0 + fraction * dx, y0 + fraction * dy, z0 + fraction * dz])
+                        gain_electron_charges.append(-pending_pairs / slices)
+                        gain_hole_charges.append(pending_pairs / slices)
+                        gain_times.append(int(round(t0 + fraction * (t1 - t0))))
+                        gain_signals.append([])
+                    pending_pairs = 0.0
+                    emitted_segments += 1
+
+        logger.info("local gain emitted segments: %d", emitted_segments)
+        if field_failures:
+            logger.warning("local gain skipped %d field samples because field lookup failed.", field_failures)
 
     def current_define(self,read_ele_num):
         """
@@ -683,7 +794,7 @@ class CalCurrentLaser(CalCurrent):
             self.negative_cu[i] = convolved_negative_cu
             self.sum_cu[i] = convolved_sum_cu
 
-            if my_d.det_model == "lgad":
+            if hasattr(self, "gain_current"):
                 convolved_gain_positive_cu = ROOT.TH1F("convolved_gain_charge+","Gain Positive Current",
                                         self.n_bin, self.t_start, self.t_end)
                 convolved_gain_negative_cu = ROOT.TH1F("convolved_gain_charge-","Gain Negative Current",

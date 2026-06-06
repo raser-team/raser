@@ -94,6 +94,7 @@ class DevsimField:
         if irradiation_flux != 0:
             path = "./output/field/{}/{}/".format(self.name, irradiation_flux)
 
+        DopingFile = None
         doping_file_pattern = re.compile(r'^NetDoping_(-?\d+\.?\d*)V\.pkl$')
         for filename in os.listdir(path):
             if doping_file_pattern.match(filename):
@@ -101,9 +102,9 @@ class DevsimField:
                 # example: DopingFile = path + "NetDoping_0V.pkl"
                 break
 
-        PotentialFile = path + "Potential_{}V.pkl".format(self.voltage)
-        TrappingRate_pFile = path + "TrappingRate_p_{}V.pkl".format(self.voltage)
-        TrappingRate_nFile = path + "TrappingRate_n_{}V.pkl".format(self.voltage)
+        PotentialFile = self._resolve_voltage_pickle(path, "Potential", self.voltage)
+        TrappingRate_pFile = self._resolve_voltage_pickle(path, "TrappingRate_p", self.voltage)
+        TrappingRate_nFile = self._resolve_voltage_pickle(path, "TrappingRate_n", self.voltage)
 
         self.set_doping(DopingFile) #self.Doping
         self.set_potential(PotentialFile) #self.Potential, self.x_efield, self.y_efield, self.z_efield
@@ -113,6 +114,23 @@ class DevsimField:
         
         logger.info(f"DevsimField initialization complete, resolution: {self.resolution} um")
 
+    def _resolve_voltage_pickle(self, path, prefix, voltage):
+        exact_path = os.path.join(path, "{}_{}V.pkl".format(prefix, voltage))
+        if os.path.exists(exact_path):
+            return exact_path
+
+        try:
+            target_voltage = float(voltage)
+        except (TypeError, ValueError):
+            return exact_path
+
+        pattern = re.compile(r"^{}_(-?\d+(?:\.\d+)?)V\.pkl$".format(re.escape(prefix)))
+        for filename in os.listdir(path):
+            match = pattern.match(filename)
+            if match and math.isclose(float(match.group(1)), target_voltage, rel_tol=0.0, abs_tol=1e-9):
+                return os.path.join(path, filename)
+        return exact_path
+
     def set_doping(self, DopingFile):
         try:
             with open(DopingFile,'rb') as file:
@@ -121,7 +139,7 @@ class DevsimField:
                 if DopingNotUniform['metadata']['dimension'] < self.dimension:
                     print("Doping dimension not match")
                     return
-        except FileNotFoundError:
+        except (FileNotFoundError, TypeError):
             print("Doping file not found at {}, please run field simulation first".format(DopingFile))
             print("or manually set the doping file")
             return
@@ -160,7 +178,9 @@ class DevsimField:
     def set_w_p(self, WeightingPotentialFiles):
         self.WeightingPotential = []
         for i in range(len(self.read_out_contact)):
-            WeightingPotentialFile = WeightingPotentialFiles[i]
+            WeightingPotentialFile = self._resolve_voltage_pickle(
+                os.path.dirname(WeightingPotentialFiles[i]), "Potential", 1
+            )
             try:
                 with open(WeightingPotentialFile,'rb') as file:
                     WeightingPotentialNotUniform=pickle.load(file)
@@ -226,8 +246,8 @@ class DevsimField:
 
         self.TrappingRate_n = TrappingRate_nUniform
         
-    # DEVSIM dimension order: x, y, z
-    # RASER dimension order: z, x, y
+    # 3D pickle points are stored in detector order (x, y, z).
+    # 2D planar fields keep the legacy (z, x) convention.
 
     def _get_doping(self, x, y, z):
         '''
@@ -270,7 +290,7 @@ class DevsimField:
     def _get_e_field(self, x, y, z):
         '''
             input: position in um
-            output: intensity in V/um
+            output: intensity in V/cm
         ''' 
         x, y, z = x / 1e4, y / 1e4, z / 1e4  # um to cm
 
