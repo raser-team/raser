@@ -1,0 +1,133 @@
+Bootstrap: docker
+From: almalinux:9
+
+%files
+    env/uv.txt /opt/raser-uv.txt
+
+%setup
+    root_tarball=bootstrap/ingredients/root_v6.36.04.Linux-almalinux9.6-x86_64-gcc11.5.tar.gz
+    if [ -f "$root_tarball" ]; then
+        mkdir -p "$APPTAINER_ROOTFS/opt/raser-bootstrap"
+        cp "$root_tarball" "$APPTAINER_ROOTFS/opt/raser-bootstrap/root.tar.gz"
+    fi
+    ngspice_tarball=bootstrap/ingredients/ngspice-46.tar.gz
+    if [ -f "$ngspice_tarball" ]; then
+        mkdir -p "$APPTAINER_ROOTFS/opt/raser-bootstrap"
+        cp "$ngspice_tarball" "$APPTAINER_ROOTFS/opt/raser-bootstrap/ngspice.tar.gz"
+    fi
+
+%environment
+    export LC_ALL=C
+    export LANG=C
+
+    export VIRTUAL_ENV=/opt/raser
+    export ROOTSYS=/usr/local/share/root_install
+    export UV_CACHE_DIR=/opt/uv-cache
+    export PATH=$VIRTUAL_ENV/bin:$ROOTSYS/bin:$PATH
+    export LD_LIBRARY_PATH=$ROOTSYS/lib:$ROOTSYS/lib64
+    export PYTHONHOME=
+    export PYTHONPATH=
+    export PYTHONNOUSERSITE=1
+    export MPLBACKEND=${MPLBACKEND:-Agg}
+    export MPLCONFIGDIR=${MPLCONFIGDIR:-/tmp/raser-matplotlib}
+
+%post
+    set -ex
+    export MPLCONFIGDIR=/tmp/raser-matplotlib
+    mkdir -p $MPLCONFIGDIR
+
+    dnf -y install dnf-plugins-core epel-release
+    dnf config-manager --set-enabled crb
+    dnf -y install \
+        ca-certificates \
+        git \
+        bash \
+        gcc \
+        gcc-c++ \
+        python3.11 \
+        python3.11-devel \
+        python3.11-pip \
+        make \
+        pkgconf-pkg-config \
+        readline-devel \
+        tar \
+        gzip \
+        which \
+        libX11 \
+        libXext \
+        libXft \
+        libXmu \
+        libXpm \
+        libXrender \
+        libXt \
+        mesa-libGL \
+        mesa-libGLU \
+        motif \
+        qt5-qtbase \
+        qt5-qtbase-gui \
+        hdf5 \
+        tbb
+    dnf clean all
+
+    export VIRTUAL_ENV=/opt/raser
+    export ROOTSYS=/usr/local/share/root_install
+    export UV_CACHE_DIR=/opt/uv-cache
+    export PATH=$ROOTSYS/bin:$VIRTUAL_ENV/bin:$PATH
+    export LD_LIBRARY_PATH=$ROOTSYS/lib:$ROOTSYS/lib64
+    export CC=/usr/bin/gcc
+    export CXX=/usr/bin/g++
+    export CPPFLAGS=
+    export CFLAGS=
+    export CXXFLAGS=
+    export LDFLAGS=
+
+    if [ -f /opt/raser-bootstrap/root.tar.gz ]; then
+        cp /opt/raser-bootstrap/root.tar.gz /tmp/root.tar.gz
+    else
+        root_url=https://root.cern/download/root_v6.36.04.Linux-almalinux9.6-x86_64-gcc11.5.tar.gz
+        curl --fail --location --retry 5 --output /tmp/root.tar.gz "$root_url"
+    fi
+    mkdir -p $ROOTSYS
+    tar -xzf /tmp/root.tar.gz --strip-components=1 -C $ROOTSYS
+    rm -f /tmp/root.tar.gz
+
+    ngspice_version=46
+    ngspice_sha256=a0d1699af1940b06649276dcd6ff5a566c8c0cad01b2f7b5e99dedbb4d64c19b
+    if [ -f /opt/raser-bootstrap/ngspice.tar.gz ]; then
+        cp /opt/raser-bootstrap/ngspice.tar.gz /tmp/ngspice.tar.gz
+    else
+        ngspice_url=https://downloads.sourceforge.net/project/ngspice/ng-spice-rework/$ngspice_version/ngspice-$ngspice_version.tar.gz
+        curl --fail --location --retry 5 --output /tmp/ngspice.tar.gz "$ngspice_url"
+    fi
+    echo "$ngspice_sha256  /tmp/ngspice.tar.gz" | sha256sum -c -
+    tar -xzf /tmp/ngspice.tar.gz -C /tmp
+    cd /tmp/ngspice-$ngspice_version
+    ./configure \
+        --prefix=/usr/local \
+        --with-x=no \
+        --with-readline=yes \
+        --enable-xspice \
+        --disable-debug
+    make -j2
+    make install
+    cd /
+    rm -rf /tmp/ngspice-$ngspice_version /tmp/ngspice.tar.gz
+
+    curl --fail --location --retry 5 --output /tmp/install-uv.sh https://astral.sh/uv/install.sh
+    UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh /tmp/install-uv.sh
+    rm -f /tmp/install-uv.sh
+
+    uv venv --python /usr/bin/python3.11 $VIRTUAL_ENV
+    uv pip sync --python $VIRTUAL_ENV/bin/python /opt/raser-uv.txt
+    echo "$ROOTSYS/lib" > $VIRTUAL_ENV/lib/python3.11/site-packages/raser-root.pth
+    ln -sf $ROOTSYS/bin/root-config /usr/local/bin/root-config
+    rm -rf $UV_CACHE_DIR
+
+    root-config --version
+    root-config --python-version
+    $VIRTUAL_ENV/bin/python -c "import ROOT; print(ROOT.gROOT.GetVersion())"
+    $VIRTUAL_ENV/bin/python -c "import importlib.util; assert importlib.util.find_spec('g4ppyy')"
+    ngspice -v
+
+%runscript
+    exec /bin/bash "$@"

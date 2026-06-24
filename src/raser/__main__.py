@@ -16,6 +16,7 @@ def _release_g4ppyy_globals():
     managers = getattr(g4ppyy, "_managers", None)
     if managers is None:
         return
+    # Geant4 visualization keeps pointers into the run manager; release it first.
     for name in ("VisExecutive", "RunManager"):
         obj = getattr(managers, name, None)
         if hasattr(obj, "__destruct__"):

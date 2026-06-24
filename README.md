@@ -12,30 +12,43 @@ Citation: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18905684.svg)](htt
 Prerequisites
 ======
 
-RASER has a Linux SIF route and native self-managed conda routes. The SIF route
-does not install or use conda; it uses the uv-managed Python stack in the image
-and expects Geant4 from the external host environment. For a native self-managed
-environment, use conda for ROOT/ngspice/MKL where available and uv for Python
-packages.
+RASER's default self-managed route is conda: use conda for ROOT/ngspice/MKL
+where available and uv for Python packages. The SIF routes are kept under
+`bootstrap/` for cluster or containerized deployments.
 
 Geant4 is external to these routes. Before sourcing `env/setup.sh`, make
 `geant4-config` visible on `PATH`, or set `RASER_GEANT4_INSTALL` to the Geant4
 install prefix.
-
-For the Linux SIF route:
-
-    source env/setup.sh
-    apptainer exec --bind "$BINDPATH" --env-file .raser/env "$IMGFILE" \
-        python -m src.raser signal HPK-Si-PiN
 
 For the native Linux x86 conda route:
 
     conda env create -p .conda/envs/raser -f env/conda-linux-x86.yml
     conda activate $PWD/.conda/envs/raser
     uv venv --system-site-packages --python "$(command -v python3.11)" .venv
-    uv pip sync --python .venv/bin/python env/uv.txt
-    export RASER_GEANT4_INSTALL=/path/to/geant4-install
-    source env/setup.sh
+    uv sync --python .venv/bin/python --locked
+    source env/setup_cvmfs.sh
+
+For the Ubuntu22.04 LCG cluster SIF route:
+
+    apptainer build --mksquashfs-args '-processors 1' \
+        img/raser_ubuntu.sif bootstrap/ubuntu/raser-ubuntu-sif.def
+    source env/setup_cvmfs.sh ubuntu
+    raser signal HPK-Si-PiN
+
+This route uses the ubuntu2204 LCG view for the matched Python 3.11, ROOT, and
+Geant4 ABI chain. The SIF supplies the project Python environment, ngspice, and
+the Ubuntu runtime libraries needed by the LCG binaries.
+
+For the EL9 cluster SIF route:
+
+    apptainer build --mksquashfs-args '-processors 1' \
+        img/raser_el9.sif bootstrap/el9/raser-el9-sif.def
+    source env/setup_cvmfs.sh el9
+    raser signal HPK-Si-PiN
+
+Optional build tarballs can be cached under `bootstrap/ingredients/`. See
+`bootstrap/README.md` for route details. The single-processor squashfs option
+avoids mksquashfs thread creation failures seen on restricted cluster nodes.
 
 The native Linux x86 conda environment includes `root_base`, `ngspice`, and
 MKL. This gives users without a site ROOT installation a working PyROOT matched
@@ -68,7 +81,7 @@ newer on arm64 because the devsim wheel is tagged `macosx_14_0_arm64`:
     export RASER_GEANT4_INSTALL=/path/to/geant4-install
     source env/setup.sh
     uv venv --system-site-packages --python "$(command -v python3.11)" .venv
-    uv pip sync --python .venv/bin/python env/uv.txt
+    uv sync --python .venv/bin/python --locked
 
 The matching explicit conda spec can be used instead of the YAML file:
 

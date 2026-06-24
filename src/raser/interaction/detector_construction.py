@@ -20,6 +20,7 @@ class GeneralDetectorConstruction(g4b.G4VUserDetectorConstruction):
         self.solid = {}
         self.logical = {}
         self.physical = {}
+        self.compound_materials = {}
         self.checkOverlaps = True
         self.create_world(g4_dic['world'])
         self.geant4_model = g4_dic['geant4_model']
@@ -118,9 +119,23 @@ class GeneralDetectorConstruction(g4b.G4VUserDetectorConstruction):
         material_1 = self.nist.FindOrBuildElement(object['material_1'],False)
         material_2 = self.nist.FindOrBuildElement(object['material_2'],False)
         material_density = object['density']*g4b.g/g4b.cm3
-        compound=g4b.G4Material(object['compound_name'],material_density,2)
-        compound.AddElement(material_1,object['natoms_1']*g4b.perCent)
-        compound.AddElement(material_2,object['natoms_2']*g4b.perCent)
+        compound_name = object['compound_name']
+        compound_signature = (
+            object['material_1'],
+            object['material_2'],
+            object['density'],
+            object['natoms_1'],
+            object['natoms_2'],
+        )
+        if compound_name in self.compound_materials:
+            compound, existing_signature = self.compound_materials[compound_name]
+            if compound_signature != existing_signature:
+                raise ValueError(f"Conflicting Geant4 material definition for {compound_name}")
+        else:
+            compound=g4b.G4Material(compound_name,material_density,2)
+            compound.AddElement(material_1,object['natoms_1']*g4b.perCent)
+            compound.AddElement(material_2,object['natoms_2']*g4b.perCent)
+            self.compound_materials[compound_name] = (compound, compound_signature)
         translation = g4b.G4ThreeVector(object['position_x']*g4b.um, object['position_y']*g4b.um, object['position_z']*g4b.um)
         visual = g4b.G4VisAttributes(g4b.G4Color(object['colour'][0],object['colour'][1],object['colour'][2]))
         mother = self.physical['world']

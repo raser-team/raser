@@ -1,105 +1,117 @@
-# Setup raser environment
+# Setup raser runtime environment
 
 [ -z "$PS1" ] && echo "Setting up raser ..."
 
 dir_raser=$(cd "$(dirname "$(dirname "${BASH_SOURCE[0]}")")" && pwd)
-conda_prefix=${CONDA_PREFIX:-}
-[ -z "$conda_prefix" ] && [ -d "$dir_raser/.conda/envs/raser" ] && conda_prefix=$dir_raser/.conda/envs/raser
+raser_state_dir=$dir_raser/.raser
+mkdir -p "$raser_state_dir/matplotlib"
+raser_in_container=
+[ -n "${APPTAINER_CONTAINER:-}${SINGULARITY_CONTAINER:-}" ] && raser_in_container=1
+raser_sif_host=
+if [ -z "$raser_in_container" ]; then
+    case "${RASER_ENV_ROUTE:-}" in
+        ubuntu|el9) raser_sif_host=1 ;;
+    esac
+fi
 
+root_prefix=
 geant4_prefix=${RASER_GEANT4_INSTALL:-${GEANT4_INSTALL:-${GEANT4_DIR:-}}}
-if [ -z "$geant4_prefix" ] && command -v geant4-config >/dev/null 2>&1; then
-    geant4_prefix=$(geant4-config --prefix 2>/dev/null)
-fi
 [ -n "$geant4_prefix" ] && [ -d "$geant4_prefix" ] && geant4_prefix=$(cd "$geant4_prefix" && pwd -P)
-if [ -n "$geant4_prefix" ] && [ -x "$geant4_prefix/bin/geant4-config" ]; then
+unset PYTHONHOME PYTHONPATH
+raser_ponytail_path=$dir_raser/env/ponytail
+
+if [ -z "$raser_sif_host" ] && [ -n "${RASER_LCG_VIEW:-}" ] && [ -r "$RASER_LCG_VIEW/setup.sh" ]; then
+    . "$RASER_LCG_VIEW/setup.sh"
+fi
+if [ -n "$raser_sif_host" ]; then
+    :
+elif [ -x "$geant4_prefix/bin/geant4.sh" ]; then
     . "$geant4_prefix/bin/geant4.sh"
+elif [ -n "$geant4_prefix" ]; then
+    echo "Warning from raser setup: cannot find geant4.sh under $geant4_prefix" >&2
 else
-    if [ -n "$geant4_prefix" ]; then
-        echo "Warning from raser setup: cannot find geant4-config under $geant4_prefix" >&2
-    else
-        echo "Warning from raser setup: cannot find geant4-config; set RASER_GEANT4_INSTALL or add geant4-config to PATH" >&2
-    fi
+    echo "Warning from raser setup: set RASER_GEANT4_INSTALL, GEANT4_INSTALL, or GEANT4_DIR" >&2
 fi
-[ -n "${VIRTUAL_ENV:-}" ] && export PATH=$VIRTUAL_ENV/bin:$PATH
 
-if [ -n "$conda_prefix" ] && [ -x "$conda_prefix/bin/root-config" ]; then
-    root_prefix=$("$conda_prefix/bin/root-config" --prefix 2>/dev/null)
-else
-    root_prefix=/usr/local/share/root_install
+if [ -n "${CONDA_PREFIX:-}" ] && [ -x "$CONDA_PREFIX/bin/root-config" ]; then
+    root_prefix=$("$CONDA_PREFIX/bin/root-config" --prefix 2>/dev/null)
+elif [ -n "$raser_in_container" ] && [ -n "${ROOTSYS:-}" ]; then
+    root_prefix=$ROOTSYS
 fi
-root_python_paths="$root_prefix/lib64/python3.11/site-packages $root_prefix/lib/python3.11/site-packages"
-export ROOTSYS=$root_prefix GEANT4_INSTALL=$geant4_prefix GEANT4_DIR=$geant4_prefix
+if [ -n "$raser_in_container" ] && [ -n "${RASER_LCG_VIEW:-}" ] && [ -n "$root_prefix" ]; then
+    raser_pythonpath=
+    for venv_site in "${VIRTUAL_ENV:-}"/lib/python*/site-packages; do
+        [ -d "$venv_site" ] && raser_pythonpath=$raser_pythonpath:$venv_site
+    done
+    PYTHONPATH=${raser_pythonpath#:}:$root_prefix/lib
+fi
 
-if [ -n "${VIRTUAL_ENV:-}" ]; then
-    for venv_site in "$VIRTUAL_ENV"/lib/python*/site-packages; do
-        [ -d "$venv_site" ] || continue
-        : > "$venv_site/raser-root.pth"
-        for path in $root_python_paths; do
-            [ -d "$path/ROOT" ] && echo "$path" >> "$venv_site/raser-root.pth"
-        done
+if [ -n "$raser_in_container" ] && [ -z "${RASER_LCG_VIEW:-}" ] && [ -n "${VIRTUAL_ENV:-}" ] && [ -d "$VIRTUAL_ENV/bin" ]; then
+    PATH=$VIRTUAL_ENV/bin:$PATH
+elif [ -z "$raser_in_container" ] && [ -z "$raser_sif_host" ] && [ -d "$dir_raser/.venv/bin" ]; then
+    PATH=$dir_raser/.venv/bin:$PATH
+fi
+if [ -n "$raser_in_container" ] && [ -z "${RASER_LCG_VIEW:-}" ]; then
+    # Keep container runtime libraries ahead of externally mounted libraries so
+    # Python extension modules, e.g. sqlite3, do not bind to an incompatible ABI.
+    for system_lib in /lib/x86_64-linux-gnu /usr/lib/x86_64-linux-gnu; do
+        [ -d "$system_lib" ] && LD_LIBRARY_PATH=$system_lib:${LD_LIBRARY_PATH:-}
     done
 fi
-
-raser_state_dir=$dir_raser/.raser
-mkdir -p "$raser_state_dir" "$raser_state_dir/matplotlib"
-cfg_env=$raser_state_dir/env
-rm -f "$cfg_env"
-cat > "$cfg_env" << EOF
-# ROOT
-ROOTSYS=$root_prefix
-
-# Geant4
-GEANT4_INSTALL=$geant4_prefix
-GEANT4_DIR=$geant4_prefix
-EOF
-
-if [ -x "$geant4_prefix/bin/geant4-config" ]; then
-    while read -r _ env_name path; do
-        [ -z "$env_name" ] && continue
-        if [ -d "$path" ]; then
-            echo "$env_name=$path" >> "$cfg_env"
-            export "$env_name=$path"
-        else
-            echo "Warning from raser setup: cannot resolve Geant4 dataset $env_name from $path" >&2
-        fi
-    done << EOF
-$("$geant4_prefix/bin/geant4-config" --datasets 2>/dev/null)
-EOF
+if [ -n "$root_prefix" ]; then
+    export ROOTSYS=$root_prefix
+    for root_lib in "$root_prefix/lib64" "$root_prefix/lib"; do
+        [ -d "$root_lib" ] && LD_LIBRARY_PATH=$root_lib:${LD_LIBRARY_PATH:-}
+    done
+else
+    unset ROOTSYS
 fi
+if [ -d "$raser_ponytail_path" ]; then
+    # env/ponytail contains version-gated Python startup hooks for external
+    # packages whose import-time behavior depends on the selected route.
+    PYTHONPATH=$raser_ponytail_path${PYTHONPATH:+:$PYTHONPATH}
+fi
+export PATH PYTHONPATH LD_LIBRARY_PATH GEANT4_INSTALL=$geant4_prefix GEANT4_DIR=$geant4_prefix
+export RASER_SETTING_PATH=$dir_raser/setting OPENBLAS_NUM_THREADS=1 MPLCONFIGDIR=$raser_state_dir/matplotlib
 
-cat >> "$cfg_env" << EOF
+if [ -n "$raser_sif_host" ]; then
+    raser-shell() {
+        if [ -z "${RASER_SIF_IMAGE:-}" ]; then
+            echo "raser-shell: source env/setup_cvmfs.sh ubuntu or el9 first" >&2
+            return 2
+        fi
+        mkdir -p "$raser_state_dir"
+        local raser_shellrc=$raser_state_dir/shellrc
+        {
+            printf 'cd %q\n' "$dir_raser"
+            printf '%s\n' '. env/setup.sh'
+            printf '%s\n' 'PS1="(raser) ${PS1:-\u@\h:\w\$ }"'
+        } > "$raser_shellrc"
+        apptainer exec "$RASER_SIF_IMAGE" bash --rcfile "$raser_shellrc" -i
+    }
 
-# Python
-PYTHONPATH=
-LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}
-MPLCONFIGDIR=$raser_state_dir/matplotlib
+    raser-exec() {
+        if [ -z "${RASER_SIF_IMAGE:-}" ]; then
+            echo "raser-exec: source env/setup_cvmfs.sh ubuntu or el9 first" >&2
+            return 2
+        fi
+        apptainer exec "$RASER_SIF_IMAGE" \
+            bash -lc 'cd "$1"; shift; . env/setup.sh; exec "$@"' bash "$dir_raser" "$@"
+    }
 
-#pyMTL3 Verilator
-PYMTL_VERILATOR_INCLUDE_DIR="/usr/local/share/verilator/include"
-EOF
+    raser() {
+        raser-exec python -m src.raser "$@"
+    }
 
-IMGFILE=$dir_raser/img/raser_latest.sif
-BINDPATH=$dir_raser,$geant4_prefix,/cvmfs/geant4.cern.ch/share/data,/cvmfs/sft.cern.ch/lcg
-[ -n "${RASER_EXTRA_BINDPATH:-}" ] && BINDPATH=$BINDPATH,$RASER_EXTRA_BINDPATH
+    raser-test() {
+        raser-exec python -m unittest discover -v -s src/raser/tests "$@"
+    }
 
-clean_bindpath=
-IFS=',' read -ra bind_items <<< "$BINDPATH"
-for path in "${bind_items[@]}"; do
-    if [ -L "$path" ]; then
-        path=$(readlink -f "$path")
-    elif [ ! -e "$path" ]; then
-        [ -z "$PS1" ] && echo "Warning from raser setup: $path do not exist" >&2
-        continue
-    fi
-    [ -z "$clean_bindpath" ] && clean_bindpath=$path || clean_bindpath=$clean_bindpath,$path
-done
-export IMGFILE BINDPATH=$clean_bindpath RASER_SETTING_PATH=$dir_raser/setting OPENBLAS_NUM_THREADS=1 MPLCONFIGDIR=$raser_state_dir/matplotlib
-
-alias raser-shell="apptainer shell --env-file $cfg_env -B $BINDPATH $IMGFILE"
-raser_exec="apptainer exec --env-file $cfg_env -B $BINDPATH $IMGFILE"
-raser_python="$raser_exec /opt/raser/bin/python"
-alias raser="$raser_python -m src.raser"
-alias raser-test="$raser_python -m unittest discover -v -s raser/tests"
-alias pytest="$raser_exec pytest"
-# TODO: replace this alias with a first-class CLI command.
-alias mesh="$raser_python setting/detector"
+    mesh() {
+        raser-exec python setting/detector "$@"
+    }
+else
+    alias raser="python -m src.raser"
+    alias raser-test="python -m unittest discover -v -s raser/tests"
+    alias mesh="python setting/detector"
+fi

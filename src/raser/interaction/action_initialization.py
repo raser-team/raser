@@ -33,19 +33,26 @@ class GeneralActionInitialization(g4b.G4VUserActionInitialization):
         self.events_angles = events_angles
 
         self.geant4_model=geant4_model
+        self.actions = []
 
     def Build(self):
-        self.SetUserAction(GeneralPrimaryGeneratorAction(self.par_in,
+        primary_action = GeneralPrimaryGeneratorAction(self.par_in,
                                                     self.par_out,
                                                     self.par_randx, 
                                                     self.par_randy,
                                                     self.par_type,
                                                     self.par_energy,
-                                                    self.geant4_model))
+                                                    self.geant4_model)
+        self.actions.append(primary_action)
+        self.SetUserAction(primary_action)
         # global myRA_action
         myRA_action = GeneralRunAction()
+        self.actions.append(myRA_action)
         self.SetUserAction(myRA_action)
         myEA = GeneralEventAction(myRA_action, self.par_in, self.par_out, 
                                   self.eventIDs, self.edep_devices, self.p_steps, self.energy_steps, self.events_angles)
+        self.actions.append(myEA)
         self.SetUserAction(myEA)
-        self.SetUserAction(GeneralSteppingAction(myEA))
+        stepping_action = GeneralSteppingAction(myEA)
+        self.actions.append(stepping_action)
+        self.SetUserAction(stepping_action)

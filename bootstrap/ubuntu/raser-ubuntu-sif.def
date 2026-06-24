@@ -1,24 +1,22 @@
 Bootstrap: docker
-From: ghcr.io/astral-sh/uv:python3.11-bookworm-slim
+From: ubuntu:22.04
 
 %files
-    env/uv.txt /opt/raser/uv.txt
+    env/uv.txt /opt/raser-uv.txt
 
 %environment
     export LC_ALL=C
     export LANG=C
 
-    export VIRTUAL_ENV=/opt/raser-venv
-    export UV_CACHE_DIR=/opt/raser/uv-cache
-    export PATH=/opt/raser/bin:$VIRTUAL_ENV/bin:$PATH
+    export VIRTUAL_ENV=/opt/raser
+    export UV_PYTHON_INSTALL_DIR=/opt/uv-python
+    export UV_CACHE_DIR=/opt/uv-cache
+    export PATH=$VIRTUAL_ENV/bin:$PATH
     export PYTHONHOME=
     export PYTHONPATH=
     export PYTHONNOUSERSITE=1
     export MPLBACKEND=${MPLBACKEND:-Agg}
     export MPLCONFIGDIR=${MPLCONFIGDIR:-/tmp/raser-matplotlib}
-    if [ -n "${GEANT4_INSTALL:-}" ] && [ -d "$GEANT4_INSTALL/bin" ]; then
-        export PATH=$GEANT4_INSTALL/bin:$PATH
-    fi
 
 %post
     set -ex
@@ -33,19 +31,42 @@ From: ghcr.io/astral-sh/uv:python3.11-bookworm-slim
             -e "s@http://deb.debian.org/debian-security@$apt_mirror/debian-security@g" \
             -e "s@http://security.debian.org/debian-security@$apt_mirror/debian-security@g" \
             -e "s@http://deb.debian.org/debian@$apt_mirror/debian@g" \
+            -e "s@http://archive.ubuntu.com/ubuntu@$apt_mirror/ubuntu@g" \
+            -e "s@http://security.ubuntu.com/ubuntu@$apt_mirror/ubuntu@g" \
             "$apt_source"
     done
     apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 update
     apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 install -y --no-install-recommends \
         ca-certificates \
+        curl \
         git \
         bash \
         g++ \
+        tar \
+        gzip \
+        libgl1 \
+        libglu1-mesa \
+        libhdf5-103-1 \
+        libicu70 \
+        libqt5gui5 \
+        libqt5opengl5 \
+        libqt5widgets5 \
+        libtbb12 \
+        libx11-6 \
+        libxext6 \
+        libxft2 \
+        libxm4 \
+        libxmu6 \
+        libxpm4 \
+        libxrender1 \
+        libxt6 \
+        libxxhash0 \
         ngspice
     rm -rf /var/lib/apt/lists/*
 
-    export VIRTUAL_ENV=/opt/raser-venv
-    export UV_CACHE_DIR=/opt/raser/uv-cache
+    export VIRTUAL_ENV=/opt/raser
+    export UV_PYTHON_INSTALL_DIR=/opt/uv-python
+    export UV_CACHE_DIR=/opt/uv-cache
     export PATH=$VIRTUAL_ENV/bin:$PATH
     export CC=/usr/bin/gcc
     export CXX=/usr/bin/g++
@@ -54,33 +75,18 @@ From: ghcr.io/astral-sh/uv:python3.11-bookworm-slim
     export CXXFLAGS=
     export LDFLAGS=
 
-    uv venv --python /usr/local/bin/python3.11 $VIRTUAL_ENV
-    uv pip sync --python $VIRTUAL_ENV/bin/python /opt/raser/uv.txt
-    mkdir -p /opt/raser/bin
-    cat > /opt/raser/bin/python <<'EOF'
-#!/bin/sh
-unset PYTHONHOME
-[ -n "${PYTHONPATH:-}" ] || unset PYTHONPATH
-export PYTHONNOUSERSITE=1
-exec /opt/raser-venv/bin/python "$@"
-EOF
-    chmod +x /opt/raser/bin/python
-    ln -sf /opt/raser/bin/python /opt/raser/bin/python3
-    cat > /opt/raser/bin/geant4-config <<'EOF'
-#!/bin/sh
-for prefix in "$GEANT4_INSTALL" "$GEANT4_DIR"; do
-    if [ -n "$prefix" ] && [ -x "$prefix/bin/geant4-config" ]; then
-        exec "$prefix/bin/geant4-config" "$@"
-    fi
-done
-echo "geant4-config: set GEANT4_INSTALL or GEANT4_DIR to a Geant4 installation" >&2
-exit 127
-EOF
-    chmod +x /opt/raser/bin/geant4-config
-    ln -sf /opt/raser/bin/geant4-config /usr/local/bin/geant4-config
+    curl --fail --location --retry 5 --output /tmp/install-uv.sh https://astral.sh/uv/install.sh
+    UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh /tmp/install-uv.sh
+    rm -f /tmp/install-uv.sh
+
+    uv python install 3.11.9
+    uv venv --python 3.11.9 $VIRTUAL_ENV
+    uv pip sync --python $VIRTUAL_ENV/bin/python /opt/raser-uv.txt
     rm -rf $UV_CACHE_DIR
 
+    $VIRTUAL_ENV/bin/python --version
     $VIRTUAL_ENV/bin/python -c "import importlib.util; assert importlib.util.find_spec('g4ppyy')"
+    $VIRTUAL_ENV/bin/python -c "import sqlite3; print(sqlite3.sqlite_version)"
     ngspice -v
 
 %runscript

@@ -15,7 +15,8 @@ clean:
 
 RASER_LIMA_INSTANCE ?= apptainer
 RASER_SIF_COMMAND ?= /opt/raser/bin/python -m src.raser signal HPK-Si-PiN
-RASER_BOOTSTRAP_DEF ?= bootstrap/linux/raser-linux-reference.def
+RASER_BOOTSTRAP_DEF ?= bootstrap/ubuntu/raser-ubuntu-sif.def
+RASER_MKSQUASHFS_ARGS ?= -processors 1
 
 build-raser-sandbox: 
 	apptainer build --force --fakeroot --sandbox /tmp/raser-sandbox/ $(RASER_BOOTSTRAP_DEF)
@@ -27,7 +28,7 @@ test-raser-sandbox:
 	apptainer shell --env-file .raser/env -B "$${BINDPATH:?source env/setup.sh first}" /tmp/raser-sandbox 
 
 build-raser-sif:
-	apptainer build --force --fakeroot raser.sif /tmp/raser-sandbox  
+	apptainer build --force --fakeroot --mksquashfs-args '$(RASER_MKSQUASHFS_ARGS)' raser.sif /tmp/raser-sandbox
 
 shell-raser-sif:
 	apptainer shell --env-file .raser/env -B "$${BINDPATH:?source env/setup.sh first}" raser.sif 
