@@ -13,7 +13,13 @@ import array
 import random
 import math
 
-import geant4_pybind as g4b
+import g4ppyy as g4b
+g4b.include("G4VUserDetectorConstruction.hh")
+g4b.include("G4VUserActionInitialization.hh")
+g4b.include("G4VUserPrimaryGeneratorAction.hh")
+g4b.include("G4UserRunAction.hh")
+g4b.include("G4UserEventAction.hh")
+g4b.include("G4UserSteppingAction.hh")
 import ROOT
 ROOT.gROOT.SetBatch(True)
 import numpy as np
@@ -311,7 +317,7 @@ class SiC_LGAD_aActionInitialization(g4b.G4VUserActionInitialization):
 
 def main():
 
-    runManager = g4b.G4RunManagerFactory.CreateRunManager(g4b.G4RunManagerType.Serial)
+    runManager = g4b.G4RunManager.GetRunManager() or g4b.G4RunManager()
 
     detConstruction = SiC_LGAD_DetectorConstruction()
     runManager.SetUserInitialization(detConstruction)

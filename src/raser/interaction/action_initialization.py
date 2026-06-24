@@ -6,7 +6,9 @@ Description:  action_initialization.py
 '''
 
 import numpy as np
-import geant4_pybind as g4b
+import g4ppyy as g4b
+
+g4b.include("G4VUserActionInitialization.hh")
 
 from .run_action import GeneralRunAction
 from .event_action import GeneralEventAction
@@ -16,7 +18,7 @@ from .primary_generator_action import GeneralPrimaryGeneratorAction
 class GeneralActionInitialization(g4b.G4VUserActionInitialization):
     def __init__(self, par_in, par_out, par_randx, par_randy, par_type, par_energy,
                  eventIDs, edep_devices, p_steps, energy_steps, events_angles, geant4_model):
-        g4b.G4VUserActionInitialization.__init__(self)
+        super().__init__()
         self.par_in = par_in
         self.par_out = par_out
         self.par_type = par_type

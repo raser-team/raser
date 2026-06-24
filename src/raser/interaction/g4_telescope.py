@@ -19,7 +19,9 @@ import json
 import os
 
 import numpy as np
-import geant4_pybind as g4b
+import g4ppyy as g4b
+g4b.include("G4VUserDetectorConstruction.hh")
+g4b.include("G4UserLimits.hh")
 
 from .interaction import GeneralG4Interaction
 from .action_initialization import GeneralActionInitialization
@@ -313,4 +315,3 @@ class TelescopeActionInitialization(g4b.G4VUserActionInitialization):
                                     self.devicenames, self.localpositions)
         self.SetUserAction(myEA)
         self.SetUserAction(TelescopeSteppingAction(myEA))
-

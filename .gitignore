@@ -1,9 +1,11 @@
 .DS_Store
 .vscode
+.venv
+.conda
+.raser
 
 output
 
-cfg/env
 **/__pycache__
 G4History.macro
 *.msh

@@ -3,7 +3,13 @@ import os
 import math
 import array
 import ROOT
-import geant4_pybind as g4b
+import g4ppyy as g4b
+g4b.include("G4VUserDetectorConstruction.hh")
+g4b.include("G4VUserActionInitialization.hh")
+g4b.include("G4VUserPrimaryGeneratorAction.hh")
+g4b.include("G4UserRunAction.hh")
+g4b.include("G4UserEventAction.hh")
+g4b.include("G4UserSteppingAction.hh")
 import json
 
 pixelAreaZIndex = []
@@ -104,10 +110,10 @@ class cflmPixelG4Particles:
             with open(geant4_json) as f:
                 g4_dic = json.load(f)
 
-            runManager = g4b.G4RunManagerFactory.CreateRunManager(g4b.G4RunManagerType.Serial)
-            rand_engine= g4b.RanecuEngine()
-            g4b.HepRandom.setTheEngine(rand_engine)
-            g4b.HepRandom.setTheSeed(3020122)
+            runManager = g4b.G4RunManager.GetRunManager() or g4b.G4RunManager()
+            rand_engine= g4b.cppyy.gbl.CLHEP.RanecuEngine()
+            g4b.cppyy.gbl.CLHEP.HepRandom.setTheEngine(rand_engine)
+            g4b.cppyy.gbl.CLHEP.HepRandom.setTheSeed(3020122)
             UImanager = g4b.G4UImanager.GetUIpointer()
 
             physicsList = g4b.FTFP_BERT()
@@ -508,7 +514,7 @@ def main():
          g4_dic = json.load(f)
     
     if g4_dic['vis']:
-        runManager = g4b.G4RunManagerFactory.CreateRunManager(g4b.G4RunManagerType.Serial)
+        runManager = g4b.G4RunManager.GetRunManager() or g4b.G4RunManager()
 
         physicsList = g4b.FTFP_BERT()
         physicsList.RegisterPhysics(g4b.G4StepLimiterPhysics())
@@ -545,6 +551,3 @@ def main():
 
 if __name__ == '__main__':
     main()       
-
-
-

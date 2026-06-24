@@ -9,6 +9,15 @@ import importlib
 
 VERSION = 4.1
 
+def _release_g4ppyy_globals():
+    g4ppyy = sys.modules.get("g4ppyy")
+    if g4ppyy is None:
+        return
+    for name in ("RunManager", "VisExecutive"):
+        obj = getattr(g4ppyy._managers, name, None)
+        if hasattr(obj, "__python_owns__"):
+            obj.__python_owns__ = False
+
 parser = argparse.ArgumentParser(prog='raser')
 parser.add_argument('--version', action='version', 
                     version='%(prog)s {}'.format(VERSION))
@@ -106,28 +115,31 @@ if __name__ == "__main__":
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(1)
-        
+
     kwargs = vars(args)
 
     submodule = kwargs['subparser_name']
     # __package__ is src.raser, the "." is meant to coorperate with src.raser to avoid namespace conflict
 
-    if kwargs['global_batch'] != 0:
-        if not kwargs.get('signal_batch', False):
-            batch_level = kwargs['global_batch']
-            import re
-            from .util import batchjob
-            destination = submodule
-            command = ' '.join(sys.argv[1:])
-            command = command.replace('--batch ', '')
-            for bs in re.findall('-b* ', command):
-                command = command.replace(bs, '')
-            is_test = vars(args)['test'] 
-            batchjob.main(destination, command, batch_level, is_test)
+    try:
+        if kwargs['global_batch'] != 0:
+            if not kwargs.get('signal_batch', False):
+                batch_level = kwargs['global_batch']
+                import re
+                from .util import batchjob
+                destination = submodule
+                command = ' '.join(sys.argv[1:])
+                command = command.replace('--batch ', '')
+                for bs in re.findall('-b* ', command):
+                    command = command.replace(bs, '')
+                is_test = vars(args)['test']
+                batchjob.main(destination, command, batch_level, is_test)
+            else:
+                submodule = importlib.import_module("." + submodule, package=__package__)
+                submodule.main(kwargs)
         else:
             submodule = importlib.import_module("." + submodule, package=__package__)
             submodule.main(kwargs)
-    else:
-        submodule = importlib.import_module("." + submodule, package=__package__)
-        submodule.main(kwargs)
-        
+    finally:
+        _release_g4ppyy_globals()
+

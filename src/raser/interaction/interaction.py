@@ -12,7 +12,9 @@ import json
 import os
 
 import numpy as np
-import geant4_pybind as g4b
+import g4ppyy as g4b
+
+g4b.include("G4RunManager.hh")
 
 from .detector_construction import GeneralDetectorConstruction
 from .action_initialization import GeneralActionInitialization
@@ -61,10 +63,10 @@ class GeneralG4Interaction:
             ui = None
             ui = g4b.G4UIExecutive(1, [os.getcwd()]) # make sure the UI is created in the current working directory
 
-        g4RunManager = g4b.G4RunManagerFactory.CreateRunManager(g4b.G4RunManagerType.Default)
-        rand_engine= g4b.RanecuEngine()
-        g4b.HepRandom.setTheEngine(rand_engine)
-        g4b.HepRandom.setTheSeed(g4_seed)
+        g4RunManager = g4b.G4RunManager.GetRunManager() or g4b.G4RunManager()
+        rand_engine= g4b.cppyy.gbl.CLHEP.RanecuEngine()
+        g4b.cppyy.gbl.CLHEP.HepRandom.setTheEngine(rand_engine)
+        g4b.cppyy.gbl.CLHEP.HepRandom.setTheSeed(g4_seed)
         g4RunManager.SetUserInitialization(my_g4d)
 
         # set physics list

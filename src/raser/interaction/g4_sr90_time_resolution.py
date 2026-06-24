@@ -5,7 +5,7 @@ Description:  g4_sr90_time_resolution.py
 @version    : 2.0
 '''
 
-import geant4_pybind as g4b
+import g4ppyy as g4b
 
 from .primary_generator_action import GeneralPrimaryGeneratorAction
 

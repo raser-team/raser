@@ -16,7 +16,6 @@ import random
 
 import ROOT
 ROOT.gROOT.SetBatch(True)
-import geant4_pybind as g4b
 
 from ..device import build_device as bdv
 from ..interaction.interaction import GeneralG4Interaction

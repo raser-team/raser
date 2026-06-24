@@ -11,7 +11,13 @@
 import os
 import math
 
-import geant4_pybind as g4b
+import g4ppyy as g4b
+g4b.include("G4VUserDetectorConstruction.hh")
+g4b.include("G4VUserActionInitialization.hh")
+g4b.include("G4VUserPrimaryGeneratorAction.hh")
+g4b.include("G4UserRunAction.hh")
+g4b.include("G4UserEventAction.hh")
+g4b.include("G4UserSteppingAction.hh")
 import json
 import numpy as np
 import time
@@ -37,7 +43,7 @@ class bmosG4Interaction:
 
         self.geant4_model = g4_dic["geant4_model"]
 
-        runManager = g4b.G4RunManagerFactory.CreateRunManager(g4b.G4RunManagerType.Serial)
+        runManager = g4b.G4RunManager.GetRunManager() or g4b.G4RunManager()
         UImanager = g4b.G4UImanager.GetUIpointer()
 
         physicsList = g4b.FTFP_BERT()

@@ -1,9 +1,11 @@
-import geant4_pybind as g4b
+import g4ppyy as g4b
+
+g4b.include("G4UserSteppingAction.hh")
 
 class GeneralSteppingAction(g4b.G4UserSteppingAction):
     "My Stepping Action"
     def __init__(self, eventAction):
-        g4b.G4UserSteppingAction.__init__(self)
+        super().__init__()
         self.fEventAction = eventAction
 
     def UserSteppingAction(self, step):

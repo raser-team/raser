@@ -12,22 +12,20 @@ Citation: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18905684.svg)](htt
 Prerequisites
 ======
 
-An environment with 
+RASER uses the CERN LCG view as the reference HEP runtime on lxlogin:
 
-    ROOT
-    Geant4
-    python packages in `cfg/raser.def`
-        
-you need to change the ```dir_geant4_data``` and the ```GEANT4_INSTALL``` in cfg/setup.sh by your Geant4 data path and install path.
-we recommand use apptainer and our .sif: https://ihepbox.ihep.ac.cn/ihepbox/index.php/s/Gp2SQIXLOUcKh4C
+    export RASER_LCG_VIEW=${RASER_LCG_VIEW:-/cvmfs/sft.cern.ch/lcg/views/LCG_106a_geant4ext20241128/x86_64-el9-gcc11-opt}
+    source env/setup.sh lxlogin
 
-For external users, .sif should be in `img/`.
+This view provides the matched CERN stack used by g4ppyy: Python 3.11.9, ROOT 6.32.08, and the runtime libraries used by Geant4 11.3.2. Geant4 itself is loaded from `/cvmfs/geant4.cern.ch/geant4/11.3.p02`, with data from `/cvmfs/geant4.cern.ch/share/data`.
 
-For developer using vscode, we recommand you follow this instruction to let Pylance able to read Python packages inside the .sif: https://stackoverflow.com/questions/63604427/launching-a-singularity-container-remotely-using-visual-studio-code
+Use conda for native tools that are not in the LCG view, and uv for Python packages:
 
-Notice that if you need to mount a symbol link to the .sif while entering the .sif by vscode, you need to mount their real paths too.
-
-Note: Python 3.9 is recommended. If your Python is of a higher version, you need to checkout a ROOT version compatible to the Python.
+    conda env create -p .conda/envs/raser -f env/conda.yml
+    conda activate $PWD/.conda/envs/raser
+    source env/setup.sh lxlogin
+    uv venv --system-site-packages --python "$(command -v python3.11)" .venv
+    uv pip sync --python .venv/bin/python env/uv-linux-x86.txt
 
 Before Run
 ======
@@ -36,15 +34,17 @@ While running raser you need in the directory of raser.
 
 run steps:
 
-    source cfg/setup.sh # before run
-    raser-shell (or entering your own's python virtual environment)
-    python3 src/raser <option <option tag>>
+    source env/setup.sh # before run
+    uv run python -m src.raser <option <option tag>>
 
 update:
 
     git pull
 
-For internal users on lxlogin, use cfg/setup_lxlogin.sh instead.
+For internal users on lxlogin, use env/setup.sh; it auto-detects lxlogin.
+To force the lxlogin profile manually:
+
+    source env/setup.sh lxlogin
 
 Output
 ======

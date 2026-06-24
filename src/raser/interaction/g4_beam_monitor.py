@@ -19,7 +19,7 @@ import json
 import os
 
 import numpy as np
-import geant4_pybind as g4b
+import g4ppyy as g4b
 
 from .interaction import GeneralG4Interaction
 from .detector_construction import GeneralDetectorConstruction
@@ -79,4 +79,3 @@ class BeamMonitorG4Interaction(GeneralG4Interaction):
                 if(len(energy)>i):
                     newtype_energy[i]+=energy[i]
         self.energy_steps=[newtype_energy]      #new particle's every step energy
-

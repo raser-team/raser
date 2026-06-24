@@ -7,12 +7,14 @@ Description:  primary_generator_action.py
 
 import random
 
-import geant4_pybind as g4b
+import g4ppyy as g4b
+
+g4b.include("G4VUserPrimaryGeneratorAction.hh")
 
 class GeneralPrimaryGeneratorAction(g4b.G4VUserPrimaryGeneratorAction):
     "My Primary Generator Action"
     def __init__(self,par_in,par_out,par_randx,par_randy,par_type,par_energy,geant4_model):
-        g4b.G4VUserPrimaryGeneratorAction.__init__(self)
+        super().__init__()
         self.geant4_model=geant4_model
         self.par_direction = [ par_out[i] - par_in[i] for i in range(3) ]  
         particle_table = g4b.G4ParticleTable.GetParticleTable()
