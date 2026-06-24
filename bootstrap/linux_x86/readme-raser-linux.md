@@ -2,7 +2,7 @@
 
 This bootstrap follows the repository environment split:
 
-- `env/uv-linux-x86.txt` locks the uv-managed Python environment.
+- `env/uv.txt` locks the uv-managed Python environment.
 - The reference SIF route does not install or use conda.
 - Geant4 is expected from the external host environment.
 - The Linux x86 conda environment is a separate native route for users who
@@ -27,8 +27,6 @@ Run with the external Geant4 runtime visible to `env/setup.sh`:
     source env/setup.sh
     apptainer exec --bind "$BINDPATH" --env-file .raser/env "$IMGFILE" \
         python -m src.raser signal HPK-Si-PiN
-
-`G4PPYY_LOAD_VIS=1` opts back into g4ppyy's Jupyter/K3D visualization imports.
 
 For users using the native self-managed route instead of SIF, create the Linux
 x86 conda environment from the repository root before creating the Python

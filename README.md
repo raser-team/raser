@@ -32,7 +32,7 @@ For the native Linux x86 conda route:
     conda env create -p .conda/envs/raser -f env/conda-linux-x86.yml
     conda activate $PWD/.conda/envs/raser
     uv venv --system-site-packages --python "$(command -v python3.11)" .venv
-    uv pip sync --python .venv/bin/python env/uv-linux-x86.txt
+    uv pip sync --python .venv/bin/python env/uv.txt
     export RASER_GEANT4_INSTALL=/path/to/geant4-install
     source env/setup.sh
 
@@ -67,7 +67,7 @@ newer on arm64 because the devsim wheel is tagged `macosx_14_0_arm64`:
     export RASER_GEANT4_INSTALL=/path/to/geant4-install
     source env/setup.sh
     uv venv --system-site-packages --python "$(command -v python3.11)" .venv
-    uv pip sync --python .venv/bin/python env/uv-linux-x86.txt
+    uv pip sync --python .venv/bin/python env/uv.txt
 
 The matching explicit conda spec can be used instead of the YAML file:
 

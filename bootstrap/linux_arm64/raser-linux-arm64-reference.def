@@ -22,6 +22,11 @@ From: ghcr.io/astral-sh/uv:python3.11-bookworm-slim
 
 %post
     set -ex
+    case "$(uname -m)" in
+        aarch64|arm64) ;;
+        *) echo "This bootstrap is for Linux arm64/aarch64 builders" >&2; exit 1 ;;
+    esac
+
     export DEBIAN_FRONTEND=noninteractive
     export MPLCONFIGDIR=/tmp/raser-matplotlib
     mkdir -p $MPLCONFIGDIR
