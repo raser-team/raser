@@ -41,8 +41,7 @@ if [ -n "${VIRTUAL_ENV:-}" ]; then
 fi
 
 raser_state_dir=$dir_raser/.raser
-mkdir -p "$raser_state_dir"
-mkdir -p "$raser_state_dir/matplotlib"
+mkdir -p "$raser_state_dir" "$raser_state_dir/matplotlib"
 cfg_env=$raser_state_dir/env
 rm -f "$cfg_env"
 cat > "$cfg_env" << EOF
@@ -82,7 +81,6 @@ EOF
 IMGFILE=$dir_raser/img/raser_latest.sif
 BINDPATH=$dir_raser,$geant4_prefix,/cvmfs/geant4.cern.ch/share/data,/cvmfs/sft.cern.ch/lcg
 [ -n "${RASER_EXTRA_BINDPATH:-}" ] && BINDPATH=$BINDPATH,$RASER_EXTRA_BINDPATH
-raser_test_path=raser/tests
 
 clean_bindpath=
 IFS=',' read -ra bind_items <<< "$BINDPATH"
@@ -101,7 +99,7 @@ alias raser-shell="apptainer shell --env-file $cfg_env -B $BINDPATH $IMGFILE"
 raser_exec="apptainer exec --env-file $cfg_env -B $BINDPATH $IMGFILE"
 raser_python="$raser_exec /opt/raser/bin/python"
 alias raser="$raser_python -m src.raser"
-alias raser-test="$raser_python -m unittest discover -v -s $raser_test_path"
+alias raser-test="$raser_python -m unittest discover -v -s raser/tests"
 alias pytest="$raser_exec pytest"
-alias raser-install="$raser_exec pip install -e ."
+# TODO: replace this alias with a first-class CLI command.
 alias mesh="$raser_python setting/detector"
