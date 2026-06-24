@@ -14,11 +14,8 @@ clean:
 	rm -rf dist raser.egg-info  
 
 RASER_LIMA_INSTANCE ?= apptainer
-RASER_SIF_COMMAND ?= python -m src.raser signal HPK-Si-PiN
+RASER_SIF_COMMAND ?= /opt/raser/bin/python -m src.raser signal HPK-Si-PiN
 RASER_BOOTSTRAP_DEF ?= bootstrap/linux/raser-linux-reference.def
-
-build-login:
-	ssh -Y [user]@lxlogin@ihep.ac.cn
 
 build-raser-sandbox: 
 	apptainer build --force --fakeroot --sandbox /tmp/raser-sandbox/ $(RASER_BOOTSTRAP_DEF)

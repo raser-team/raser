@@ -5,23 +5,6 @@
 dir_raser=$(cd "$(dirname "$(dirname "${BASH_SOURCE[0]}")")" && pwd)
 conda_prefix=${CONDA_PREFIX:-}
 [ -z "$conda_prefix" ] && [ -d "$dir_raser/.conda/envs/raser" ] && conda_prefix=$dir_raser/.conda/envs/raser
-profile=${RASER_SETUP_PROFILE:-${1:-}}
-if [ -z "$profile" ]; then
-    case "$(hostname -s 2>/dev/null)" in
-        lxlogin*) profile=lxlogin ;;
-        *) profile=local ;;
-    esac
-fi
-
-if [ "$profile" = lxlogin ]; then
-    case ":$PATH:" in
-        *:/cvmfs/common.ihep.ac.cn/software/hepjob/bin:*) ;;
-        *) export PATH=/cvmfs/common.ihep.ac.cn/software/hepjob/bin:$PATH ;;
-    esac
-elif [ "$profile" != local ]; then
-    echo "Unknown raser setup profile: $profile" >&2
-    return 1
-fi
 
 geant4_prefix=${RASER_GEANT4_INSTALL:-${GEANT4_INSTALL:-${GEANT4_DIR:-}}}
 if [ -z "$geant4_prefix" ] && command -v geant4-config >/dev/null 2>&1; then
@@ -42,9 +25,8 @@ fi
 if [ -n "$conda_prefix" ] && [ -x "$conda_prefix/bin/root-config" ]; then
     root_prefix=$("$conda_prefix/bin/root-config" --prefix 2>/dev/null)
 else
-    root_prefix=${ROOTSYS:-$(command -v root-config >/dev/null 2>&1 && root-config --prefix 2>/dev/null)}
+    root_prefix=/usr/local/share/root_install
 fi
-root_prefix=${root_prefix:-/usr/local/share/root_install}
 root_python_paths="$root_prefix/lib64/python3.11/site-packages $root_prefix/lib/python3.11/site-packages"
 export ROOTSYS=$root_prefix GEANT4_INSTALL=$geant4_prefix GEANT4_DIR=$geant4_prefix
 
@@ -89,7 +71,7 @@ fi
 cat >> "$cfg_env" << EOF
 
 # Python
-PYTHONPATH=${PYTHONPATH:-}
+PYTHONPATH=
 LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}
 MPLCONFIGDIR=$raser_state_dir/matplotlib
 
@@ -97,15 +79,10 @@ MPLCONFIGDIR=$raser_state_dir/matplotlib
 PYMTL_VERILATOR_INCLUDE_DIR="/usr/local/share/verilator/include"
 EOF
 
-if [ "$profile" = lxlogin ]; then
-    [ -f "$dir_raser/img/raser_latest.sif" ] && IMGFILE=$dir_raser/img/raser_latest.sif || IMGFILE=/afs/ihep.ac.cn/users/f/fucx/img/raser_latest.sif
-    BINDPATH=/cvmfs,/etc/condor/condor_config,/etc/condor/config.d,/etc/redhat-release,/run/user,$HOME/.Xauthority,$HOME/.vscode-server,$HOME/vscode-container,$dir_raser
-    raser_test_path=src/raser/tests
-else
-    IMGFILE=$dir_raser/img/raser_latest.sif
-    BINDPATH=$dir_raser,$geant4_prefix
-    raser_test_path=raser/tests
-fi
+IMGFILE=$dir_raser/img/raser_latest.sif
+BINDPATH=$dir_raser,$geant4_prefix,/cvmfs/geant4.cern.ch/share/data,/cvmfs/sft.cern.ch/lcg
+[ -n "${RASER_EXTRA_BINDPATH:-}" ] && BINDPATH=$BINDPATH,$RASER_EXTRA_BINDPATH
+raser_test_path=raser/tests
 
 clean_bindpath=
 IFS=',' read -ra bind_items <<< "$BINDPATH"
@@ -122,14 +99,9 @@ export IMGFILE BINDPATH=$clean_bindpath RASER_SETTING_PATH=$dir_raser/setting OP
 
 alias raser-shell="apptainer shell --env-file $cfg_env -B $BINDPATH $IMGFILE"
 raser_exec="apptainer exec --env-file $cfg_env -B $BINDPATH $IMGFILE"
-raser_python="$raser_exec python3"
+raser_python="$raser_exec /opt/raser/bin/python"
 alias raser="$raser_python -m src.raser"
 alias raser-test="$raser_python -m unittest discover -v -s $raser_test_path"
 alias pytest="$raser_exec pytest"
 alias raser-install="$raser_exec pip install -e ."
 alias mesh="$raser_python setting/detector"
-
-if [ "$profile" = lxlogin ]; then
-    alias drawfig="$raser_python misc/drawfig"
-    alias control="$raser_python misc/control"
-fi

@@ -26,8 +26,17 @@ From: ghcr.io/astral-sh/uv:python3.11-bookworm-slim
     export MPLCONFIGDIR=/tmp/raser-matplotlib
     mkdir -p $MPLCONFIGDIR
 
-    apt-get update
-    apt-get install -y --no-install-recommends \
+    apt_mirror=http://repo.huaweicloud.com
+    for apt_source in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+        [ -f "$apt_source" ] || continue
+        sed -i \
+            -e "s@http://deb.debian.org/debian-security@$apt_mirror/debian-security@g" \
+            -e "s@http://security.debian.org/debian-security@$apt_mirror/debian-security@g" \
+            -e "s@http://deb.debian.org/debian@$apt_mirror/debian@g" \
+            "$apt_source"
+    done
+    apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 update
+    apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 install -y --no-install-recommends \
         ca-certificates \
         git \
         bash \
@@ -68,9 +77,10 @@ echo "geant4-config: set GEANT4_INSTALL or GEANT4_DIR to a Geant4 installation" 
 exit 127
 EOF
     chmod +x /opt/raser/bin/geant4-config
+    ln -sf /opt/raser/bin/geant4-config /usr/local/bin/geant4-config
     rm -rf $UV_CACHE_DIR
 
-    $VIRTUAL_ENV/bin/python -c "import cppyy, importlib.util; assert importlib.util.find_spec('g4ppyy')"
+    $VIRTUAL_ENV/bin/python -c "import importlib.util; assert importlib.util.find_spec('g4ppyy')"
     ngspice -v
 
 %runscript
