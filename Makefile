@@ -15,16 +15,13 @@ clean:
 
 RASER_LIMA_INSTANCE ?= apptainer
 RASER_SIF_COMMAND ?= python -m src.raser signal HPK-Si-PiN
-RASER_BOOTSTRAP_DEF ?= bootstrap/linux_x86/raser-linux-reference.def
+RASER_BOOTSTRAP_DEF ?= bootstrap/linux/raser-linux-reference.def
 
 build-login:
 	ssh -Y [user]@lxlogin@ihep.ac.cn
 
 build-raser-sandbox: 
 	apptainer build --force --fakeroot --sandbox /tmp/raser-sandbox/ $(RASER_BOOTSTRAP_DEF)
-
-build-raser-sandbox-arm64:
-	$(MAKE) build-raser-sandbox RASER_BOOTSTRAP_DEF=bootstrap/linux_arm64/raser-linux-arm64-reference.def
 
 shell-raser-sandbox:
 	apptainer shell --env-file .raser/env --fakeroot -w /tmp/raser-sandbox 

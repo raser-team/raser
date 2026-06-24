@@ -12,16 +12,17 @@ Citation: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18905684.svg)](htt
 Prerequisites
 ======
 
-RASER has two Linux x86 routes. The tested SIF route does not install or use
-conda; it uses the uv-managed Python stack in the image and expects Geant4 from
-the external host environment. For a native self-managed environment, use conda
-for ROOT/ngspice/MKL and uv for Python packages.
+RASER has a Linux SIF route and native self-managed conda routes. The SIF route
+does not install or use conda; it uses the uv-managed Python stack in the image
+and expects Geant4 from the external host environment. For a native self-managed
+environment, use conda for ROOT/ngspice/MKL where available and uv for Python
+packages.
 
-Geant4 is external to both routes. Before sourcing `env/setup.sh`, make
+Geant4 is external to these routes. Before sourcing `env/setup.sh`, make
 `geant4-config` visible on `PATH`, or set `RASER_GEANT4_INSTALL` to the Geant4
 install prefix.
 
-For the Linux x86 SIF route:
+For the Linux SIF route:
 
     source env/setup.sh
     apptainer exec --bind "$BINDPATH" --env-file .raser/env "$IMGFILE" \
