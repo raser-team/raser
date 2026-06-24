@@ -2,7 +2,7 @@
 
 p1_current(){
 
-  source env/setup.sh lxlogin
+  source env/setup.sh
   cd src/raser/lumi
   mkdir tmp_event_folder
   
