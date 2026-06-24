@@ -1,0 +1,17 @@
+name: raser
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - uv=0.11.23
+  - root_base
+  - c-compiler
+  - cxx-compiler
+  - make
+  - pkg-config
+  - bison
+  - flex
+  - curl
+  - fftw
+  - ncurses
+  - readline

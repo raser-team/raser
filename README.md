@@ -12,20 +12,66 @@ Citation: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18905684.svg)](htt
 Prerequisites
 ======
 
-RASER uses the CERN LCG view as the reference HEP runtime on lxlogin:
+RASER has two Linux x86 routes. The tested SIF route does not install or use
+conda; it uses the uv-managed Python stack in the image and expects Geant4 from
+the external host environment. For a native self-managed environment, use conda
+for ROOT/ngspice/MKL and uv for Python packages.
 
-    export RASER_LCG_VIEW=${RASER_LCG_VIEW:-/cvmfs/sft.cern.ch/lcg/views/LCG_106a_geant4ext20241128/x86_64-el9-gcc11-opt}
-    source env/setup.sh lxlogin
+Geant4 is external to both routes. Before sourcing `env/setup.sh`, make
+`geant4-config` visible on `PATH`, or set `RASER_GEANT4_INSTALL` to the Geant4
+install prefix.
 
-This view provides the matched CERN stack used by g4ppyy: Python 3.11.9, ROOT 6.32.08, and the runtime libraries used by Geant4 11.3.2. Geant4 itself is loaded from `/cvmfs/geant4.cern.ch/geant4/11.3.p02`, with data from `/cvmfs/geant4.cern.ch/share/data`.
+For the Linux x86 SIF route:
 
-Use conda for native tools that are not in the LCG view, and uv for Python packages:
+    source env/setup.sh
+    apptainer exec --bind "$BINDPATH" --env-file .raser/env "$IMGFILE" \
+        python -m src.raser signal HPK-Si-PiN
 
-    conda env create -p .conda/envs/raser -f env/conda.yml
+For the native Linux x86 conda route:
+
+    conda env create -p .conda/envs/raser -f env/conda-linux-x86.yml
     conda activate $PWD/.conda/envs/raser
-    source env/setup.sh lxlogin
     uv venv --system-site-packages --python "$(command -v python3.11)" .venv
     uv pip sync --python .venv/bin/python env/uv-linux-x86.txt
+    export RASER_GEANT4_INSTALL=/path/to/geant4-install
+    source env/setup.sh
+
+The native Linux x86 conda environment includes `root_base`, `ngspice`, and
+MKL. This gives users without a site ROOT installation a working PyROOT matched
+to Python 3.11.
+
+The matching explicit conda spec can be used instead of the YAML file:
+
+    conda create -p .conda/envs/raser -c conda-forge --file env/conda-linux-64.lock
+
+Geant4 is intentionally not installed by conda. Use the Geant4 already provided
+by the host environment, or install Geant4 from the official source
+distribution and point RASER at it:
+
+    export RASER_GEANT4_INSTALL=/path/to/geant4-install
+    source env/setup.sh
+
+For the macOS SIF route:
+
+    make run-raser-sif-macos
+
+For native Apple Silicon, use the macOS arm64 conda environment. It does not
+install MKL; `root_base` is installed in the conda environment so PyROOT
+matches Python 3.11, and ngspice is built from the official source tarball into
+the active conda environment. The pinned Python packages require macOS 14 or
+newer on arm64 because the devsim wheel is tagged `macosx_14_0_arm64`:
+
+    conda env create -p .conda/envs/raser -f env/conda-macos-arm64.yml
+    conda activate $PWD/.conda/envs/raser
+    env/install-ngspice-macos-arm64.sh
+    export RASER_GEANT4_INSTALL=/path/to/geant4-install
+    source env/setup.sh
+    uv venv --system-site-packages --python "$(command -v python3.11)" .venv
+    uv pip sync --python .venv/bin/python env/uv-linux-x86.txt
+
+The matching explicit conda spec can be used instead of the YAML file:
+
+    conda create -p .conda/envs/raser -c conda-forge --file env/conda-macos-arm64.lock
 
 Before Run
 ======
@@ -40,11 +86,6 @@ run steps:
 update:
 
     git pull
-
-For internal users on lxlogin, use env/setup.sh; it auto-detects lxlogin.
-To force the lxlogin profile manually:
-
-    source env/setup.sh lxlogin
 
 Output
 ======

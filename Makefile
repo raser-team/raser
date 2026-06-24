@@ -13,6 +13,9 @@ merge:
 clean: 
 	rm -rf dist raser.egg-info  
 
+RASER_LIMA_INSTANCE ?= apptainer
+RASER_SIF_COMMAND ?= python -m src.raser signal HPK-Si-PiN
+
 build-login:
 	ssh -Y [user]@lxlogin@ihep.ac.cn
 
@@ -23,10 +26,16 @@ shell-raser-sandbox:
 	apptainer shell --env-file .raser/env --fakeroot -w /tmp/raser-sandbox 
 
 test-raser-sandbox:
-	apptainer shell --env-file .raser/env -B /afs,/besfs5,/cefs,/cvmfs,/etc/condor/,/etc/redhat-release,/publicfs,/scratchfs,/workfs2 /tmp/raser-sandbox 
+	apptainer shell --env-file .raser/env -B "$${BINDPATH:?source env/setup.sh first}" /tmp/raser-sandbox 
 
 build-raser-sif:
 	apptainer build --force --fakeroot raser.sif /tmp/raser-sandbox  
 
 shell-raser-sif:
-	apptainer shell --env-file .raser/env -B /afs,/besfs5,/cefs,/cvmfs,/etc/condor/,/etc/redhat-release,/publicfs,/scratchfs,/workfs2 raser.sif 
+	apptainer shell --env-file .raser/env -B "$${BINDPATH:?source env/setup.sh first}" raser.sif 
+
+run-raser-sif-macos:
+	limactl shell --workdir "$$(pwd)" $(RASER_LIMA_INSTANCE) sh -lc 'source env/setup.sh && apptainer exec --bind "$$BINDPATH" --env-file .raser/env "$$IMGFILE" $(RASER_SIF_COMMAND)'
+
+shell-raser-sif-macos:
+	limactl shell --workdir "$$(pwd)" $(RASER_LIMA_INSTANCE) sh -lc 'source env/setup.sh && apptainer shell --env-file .raser/env -B "$$BINDPATH" "$$IMGFILE"'

@@ -3,8 +3,6 @@
 [ -z "$PS1" ] && echo "Setting up raser ..."
 
 dir_raser=$(cd "$(dirname "$(dirname "${BASH_SOURCE[0]}")")" && pwd)
-RASER_LCG_VIEW=${RASER_LCG_VIEW:-/cvmfs/sft.cern.ch/lcg/views/LCG_106a_geant4ext20241128/x86_64-el9-gcc11-opt}
-RASER_GEANT4_INSTALL=${RASER_GEANT4_INSTALL:-/cvmfs/geant4.cern.ch/geant4/11.3.p02/x86_64-el9-gcc11-optdeb}
 conda_prefix=${CONDA_PREFIX:-}
 [ -z "$conda_prefix" ] && [ -d "$dir_raser/.conda/envs/raser" ] && conda_prefix=$dir_raser/.conda/envs/raser
 profile=${RASER_SETUP_PROFILE:-${1:-}}
@@ -20,7 +18,6 @@ if [ "$profile" = lxlogin ]; then
         *:/cvmfs/common.ihep.ac.cn/software/hepjob/bin:*) ;;
         *) export PATH=/cvmfs/common.ihep.ac.cn/software/hepjob/bin:$PATH ;;
     esac
-    [ -f "$RASER_LCG_VIEW/setup.sh" ] && . "$RASER_LCG_VIEW/setup.sh"
 elif [ "$profile" != local ]; then
     echo "Unknown raser setup profile: $profile" >&2
     return 1
@@ -31,14 +28,22 @@ if [ -z "$geant4_prefix" ] && command -v geant4-config >/dev/null 2>&1; then
     geant4_prefix=$(geant4-config --prefix 2>/dev/null)
 fi
 [ -n "$geant4_prefix" ] && [ -d "$geant4_prefix" ] && geant4_prefix=$(cd "$geant4_prefix" && pwd -P)
-if [ -x "$geant4_prefix/bin/geant4-config" ]; then
+if [ -n "$geant4_prefix" ] && [ -x "$geant4_prefix/bin/geant4-config" ]; then
     . "$geant4_prefix/bin/geant4.sh"
 else
-    echo "Warning from raser setup: cannot find geant4-config under $geant4_prefix" >&2
+    if [ -n "$geant4_prefix" ]; then
+        echo "Warning from raser setup: cannot find geant4-config under $geant4_prefix" >&2
+    else
+        echo "Warning from raser setup: cannot find geant4-config; set RASER_GEANT4_INSTALL or add geant4-config to PATH" >&2
+    fi
 fi
 [ -n "${VIRTUAL_ENV:-}" ] && export PATH=$VIRTUAL_ENV/bin:$PATH
 
-root_prefix=${ROOTSYS:-$(command -v root-config >/dev/null 2>&1 && root-config --prefix 2>/dev/null)}
+if [ -n "$conda_prefix" ] && [ -x "$conda_prefix/bin/root-config" ]; then
+    root_prefix=$("$conda_prefix/bin/root-config" --prefix 2>/dev/null)
+else
+    root_prefix=${ROOTSYS:-$(command -v root-config >/dev/null 2>&1 && root-config --prefix 2>/dev/null)}
+fi
 root_prefix=${root_prefix:-/usr/local/share/root_install}
 root_python_paths="$root_prefix/lib64/python3.11/site-packages $root_prefix/lib/python3.11/site-packages"
 export ROOTSYS=$root_prefix GEANT4_INSTALL=$geant4_prefix GEANT4_DIR=$geant4_prefix
@@ -63,7 +68,6 @@ cat > "$cfg_env" << EOF
 ROOTSYS=$root_prefix
 
 # Geant4
-RASER_LCG_VIEW=$RASER_LCG_VIEW
 GEANT4_INSTALL=$geant4_prefix
 GEANT4_DIR=$geant4_prefix
 EOF
