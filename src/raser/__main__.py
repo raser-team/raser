@@ -13,10 +13,14 @@ def _release_g4ppyy_globals():
     g4ppyy = sys.modules.get("g4ppyy")
     if g4ppyy is None:
         return
-    for name in ("RunManager", "VisExecutive"):
-        obj = getattr(g4ppyy._managers, name, None)
-        if hasattr(obj, "__python_owns__"):
-            obj.__python_owns__ = False
+    managers = getattr(g4ppyy, "_managers", None)
+    if managers is None:
+        return
+    for name in ("VisExecutive", "RunManager"):
+        obj = getattr(managers, name, None)
+        if hasattr(obj, "__destruct__"):
+            obj.__destruct__()
+            setattr(managers, name, None)
 
 parser = argparse.ArgumentParser(prog='raser')
 parser.add_argument('--version', action='version', 
@@ -142,4 +146,3 @@ if __name__ == "__main__":
             submodule.main(kwargs)
     finally:
         _release_g4ppyy_globals()
-
