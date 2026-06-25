@@ -1,6 +1,6 @@
 # Setup raser runtime environment
 
-[ -z "$PS1" ] && echo "Setting up raser ..."
+[ -z "${PS1:-}" ] && echo "Setting up raser ..."
 
 dir_raser=$(cd "$(dirname "$(dirname "${BASH_SOURCE[0]}")")" && pwd)
 raser_state_dir=$dir_raser/.raser
@@ -15,6 +15,8 @@ if [ -z "$raser_in_container" ]; then
 fi
 
 root_prefix=
+raser_conda_prefix=
+[ -d "$dir_raser/.conda/envs/raser" ] && raser_conda_prefix=$dir_raser/.conda/envs/raser
 geant4_prefix_hint=${RASER_GEANT4_INSTALL:-${GEANT4_INSTALL:-${GEANT4_DIR:-}}}
 unset PYTHONHOME PYTHONPATH
 raser_ponytail_path=$dir_raser/env/ponytail
@@ -47,6 +49,8 @@ fi
 
 if [ -n "${CONDA_PREFIX:-}" ] && [ -x "$CONDA_PREFIX/bin/root-config" ]; then
     root_prefix=$("$CONDA_PREFIX/bin/root-config" --prefix 2>/dev/null)
+elif [ -n "$raser_conda_prefix" ] && [ -x "$raser_conda_prefix/bin/root-config" ]; then
+    root_prefix=$("$raser_conda_prefix/bin/root-config" --prefix 2>/dev/null)
 elif [ -n "$raser_in_container" ] && [ -n "${ROOTSYS:-}" ]; then
     root_prefix=$ROOTSYS
 fi
@@ -60,8 +64,9 @@ fi
 
 if [ -n "$raser_in_container" ] && [ -z "${RASER_LCG_VIEW:-}" ] && [ -n "${VIRTUAL_ENV:-}" ] && [ -d "$VIRTUAL_ENV/bin" ]; then
     PATH=$VIRTUAL_ENV/bin:$PATH
-elif [ -z "$raser_in_container" ] && [ -z "$raser_sif_host" ] && [ -d "$dir_raser/.venv/bin" ]; then
-    PATH=$dir_raser/.venv/bin:$PATH
+elif [ -z "$raser_in_container" ] && [ -z "$raser_sif_host" ]; then
+    [ -n "$raser_conda_prefix" ] && [ -d "$raser_conda_prefix/bin" ] && PATH=$raser_conda_prefix/bin:$PATH
+    [ -d "$dir_raser/.venv/bin" ] && PATH=$dir_raser/.venv/bin:$PATH
 fi
 if [ -n "$raser_in_container" ] && [ -z "${RASER_LCG_VIEW:-}" ]; then
     # Keep container runtime libraries ahead of externally mounted libraries so

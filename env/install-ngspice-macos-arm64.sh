@@ -53,7 +53,7 @@ srcdir="$workdir/ngspice-${version}"
 
 export PATH="$CONDA_PREFIX/bin:$PATH"
 export CPPFLAGS="-I$CONDA_PREFIX/include ${CPPFLAGS:-}"
-export LDFLAGS="-L$CONDA_PREFIX/lib ${LDFLAGS:-}"
+export LDFLAGS="-L$CONDA_PREFIX/lib -Wl,-rpath,$CONDA_PREFIX/lib ${LDFLAGS:-}"
 export PKG_CONFIG_PATH="$CONDA_PREFIX/lib/pkgconfig:$CONDA_PREFIX/share/pkgconfig:${PKG_CONFIG_PATH:-}"
 
 cd "$srcdir"
@@ -62,6 +62,7 @@ cd "$srcdir"
     --with-x=no \
     --with-readline=yes \
     --enable-xspice \
+    --disable-openmp \
     --disable-debug
 
 jobs=${NGSPICE_MAKE_JOBS:-$(sysctl -n hw.ncpu 2>/dev/null || echo 2)}
