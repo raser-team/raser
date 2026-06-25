@@ -1,0 +1,67 @@
+{
+    "det_name" : "DJLGAD_Ayyoub_Table1_1D",
+    "det_model" : "lgad",
+    "material" : "Si",
+    "comment" : "Ayyoub Table 1 literature-reproduction version. 1D DJ-LGAD approximation: x=0 is top/readout surface; p-stop omitted because it is lateral/2D; n++ and p++ contacts are finite-width RASER-compatible contact approximations.",
+
+    "l_x" : 1300,
+    "l_y" : 1300,
+    "l_z" : 50,
+
+    "doping":{
+        "Acceptors" : "3.0e16*exp(-pow((x-5.5e-4)/(0.17e-4),2)) + 3.0e12*(step((49e-4)-x)-step(5.5e-4-x)) + 1.0e19*(step((50e-4)-x)-step((49e-4)-x))",
+        "Donors" : "1.0e19*step(1e-4-x) + 3.0e12*(step((4.0e-4)-x)-step(1e-4-x)) + 3.0e16*exp(-pow((x-4.0e-4)/(0.17e-4),2))"
+    },
+
+    "bias" : {
+        "electrode" : "top",
+        "voltage" : 200.0
+    },
+
+    "temperature" : 300.0,
+
+    "avalanche_bond" : 5.5,
+    "avalanche_model" : "vanOverstraeten",
+
+    "area_factor" : 1,
+    "default_dimension" : 1,
+    "read_out_contact" : [{"x_span":0, "y_span":0, "name":"top"}],
+    "field_shift_x" : 0,
+
+    "mesh" : {
+        "1D_mesh" : {
+            "mesh_line" : [
+                {"pos" : 0,       "ps" : 5e-5, "tag" : "top"},
+                {"pos" : 0.5e-4,  "ps" : 1e-5, "tag" : "nplus_mid"},
+                {"pos" : 1e-4,    "ps" : 1e-5, "tag" : "nplus_end"},
+                {"pos" : 3.5e-4,  "ps" : 5e-5, "tag" : "upper_drift_mid"},
+                {"pos" : 3.83e-4, "ps" : 5e-6, "tag" : "deep_n_sigma_low"},
+                {"pos" : 4.0e-4,  "ps" : 5e-6, "tag" : "deep_n_peak"},
+                {"pos" : 4.17e-4, "ps" : 5e-6, "tag" : "deep_n_sigma_high"},
+                {"pos" : 5.33e-4, "ps" : 5e-6, "tag" : "deep_p_sigma_low"},
+                {"pos" : 5.5e-4,  "ps" : 5e-6, "tag" : "deep_p_peak"},
+                {"pos" : 5.67e-4, "ps" : 5e-6, "tag" : "deep_p_sigma_high"},
+                {"pos" : 6.0e-4,  "ps" : 1e-5, "tag" : "buried_pn_end"},
+                {"pos" : 25e-4,   "ps" : 5e-5, "tag" : "lower_bulk_mid"},
+                {"pos" : 49e-4,   "ps" : 1e-5, "tag" : "pplus_start"},
+                {"pos" : 50e-4,   "ps" : 1e-5, "tag" : "bot"}
+            ],
+            "region" : [
+                {
+                    "material" : "Silicon",
+                    "region" : "DJLGAD_Ayyoub_Table1_1D",
+                    "tag1" : "top",
+                    "tag2" : "bot"
+                }
+            ],
+            "contact" : [
+                {"name" : "top", "tag" : "top", "material" : "metal"},
+                {"name" : "bot", "tag" : "bot", "material" : "metal"}
+            ]
+        }
+    },
+
+    "g4experiment" : "time_resolution",
+    "amplifier" : "Broad_Band_UCSC",
+    "daq" : "Alibava"
+}
