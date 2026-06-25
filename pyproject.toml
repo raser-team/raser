@@ -36,6 +36,13 @@ dependencies = [
   "g4ppyy",
 ]
 
+[dependency-groups]
+test = [
+  "mypy>=2",
+  "pytest>=8",
+  "ruff>=0.15",
+]
+
 [project.urls]
 Homepage = "https://github.com/raser-team/raser"
 Repository = "https://github.com/raser-team/raser"
@@ -45,3 +52,24 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+  "-ra",
+  "--strict-config",
+  "--strict-markers",
+]
+markers = [
+  "root: requires PyROOT",
+  "devsim: requires devsim",
+  "geant4: requires Geant4/g4ppyy",
+  "ngspice: requires ngspice executable",
+  "hardware: requires lab hardware",
+  "slow: long-running simulation or scan",
+]
+
+[tool.mypy]
+python_version = "3.11"
+check_untyped_defs = true
+ignore_missing_imports = true

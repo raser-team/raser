@@ -126,6 +126,9 @@ From: almalinux:9
     root-config --version
     root-config --python-version
     $VIRTUAL_ENV/bin/python -c "import ROOT; print(ROOT.gROOT.GetVersion())"
+    $VIRTUAL_ENV/bin/python -m pytest --version
+    $VIRTUAL_ENV/bin/python -m ruff --version
+    $VIRTUAL_ENV/bin/python -m mypy --version
     $VIRTUAL_ENV/bin/python -c "import importlib.util; assert importlib.util.find_spec('g4ppyy')"
     ngspice -v
 
