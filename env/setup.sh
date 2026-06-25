@@ -15,22 +15,34 @@ if [ -z "$raser_in_container" ]; then
 fi
 
 root_prefix=
-geant4_prefix=${RASER_GEANT4_INSTALL:-${GEANT4_INSTALL:-${GEANT4_DIR:-}}}
-[ -n "$geant4_prefix" ] && [ -d "$geant4_prefix" ] && geant4_prefix=$(cd "$geant4_prefix" && pwd -P)
+geant4_prefix_hint=${RASER_GEANT4_INSTALL:-${GEANT4_INSTALL:-${GEANT4_DIR:-}}}
 unset PYTHONHOME PYTHONPATH
 raser_ponytail_path=$dir_raser/env/ponytail
 
 if [ -z "$raser_sif_host" ] && [ -n "${RASER_LCG_VIEW:-}" ] && [ -r "$RASER_LCG_VIEW/setup.sh" ]; then
     . "$RASER_LCG_VIEW/setup.sh"
 fi
+geant4_config=
+if [ -n "$geant4_prefix_hint" ] && [ -x "$geant4_prefix_hint/bin/geant4-config" ]; then
+    geant4_config=$geant4_prefix_hint/bin/geant4-config
+elif command -v geant4-config >/dev/null 2>&1; then
+    geant4_config=$(command -v geant4-config)
+fi
+if [ -n "$geant4_config" ]; then
+    geant4_prefix=$("$geant4_config" --prefix 2>/dev/null)
+else
+    geant4_prefix=$geant4_prefix_hint
+fi
+[ -n "$geant4_prefix" ] && [ -d "$geant4_prefix" ] && geant4_prefix=$(cd "$geant4_prefix" && pwd -P)
 if [ -n "$raser_sif_host" ]; then
     :
 elif [ -x "$geant4_prefix/bin/geant4.sh" ]; then
     . "$geant4_prefix/bin/geant4.sh"
+    [ -x "$geant4_prefix/bin/geant4-config" ] && eval "$("$geant4_prefix/bin/geant4-config" --sh)"
 elif [ -n "$geant4_prefix" ]; then
     echo "Warning from raser setup: cannot find geant4.sh under $geant4_prefix" >&2
 else
-    echo "Warning from raser setup: set RASER_GEANT4_INSTALL, GEANT4_INSTALL, or GEANT4_DIR" >&2
+    echo "Warning from raser setup: put geant4-config on PATH, or set RASER_GEANT4_INSTALL, GEANT4_INSTALL, or GEANT4_DIR" >&2
 fi
 
 if [ -n "${CONDA_PREFIX:-}" ] && [ -x "$CONDA_PREFIX/bin/root-config" ]; then
