@@ -1,25 +1,25 @@
 {
-    "det_name" : "DJLGAD_Ayyoub_1D",
+    "det_name" : "DJLGAD_Ayyoub_Table1_1D",
     "det_model" : "lgad",
     "material" : "Si",
-    "comment" : "1D Ayyoub DJ-LGAD baseline, based on arXiv:2101.00511 Table 1; copied from DJLGAD_reference; p-stop and lateral structure omitted.",
+    "comment" : "Ayyoub Table 1 literature-reproduction version. 1D DJ-LGAD approximation: x=0 is top/readout surface; p-stop omitted because it is lateral/2D; n++ and p++ contacts are finite-width RASER-compatible contact approximations.",
 
     "l_x" : 1300,
     "l_y" : 1300,
     "l_z" : 50,
 
     "doping":{
-        "Acceptors" : "3.0e16*exp(-pow((x-5.5e-4)/(0.17e-4),2)) + 3.0e12*step(x-5.5e-4) + 1.0e19*step(x-49e-4)",
-        "Donors" : "1.0e19*step(1e-4-x) + 3.0e12*step(5.5e-4-x) + 3.0e16*exp(-pow((x-4.0e-4)/(0.17e-4),2))"
+        "Acceptors" : "3.0e16*exp(-pow((x-5.5e-4)/(0.17e-4),2)) + 3.0e12*(step((49e-4)-x)-step(5.5e-4-x)) + 1.0e19*(step((50e-4)-x)-step((49e-4)-x))",
+        "Donors" : "1.0e19*step(1e-4-x) + 3.0e12*(step((4.0e-4)-x)-step(1e-4-x)) + 3.0e16*exp(-pow((x-4.0e-4)/(0.17e-4),2))"
     },
 
     "bias" : {
         "electrode" : "top",
         "voltage" : 200.0
     },
-    
+
     "temperature" : 300.0,
-    
+
     "avalanche_bond" : 5.5,
     "avalanche_model" : "vanOverstraeten",
 
@@ -48,9 +48,9 @@
             ],
             "region" : [
                 {
-                    "material" : "Silicon", 
-                    "region" : "DJLGAD_Ayyoub_1D", 
-                    "tag1" : "top", 
+                    "material" : "Silicon",
+                    "region" : "DJLGAD_Ayyoub_Table1_1D",
+                    "tag1" : "top",
                     "tag2" : "bot"
                 }
             ],
