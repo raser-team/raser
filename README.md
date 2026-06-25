@@ -12,9 +12,10 @@ Citation: [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18905684.svg)](htt
 Prerequisites
 ======
 
-RASER's default self-managed route is conda: use conda for ROOT/ngspice/MKL
-where available and uv for Python packages. The SIF routes are kept under
-`bootstrap/` for cluster or containerized deployments.
+RASER's CVMFS setup prefers a local SIF image when one is available, then falls
+back to the native conda route. Use conda for ROOT/ngspice/MKL where available
+and uv for Python packages. The SIF routes are kept under `bootstrap/` for
+cluster or containerized deployments.
 
 Geant4 is external to these routes. Before sourcing `env/setup.sh`, make
 `geant4-config` visible on `PATH`, or set `RASER_GEANT4_INSTALL` to the Geant4
@@ -26,7 +27,7 @@ For the native Linux x86 conda route:
     conda activate $PWD/.conda/envs/raser
     uv venv --system-site-packages --python "$(command -v python3.11)" .venv
     uv sync --python .venv/bin/python --locked
-    source env/setup_cvmfs.sh
+    source env/setup_cvmfs.sh conda
 
 For the Ubuntu22.04 LCG cluster SIF route:
 

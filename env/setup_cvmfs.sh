@@ -5,12 +5,12 @@ raser_route=${1:-}
 raser_conda_setup=/cvmfs/common.ihep.ac.cn/software/anaconda/miniconda3-202505/etc/profile.d/conda.sh
 
 if [ -z "$raser_route" ]; then
-    if [ -f "$raser_conda_setup" ]; then
-        raser_route=conda
-    elif [ -f "$dir_raser/img/raser_ubuntu.sif" ]; then
+    if [ -f "$dir_raser/img/raser_ubuntu.sif" ]; then
         raser_route=ubuntu
     elif [ -f "$dir_raser/img/raser_el9.sif" ]; then
         raser_route=el9
+    elif [ -f "$raser_conda_setup" ]; then
+        raser_route=conda
     else
         raser_route=conda
     fi

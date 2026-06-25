@@ -1,8 +1,8 @@
 # RASER Bootstrap Routes
 
-The repository default for personal Linux use is the native conda route in the
-top-level `README.md`. The bootstrap directory keeps container routes for
-cluster or isolated deployments.
+The CVMFS setup prefers a local SIF image when one is available, then falls
+back to the native conda route described in the top-level `README.md`. The
+bootstrap directory keeps container routes for cluster or isolated deployments.
 
 `ubuntu/raser-ubuntu-sif.def` builds the Ubuntu22.04 SIF route. It uses a
 Python 3.11 project venv, installs ngspice from Ubuntu packages, and relies on
