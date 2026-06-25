@@ -49,7 +49,7 @@ fi
 
 if [ -n "${CONDA_PREFIX:-}" ] && [ -x "$CONDA_PREFIX/bin/root-config" ]; then
     root_prefix=$("$CONDA_PREFIX/bin/root-config" --prefix 2>/dev/null)
-elif [ -n "$raser_conda_prefix" ] && [ -x "$raser_conda_prefix/bin/root-config" ]; then
+elif [ -z "$raser_in_container" ] && [ -n "$raser_conda_prefix" ] && [ -x "$raser_conda_prefix/bin/root-config" ]; then
     root_prefix=$("$raser_conda_prefix/bin/root-config" --prefix 2>/dev/null)
 elif [ -n "$raser_in_container" ] && [ -n "${ROOTSYS:-}" ]; then
     root_prefix=$ROOTSYS
