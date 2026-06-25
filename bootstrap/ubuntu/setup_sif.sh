@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 dir_raser=$(cd "$(dirname "$(dirname "$(dirname "${BASH_SOURCE[0]}")")")" && pwd)
 
-export RASER_SIF_IMAGE=${RASER_SIF_IMAGE:-$dir_raser/img/raser_ubuntu.sif}
+raser_local_sif_image=$dir_raser/img/raser_ubuntu.sif
+if [ -z "${RASER_SIF_IMAGE:-}" ]; then
+    if [ -f "$raser_local_sif_image" ]; then
+        export RASER_SIF_IMAGE=$raser_local_sif_image
+    else
+        export RASER_SIF_IMAGE=/afs/ihep.ac.cn/users/f/fucx/raser/img/raser_ubuntu.sif
+    fi
+fi
 geant4_prefix=${RASER_GEANT4_INSTALL:-${GEANT4_INSTALL:-${GEANT4_DIR:-}}}
 if [ -z "$geant4_prefix" ]; then
     echo "Warning from raser Ubuntu SIF setup: set RASER_GEANT4_INSTALL, GEANT4_INSTALL, or GEANT4_DIR" >&2

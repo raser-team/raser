@@ -91,6 +91,9 @@ fi
 export PATH PYTHONPATH LD_LIBRARY_PATH GEANT4_INSTALL=$geant4_prefix GEANT4_DIR=$geant4_prefix
 export RASER_SETTING_PATH=$dir_raser/setting OPENBLAS_NUM_THREADS=1 MPLCONFIGDIR=$raser_state_dir/matplotlib
 
+unalias raser raser-test mesh raser-shell raser-exec 2>/dev/null || true
+unset -f raser raser-test mesh raser-shell raser-exec 2>/dev/null || true
+
 if [ -n "$raser_sif_host" ]; then
     raser-shell() {
         if [ -z "${RASER_SIF_IMAGE:-}" ]; then
