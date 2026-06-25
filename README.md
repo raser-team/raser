@@ -17,11 +17,14 @@ back to the native conda route. Use conda for ROOT/ngspice/MKL where available
 and uv for Python packages. The SIF routes are kept under `bootstrap/` for
 cluster or containerized deployments.
 
-When using git worktrees from this checkout, keep the SIF images in the main
-checkout's ignored `img/` directory and link each worktree's `img` entry back
-to it, for example `ln -s ../../img .worktrees/dev-3d-lgad/img`. This lets
-`env/setup_cvmfs.sh` find the same local runtime image from every worktree
-without copying large SIF files.
+When using git worktrees from this checkout, keep the SIF images and local
+runtime environments in the main checkout's ignored `img/`, `.conda/`, and
+`.venv/` directories. Link each worktree back to those shared paths, for
+example `ln -s ../../img .worktrees/dev-3d-lgad/img`,
+`ln -s ../../.conda .worktrees/dev-3d-lgad/.conda`, and
+`ln -s ../../.venv .worktrees/dev-3d-lgad/.venv`. This lets
+`env/setup_cvmfs.sh` find the same local runtime from every worktree without
+copying large SIF or environment directories.
 
 Geant4 is external to these routes. Before sourcing `env/setup.sh`, make
 `geant4-config` visible on `PATH`, or set `RASER_GEANT4_INSTALL` to the Geant4
