@@ -19,7 +19,6 @@ import random
 
 import ROOT
 ROOT.gROOT.SetBatch(True)
-import geant4_pybind as g4b
 
 from ..device import build_device as bdv
 from ..interaction.interaction import GeneralG4Interaction
@@ -61,7 +60,7 @@ def main(kwargs):
             amplifier = kwargs['amplifier']
         else:
             amplifier = my_d.amplifier
-    
+
         g4_seed = random.randint(0,1e7)
         my_g4 = GeneralG4Interaction(my_d, g4experiment, g4_seed)
 
@@ -154,4 +153,4 @@ if __name__ == '__main__':
         key, value = arg.split('=')
         kwargs[key] = value
     main(kwargs)
-    
+

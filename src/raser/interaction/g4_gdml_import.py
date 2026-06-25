@@ -8,7 +8,7 @@ Device volume so both can be inspected together in Geant4.
 import os
 import xml.etree.ElementTree as ET
 
-import geant4_pybind as g4b
+import g4ppyy as g4b
 
 from .detector_construction import GeneralDetectorConstruction
 

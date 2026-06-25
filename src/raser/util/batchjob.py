@@ -28,7 +28,7 @@ def main(destination_subfolder, command, batch_level, is_test):
     command_name = command.replace(" ","_").replace("/","_")
     jobfile_name = "./output/{}/jobs/".format(destination_subfolder)+command_name+".job"
     IMGFILE = os.environ.get('IMGFILE')
-    raser_shell = "/usr/bin/apptainer exec --env-file cfg/env" + " " \
+    raser_shell = "/usr/bin/apptainer exec --env-file .raser/env" + " " \
                 + IMGFILE + " " \
                 + "python3 -m src.raser"
     gen_job(jobfile_name, run_code=raser_shell+' '+command)

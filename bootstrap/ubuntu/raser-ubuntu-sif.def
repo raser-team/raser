@@ -1,0 +1,93 @@
+Bootstrap: docker
+From: ubuntu:22.04
+
+%files
+    env/uv.txt /opt/raser-uv.txt
+
+%environment
+    export LC_ALL=C
+    export LANG=C
+
+    export VIRTUAL_ENV=/opt/raser
+    export UV_PYTHON_INSTALL_DIR=/opt/uv-python
+    export UV_CACHE_DIR=/opt/uv-cache
+    export PATH=$VIRTUAL_ENV/bin:$PATH
+    export PYTHONHOME=
+    export PYTHONPATH=
+    export PYTHONNOUSERSITE=1
+    export MPLBACKEND=${MPLBACKEND:-Agg}
+    export MPLCONFIGDIR=${MPLCONFIGDIR:-/tmp/raser-matplotlib}
+
+%post
+    set -ex
+    export DEBIAN_FRONTEND=noninteractive
+    export MPLCONFIGDIR=/tmp/raser-matplotlib
+    mkdir -p $MPLCONFIGDIR
+
+    apt_mirror=http://repo.huaweicloud.com
+    for apt_source in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+        [ -f "$apt_source" ] || continue
+        sed -i \
+            -e "s@http://deb.debian.org/debian-security@$apt_mirror/debian-security@g" \
+            -e "s@http://security.debian.org/debian-security@$apt_mirror/debian-security@g" \
+            -e "s@http://deb.debian.org/debian@$apt_mirror/debian@g" \
+            -e "s@http://archive.ubuntu.com/ubuntu@$apt_mirror/ubuntu@g" \
+            -e "s@http://security.ubuntu.com/ubuntu@$apt_mirror/ubuntu@g" \
+            "$apt_source"
+    done
+    apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 update
+    apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        git \
+        bash \
+        g++ \
+        tar \
+        gzip \
+        libgl1 \
+        libglu1-mesa \
+        libhdf5-103-1 \
+        libicu70 \
+        libqt5gui5 \
+        libqt5opengl5 \
+        libqt5widgets5 \
+        libtbb12 \
+        libx11-6 \
+        libxext6 \
+        libxft2 \
+        libxm4 \
+        libxmu6 \
+        libxpm4 \
+        libxrender1 \
+        libxt6 \
+        libxxhash0 \
+        ngspice
+    rm -rf /var/lib/apt/lists/*
+
+    export VIRTUAL_ENV=/opt/raser
+    export UV_PYTHON_INSTALL_DIR=/opt/uv-python
+    export UV_CACHE_DIR=/opt/uv-cache
+    export PATH=$VIRTUAL_ENV/bin:$PATH
+    export CC=/usr/bin/gcc
+    export CXX=/usr/bin/g++
+    export CPPFLAGS=
+    export CFLAGS=
+    export CXXFLAGS=
+    export LDFLAGS=
+
+    curl --fail --location --retry 5 --output /tmp/install-uv.sh https://astral.sh/uv/install.sh
+    UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh /tmp/install-uv.sh
+    rm -f /tmp/install-uv.sh
+
+    uv python install 3.11.9
+    uv venv --python 3.11.9 $VIRTUAL_ENV
+    uv pip sync --python $VIRTUAL_ENV/bin/python /opt/raser-uv.txt
+    rm -rf $UV_CACHE_DIR
+
+    $VIRTUAL_ENV/bin/python --version
+    $VIRTUAL_ENV/bin/python -c "import importlib.util; assert importlib.util.find_spec('g4ppyy')"
+    $VIRTUAL_ENV/bin/python -c "import sqlite3; print(sqlite3.sqlite_version)"
+    ngspice -v
+
+%runscript
+    exec /bin/bash "$@"

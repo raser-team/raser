@@ -5,13 +5,15 @@ Description:  event_action.py
 @version    : 2.0
 '''
 
-import geant4_pybind as g4b
+import g4ppyy as g4b
+
+g4b.include("G4UserEventAction.hh")
 import numpy as np
 
 class GeneralEventAction(g4b.G4UserEventAction):
     "My Event Action"
     def __init__(self, runAction, point_in, point_out, eventIDs, edep_devices, p_steps, energy_steps, events_angles):
-        g4b.G4UserEventAction.__init__(self)
+        super().__init__()
         self.fRunAction = runAction
         self.point_in = point_in
         self.point_out = point_out

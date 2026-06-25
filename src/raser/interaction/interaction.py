@@ -12,7 +12,9 @@ import json
 import os
 
 import numpy as np
-import geant4_pybind as g4b
+import g4ppyy as g4b
+
+g4b.include("G4RunManager.hh")
 
 from .detector_construction import GeneralDetectorConstruction
 from .action_initialization import GeneralActionInitialization
@@ -54,31 +56,33 @@ class GeneralG4Interaction:
             from .g4_gdml_import import GDMLDetectorConstruction
             MyDetectorConstruction = GDMLDetectorConstruction
 
-        my_g4d = MyDetectorConstruction(my_d,g4_dic,detector_material,g4_dic['maxstep'])
+        self.my_g4d = MyDetectorConstruction(my_d,g4_dic,detector_material,g4_dic['maxstep'])
 
         g4_vis = g4_vis or g4_dic['g4_vis']
         if g4_vis: 
             ui = None
             ui = g4b.G4UIExecutive(1, [os.getcwd()]) # make sure the UI is created in the current working directory
 
-        g4RunManager = g4b.G4RunManagerFactory.CreateRunManager(g4b.G4RunManagerType.Default)
-        rand_engine= g4b.RanecuEngine()
-        g4b.HepRandom.setTheEngine(rand_engine)
-        g4b.HepRandom.setTheSeed(g4_seed)
-        g4RunManager.SetUserInitialization(my_g4d)
+        self.g4RunManager = g4b.G4RunManager.GetRunManager() or g4b.G4RunManager()
+        self.rand_engine= g4b.cppyy.gbl.CLHEP.RanecuEngine()
+        g4b.cppyy.gbl.CLHEP.HepRandom.setTheEngine(self.rand_engine)
+        g4b.cppyy.gbl.CLHEP.HepRandom.setTheSeed(g4_seed)
+        self.g4RunManager.SetUserInitialization(self.my_g4d)
 
         # set physics list
-        physics_list =  g4b.FTFP_BERT()
-        physics_list.RegisterPhysics(g4b.G4StepLimiterPhysics())
-        g4RunManager.SetUserInitialization(physics_list)
+        self.physics_list =  g4b.FTFP_BERT()
+        self.step_limiter_physics = g4b.G4StepLimiterPhysics()
+        self.physics_list.RegisterPhysics(self.step_limiter_physics)
+        self.g4RunManager.SetUserInitialization(self.physics_list)
 
         self.eventIDs, self.edep_devices, self.p_steps, self.energy_steps, self.events_angles = [],[],[],[],[]
 
         #define action
-        g4RunManager.SetUserInitialization(MyActionInitialization(
+        self.action_initialization = MyActionInitialization(
                                           g4_dic['par_in'], g4_dic['par_out'], g4_dic['par_randx'], g4_dic['par_randy'], g4_dic['par_type'], g4_dic['par_energy'],
                                           self.eventIDs, self.edep_devices, self.p_steps, self.energy_steps, self.events_angles,
-                                          self.geant4_model))
+                                          self.geant4_model)
+        self.g4RunManager.SetUserInitialization(self.action_initialization)
         
         if g4_vis:  
             visManager = g4b.G4VisExecutive()
@@ -96,7 +100,7 @@ class GeneralG4Interaction:
             UImanager.ApplyCommand('/process/had/verbose %d'%(verbose))
             UImanager.ApplyCommand('/run/initialize')
             
-        g4RunManager.BeamOn(int(g4_dic['total_events']))
+        self.g4RunManager.BeamOn(int(g4_dic['total_events']))
         if g4_vis:  
             ui.SessionStart()
             del ui

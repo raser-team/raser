@@ -1,8 +1,11 @@
-import geant4_pybind as g4b
+import g4ppyy as g4b
+
+g4b.include("G4UserRunAction.hh")
+g4b.include("G4Run.hh")
 
 class GeneralRunAction(g4b.G4UserRunAction):
     def __init__(self):
-        g4b.G4UserRunAction.__init__(self)
+        super().__init__()
       
     def BeginOfRunAction(self, run):
         g4b.G4RunManager.GetRunManager().SetRandomNumberStore(False)

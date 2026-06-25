@@ -1,7 +1,13 @@
 #!/usr/bin/env python3 
 import os
 import math
-import geant4_pybind as g4b
+import g4ppyy as g4b
+g4b.include("G4VUserDetectorConstruction.hh")
+g4b.include("G4VUserActionInitialization.hh")
+g4b.include("G4VUserPrimaryGeneratorAction.hh")
+g4b.include("G4UserRunAction.hh")
+g4b.include("G4UserEventAction.hh")
+g4b.include("G4UserSteppingAction.hh")
 import json
 
 nz_position,  ny_position, nparticle = [], [], []
@@ -267,7 +273,7 @@ def main():
     with open(geant4_json) as f:
         g4_dic = json.load(f)
 
-    runManager = g4b.G4RunManagerFactory.CreateRunManager(g4b.G4RunManagerType.Serial)
+    runManager = g4b.G4RunManager.GetRunManager() or g4b.G4RunManager()
     
     physicsList = g4b.FTFP_BERT()
     physicsList.RegisterPhysics(g4b.G4StepLimiterPhysics())
@@ -310,4 +316,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

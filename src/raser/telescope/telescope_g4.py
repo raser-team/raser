@@ -8,7 +8,8 @@ Description:  telescope_g4.py
 @version    : 2.0
 '''
 
-from geant4_pybind import *
+from g4ppyy import *
+# TODO(g4ppyy): verify telescope and replace wildcard imports with explicit names.
 import numpy as np
 
 import math
@@ -602,7 +603,7 @@ def main(batchMac = None):
     # G4Random.setTheEngine(MTwistEngine())
 
     # Construct the default run manager
-    runManager = G4RunManagerFactory.CreateRunManager(G4RunManagerType.Serial)
+    runManager = G4RunManager.GetRunManager() or G4RunManager()
 
     # Set mandatory initialization classes
     runManager.SetUserInitialization(B2aDetectorConstruction())
