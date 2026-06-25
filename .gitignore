@@ -3,6 +3,7 @@
 .venv
 .conda
 .raser
+.worktrees/
 
 output
 
