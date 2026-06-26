@@ -1,0 +1,11 @@
+{
+    "name" : "beam",
+    "kind" : "beam",
+    "description" : "Template for a mono-energetic beam; copy into a project and choose par_type, par_energy, par_in, par_out, and optional par_randx/par_randy.",
+    "par_type" : "proton",
+    "par_energy" : 1000.0,
+    "par_in" : [0, 0, 1000],
+    "par_out" : [0, 0, -1000],
+    "par_randx" : 0,
+    "par_randy" : 0
+}

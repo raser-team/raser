@@ -88,8 +88,11 @@ if [ -d "$raser_ponytail_path" ]; then
     # packages whose import-time behavior depends on the selected route.
     PYTHONPATH=$raser_ponytail_path${PYTHONPATH:+:$PYTHONPATH}
 fi
+PYTHONPATH=$dir_raser/src:$dir_raser${PYTHONPATH:+:$PYTHONPATH}
 export PATH PYTHONPATH LD_LIBRARY_PATH GEANT4_INSTALL=$geant4_prefix GEANT4_DIR=$geant4_prefix
-export RASER_SETTING_PATH=$dir_raser/setting OPENBLAS_NUM_THREADS=1 MPLCONFIGDIR=$raser_state_dir/matplotlib
+export RASER_WORK_PATH=$dir_raser/work
+export RASER_COMPONENT_PATH=$dir_raser/src/raser/components
+export RASER_SETTING_PATH=$RASER_COMPONENT_PATH OPENBLAS_NUM_THREADS=1 MPLCONFIGDIR=$raser_state_dir/matplotlib
 
 unalias raser raser-test mesh raser-shell raser-exec 2>/dev/null || true
 unset -f raser raser-test mesh raser-shell raser-exec 2>/dev/null || true
@@ -120,18 +123,20 @@ if [ -n "$raser_sif_host" ]; then
     }
 
     raser() {
-        raser-exec python -m src.raser "$@"
+        raser-exec python -m raser.cli.raser "$@"
     }
 
     raser-test() {
-        raser-exec python -m unittest discover -v -s src/raser/tests "$@"
+        raser-exec python -m pytest -m "not root and not devsim and not geant4 and not ngspice and not hardware and not slow" "$@"
     }
 
     mesh() {
-        raser-exec python setting/detector "$@"
+        raser-exec python src/raser/components/detector "$@"
     }
 else
-    alias raser="python -m src.raser"
-    alias raser-test="python -m unittest discover -v -s raser/tests"
-    alias mesh="python setting/detector"
+    raser() {
+        python -m raser.cli.raser "$@"
+    }
+    alias raser-test='python -m pytest -m "not root and not devsim and not geant4 and not ngspice and not hardware and not slow"'
+    alias mesh="python src/raser/components/detector"
 fi

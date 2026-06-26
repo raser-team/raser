@@ -47,11 +47,22 @@ test = [
 Homepage = "https://github.com/raser-team/raser"
 Repository = "https://github.com/raser-team/raser"
 
+[project.scripts]
+raser = "raser.cli.raser:main"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
+include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+raser = [
+  "components/**/*",
+  "apps/*/components/**/*",
+  "apps/bmos/*.cir",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

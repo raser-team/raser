@@ -1,0 +1,9 @@
+{
+    "name" : "Sr90",
+    "kind" : "radioactive_source",
+    "description" : "Sr-90 beta source endpoint approximation",
+    "par_type" : "e-",
+    "par_energy" : 2.28,
+    "par_in" : [0, 0, 17000],
+    "par_out" : [0, 0, -17000]
+}
