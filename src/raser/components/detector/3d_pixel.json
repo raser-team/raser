@@ -35,9 +35,5 @@
         "tcad_mesh" : {
             "file" : "./output/field/3d_pixel/-500.0V.tdr"
         }
-    },
-
-    "g4experiment" : "proton_beam",
-    "amplifier" : "Broad_Band_UCSC",
-    "daq" : "Alibava"
+    }
 }

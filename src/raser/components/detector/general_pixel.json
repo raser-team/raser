@@ -34,9 +34,5 @@
         "mesher":"sde"
     },
 
-    "cross_talk": null,
-    
-    "g4experiment" : "beta_source",
-    "amplifier" : "Broad_Band_UCSC",
-    "daq" : "Alibava"
+    "cross_talk": null
 }

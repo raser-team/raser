@@ -5,7 +5,7 @@ pytestmark = pytest.mark.root
 
 
 def test_set_tmp_cir_rewrites_pwl_raw_and_noise_lines(tmp_path):
-    from raser.core.afe.ngspice import set_tmp_cir
+    from raser.core.analog.ngspice import set_tmp_cir
 
     circuit = tmp_path / "amplifier.cir"
     circuit.write_text(

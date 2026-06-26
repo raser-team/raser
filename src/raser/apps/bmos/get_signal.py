@@ -24,14 +24,14 @@ import numpy
 from raser.core.device import build_device as bdv
 from raser.core.field import devsim_field as devfield
 from raser.core.current import cal_current as ccrt
-from raser.core.afe.set_pwl_input import set_pwl_input as pwlin
+from raser.core.analog.set_pwl_input import set_pwl_input as pwlin
 from raser.supports.output import output
-from raser.supports.paths import component_path
+from raser.supports.paths import app_file_path
 from. import bmos
 
 def get_signal(sensor):
 
-    geant4_json = component_path("g4experiment", "bmos.json")
+    geant4_json = app_file_path("bmos", "bmos.json")
     with open(geant4_json) as f:
          g4_dic = json.load(f)
 
@@ -146,10 +146,6 @@ def read_file_current(file_path, file_name):
 def draw(output_path, pwl_name, filename_after_ngspice, tag, totalengry):
     file_path = output_path
     
-    # geant4_json = os.getenv("RASER_SETTING_PATH")+"/g4experiment/cflm.json"
-    # with open(geant4_json) as f:
-    #      g4_dic = json.load(f)
-
     file_name_v = filename_after_ngspice
     file_name_c = pwl_name
 

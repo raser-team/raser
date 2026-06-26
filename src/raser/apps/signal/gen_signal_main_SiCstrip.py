@@ -16,6 +16,7 @@ import time
 import subprocess
 import json
 import random
+from pathlib import Path
 
 import ROOT
 ROOT.gROOT.SetBatch(True)
@@ -24,9 +25,20 @@ from raser.core.device import build_device as bdv
 from raser.core.interaction.interaction import GeneralG4Interaction
 from raser.core.field import devsim_field as devfield
 from raser.core.current import cal_current as ccrt
-from raser.core.afe import readout as rdo
+from raser.core.analog.readout import Amplifier
 from .draw_save import energy_deposition, draw_drift_path
 from raser.supports.output import output
+from raser.supports.paths import app_file_path
+
+
+def _load_signal_g4_config(g4experiment):
+    candidate = Path(g4experiment)
+    if candidate.exists():
+        path = candidate
+    else:
+        path = app_file_path("signal", g4experiment + ".json")
+    with open(path) as f:
+        return json.load(f)
 
 
 def main(kwargs):
@@ -56,6 +68,7 @@ def main(kwargs):
             g4experiment = kwargs['g4experiment']
         else:
             g4experiment = my_d.g4experiment
+        g4experiment = _load_signal_g4_config(g4experiment)
         if kwargs['amplifier'] != None:
             amplifier = kwargs['amplifier']
         else:
@@ -87,7 +100,7 @@ def main(kwargs):
 
             my_current.save_current(my_d)
             if 'ngspice' not in amplifier:
-                ele_current = rdo.Amplifier(my_current.sum_cu, amplifier)
+                ele_current = Amplifier(my_current.sum_cu, amplifier)
                 my_current.draw_currents(path) # Draw current
                 ele_current.draw_waveform(my_current.sum_cu, path) # Draw waveform
                 if 'strip' in my_d.det_model:
@@ -102,6 +115,7 @@ def main(kwargs):
             g4experiment = kwargs['g4experiment']
         else:
             g4experiment = my_d.g4experiment
+        g4experiment = _load_signal_g4_config(g4experiment)
         if kwargs['amplifier'] != None:
             amplifier = kwargs['amplifier']
         else:
@@ -135,7 +149,7 @@ def main(kwargs):
 
             my_current.save_current(my_d)
             if 'ngspice' not in amplifier:
-                ele_current = rdo.Amplifier(my_current.sum_cu, amplifier)
+                ele_current = Amplifier(my_current.sum_cu, amplifier)
                 my_current.draw_currents(path) # Draw current
                 ele_current.draw_waveform(my_current.sum_cu, path) # Draw waveform
                 if 'strip' in my_d.det_model:
@@ -153,4 +167,3 @@ if __name__ == '__main__':
         key, value = arg.split('=')
         kwargs[key] = value
     main(kwargs)
-

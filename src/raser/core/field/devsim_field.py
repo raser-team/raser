@@ -8,12 +8,11 @@
 '''
 
 import pickle
-import re
 import os
 import logging
-import math
 
 import ROOT
+from .assets import resolve_field_pickle
 from raser.supports.math import calculate_gradient
 from raser.supports.math import get_common_interpolate_1d
 from raser.supports.math import get_common_interpolate_2d
@@ -33,7 +32,7 @@ resolution_default_3d = {'z': 0.5, 'x': 1, 'y': 1}
 
 class DevsimField:
     def __init__(self, device_name, dimension, voltage, read_out_contact, mesher, is_plugin=False, irradiation_flux=0, 
-                 bounds=None, resolution=None,):
+                 bounds=None, resolution=None, field_set="default",):
         self.name = device_name
         self.voltage = voltage
         self.dimension = dimension
@@ -85,7 +84,7 @@ class DevsimField:
             'trap_e_hits': 0, 'trap_e_misses': 0,
         }
 
-        path = str(project_path("field",self.name)) + os.sep
+        path = str(project_path("field", field_set)) + os.sep
 
         # Weighting Potential is universal for all irradiation flux
         # TODO: Net Doping should be here too
@@ -93,8 +92,8 @@ class DevsimField:
         for contact in read_out_contact:
             WeightingPotentialFiles.append(path + "weightingfield/{}/Potential_{}V.pkl".format(contact['name'], 1))
 
-        if irradiation_flux != 0:
-            path = str(project_path("field",self.name, str( irradiation_flux))) + os.sep
+        if irradiation_flux != 0 and field_set == "default":
+            path = str(project_path("field", str(irradiation_flux))) + os.sep
 
         DopingFile = None
         doping_file_pattern = re.compile(r'^NetDoping_(-?\d+\.?\d*)V\.pkl$')
@@ -104,9 +103,9 @@ class DevsimField:
                 # example: DopingFile = path + "NetDoping_0V.pkl"
                 break
 
-        PotentialFile = self._resolve_voltage_pickle(path, "Potential", self.voltage)
-        TrappingRate_pFile = self._resolve_voltage_pickle(path, "TrappingRate_p", self.voltage)
-        TrappingRate_nFile = self._resolve_voltage_pickle(path, "TrappingRate_n", self.voltage)
+        PotentialFile = resolve_field_pickle(path, "Potential", self.voltage)
+        TrappingRate_pFile = resolve_field_pickle(path, "TrappingRate_p", self.voltage)
+        TrappingRate_nFile = resolve_field_pickle(path, "TrappingRate_n", self.voltage)
 
         self.set_doping(DopingFile) #self.Doping
         self.set_potential(PotentialFile) #self.Potential, self.x_efield, self.y_efield, self.z_efield
@@ -115,23 +114,6 @@ class DevsimField:
         self.set_w_p(WeightingPotentialFiles) #self.weighting_potential[]
         
         logger.info(f"DevsimField initialization complete, resolution: {self.resolution} um")
-
-    def _resolve_voltage_pickle(self, path, prefix, voltage):
-        exact_path = os.path.join(path, "{}_{}V.pkl".format(prefix, voltage))
-        if os.path.exists(exact_path):
-            return exact_path
-
-        try:
-            target_voltage = float(voltage)
-        except (TypeError, ValueError):
-            return exact_path
-
-        pattern = re.compile(r"^{}_(-?\d+(?:\.\d+)?)V\.pkl$".format(re.escape(prefix)))
-        for filename in os.listdir(path):
-            match = pattern.match(filename)
-            if match and math.isclose(float(match.group(1)), target_voltage, rel_tol=0.0, abs_tol=1e-9):
-                return os.path.join(path, filename)
-        return exact_path
 
     def set_doping(self, DopingFile):
         try:

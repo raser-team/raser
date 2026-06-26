@@ -68,9 +68,5 @@
                  "xl" : 1.8e-2, "xh" : 1.8e-2, "bloat" : 1e-10}
             ]
         }
-    },
-
-    "g4experiment" : "beta_source",
-    "amplifier" : "Broad_Band_UCSC",
-    "daq" : "Alibava"
+    }
 }

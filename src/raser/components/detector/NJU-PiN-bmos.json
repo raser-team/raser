@@ -85,8 +85,5 @@
                  "xl" : 100e-4, "xh" : 100e-4, "bloat" : 1e-5}
             ]
         }
-    },
-    "g4experiment" : "time_resolution",
-    "amplifier" : "src/raser/bmos/ucsc.cir",
-    "daq" : "Alibava"
+    }
 }

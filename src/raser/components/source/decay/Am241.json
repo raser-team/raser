@@ -1,6 +1,6 @@
 {
     "name" : "Am241",
-    "kind" : "radioactive_source",
+    "kind" : "decay_source",
     "description" : "Am-241 alpha source",
     "par_type" : "alpha",
     "par_energy" : 5.54,

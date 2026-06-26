@@ -9,12 +9,13 @@ from raser.core.device import build_device as bdv
 from raser.core.field import devsim_field as devfield
 from raser.core.current import cal_current as ccrt
 from raser.supports.output import output
+from raser.supports.paths import app_file_path
 from raser.supports.paths import component_path
 import json
 
 def main(output_path):
     
-    geant4_json = component_path('g4experiment', 'cflm_p1.json')
+    geant4_json = app_file_path("lumi", "cflm_p1.json")
     with open(geant4_json) as f:
          g4_dic = json.load(f)
 

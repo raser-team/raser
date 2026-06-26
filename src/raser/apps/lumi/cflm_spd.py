@@ -9,7 +9,7 @@ g4b.include("G4UserRunAction.hh")
 g4b.include("G4UserEventAction.hh")
 g4b.include("G4UserSteppingAction.hh")
 import json
-from raser.supports.paths import component_path
+from raser.supports.paths import app_file_path
 from raser.supports.output import output
 
 nz_position,  ny_position, nparticle = [], [], []
@@ -271,7 +271,7 @@ class cflmaActionInitialization(g4b.G4VUserActionInitialization):
 
 def main():
 
-    geant4_json = component_path("g4experiment", "cflm_spd.json")
+    geant4_json = app_file_path("lumi", "cflm_spd.json")
     with open(geant4_json) as f:
         g4_dic = json.load(f)
 

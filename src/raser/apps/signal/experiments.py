@@ -4,48 +4,60 @@ import copy
 import json
 from pathlib import Path
 
-from raser.supports.paths import app_component_roots
+from raser.supports.paths import PACKAGE_ROOT
 from raser.supports.paths import component_file_path
 from raser.supports.paths import component_path
+from raser.supports.paths import component_roots
 
 
 DEFAULT_EXPERIMENT = "charge_collection"
-DEFAULT_SOURCE = "radioactive/Am241"
+DEFAULT_SOURCE = "decay/Am241"
+APP_EXPERIMENTS = {
+    "charge_collection": PACKAGE_ROOT / "apps" / "cce" / "charge_collection.json",
+    "time_resolution": PACKAGE_ROOT / "apps" / "timeres" / "time_resolution.json",
+}
 
 
-def _load_app_component(kind, name_or_path):
-    config_name = name_or_path
-    config_path = Path(config_name)
-    if (
-        hasattr(config_name, "__fspath__")
-        or config_path.is_absolute()
-        or (config_path.parts and config_path.parts[0] in {".", ".."})
-        or config_path.suffix
-    ):
-        config_json = component_file_path(kind, config_name)
-    else:
-        config_json = component_path(
-            kind,
-            str(config_name) + ".json",
-            roots=app_component_roots("signal"),
-        )
+def _is_explicit_path(value):
+    path = Path(value)
+    return (
+        hasattr(value, "__fspath__")
+        or path.is_absolute()
+        or (path.parts and path.parts[0] in {".", ".."})
+        or path.suffix
+    )
+
+
+def _load_json(config_json):
     with open(config_json) as f:
         config = json.load(f)
-    config.setdefault("name", config_json.stem)
+    config.setdefault("name", Path(config_json).stem)
     return config
 
 
 def load_signal_experiment(name_or_path=None):
-    experiment = _load_app_component(
-        "signal_experiment",
-        name_or_path or DEFAULT_EXPERIMENT,
-    )
-    experiment.setdefault("output_label", experiment["name"])
-    return experiment
+    config_name = name_or_path or DEFAULT_EXPERIMENT
+    if _is_explicit_path(config_name):
+        return _load_json(component_file_path("experiment", config_name))
+    try:
+        return _load_json(APP_EXPERIMENTS[str(config_name)])
+    except KeyError as exc:
+        raise FileNotFoundError(f"Cannot find RASER app experiment: {config_name}") from exc
 
 
 def load_signal_source(name_or_path=None):
-    return _load_app_component("source", name_or_path or DEFAULT_SOURCE)
+    config_name = name_or_path or DEFAULT_SOURCE
+    if _is_explicit_path(config_name):
+        return _load_json(component_file_path("source", config_name))
+    try:
+        return _load_json(component_path("source", str(config_name) + ".json"))
+    except FileNotFoundError:
+        matches = []
+        for root in component_roots():
+            matches.extend(root.joinpath("source").glob(f"*/{config_name}.json"))
+        if len(matches) != 1:
+            raise
+        return _load_json(matches[0])
 
 
 def compose_g4_config(experiment, source):
@@ -67,7 +79,7 @@ def apply_signal_experiment(my_d, kwargs):
     my_d.daq = experiment.get("daq") or my_d.daq
     my_d.signal_experiment = experiment["name"]
     my_d.signal_source = source["name"]
-    my_d.signal_output_label = experiment["output_label"]
+    my_d.signal_output_label = experiment.get("output_label", experiment["name"])
 
     missing = [
         name

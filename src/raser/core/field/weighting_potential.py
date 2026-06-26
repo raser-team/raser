@@ -11,18 +11,19 @@ import pickle
 
 import numpy as np
 
+from .assets import resolve_field_pickle
 from . import devsim_draw
 from raser.supports.output import create_path
 from raser.supports.paths import project_path
 
 def main(v, electrode_name, det_name):
-    v = float(v)
+    voltage = float(v)
 
-    potential_file = project_path("field",det_name, "Potential_"+str(v)+'V.pkl')
-    added_potential_file = project_path(
-        "field",det_name,
-        "weightingfield",electrode_name,
-        "Potential_"+str(v)+'V.pkl',
+    potential_file = resolve_field_pickle(project_path("field", "default"), "Potential", voltage)
+    added_potential_file = resolve_field_pickle(
+        project_path("field", "default", "weightingfield", electrode_name),
+        "Potential",
+        voltage,
     )
     with open(potential_file,'rb') as file:
         potential = pickle.load(file)
@@ -37,7 +38,7 @@ def main(v, electrode_name, det_name):
     # assume 1 volt added for weighting field calculation
 
     w_p_data = {'points': points, 'values': values, 'metadata':{'voltage': 1, 'dimension': dimension},}
-    path = project_path("field",det_name, "weightingfield",electrode_name)
+    path = project_path("field", "default", "weightingfield",electrode_name)
     create_path(path)
     w_p_file = path / 'Potential_1V.pkl'
     with open(w_p_file, 'wb') as file:

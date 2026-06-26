@@ -25,6 +25,7 @@ dependencies = [
   "scipy",
   "pandas",
   "matplotlib",
+  "netCDF4",
   "h5py",
   "PyYAML",
   "tqdm",
@@ -34,12 +35,13 @@ dependencies = [
   "psutil",
   "devsim",
   "g4ppyy",
+  "pymtl3",
 ]
 
 [dependency-groups]
 test = [
   "mypy>=2",
-  "pytest>=8",
+  "pytest>=7.4,<8",
   "ruff>=0.15",
 ]
 
@@ -60,6 +62,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 raser = [
   "components/**/*",
+  "apps/*/*.json",
   "apps/*/components/**/*",
   "apps/bmos/*.cir",
 ]

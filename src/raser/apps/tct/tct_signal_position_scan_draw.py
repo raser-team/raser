@@ -20,7 +20,7 @@ ROOT.gROOT.SetBatch(True)
 from raser.core.device import build_device as bdv
 from raser.core.field import devsim_field as devfield
 from raser.core.current import cal_current as ccrt
-from raser.core.afe import readout as rdo
+from raser.core.analog.readout import Amplifier
 from ..signal import draw_save
 from raser.supports.output import output
 from raser.supports.paths import component_path
@@ -145,7 +145,7 @@ def main(kwargs):
 
     if kwargs['laser'] != None:
         laser = kwargs['laser']
-        laser_json = component_path("laser", laser + ".json")
+        laser_json = component_path("source", "laser", laser + ".json")
         with open(laser_json) as f:
             laser_dic = json.load(f)
             my_l = LaserInjection(my_d, laser_dic)

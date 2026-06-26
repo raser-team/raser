@@ -65,7 +65,7 @@ class loop_section:
             devsim.solve(type="dc", absolute_error=self.paras['absolute_error_VoltageSteps'], relative_error=self.paras['relative_error_VoltageSteps'], maximum_iterations=self.paras['maximum_iterations_VoltageSteps'],)
             self.voltage.append(v_trial)
         except devsim.error as msg:
-            path = output(__file__, self.device)
+            path = output(__file__, "default")
             devsim.write_devices(file=os.path.join(path, "last_solvable.dd"), type="tecplot")
             raise
         
@@ -93,4 +93,3 @@ class loop_section:
         return self.capacitance
     def get_noise_values(self):
         return self.noise
-

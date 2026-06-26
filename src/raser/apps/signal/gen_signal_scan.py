@@ -22,14 +22,14 @@ from raser.core.interaction.interaction import GeneralG4Interaction
 from raser.core.field import devsim_field as devfield
 from raser.core.current import cal_current as ccrt
 from raser.core.current.cross_talk import cross_talk
-from raser.core.afe import readout as rdo
-from raser.supports.output import output
+from raser.core.analog.readout import Amplifier
 from raser.supports.math import inversed_fast_fourier_transform as ifft
 from raser.supports.paths import component_path
 from raser.supports.paths import optional_component_path
+from raser.supports import runs
 from .experiments import apply_signal_experiment
 
-def batch_loop(my_d, my_f, my_g4, g4_seed, total_events, instance_number):
+def batch_loop(my_d, my_f, my_g4, g4_seed, total_events, instance_number, output_path):
     """
     Description:
         Batch run some events to get time resolution
@@ -109,7 +109,7 @@ def batch_loop(my_d, my_f, my_g4, g4_seed, total_events, instance_number):
             else:
                 my_current.cross_talk_cu = my_current.sum_cu
 
-            ele_current = rdo.Amplifier(my_current.cross_talk_cu, my_d.amplifier, seed=event, is_cut=True)
+            ele_current = Amplifier(my_current.cross_talk_cu, my_d.amplifier, seed=event, is_cut=True)
 
             event_array[0] = event
             e_dep_array[0] = my_g4.edep_devices[event-start_n]
@@ -134,15 +134,17 @@ def batch_loop(my_d, my_f, my_g4, g4_seed, total_events, instance_number):
     detection_efficiency =  effective_number/(end_n-start_n) 
     print("detection_efficiency=%s"%detection_efficiency)
 
-    file_path = os.path.join(output(__file__, my_d.signal_output_label, my_d.signal_source, 'batch'),
-                             "signal_"+
-                             str(instance_number)+
-                             str(my_d.voltage)+
-                             str(my_d.irradiation_flux)+
-                             str(my_d.bound)+
-                             str(my_d.g4experiment)+
-                             str(my_d.amplifier)+
-                             ".root")
+    file_path = os.path.join(
+        output_path,
+        "signal_"+
+        str(instance_number)+
+        str(my_d.voltage)+
+        str(my_d.irradiation_flux)+
+        str(my_d.bound)+
+        str(my_d.g4experiment)+
+        str(my_d.amplifier)+
+        ".root",
+    )
     file = ROOT.TFile(file_path, "RECREATE")
     tree.Write()
     file.Close()
@@ -156,8 +158,24 @@ def main(kwargs):
 
     if kwargs['irradiation'] != None:
         my_d.irradiation_flux = float(kwargs['irradiation'])
+    if kwargs.get("events_per_job") is not None:
+        my_d.g4_config["total_events"] = int(kwargs["events_per_job"])
 
-    my_f = devfield.DevsimField(my_d.device, my_d.dimension, my_d.voltage, my_d.read_out_contact, my_d.mesher, is_plugin=my_d.is_plugin(), irradiation_flux=my_d.irradiation_flux, bounds=my_d.bound) 
+    runs.prepare_run_record(kwargs, my_d)
+    my_d.device = kwargs["_field_source"]
+    my_d.region = kwargs["_field_source"]
+
+    my_f = devfield.DevsimField(
+        my_d.device,
+        my_d.dimension,
+        my_d.voltage,
+        my_d.read_out_contact,
+        my_d.mesher,
+        is_plugin=my_d.is_plugin(),
+        irradiation_flux=my_d.irradiation_flux,
+        bounds=my_d.bound,
+        field_set=kwargs["_field_set"],
+    )
     if "lgad" in my_d.det_model:
         my_d.gain_rate_cal(my_f)
 
@@ -170,8 +188,12 @@ def main(kwargs):
     g4_seed = instance_number * total_events
     my_g4 = GeneralG4Interaction(my_d, my_d.g4_config, g4_seed)
 
-    ele_json = optional_component_path("electronics", my_d.amplifier + ".json")
-    ele_cir = optional_component_path("electronics", my_d.amplifier + ".cir")
+    ele_json = optional_component_path(
+        "electronics", "analog", my_d.amplifier + ".json"
+    )
+    ele_cir = optional_component_path(
+        "electronics", "analog", my_d.amplifier + ".cir"
+    )
     if ele_json is not None and os.path.exists(ele_json):
         ROOT.gRandom.SetSeed(instance_number) # to ensure time resolution result reproducible
     elif ele_cir is not None and os.path.exists(ele_cir):
@@ -190,5 +212,5 @@ def main(kwargs):
         # TODO: fix noise seed, add noise from ngspice .noise spectrum
         pass
     
-    batch_loop(my_d, my_f, my_g4, g4_seed, total_events, instance_number)
+    batch_loop(my_d, my_f, my_g4, g4_seed, total_events, instance_number, kwargs["_run_batch_path"])
     del my_g4

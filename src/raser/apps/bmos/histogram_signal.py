@@ -22,8 +22,9 @@ import numpy
 from raser.core.device import build_device as bdv
 from raser.core.field import devsim_field as devfield
 from raser.core.current import cal_current as ccrt
-from raser.core.afe.set_pwl_input import set_pwl_input as pwlin
+from raser.core.analog.set_pwl_input import set_pwl_input as pwlin
 from raser.supports.output import output
+from raser.supports.paths import app_file_path
 from raser.supports.paths import component_path
 from . import bmos
 
@@ -36,7 +37,7 @@ def mkdir(folder_name):
 def get_signal():
     signal = []
 
-    geant4_json = component_path("g4experiment", "bmos.json")
+    geant4_json = app_file_path("bmos", "bmos.json")
     with open(geant4_json) as f:
          g4_dic = json.load(f)
 

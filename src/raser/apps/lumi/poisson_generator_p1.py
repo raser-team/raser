@@ -5,7 +5,7 @@ import json
 from . import cflm_p1
 from . import get_current_p1
 import glob
-from raser.supports.paths import component_path
+from raser.supports.paths import app_file_path
 from raser.supports.output import output
 
 def main(hitEvents, pos_mom_energy, hitTime):
@@ -25,7 +25,7 @@ def main(hitEvents, pos_mom_energy, hitTime):
             mom.append(ele[1])
             energy.append(ele[2])
                     
-        geant4_json = component_path('g4experiment', 'cflm_p1.json')
+        geant4_json = app_file_path("lumi", "cflm_p1.json")
         with open(geant4_json, 'r') as file:
         
             g4_dic = json.load(file)    

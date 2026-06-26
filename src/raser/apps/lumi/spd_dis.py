@@ -1,13 +1,13 @@
 import ROOT
 import json
 import multiprocessing
-import os
 from . import cflm_spd
+from raser.supports.paths import app_file_path
 
 def main():
 
     root_path = 'src/raser/apps/lumi/input/datafile_p1.root'
-    g4_json_path = os.getenv("RASER_SETTING_PATH")+"/g4experiment/cflm_spd.json"
+    g4_json_path = app_file_path("lumi", "cflm_spd.json")
     
     root_file = ROOT.TFile(root_path, "READ")
     tree = root_file.Get("electrons")
@@ -55,4 +55,4 @@ def main():
                 print("警告: worker_function 返回了 None,可能发生了错误!")
 
 if __name__ == '__main__':
-    main()  
+    main()

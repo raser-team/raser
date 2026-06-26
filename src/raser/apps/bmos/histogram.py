@@ -22,7 +22,7 @@ import numpy
 from raser.core.device import build_device as bdv
 from raser.core.field import devsim_field as devfield
 from raser.core.current import cal_current as ccrt
-from raser.core.afe.set_pwl_input import set_pwl_input as pwlin
+from raser.core.analog.set_pwl_input import set_pwl_input as pwlin
 from raser.supports.output import output
 from raser.supports.paths import project_path
 from. import bmos

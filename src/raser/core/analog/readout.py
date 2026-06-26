@@ -66,8 +66,12 @@ class Amplifier:
         # TODO: need to set the time unit corresponding to the oscilloscope or the TDC 
         # TODO: and consistent with the time unit in gen_signal_batch.py
 
-        ele_json = optional_component_path("electronics", amplifier_name + ".json")
-        ele_cir = optional_component_path("electronics", amplifier_name + ".cir")
+        ele_json = optional_component_path(
+            "electronics", "analog", amplifier_name + ".json"
+        )
+        ele_cir = optional_component_path(
+            "electronics", "analog", amplifier_name + ".cir"
+        )
         if ele_json is not None and os.path.exists(ele_json):
             with open(ele_json) as f:
                 self.amplifier_parameters = json.load(f)

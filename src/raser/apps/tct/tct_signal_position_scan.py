@@ -21,7 +21,7 @@ ROOT.gROOT.SetBatch(True)
 from raser.core.device import build_device as bdv
 from raser.core.field import devsim_field as devfield
 from raser.core.current import cal_current as ccrt
-from raser.core.afe import readout as rdo
+from raser.core.analog.readout import Amplifier
 from ..signal import draw_save
 from raser.supports.output import output
 from raser.supports.paths import component_path
@@ -229,7 +229,7 @@ def job_main(kwargs):
 
     if kwargs['laser'] != None:
         laser = kwargs['laser']
-        laser_json = component_path("laser", laser + ".json")
+        laser_json = component_path("source", "laser", laser + ".json")
         with open(laser_json) as f:
             laser_dic = json.load(f)
             print(laser_dic)
@@ -255,7 +255,7 @@ def job_main(kwargs):
                     my_current = ccrt.CalCurrentLaser(my_d, my_f, my_l)
                     path = output(__file__, my_l.model+'position')
 
-                    ele_current = rdo.Amplifier(my_current.sum_cu, amplifier)
+                    ele_current = Amplifier(my_current.sum_cu, amplifier)
                     if kwargs['scan'] != None: #assume parameter alter
                         # key = my_l.fz_rel
                         tag = 'pos'+str(i)+'_'+'job'+str(kwargs['job'])

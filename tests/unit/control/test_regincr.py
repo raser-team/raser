@@ -4,7 +4,7 @@ import pytest
 def test_regincr_basic_sequence():
     pymtl3 = pytest.importorskip("pymtl3")
 
-    from raser.core.mcu.regincr import RegIncr
+    from raser.core.control.regincr import RegIncr
 
     model = RegIncr()
     model.apply(pymtl3.DefaultPassGroup(linetrace=True))

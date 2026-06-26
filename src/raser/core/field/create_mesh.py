@@ -36,7 +36,7 @@ class DevsimMesh:
             raise ValueError(self.dimension)
 
         self.setDoping()
-        path = output(__file__, self.det_name)
+        path = output(__file__, "default")
         if ( self.solve_paras["weightfield"] == True or self.solve_paras["ac-weightfield"] == True
         ):
             pass

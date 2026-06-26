@@ -41,9 +41,5 @@
                 {"name" : "bot", "region" : "CMOS_strip", "material" : "metal", "gmsh_name" : "bot"}
             ]
         }
-    },
-
-    "g4experiment" : "beta_source",
-    "amplifier" : "ABCStar_fe",
-    "daq" : "Alibava"
+    }
 }

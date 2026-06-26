@@ -11,6 +11,7 @@ import pickle
 import devsim
 import numpy as np
 
+from .assets import field_pickle_path
 from . import devsim_draw
 from .create_parameter import create_parameter, delete_init
 from raser.supports.output import create_path
@@ -106,7 +107,7 @@ def milestone_save_1D(device, v, path, is_tcad):
         names.append('NetDoping')
 
     for name in names: # scalar field on mesh point (instead of on edge)
-        with open(os.path.join(path, "{}_{}V.pkl".format(name,v)),'wb') as file:
+        with open(field_pickle_path(path, name, v),'wb') as file:
             data = {}
             data['values'] = eval(name) # refer to the object with given name
             data['points'] = x
@@ -145,7 +146,7 @@ def milestone_save_wf_1D(device, v, path, contact_name, is_tcad):
     metadata['dimension'] = 1
     
     for name in ['Potential']: # scalar field on mesh point (instead of on edge)
-        with open(os.path.join(save_wf_path, "{}_{}V.pkl".format(name,v)),'wb') as file:
+        with open(field_pickle_path(save_wf_path, name, v),'wb') as file:
             data = {}
             data['values'] = eval(name) # refer to the object with given name
             data['points'] = x
@@ -186,6 +187,8 @@ def milestone_save_2D(device, v, path, is_tcad, is_flip=False):
     TrappingRate_n = []
     TrappingRate_p = []
 
+    # TODO: TCAD imports can contain dielectric/metal regions that do not carry
+    # semiconductor node models; filter by available node models before saving.
     for region in devsim.get_region_list(device=device):
         if ( devsim.get_material(device=device, region=region) == "Aluminum" or devsim.get_material(device=device, region=region) == "air"
         ):
@@ -256,7 +259,7 @@ def milestone_save_2D(device, v, path, is_tcad, is_flip=False):
         names.append('NetDoping')
 
     for name in names: # scalar field on mesh point (instead of on edge)
-        with open(os.path.join(path, "{}_{}V.pkl".format(name,v)),'wb') as file:
+        with open(field_pickle_path(path, name, v),'wb') as file:
             data = {}
             data['values'] = eval(name) # refer to the object with given name
             merged_list = [x, y]
@@ -311,7 +314,7 @@ def milestone_save_wf_2D(device, v, path, contact_name, is_tcad, is_flip=False):
     metadata['dimension'] = 2
 
     for name in ['Potential']: # scalar field on mesh point (instead of on edge)
-        with open(os.path.join(save_wf_path, "{}_{}V.pkl".format(name,v)),'wb') as file:
+        with open(field_pickle_path(save_wf_path, name, v),'wb') as file:
             data = {}
             data['values'] = eval(name) # refer to the object with given name
             merged_list = [x, y]
@@ -428,7 +431,7 @@ def milestone_save_3D(device, v, path, is_tcad):
         names.append("NetDoping")
 
     for name in names:
-        save_path = os.path.join(path, f"{name}_{v}V.pkl")
+        save_path = field_pickle_path(path, name, v)
         with open(save_path, "wb") as file:
             data = {
                 "values": eval(name),
@@ -484,7 +487,7 @@ def milestone_save_wf_3D(device, v, path, contact_name, is_tcad):
     metadata['dimension'] = 3
     metadata['contact_name'] = contact_name
 
-    with open(os.path.join(save_wf_path, f"Potential_{v}V.pkl"), 'wb') as file:
+    with open(field_pickle_path(save_wf_path, "Potential", v), 'wb') as file:
         data = {}
         data['values'] = Potential
         merged_list = [x, y, z]
@@ -515,4 +518,3 @@ def save_milestone(device, v, path, dimension, contact_name, is_wf, is_tcad = Fa
             milestone_save_3D(device, v, path, is_tcad)
         else:
             print("==========RASER info ==========\nis_wf only has 2 values, True or False\n==========Error=========")
-

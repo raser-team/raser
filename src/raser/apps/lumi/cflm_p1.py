@@ -11,7 +11,7 @@ g4b.include("G4UserRunAction.hh")
 g4b.include("G4UserEventAction.hh")
 g4b.include("G4UserSteppingAction.hh")
 import json
-from raser.supports.paths import component_path
+from raser.supports.paths import app_file_path
 from raser.supports.output import output
 
 pixelAreaZIndex = []
@@ -108,7 +108,7 @@ class cflmPixelG4Particles:
                               for single_step in p_step] for p_step in self.p_steps]
         
         else:       
-            geant4_json = component_path('g4experiment', 'cflm_p1.json')
+            geant4_json = app_file_path("lumi", "cflm_p1.json")
             with open(geant4_json) as f:
                 g4_dic = json.load(f)
 
@@ -511,7 +511,7 @@ def SaveJson(dic, dicFile):
 
 def main():
         
-    geant4_json = component_path('g4experiment', 'cflm_p1.json')    #
+    geant4_json = app_file_path("lumi", "cflm_p1.json")
     with open(geant4_json) as f:
          g4_dic = json.load(f)
     

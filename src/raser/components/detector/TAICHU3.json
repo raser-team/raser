@@ -50,9 +50,5 @@
                 {"name" : "bot", "tag" : "bot", "material" : "metal"}
             ]
         }
-    },
-
-    "g4experiment" : "telescope",
-    "amplifier" : "Broad_Band_UCSC",
-    "daq" : "Alibava"
+    }
 }

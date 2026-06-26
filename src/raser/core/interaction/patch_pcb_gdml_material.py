@@ -4,12 +4,13 @@ import sys
 import json
 from pathlib import Path
 
-from raser.supports.paths import component_path
+from raser.supports.paths import app_file_path
+from raser.supports.paths import project_path
 
 def patch_gdml():
-    raw_path = component_path('g4experiment', 'pcb_readout_raw.gdml')
+    raw_path = project_path('g4experiment', 'pcb_readout_raw.gdml')
     out_path = Path(raw_path).with_name('pcb_readout.gdml')
-    json_path = component_path('g4experiment', 'pcb_readout_gdml.json')
+    json_path = app_file_path('signal', 'pcb_readout_gdml.json')
 
     if not os.path.exists(raw_path):
         print(f"[Error] 找不到原始文件: {raw_path}", file=sys.stderr)

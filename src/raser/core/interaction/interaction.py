@@ -11,6 +11,7 @@ import math
 import json
 import os
 import copy
+from pathlib import Path
 
 import numpy as np
 import g4ppyy as g4b
@@ -44,7 +45,12 @@ class GeneralG4Interaction:
         if isinstance(g4experiment, dict):
             g4_dic = copy.deepcopy(g4experiment)
         else:
-            geant4_json = component_path("g4experiment", g4experiment + ".json")
+            geant4_json = Path(g4experiment)
+            if not geant4_json.exists():
+                raise FileNotFoundError(
+                    "Geant4 geometry must be passed as a config dict or JSON path: "
+                    f"{g4experiment}"
+                )
             with open(geant4_json) as f:
                 g4_dic = json.load(f)
 

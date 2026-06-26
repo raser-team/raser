@@ -97,6 +97,13 @@ def app_component_root(app_name: str):
     return PACKAGE_ROOT / "apps" / app_name / "components"
 
 
+def app_file_path(app_name: str, filename: str):
+    path = PACKAGE_ROOT / "apps" / app_name / filename
+    if path.exists():
+        return path
+    raise FileNotFoundError(f"Cannot find RASER app file: {path}")
+
+
 def app_component_roots(app_name: str, *app_names: str):
     roots = [app_component_root(app_name)]
     roots.extend(app_component_root(name) for name in app_names)

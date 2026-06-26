@@ -24,10 +24,10 @@ from raser.core.interaction.action_initialization import GeneralActionInitializa
 from raser.core.field import devsim_field as devfield
 from raser.core.current import cal_current as ccrt
 from raser.core.current.cross_talk import cross_talk
-from raser.core.afe import readout as rdo
+from raser.core.analog.readout import Amplifier
 from .draw_save import energy_deposition, draw_drift_path
 from .experiments import apply_signal_experiment
-from raser.supports.output import output
+from raser.supports import runs
 
 
 def main(kwargs):
@@ -58,10 +58,25 @@ def main(kwargs):
 
     if kwargs['irradiation'] != None:
         my_d.irradiation_flux = float(kwargs['irradiation'])
+    if kwargs.get("events_per_job") is not None:
+        my_d.g4_config["total_events"] = int(kwargs["events_per_job"])
 
     g4_vis = kwargs['g4_vis']
+    runs.prepare_run_record(kwargs, my_d)
+    my_d.device = kwargs["_field_source"]
+    my_d.region = kwargs["_field_source"]
 
-    my_f = devfield.DevsimField(my_d.device, my_d.dimension, my_d.voltage, my_d.read_out_contact, my_d.mesher, is_plugin=my_d.is_plugin(),  irradiation_flux=my_d.irradiation_flux, bounds=my_d.bound)
+    my_f = devfield.DevsimField(
+        my_d.device,
+        my_d.dimension,
+        my_d.voltage,
+        my_d.read_out_contact,
+        my_d.mesher,
+        is_plugin=my_d.is_plugin(),
+        irradiation_flux=my_d.irradiation_flux,
+        bounds=my_d.bound,
+        field_set=kwargs["_field_set"],
+    )
     if "lgad" in my_d.det_model:
         my_d.gain_rate_cal(my_f)
     
@@ -73,12 +88,11 @@ def main(kwargs):
             my_current.cross_talk_cu = cross_talk(det_name, my_d.cross_talk, my_current.sum_cu)
         else:
             my_current.cross_talk_cu = my_current.sum_cu
-        ele_current = rdo.Amplifier(my_current.cross_talk_cu, my_d.amplifier)
+        ele_current = Amplifier(my_current.cross_talk_cu, my_d.amplifier)
     else:
-        ele_current = rdo.Amplifier(my_current.sum_cu, my_d.amplifier)
+        ele_current = Amplifier(my_current.sum_cu, my_d.amplifier)
 
-    now = time.strftime("%Y_%m%d_%H%M%S")
-    path = output(__file__, my_d.signal_output_label, my_d.signal_source, now)
+    path = kwargs["_run_path"]
     #energy_deposition(my_g4)   # Draw Geant4 depostion distribution
     draw_drift_path(my_d,my_g4,my_f,my_current,path)
     my_current.draw_currents(path) # Draw current

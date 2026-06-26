@@ -1,4 +1,4 @@
-from raser.core.afe.set_pwl_input import set_pwl_input
+from raser.core.analog.set_pwl_input import set_pwl_input
 
 
 def test_set_pwl_input_rewrites_current_source_and_output_file(tmp_path):

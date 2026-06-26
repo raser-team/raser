@@ -21,7 +21,7 @@ def test_default_signal_source_is_am241():
     source = load_signal_source()
 
     assert source["name"] == "Am241"
-    assert source["kind"] == "radioactive_source"
+    assert source["kind"] == "decay_source"
     assert source["par_type"] == "alpha"
     assert source["par_energy"] == pytest.approx(5.54)
 
@@ -33,7 +33,7 @@ def test_apply_signal_experiment_populates_detector_runtime_fields():
         detector,
         {
             "experiment": "charge_collection",
-            "source": "radioactive/Am241",
+            "source": "decay/Am241",
             "amplifier": None,
         },
     )
@@ -51,7 +51,7 @@ def test_apply_signal_experiment_populates_detector_runtime_fields():
 
 def test_time_resolution_with_sr90_composes_beta_source():
     experiment = load_signal_experiment("time_resolution")
-    source = load_signal_source("radioactive/Sr90")
+    source = load_signal_source("decay/Sr90")
 
     g4_config = compose_g4_config(experiment, source)
 
@@ -92,7 +92,7 @@ def test_apply_signal_experiment_keeps_cli_amplifier_override():
         detector,
         {
             "experiment": "charge_collection",
-            "source": "radioactive/Am241",
+            "source": "decay/Am241",
             "amplifier": "custom_amp",
         },
     )
@@ -113,7 +113,7 @@ def test_apply_signal_experiment_reports_missing_required_settings(tmp_path):
             detector,
             {
                 "experiment": experiment,
-                "source": "radioactive/Am241",
+                "source": "decay/Am241",
                 "amplifier": None,
             },
         )

@@ -13,8 +13,8 @@ from time import time_ns
 import ROOT
 ROOT.gROOT.SetBatch(True)
 
-from ..afe.ngspice import set_ngspice_input
-from ..afe.ngspice import set_tmp_cir
+from ..analog.ngspice import set_ngspice_input
+from ..analog.ngspice import set_tmp_cir
 from raser.supports.output import output, delete_file
 
 tol = 1e-20

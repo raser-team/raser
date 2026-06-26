@@ -19,6 +19,7 @@ from raser.supports.output import output
 from raser.supports.math import is_number, fit_data_normal, fit_data_landau
 from raser.supports.paths import component_path
 from raser.supports.paths import project_path
+from raser.supports import runs
 
 CFD = 0.5 # partition
 #TODO: get threshold and CFD from electronics setting
@@ -639,7 +640,7 @@ def main(kwargs):
     if kwargs['daq'] != None:
         my_d.daq = kwargs['daq']
    
-    daq_json = component_path("daq", my_d.daq + ".json")
+    daq_json = component_path("electronics", "digital", my_d.daq + ".json")
     with open(daq_json) as f:
         daq_dict = json.load(f)
         threshold = daq_dict['threshold']
@@ -648,6 +649,13 @@ def main(kwargs):
     tct = kwargs['tct']
     if tct != None:
         input_path = project_path("tct", tct)
+    elif kwargs.get("_run_batch_path"):
+        input_path = kwargs["_run_batch_path"]
+    elif kwargs.get("run") == "latest":
+        signal_label = kwargs.get("signal_output_label") or kwargs.get("workflow") or "cce"
+        signal_source = Path(str(kwargs.get("signal_source") or kwargs.get("source") or "Am241")).stem
+        latest = runs.latest_run_path(signal_label, signal_source)
+        input_path = latest / "batch"
     else:
         signal_label = kwargs.get("signal_output_label") or "cce"
         signal_source = Path(str(kwargs.get("signal_source") or kwargs.get("source") or "Am241")).stem

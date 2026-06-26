@@ -60,7 +60,7 @@ paras = {
 os.environ["OMP_NUM_THREADS"] = "1"
 
 def main (kwargs):
-    simname = kwargs['label']
+    simname = kwargs['target']
     is_cv = kwargs['cv']
     is_wf = kwargs["wf"]
     is_noise = kwargs["noise"]
@@ -140,9 +140,9 @@ def main (kwargs):
     else:
         solve_model = None
 
-    path = output(__file__, device)
+    path = output(__file__, "default")
     if irradiation:
-        path = output(__file__, device, str(irradiation_flux))
+        path = output(__file__, str(irradiation_flux))
 
     loop=loop_section.loop_section(paras=paras,device=device,region=region,solve_model=solve_model,irradiation=irradiation,)
    

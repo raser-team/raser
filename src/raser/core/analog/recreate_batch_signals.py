@@ -15,7 +15,7 @@ import ROOT
 
 from ..device.build_device import Detector
 from ..current.cross_talk import cross_talk
-from ..afe.readout import Amplifier
+from ..analog.readout import Amplifier
 
 def main(amp_name, det_name, file_name, tct=None):    
     my_d = Detector(det_name)
@@ -67,5 +67,4 @@ def main(amp_name, det_name, file_name, tct=None):
 
     print("read {n} events from {file_name}".format(n=n,file_name=file_name))
     file_pointer.Close()
-
 

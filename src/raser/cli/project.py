@@ -12,12 +12,12 @@ from raser.supports.paths import work_root
 
 APP_TEMPLATES = {
     "bmos": ("bmos",),
-    "cce": ("signal",),
+    "cce": ("cce", "signal"),
     "lumi": ("lumi",),
     "signal": ("signal",),
     "tct": ("tct",),
     "telescope": ("telescope",),
-    "timeres": ("signal",),
+    "timeres": ("timeres", "signal"),
 }
 
 

@@ -77,9 +77,5 @@
                  "xl" : 66.3e-4, "xh" : 66.3e-4, "bloat" : 1e-10}
             ]
         }
-    },
-
-    "g4experiment" : "beta_source",
-    "amplifier" : "Broad_Band_SiC_Strip",
-    "daq" : "SiC_LGAD_strip"
+    }
 }

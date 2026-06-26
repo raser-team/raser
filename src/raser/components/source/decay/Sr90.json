@@ -1,6 +1,6 @@
 {
     "name" : "Sr90",
-    "kind" : "radioactive_source",
+    "kind" : "decay_source",
     "description" : "Sr-90 beta source endpoint approximation",
     "par_type" : "e-",
     "par_energy" : 2.28,

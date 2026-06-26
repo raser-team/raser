@@ -31,7 +31,7 @@ from .primary_generator_action import GeneralPrimaryGeneratorAction
 from .event_action import GeneralEventAction
 from .stepping_action import GeneralSteppingAction
 from .run_action import GeneralRunAction
-from raser.supports.paths import component_path
+from raser.supports.paths import app_file_path
 
 verbose = 0
 flag = 0
@@ -57,7 +57,7 @@ class TelescopeG4Interaction(GeneralG4Interaction):
         ---------
             2023/04/18
         """
-        geant4_json = component_path("g4experiment", g4experiment + ".json")
+        geant4_json = app_file_path("telescope", g4experiment + ".json")
         with open(geant4_json) as f:
             g4_dic = json.load(f)
         # my_g4d = PixelDetectorConstruction(g4_dic,g4_dic['maxstep'])

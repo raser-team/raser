@@ -37,9 +37,5 @@
         "tcad_mesh" : {
             "file" : "./output/field/general_strip/-210.0V.tdr"
         }
-    },
-
-    "g4experiment" : "proton_beam",
-    "amplifier" : "ABCStar_fe",
-    "daq" : "CMOS_strip"
+    }
 }

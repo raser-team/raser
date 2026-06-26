@@ -21,7 +21,7 @@ g4b.include("G4UserEventAction.hh")
 g4b.include("G4UserSteppingAction.hh")
 import json
 import numpy as np
-from raser.supports.paths import component_path
+from raser.supports.paths import app_file_path
 import time
 
 # G4AnalysisManager = g4b.G4RootAnalysisManager
@@ -38,7 +38,7 @@ class bmosG4Interaction:
         global s_eventIDs, s_edep_devices, s_p_steps, s_energy_steps
         s_eventIDs, s_edep_devices, s_p_steps, s_energy_steps = [], [], [], []
 
-        geant4_json = component_path("g4experiment", "bmos.json")
+        geant4_json = app_file_path("bmos", "bmos.json")
         with open(geant4_json) as f:
             g4_dic = json.load(f)
 
