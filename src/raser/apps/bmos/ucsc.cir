@@ -140,7 +140,7 @@ L2 8 7 2.2u
 .control
 tran 0.1p 20n
 * <step> <stopping time>
-wrdata ./output/bmos/Current_test.raw v(out)
+wrdata Current_test.raw v(out)
 * save raw data
 .endc
 

@@ -14,7 +14,7 @@ Description:  This module is a simple two-stage register-incrementer. It has an 
 
 import pymtl3 as mtl
 from .regincr import RegIncr
-from raser.supports.output import create_path
+from raser.supports.output import output
 
 class RegIncr2stage( mtl.Component ):
 # Constructor
@@ -46,8 +46,8 @@ def main():
   # Instantiate and elaborate the model 
   model = RegIncr2stage()
   model.elaborate()
-  create_path("output/asic/")
-  model.apply( mtl.DefaultPassGroup(textwave=True, linetrace=True, vcdwave='output/asic/regincr2stage-sim') )
+  path = output(__file__, "asic")
+  model.apply( mtl.DefaultPassGroup(textwave=True, linetrace=True, vcdwave=path + '/regincr2stage-sim') )
   # Reset simulator
   model.sim_reset()
   # Apply input values and display output values

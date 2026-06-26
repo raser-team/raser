@@ -6,6 +6,7 @@
 import pymtl3 as mtl
 import os
 from .regincr import RegIncr
+from raser.supports.output import output
 
 def main():
 
@@ -25,10 +26,10 @@ def main():
 
     # Applying the default pass group to add simulation facilities
 
-    if not os.access('output/fpga', os.F_OK):
-        os.makedirs('output/fpga', exist_ok=True) 
-    model.apply( mtl.DefaultPassGroup(textwave=True, linetrace=True,vcdwave='output/fpga/regincr_sim') )
-    print('vcd file has been saved in output/fpga/regincr_sim')
+    path = output(__file__, "fpga")
+    vcd_path = os.path.join(path, "regincr_sim")
+    model.apply( mtl.DefaultPassGroup(textwave=True, linetrace=True,vcdwave=vcd_path) )
+    print('vcd file has been saved in ' + vcd_path)
 
     # Reset simulator
 

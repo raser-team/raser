@@ -23,6 +23,7 @@ g4b.include("G4UserSteppingAction.hh")
 import ROOT
 ROOT.gROOT.SetBatch(True)
 import numpy as np
+from raser.supports.output import output
 
 from ..current.model import Material
 from ..current.model import Vector
@@ -245,7 +246,8 @@ class SiC_LGAD_aSetppingAction(g4b.G4UserSteppingAction):
         track = step.GetTrack()
         position = track.GetPosition()
         # 将位置信息写入文件
-        with open('./output/SiC_LGAD/trajectory.txt', 'a') as file:
+        path = output(__file__, "SiC_LGAD")
+        with open(os.path.join(path, 'trajectory.txt'), 'a') as file:
             file.write(f"{position.x} {position.y} {position.z}\n")
      
         volume = step.GetPreStepPoint().GetTouchable().GetVolume()#获取粒子所处的体积
@@ -275,12 +277,8 @@ class SiC_LGAD_RunAction(g4b.G4UserRunAction):
     def BeginOfRunAction(self, run):
 
         analysisManager = g4b.G4AnalysisManager.Instance()
-        try:
-            os.mkdir('output/SiC_LGAD')
-        except:
-            print('path already exist')
-
-        fileName = "output/SiC_LGAD/energy_deposition.root"
+        path = output(__file__, "SiC_LGAD")
+        fileName = os.path.join(path, "energy_deposition.root")
         analysisManager.OpenFile(fileName)
     def EndOfRunAction(self, run):
 
@@ -352,7 +350,8 @@ def main():
     UImanager.ApplyCommand('/vis/ogl/set/printMode vectored')#设置可视化打印尺寸为矢量模式
     UImanager.ApplyCommand('/vis/ogl/set/printSize 2000 2000')#可视化打印尺寸为2000*2000
     UImanager.ApplyCommand("/vis/geometry/set/visibility World 1 true")
-    UImanager.ApplyCommand('/vis/ogl/set/printFilename ./output/SiC_LGAD/image.pdf')#打印文件
+    image_path = os.path.join(output(__file__, "SiC_LGAD"), "image.pdf")
+    UImanager.ApplyCommand('/vis/ogl/set/printFilename ' + image_path)#打印文件
     
     UImanager.ApplyCommand('/vis/ogl/export')#导出可视化
 

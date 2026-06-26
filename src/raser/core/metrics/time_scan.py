@@ -9,6 +9,8 @@ import csv
 
 import ROOT
 ROOT.gROOT.SetBatch(True)
+from raser.supports.output import create_path
+from raser.supports.paths import project_path
 
 
 def main():
@@ -51,13 +53,15 @@ def time_scan(args):
         # out_file=o_ls[0]+"/"+o_ls[1]+"/time_resolution_scan"+".csv"
         job_name = str(time.time())
         job_command = "./python/add_noise_raser.py " + file
-        runcmd("mkdir output/job/ -p")
-        with open('output/job/'+job_name+".sh","w") as f:
+        job_dir = project_path("metrics", "jobs")
+        create_path(job_dir)
+        job_script = os.path.join(job_dir, job_name + ".sh")
+        with open(job_script,"w") as f:
             f.write(job_command)
-        runcmd("chmod +x output/job/"+job_name+".sh")
-        command =  "output/job/"+job_name+".sh"
+        runcmd("chmod +x " + job_script)
+        command = job_script
         print(command)
-        job_sub =  "hep_sub ./" + "output/job/"+job_name+".sh"
+        job_sub =  "hep_sub " + job_script
         runcmd(job_sub)
 
 def draw_scan(input,index,model,eff):

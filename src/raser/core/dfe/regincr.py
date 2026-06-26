@@ -10,7 +10,7 @@ Description:  This module is a simple register-incrementer. It has an input
 '''
 
 import pymtl3 as mtl
-from raser.supports.output import create_path
+from raser.supports.output import output
 
 class RegIncr( mtl.Component ):
   def construct( s ):
@@ -43,8 +43,8 @@ def main():
   # Instantiate and elaborate the model 
   model = RegIncr()
   model.elaborate()
-  create_path("output/asic/")
-  model.apply( mtl.DefaultPassGroup(textwave=True, linetrace=True, vcdwave='output/asic/regincr-sim') )
+  path = output(__file__, "asic")
+  model.apply( mtl.DefaultPassGroup(textwave=True, linetrace=True, vcdwave=path + '/regincr-sim') )
   # Reset simulator
   model.sim_reset()
   # Apply input values and display output values

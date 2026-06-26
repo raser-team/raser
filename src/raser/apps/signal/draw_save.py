@@ -34,8 +34,9 @@ def energy_deposition(my_g4v):
     print("MPV:%s"%g1.GetParameter(1))
     h1.Draw()
     now = time.strftime("%Y_%m%d_%H%M")
-    c1.SaveAs("output/particle/dep_SiC"+"_"+now+"_energy.pdf")
-    c1.SaveAs("output/particle/dep_SiC"+"_"+now+"_energy.root")
+    path = output(__file__, "particle")
+    c1.SaveAs(path + "/dep_SiC" + "_" + now + "_energy.pdf")
+    c1.SaveAs(path + "/dep_SiC" + "_" + now + "_energy.root")
 
 def draw_scat_angle(evnets_angle,angle,model):
     """Draw scatting angle of events"""
@@ -268,6 +269,5 @@ def draw_drift_path(my_d, my_g4, my_f, my_current, path):
     c1.SaveAs(path+'/'+my_d.det_model+"_drift_path.pdf")
     c1.SaveAs(path+'/'+my_d.det_model+"_drift_path.root")
     del c1
-
 
 

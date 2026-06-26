@@ -346,8 +346,6 @@ class Material:
 
 
 def main():
-    if not (os.path.exists("./output/model")):
-        os.makedirs("./output/model")
     mob = Material("Si")
     mob.draw_velocity(300,5e12)
     mob = Material("SiC")
