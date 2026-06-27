@@ -10,19 +10,21 @@ Description:
 '''
 
 import math
-import csv
 import json
-from array import array
 import os
 import subprocess
 import time
-import re
 
 import ROOT
 ROOT.gROOT.SetBatch(True)
 
+from .ngspice import circuit_has_noise_spectrum
 from .ngspice import set_ngspice_input
 from .ngspice import set_tmp_cir
+from .ngspice import set_tmp_noise_cir
+from .noise import load_noise_spectrum
+from .noise import resolve_noise_spectrum_path
+from .noise import synthesize_noise_from_spectrum
 from ..util.math import signal_convolution
 from ..util.output import output
 from ..util.output import delete_file
@@ -61,7 +63,9 @@ class Amplifier:
     ---------
         2024/09/14
     """
-    def __init__(self, currents: list[ROOT.TH1F], amplifier_name: str, seed = 0, CDet = None, is_cut = False):
+    _ngspice_noise_spectrum_cache = {}
+
+    def __init__(self, currents: list[ROOT.TH1F], amplifier_name: str, seed = None, CDet = None, is_cut = False):
         self.amplified_currents = []
         self.read_ele_num = len(currents)
         self.time_unit = 10e-12
@@ -70,9 +74,16 @@ class Amplifier:
 
         ele_json = os.getenv("RASER_SETTING_PATH")+"/electronics/" + amplifier_name + ".json"
         ele_cir = os.getenv("RASER_SETTING_PATH")+"/electronics/" + amplifier_name + ".cir"
-        if os.path.exists(ele_json):
+        self.electronics_dir = os.path.dirname(ele_json)
+        use_spice_amplifier = os.getenv("RASER_USE_SPICE_AMPLIFIER", "").lower()
+        use_spice_amplifier = use_spice_amplifier in ("1", "true", "yes", amplifier_name.lower())
+        if os.path.exists(ele_json) and not use_spice_amplifier:
             with open(ele_json) as f:
                 self.amplifier_parameters = json.load(f)
+                if self.amplifier_parameters.get("noise_spectrum") is None:
+                    sidecar_noise = self.load_sidecar_noise_config(ele_json)
+                    if sidecar_noise is not None:
+                        self.amplifier_parameters["noise_spectrum"] = sidecar_noise
                 self.name = self.amplifier_parameters['ele_name']
 
             self.amplifier_define(CDet)
@@ -89,11 +100,27 @@ class Amplifier:
             pid = os.getpid()
             # stamp and thread name for avoiding file name conflict
             path = output(__file__, self.name)
-            tmp_cirs, raws = set_tmp_cir(self.read_ele_num, path, input_current_strs, ele_cir, str(time_stamp)+"_"+str(pid))
+            use_spectrum_noise = circuit_has_noise_spectrum(ele_cir)
+            keep_trnoise = os.getenv("RASER_SPICE_KEEP_TRNOISE", "").lower()
+            keep_trnoise = keep_trnoise in ("1", "true", "yes", amplifier_name.lower())
+            tmp_cirs, raws = set_tmp_cir(
+                self.read_ele_num,
+                path,
+                input_current_strs,
+                ele_cir,
+                str(time_stamp)+"_"+str(pid),
+                disable_trnoise=use_spectrum_noise and not keep_trnoise,
+            )
             for i in range(self.read_ele_num):
                 print("Running ngspice for amplifier simulation on electrode No.%d..."%(i+1))
-                subprocess.run(['ngspice -b '+tmp_cirs[i]], shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(
+                    ["ngspice", "-b", tmp_cirs[i]],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
             self.read_raw_file(raws)
+            if use_spectrum_noise:
+                self.add_ngspice_noise(ele_cir, path, str(time_stamp)+"_"+str(pid), seed)
             # TODO: delete the files properly
             for tmp_cir in tmp_cirs:
                 delete_file(tmp_cir)
@@ -218,12 +245,182 @@ class Amplifier:
     def add_noise(self, seed):
         noise_avg = self.amplifier_parameters["noise_avg"]
         noise_rms = self.amplifier_parameters["noise_rms"]
-        ROOT.gRandom.SetSeed(seed)
+        noise_spectrum = self.amplifier_parameters.get("noise_spectrum")
+        if noise_spectrum is not None:
+            try:
+                self.add_spectrum_noise(noise_spectrum, seed, noise_avg, noise_rms)
+                return
+            except Exception as exc:
+                required = (
+                    isinstance(noise_spectrum, dict)
+                    and noise_spectrum.get("required", False)
+                )
+                if required:
+                    raise
+                print(
+                    "Warning: spectral noise generation failed ({}). "
+                    "Falling back to Gaussian bin noise.".format(exc)
+                )
+
+        ROOT.gRandom.SetSeed(0 if seed is None else int(seed))
         for i in range(self.read_ele_num):
             cu = self.amplified_currents[i]
-            for j in range(cu.GetNbinsX()):
-                noise_height=ROOT.gRandom.Gaus(noise_avg,noise_rms)
-                cu.SetBinContent(j,cu.GetBinContent(j)+noise_height)
+            for j in range(1, cu.GetNbinsX() + 1):
+                noise_height = ROOT.gRandom.Gaus(noise_avg, noise_rms)
+                cu.SetBinContent(j, cu.GetBinContent(j) + noise_height)
+
+    def add_spectrum_noise(self, noise_spectrum, seed, noise_avg, noise_rms):
+        if isinstance(noise_spectrum, str):
+            spectrum_config = {"file": noise_spectrum}
+        elif isinstance(noise_spectrum, dict):
+            spectrum_config = noise_spectrum
+        else:
+            raise TypeError("noise_spectrum must be a file path or a dict")
+
+        spectrum_file = spectrum_config.get("file", spectrum_config.get("path"))
+        if spectrum_file is None:
+            raise ValueError("noise_spectrum requires a file/path field")
+
+        spectrum_file = resolve_noise_spectrum_path(spectrum_file, self.electronics_dir)
+        frequencies, density = load_noise_spectrum(
+            spectrum_file,
+            frequency_column=int(spectrum_config.get("frequency_column", 0)),
+            density_column=int(spectrum_config.get("density_column", 1)),
+        )
+        self.add_spectrum_density_noise(
+            frequencies,
+            density,
+            spectrum_config,
+            seed,
+            noise_avg,
+            noise_rms,
+        )
+
+    def add_spectrum_density_noise(
+            self,
+            frequencies,
+            density,
+            spectrum_config,
+            seed,
+            noise_avg,
+            noise_rms):
+
+        target_rms = spectrum_config.get("target_rms")
+        if spectrum_config.get("normalize_to_noise_rms", False):
+            target_rms = noise_rms
+
+        density_type = spectrum_config.get(
+            "density_type",
+            spectrum_config.get("type", "amplitude"),
+        )
+        unit_scale = float(spectrum_config.get("unit_scale", 1.0))
+        randomize_amplitude = bool(spectrum_config.get("randomize_amplitude", True))
+        mean = float(spectrum_config.get("mean", noise_avg))
+
+        base_seed = None if seed is None else int(seed)
+        for i in range(self.read_ele_num):
+            cu = self.amplified_currents[i]
+            channel_seed = None if base_seed is None else base_seed + i
+            noise = synthesize_noise_from_spectrum(
+                frequencies,
+                density,
+                cu.GetNbinsX(),
+                cu.GetBinWidth(1),
+                seed=channel_seed,
+                density_type=density_type,
+                unit_scale=unit_scale,
+                mean=mean,
+                target_rms=target_rms,
+                min_frequency_hz=_config_float(
+                    spectrum_config,
+                    "min_frequency_hz",
+                    "minimum_frequency_hz",
+                    "high_pass_hz",
+                    "low_frequency_cutoff_hz",
+                ),
+                max_frequency_hz=_config_float(
+                    spectrum_config,
+                    "max_frequency_hz",
+                    "maximum_frequency_hz",
+                    "low_pass_hz",
+                    "high_frequency_cutoff_hz",
+                ),
+                randomize_amplitude=randomize_amplitude,
+            )
+            for j, noise_height in enumerate(noise, start=1):
+                cu.SetBinContent(j, cu.GetBinContent(j) + float(noise_height))
+
+    def add_ngspice_noise(self, ele_cir, path, label, seed):
+        cache_key = (os.path.abspath(ele_cir), os.path.getmtime(ele_cir))
+        if cache_key in Amplifier._ngspice_noise_spectrum_cache:
+            frequencies, density = Amplifier._ngspice_noise_spectrum_cache[cache_key]
+        else:
+            noise_tmp_cir, noise_raw = set_tmp_noise_cir(path, ele_cir, label)
+            if noise_tmp_cir is None:
+                return
+
+            completed = subprocess.run(
+                ["ngspice", "-b", noise_tmp_cir],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            try:
+                if not os.path.exists(noise_raw) or os.path.getsize(noise_raw) == 0:
+                    print(
+                        "Warning: ngspice noise analysis exited with code {} "
+                        "and did not produce {}. No spectral noise was added.".format(
+                            completed.returncode,
+                            noise_raw,
+                        )
+                    )
+                    return
+
+                frequencies, density = load_noise_spectrum(noise_raw)
+                if completed.returncode != 0:
+                    print(
+                        "Warning: ngspice noise analysis exited with code {} "
+                        "but produced a usable noise spectrum. Using {}.".format(
+                            completed.returncode,
+                            noise_raw,
+                        )
+                    )
+                Amplifier._ngspice_noise_spectrum_cache[cache_key] = (frequencies, density)
+            finally:
+                delete_file(noise_tmp_cir)
+                delete_file(noise_raw)
+
+        self.add_spectrum_density_noise(
+            frequencies,
+            density,
+            self.load_ngspice_noise_config(ele_cir),
+            seed,
+            0.0,
+            0.0,
+        )
+
+    def load_ngspice_noise_config(self, ele_cir):
+        spectrum_config = {
+            "density_type": "amplitude",
+            "unit_scale": 1e3,
+            "randomize_amplitude": True,
+        }
+
+        config_file = os.path.splitext(ele_cir)[0] + ".noise.json"
+        if os.path.exists(config_file):
+            with open(config_file) as handle:
+                spectrum_config.update(json.load(handle))
+
+        return spectrum_config
+
+    def load_sidecar_noise_config(self, ele_json):
+        config_file = os.path.splitext(ele_json)[0] + ".noise.json"
+        if not os.path.exists(config_file):
+            return None
+        with open(config_file) as handle:
+            spectrum_config = json.load(handle)
+        if spectrum_config.get("file") is None and spectrum_config.get("path") is None:
+            return None
+        return spectrum_config
 
     def judge_threshold_CFD(self):
         threshold = self.amplifier_parameters["threshold"]
@@ -236,9 +433,6 @@ class Amplifier:
                 self.amplified_currents[i].Reset()
 
     def read_raw_file(self, raws):
-        time_limit = 100e-9
-        # TODO: make this match the .tran in the .cir file
-        # TODO: the time limit should be consistent with the time limit in gen_signal_scan.py
         for i in range(self.read_ele_num):
             raw = raws[i]
             with open(raw, 'r') as f:
@@ -249,18 +443,31 @@ class Amplifier:
                     time.append(float(line.split()[0]))
                     volt.append(float(line.split()[1])*1e3) # convert V to mV
 
+            if not time:
+                raise ValueError("No data returned from ngspice raw file: {}".format(raw))
+
+            time_min = time[0]
+            time_max = time[-1]
+            if time_max <= time_min:
+                time_max = time_min + self.time_unit
+
+            n_bins = max(1, int(round((time_max - time_min) / self.time_unit)))
             self.amplified_currents.append(ROOT.TH1F("electronics %s"%(self.name)+str(i+1), "electronics %s"%(self.name),
-                                int(time_limit/self.time_unit),0,time[-1]))
+                                n_bins, time_min, time_max))
             # the .raw input is not uniform, so we need to slice the time range
             filled = set()
             for j in range(len(time)):
                 k = self.amplified_currents[i].FindBin(time[j])
-                self.amplified_currents[i].SetBinContent(k, volt[j])
-                filled.add(k)
+                if 1 <= k <= n_bins:
+                    self.amplified_currents[i].SetBinContent(k, volt[j])
+                    filled.add(k)
             # fill the empty bins
-            for k in range(1, int(time[-1]/self.time_unit)-1):
+            last_value = 0.0
+            for k in range(1, n_bins + 1):
                 if k not in filled:
-                    self.amplified_currents[i].SetBinContent(k, self.amplified_currents[i][k-1])
+                    self.amplified_currents[i].SetBinContent(k, last_value)
+                else:
+                    last_value = self.amplified_currents[i].GetBinContent(k)
 
     def draw_waveform(self, currents, path):
         for i in range(self.read_ele_num):
@@ -364,6 +571,13 @@ def main(name):
 
     ele = Amplifier([my_th1f], name)
     ele.draw_waveform([my_th1f], output(__file__, name))
+
+
+def _config_float(config, *keys):
+    for key in keys:
+        if key in config:
+            return float(config[key])
+    return None
 
 if __name__ == '__main__':
     import sys

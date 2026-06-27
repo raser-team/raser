@@ -1,0 +1,7 @@
+{
+    "file": "ABCStar_fe_onoise_spectrum.raw",
+    "density_type": "amplitude",
+    "unit_scale": 1000,
+    "randomize_amplitude": true,
+    "min_frequency_hz": 100000000
+}
