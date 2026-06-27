@@ -1,0 +1,7 @@
+{
+    "file": "Broad_Band_UCSC_onoise_spectrum.raw",
+    "density_type": "amplitude",
+    "unit_scale": 1000.0,
+    "randomize_amplitude": true,
+    "max_frequency_hz": 1000000000.0
+}
