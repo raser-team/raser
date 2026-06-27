@@ -269,5 +269,3 @@ def draw_drift_path(my_d, my_g4, my_f, my_current, path):
     c1.SaveAs(path+'/'+my_d.det_model+"_drift_path.pdf")
     c1.SaveAs(path+'/'+my_d.det_model+"_drift_path.root")
     del c1
-
-

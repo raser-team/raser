@@ -15,6 +15,11 @@ import grp
 from raser.supports.output import create_path
 from raser.supports.paths import project_path
 
+
+def job_dir(destination_subfolder):
+    return project_path(destination_subfolder, "jobs")
+
+
 def main(destination_subfolder, command, batch_level, is_test):
     stat_info = os.stat("./")
     gid = stat_info.st_gid
@@ -22,16 +27,21 @@ def main(destination_subfolder, command, batch_level, is_test):
 
     mem = 8000 * batch_level
 
-    job_dir = project_path(destination_subfolder, "jobs")
+    destination_job_dir = job_dir(destination_subfolder)
  
-    create_path(job_dir)
+    create_path(destination_job_dir)
     command_name = command.replace(" ","_").replace("/","_")
-    jobfile_name = str(job_dir / (command_name+".job"))
+    jobfile_name = str(destination_job_dir / (command_name+".job"))
     IMGFILE = os.environ.get('IMGFILE')
-    raser_shell = ( "/usr/bin/apptainer exec --env-file .raser/env" + " " \
-                + IMGFILE + " " \
-                + "raser"
-    )
+    if IMGFILE is None:
+        if not is_test:
+            raise RuntimeError("IMGFILE must be set before submitting a RASER batch job")
+        raser_shell = "raser"
+    else:
+        raser_shell = ( "/usr/bin/apptainer exec --env-file .raser/env" + " " \
+                    + IMGFILE + " " \
+                    + "raser"
+        )
     gen_job(jobfile_name, run_code=raser_shell+' '+command)
     submit_job(jobfile_name, destination_subfolder, group, mem, is_test=is_test)
 
@@ -44,9 +54,9 @@ def gen_job(jobfile_name, run_code):
 def submit_job(jobfile_name, destination_subfolder, group, mem, is_test=False):
     print("Submit job file: ", jobfile_name)
     os.chmod(jobfile_name, 0o755)
-    job_dir = project_path(destination_subfolder, "jobs")
+    destination_job_dir = job_dir(destination_subfolder)
     command = "hep_sub -o {} -e {} {} -mem {} -g {}".format(
-        job_dir, job_dir, jobfile_name, mem, group)
+        destination_job_dir, destination_job_dir, jobfile_name, mem, group)
     run_cmd(command, is_test)
 
 def run_cmd(command, is_test=False):

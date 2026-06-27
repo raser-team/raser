@@ -36,10 +36,24 @@ def _run_scan(kwargs):
     )
 
 
+def _run_signal_samples(kwargs):
+    sample_count = kwargs["scan"]
+    kwargs["events_per_job"] = sample_count
+    kwargs["job"] = 0
+    kwargs["scan"] = None
+    kwargs["_signal_plot_samples"] = sample_count
+    from . import gen_signal_scan
+
+    gen_signal_scan.main(kwargs)
+
+
 def run_signal(kwargs):
     runs.apply_run_config(kwargs)
     if kwargs['scan'] is not None:
-        _run_scan(kwargs)
+        if kwargs.get("_command") == "signal" and not kwargs["signal_batch"]:
+            _run_signal_samples(kwargs)
+        else:
+            _run_scan(kwargs)
     elif kwargs['job'] is not None:
         from . import gen_signal_scan
         gen_signal_scan.main(kwargs)

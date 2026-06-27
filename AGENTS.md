@@ -5,6 +5,8 @@
 - Keep `src/raser/` for installable, reusable RASER library code.
 - Keep repository-local applications under top-level `apps/`; applications may import `raser`, but `raser` library modules must not import `apps`.
 - The `raser` CLI may route to repository applications. CLI reachability does not make an application part of the installable library API.
+- Scientific-computing internals must use explicit contracts and fail visibly when the contract is not met. Do not add capability-probing fallbacks, silent scalar fallbacks, or compatibility fallback paths inside physics/numerics code unless the user explicitly asks for that behavior.
+- Simple 1D electric-field models must carry depletion-state parameters explicitly. Do not encode them as geometry-only linear profiles; below-depletion bias must leave an undepleted zero-field region unless a separate diffusion model is explicitly implemented.
 
 ## Environment Initialization
 

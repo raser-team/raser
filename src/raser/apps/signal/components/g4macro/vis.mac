@@ -4,8 +4,8 @@
 
 # Use these open statements to open selected visualization
 #
-# Use this open statement to create an OpenGL view:
-/vis/open OGL 1600x900-0+0
+# Open the visualization driver before executing this macro.
+# RASER does that from Python using --g4-vis-driver or G4VIS_DEFAULT_DRIVER.
 #
 # Use this open statement to create an OpenInventor view:
 #/vis/open OIX

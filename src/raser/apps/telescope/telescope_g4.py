@@ -478,10 +478,10 @@ class B2PrimaryGeneratorAction(G4VUserPrimaryGeneratorAction):
         self.fParticleGun = G4ParticleGun(nofParticles)
 
         # default particle kinematic
-        particleDefinition = G4ParticleTable.GetParticleTable().FindParticle("neutron")
+        particleDefinition = G4ParticleTable.GetParticleTable().FindParticle("e-")
         self.fParticleGun.SetParticleDefinition(particleDefinition)
         self.fParticleGun.SetParticleMomentumDirection(G4ThreeVector(0.3, 0.15, 1))
-        self.fParticleGun.SetParticleEnergy(120 * GeV)
+        self.fParticleGun.SetParticleEnergy(5 * GeV)
 
     def GeneratePrimaries(self, anEvent):
         # This function is called at the begining of event

@@ -1,6 +1,5 @@
 {
     "ele_name": "Charge_Sensitive",
-    "CDet" : 30,
 
     "t_rise" : 0.7,
     "t_fall" : 1.1,

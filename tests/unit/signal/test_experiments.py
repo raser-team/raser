@@ -17,13 +17,13 @@ def test_default_signal_experiment_is_charge_collection():
     assert experiment["amplifier"] == "Broad_Band_UCSC"
 
 
-def test_default_signal_source_is_am241():
+def test_default_signal_source_is_sr90():
     source = load_signal_source()
 
-    assert source["name"] == "Am241"
+    assert source["name"] == "Sr90"
     assert source["kind"] == "decay_source"
-    assert source["par_type"] == "alpha"
-    assert source["par_energy"] == pytest.approx(5.54)
+    assert source["par_type"] == "e-"
+    assert source["par_energy"] == pytest.approx(2.28)
 
 
 def test_apply_signal_experiment_populates_detector_runtime_fields():

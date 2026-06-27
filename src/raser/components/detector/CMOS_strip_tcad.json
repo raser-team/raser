@@ -35,7 +35,7 @@
     "field_shift_x" : 151,
     "mesh" : {
         "tcad_mesh" : {
-            "file" : "./output/field/CMOS_strip_tcad/-210.0V.tdr"
+            "file" : "./work/CMOS_strip_tcad/field/default/210V.tdr"
         }
     }
 }

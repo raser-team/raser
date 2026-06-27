@@ -25,6 +25,36 @@ from raser.supports.paths import component_path
 verbose = 0
 world_size = 25000
 
+def _get_or_create_vis_manager():
+    existing = g4b.cppyy.gbl.G4VVisManager.GetConcreteInstance()
+    if existing:
+        return existing
+    vis_manager = g4b.G4VisExecutive()
+    vis_manager.Initialize()
+    return vis_manager
+
+
+def _resolve_vis_driver(g4_dic):
+    driver = g4_dic.get("g4_vis_driver") or os.environ.get("G4VIS_DEFAULT_DRIVER")
+    if not driver:
+        raise ValueError(
+            "Geant4 visualization driver must be explicit: use "
+            "--g4-vis-driver or set G4VIS_DEFAULT_DRIVER"
+        )
+    return driver
+
+
+def _vis_driver_needs_ui_session(driver):
+    batch_drivers = {
+        "DAWNFILE",
+        "HEPREPFILE",
+        "K3DJUPYTER",
+        "MPLJUPYTER",
+        "VRML2FILE",
+    }
+    return driver.upper() not in batch_drivers
+
+
 class GeneralG4Interaction:
     def __init__(self, my_d, g4experiment, 
                  g4_seed = random.randint(0, 1e7), g4_vis = False, 
@@ -70,9 +100,12 @@ class GeneralG4Interaction:
         self.my_g4d = MyDetectorConstruction(my_d,g4_dic,detector_material,g4_dic['maxstep'])
 
         g4_vis = g4_vis or g4_dic['g4_vis']
+        vis_driver = _resolve_vis_driver(g4_dic) if g4_vis else None
+        vis_needs_ui = bool(vis_driver and _vis_driver_needs_ui_session(vis_driver))
         if g4_vis: 
             ui = None
-            ui = g4b.G4UIExecutive(1, [os.getcwd()]) # make sure the UI is created in the current working directory
+            if vis_needs_ui:
+                ui = g4b.G4UIExecutive(1, [os.getcwd()]) # make sure the UI is created in the current working directory
 
         self.g4RunManager = g4b.G4RunManager.GetRunManager() or g4b.G4RunManager()
         self.rand_engine= g4b.cppyy.gbl.CLHEP.RanecuEngine()
@@ -99,9 +132,9 @@ class GeneralG4Interaction:
         self.g4RunManager.SetUserInitialization(self.action_initialization)
         
         if g4_vis:  
-            visManager = g4b.G4VisExecutive()
-            visManager.Initialize()
+            self.visManager = _get_or_create_vis_manager()
             UImanager = g4b.G4UImanager.GetUIpointer()
+            UImanager.ApplyCommand("/vis/open {}".format(vis_driver))
             
             if self.geant4_model == 'gdml_import':
                 UImanager.ApplyCommand(
@@ -113,6 +146,19 @@ class GeneralG4Interaction:
                     "/control/execute {}".format(
                         component_path("g4macro", "init_vis.mac")
                     ))
+                UImanager.ApplyCommand(
+                    "/control/execute {}".format(
+                        component_path("g4macro", "vis.mac")
+                    ))
+            if g4_dic.get("g4_vis_output"):
+                UImanager.ApplyCommand("/vis/viewer/set/background 1 1 1")
+                UImanager.ApplyCommand("/vis/ogl/set/printMode vectored")
+                UImanager.ApplyCommand("/vis/ogl/set/printSize 2000 2000")
+                UImanager.ApplyCommand(
+                    "/vis/ogl/set/printFilename {}".format(
+                        g4_dic["g4_vis_output"]
+                    )
+                )
         else:
             UImanager = g4b.G4UImanager.GetUIpointer()
             # reduce verbose from physics list
@@ -121,7 +167,11 @@ class GeneralG4Interaction:
             UImanager.ApplyCommand('/run/initialize')
             
         self.g4RunManager.BeamOn(int(g4_dic['total_events']))
-        if g4_vis:  
+        if g4_vis:
+            UImanager.ApplyCommand("/vis/viewer/flush")
+        if g4_vis and g4_dic.get("g4_vis_output"):
+            UImanager.ApplyCommand("/vis/ogl/export")
+        if g4_vis and vis_needs_ui:
             ui.SessionStart()
             del ui
 

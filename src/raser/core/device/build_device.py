@@ -17,6 +17,9 @@ from ..current.model import Material
 from raser.supports.math import Vector
 from raser.supports.paths import component_file_path
 
+EPSILON_0_F_PER_M = 8.8541878128e-12
+
+
 class Detector:
     """
     Description:
@@ -175,6 +178,40 @@ class Detector:
 
         if "hexagonal" in self.det_model:
             self.p_r = self.device_dict["p_r"]
+
+        self.depletion_depth = float(self.device_dict.get("depletion_depth", self.l_z))
+        self.capacitance = self._resolve_capacitance()
+
+    def _readout_area_um2(self):
+        det_model = self.det_model.lower()
+        if "strip" in det_model:
+            return float(self.p_x) * float(self.p_y)
+        if "pixel" in det_model:
+            return float(self.p_x) * float(self.p_y)
+        return float(self.l_x) * float(self.l_y)
+
+    def _resolve_capacitance(self):
+        if "capacitance_pF" in self.device_dict:
+            return float(self.device_dict["capacitance_pF"])
+        if "capacitance" in self.device_dict:
+            return float(self.device_dict["capacitance"])
+
+        if "3d" in self.det_model.lower():
+            return None
+
+        if self.depletion_depth <= 0:
+            raise ValueError("depletion_depth must be positive")
+
+        material = Material(self.material)
+        area_um2 = self._readout_area_um2()
+        capacitance_f = (
+            EPSILON_0_F_PER_M
+            * material.permittivity
+            * area_um2
+            * 1e-12
+            / (self.depletion_depth * 1e-6)
+        )
+        return capacitance_f * 1e12
 
     def is_plugin(self):
         if ( "plugin" in self.det_model or "3d" in self.det_model or "3D" in self.det_model

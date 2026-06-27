@@ -29,7 +29,7 @@ class VectorizedCarrierSystem:
     """完全自包含的向量化载流子系统 - 替代CarrierCluster"""
     
     def __init__(self, all_positions, all_charges, all_times, all_signals, material, carrier_type="electron", 
-                read_out_contact=None, my_d=None):
+                read_out_contact=None, my_d=None, keep_drift_paths=True):
         # 输入数据验证
         self._validate_inputs(all_positions, all_charges, all_times)
             
@@ -43,6 +43,7 @@ class VectorizedCarrierSystem:
         self.carrier_type = carrier_type
         self.read_out_contact = read_out_contact
         self.my_d = my_d
+        self.keep_drift_paths = bool(keep_drift_paths)
         
         # Material 对象
         self.material = self._create_material(material)
@@ -56,6 +57,7 @@ class VectorizedCarrierSystem:
         self.kboltz = 8.617385e-5
         self.e0 = 1.60217733e-19
         self.mobility = Material(my_d.material).cal_mobility
+        self._mobility_cache = {}
 
         # 性能统计
         self.performance_stats = {
@@ -73,6 +75,13 @@ class VectorizedCarrierSystem:
         
         logger.info(f"向量化系统初始化: {len(all_charges)}个{carrier_type}")
         logger.info(f"探测器尺寸: {my_d.l_x:.1f} × {my_d.l_y:.1f} × {my_d.l_z:.1f} um")
+
+    @staticmethod
+    def _scalar_float(value, name):
+        array_value = np.asarray(value)
+        if array_value.size != 1:
+            raise ValueError(f"{name} must be scalar, got shape {array_value.shape}")
+        return float(array_value.reshape(-1)[0])
 
     def _initialize_params(self, my_d):
         params = {}
@@ -108,7 +117,7 @@ class VectorizedCarrierSystem:
         self.reduced_positions = np.zeros((len(all_positions), 2), dtype=np.float64)
         
         # 初始化路径存储
-        self.paths = [[] for _ in range(len(all_positions))]
+        self.paths = [[] for _ in range(len(all_positions))] if self.keep_drift_paths else []
         self.paths_reduced = [[] for _ in range(len(all_positions))]
         
         # 初始化每个载流子的路径
@@ -117,7 +126,8 @@ class VectorizedCarrierSystem:
             t = self.times[i]
             
             # 完整路径
-            self.paths[i].append([x, y, z, t])
+            if self.keep_drift_paths:
+                self.paths[i].append([x, y, z, t])
             
             # 简化坐标路径
             x_reduced, y_reduced = self._calculate_reduced_coords(x, y, self.my_d)
@@ -243,6 +253,9 @@ class VectorizedCarrierSystem:
         #use_reduced = (self.read_out_contact and 
                       #len(self.read_out_contact) == 1)
         use_reduced = False  # 先不使用简化坐标，直接用全局坐标进行电场计算和边界检查
+
+        if not use_reduced:
+            return x, y
         
         try:
             my_d.field_shift_x = float(my_d.field_shift_x)
@@ -254,12 +267,8 @@ class VectorizedCarrierSystem:
         except:
             my_d.field_shift_y = 0.0
         
-        if use_reduced:
-            x_reduced = (x - my_d.l_x/2 + (my_d.x_ele_num%2)*my_d.p_x/2.0) % my_d.p_x + my_d.field_shift_x
-            y_reduced = (y - my_d.l_y/2 + (my_d.y_ele_num%2)*my_d.p_y/2.0) % my_d.p_y + my_d.field_shift_y
-        else:
-            x_reduced = x
-            y_reduced = y
+        x_reduced = (x - my_d.l_x/2 + (my_d.x_ele_num%2)*my_d.p_x/2.0) % my_d.p_x + my_d.field_shift_x
+        y_reduced = (y - my_d.l_y/2 + (my_d.y_ele_num%2)*my_d.p_y/2.0) % my_d.p_y + my_d.field_shift_y
         
         return x_reduced, y_reduced
     
@@ -333,14 +342,17 @@ class VectorizedCarrierSystem:
         
         logger.info(f"初始状态: {initial_active}/{total_carriers} 个活跃载流子")
         
+        active_indices = np.arange(total_carriers)
+
         for step in range(planned_steps):
             if step % 100 == 0:
                 self._log_progress_drift(step, total_carriers)
             
-            n_terminated = self.drift_step_batch(my_d, my_f, delta_t, step)
+            n_terminated = self.drift_step_batch(my_d, my_f, delta_t, step, active_indices)
             self.performance_stats['total_steps'] += 1
+            active_indices = active_indices[self.active[active_indices]]
             
-            if not np.any(self.active):
+            if len(active_indices) == 0:
                 logger.info("所有载流子停止漂移")
                 break
         else:
@@ -355,18 +367,17 @@ class VectorizedCarrierSystem:
         self._log_final_stats(start_time, executed_steps)
         return True
 
-    def drift_step_batch(self, my_d, my_f, delta_t, step=0):
+    def drift_step_batch(self, my_d, my_f, delta_t, step=0, active_indices=None):
         """批量单步漂移 - 核心算法"""
-        if not np.any(self.active):
+        if active_indices is None:
+            active_indices = np.flatnonzero(self.active)
+        if len(active_indices) == 0:
             return 0
             
         n_terminated = 0
         params = self._params
         
-        for idx in range(len(self.active)):
-            if not self.active[idx]:
-                continue
-                
+        for idx in active_indices:
             x, y, z = self.positions[idx]
             x_reduced, y_reduced = self.reduced_positions[idx]
             charge = self.charges[idx]
@@ -406,8 +417,17 @@ class VectorizedCarrierSystem:
             
             # 迁移率计算
             try:
-                doping = my_f.get_doping_cached(x_reduced, y_reduced, z)
-                mu = self.mobility(params['temperature'], doping, charge, intensity)
+                doping = self._scalar_float(
+                    my_f.get_doping_cached(x_reduced, y_reduced, z),
+                    "doping",
+                )
+                intensity = self._scalar_float(intensity, "electric field intensity")
+                mobility_key = (params['temperature'], doping, bool(charge > 0), intensity)
+                if mobility_key in self._mobility_cache:
+                    mu = self._mobility_cache[mobility_key]
+                else:
+                    mu = self.mobility(params['temperature'], doping, charge, intensity)
+                    self._mobility_cache[mobility_key] = mu
                 diffusion_constant = math.sqrt(2.0 * self.kboltz * params['temperature'] * mu * delta_t) * 1e4
             except Exception as e:
                 raise RuntimeError(f"迁移率计算失败: {e}")
@@ -478,7 +498,8 @@ class VectorizedCarrierSystem:
         self.steps_drifted[idx] += 1
         
         # 更新路径
-        self.paths[idx].append([new_x, new_y, new_z, self.times[idx]])
+        if self.keep_drift_paths:
+            self.paths[idx].append([new_x, new_y, new_z, self.times[idx]])
         x_num, y_num = self._calculate_electrode_numbers(new_x, new_y, self.my_d)
         self.paths_reduced[idx].append([
             self.reduced_positions[idx][0], self.reduced_positions[idx][1], 
@@ -832,57 +853,25 @@ class VectorizedCarrierSystem:
             return False
     
     def _get_weighting_potentials_batch(self, my_f, x_coords, y_coords, z_coords, electrode_idx):
-        """批量获取权重电势 - 带缺失值处理版本"""
+        """获取路径点的权重电势；缺失值用 NaN 显式传播。"""
         potentials = []
-        valid_points = []  # 存储有效点的坐标和电势值
         
-        # 第一次遍历：收集所有有效点
         for i in range(len(x_coords)):
             try:
                 potential = my_f.get_w_p_cached(x_coords[i], y_coords[i], z_coords[i], electrode_idx)
             except Exception as e:
-                logger.warning(f"权重电势获取失败: ({x_coords[i]}, {y_coords[i]}, {z_coords[i]}), 电极{electrode_idx}: {e}")
-                potentials.append(None)
-                
+                raise RuntimeError(
+                    f"权重电势获取失败: ({x_coords[i]}, {y_coords[i]}, {z_coords[i]}), 电极{electrode_idx}: {e}"
+                ) from e
+            if potential is None:
+                potentials.append(np.nan)
+                continue
+
             potentials.append(potential)
-            valid_points.append((x_coords[i], y_coords[i], z_coords[i], potential))
             
             if i < 3 and len(potentials) < 10:
                 logger.debug(f"权重电势[{i}]: ({x_coords[i]:.1f}, {y_coords[i]:.1f}, {z_coords[i]:.1f}) -> {potential:.6f}")
-        
-        # 如果有缺失值，进行插值处理
-        if None in potentials and valid_points:
-            potentials = self._fill_missing_potentials(potentials, x_coords, y_coords, z_coords, valid_points)
-        
         return potentials
-
-    def _fill_missing_potentials(self, potentials, x_coords, y_coords, z_coords, valid_points):
-        """使用最近邻有效值填充缺失的电势值"""
-        filled_potentials = potentials.copy()
-        
-        for i, potential in enumerate(potentials):
-            if potential is None:
-                # 找到最近的有效点
-                nearest_potential = self._find_nearest_valid_potential(
-                    x_coords[i], y_coords[i], z_coords[i], valid_points
-                )
-                filled_potentials[i] = nearest_potential
-                logger.debug(f"填充缺失电势[{i}]: 使用最近邻值 {nearest_potential:.6f}")
-        
-        return filled_potentials
-
-    def _find_nearest_valid_potential(self, x, y, z, valid_points):
-        """找到距离最近的有效点电势"""
-        min_distance = float('inf')
-        nearest_potential = 0.0  # 默认值
-        
-        for vx, vy, vz, potential in valid_points:
-            distance = ((x - vx) ** 2 + (y - vy) ** 2 + (z - vz) ** 2) ** 0.5
-            if distance < min_distance:
-                min_distance = distance
-                nearest_potential = potential
-        
-        return nearest_potential
 
     def _calculate_trapped_charges(self, initial_charge, x_coords, y_coords, z_coords, d_times, delta_t, my_f):
         """计算考虑陷阱效应的电荷 - 使用列表推导式版本"""

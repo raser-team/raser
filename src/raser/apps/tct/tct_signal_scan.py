@@ -58,7 +58,7 @@ def job_main(kwargs):
     my_current = ccrt.CalCurrentLaser(my_d, my_f, my_l)
     path = output(__file__, my_l.model)
 
-    ele_current = Amplifier(my_current.sum_cu, amplifier, seed=int(kwargs['job'])) # job number
+    ele_current = Amplifier(my_current.sum_cu, amplifier, seed=int(kwargs['job']), CDet=my_d.capacitance) # job number
     if kwargs['scan'] != None: #assume parameter alter
         # key = my_l.fz_rel
         tag = kwargs['job']

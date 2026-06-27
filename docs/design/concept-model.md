@@ -68,6 +68,12 @@ Field 资产输出路径以 `work/<sensor>/field/...` 为根。
 Signal 工作流保存一次完整信号链。
 Signal 的 scan/job 编排是多个工作流共享的执行机制。
 Signal 提供 CCE 和 Timeres 可复用的信号产生机制。
+Signal 的空间过程图由 `src/raser/apps/signal/draw_save.py` 承载。
+空间过程图包括入射径迹、漂移路径和探测器几何关系。
+Signal 的感应电流图由电流计算结果承载。
+Signal 的电子学波形图由读出链结果承载。
+Geant4 解耦后的 toyMIP 信号基准仍按 Signal 的输出职责保存结果。
+Core 电流计算返回数值结果，由 Signal 决定输出归档方式。
 
 ### CCE
 
@@ -113,6 +119,7 @@ Field App 提供用户级资产命令。
 `raser field weight <voltage> <electrode> <sensor>` 复用现有权重场派生能力。
 运行前轻量文件检查属于 `run` 入口。
 用户级 field 命令聚焦资产生成、导入和派生。
+Field 展示接口服务场、电势、掺杂、IV 和 CV 等资产图。
 
 Field 产物保持现有计算契约。
 Field 产物包括 `Potential_<V>V.pkl`、`NetDoping_<V>V.pkl`、`TrappingRate_p_<V>V.pkl`、`TrappingRate_n_<V>V.pkl` 和 `weightingfield/<contact>/Potential_1V.pkl`。

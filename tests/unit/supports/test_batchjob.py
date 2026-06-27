@@ -1,5 +1,7 @@
 import subprocess
 
+import pytest
+
 from raser.supports import batchjob
 
 
@@ -56,3 +58,29 @@ def test_submit_job_builds_hep_sub_command(tmp_path, monkeypatch):
         )
     ]
     assert job_file.stat().st_mode & 0o777 == 0o755
+
+
+def test_job_dir_uses_project_path(tmp_path, monkeypatch):
+    monkeypatch.setenv("RASER_PROJECT_PATH", str(tmp_path / "HPK-Si-PiN"))
+
+    assert batchjob.job_dir("field") == tmp_path / "HPK-Si-PiN" / "field" / "jobs"
+
+
+def test_main_fails_visibly_without_imgfile_for_real_submit(tmp_path, monkeypatch):
+    monkeypatch.setenv("RASER_PROJECT_PATH", str(tmp_path / "HPK-Si-PiN"))
+    monkeypatch.delenv("IMGFILE", raising=False)
+
+    with pytest.raises(RuntimeError, match="IMGFILE"):
+        batchjob.main("field", "field solve HPK-Si-PiN", 1, is_test=False)
+
+
+def test_main_can_dry_run_without_imgfile(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("RASER_PROJECT_PATH", str(tmp_path / "HPK-Si-PiN"))
+    monkeypatch.delenv("IMGFILE", raising=False)
+    monkeypatch.setattr(batchjob.grp, "getgrgid", lambda gid: ["atlas"])
+
+    batchjob.main("field", "field solve HPK-Si-PiN", 1, is_test=True)
+
+    job_file = tmp_path / "HPK-Si-PiN" / "field" / "jobs" / "field_solve_HPK-Si-PiN.job"
+    assert job_file.read_text() == "raser field solve HPK-Si-PiN"
+    assert f"hep_sub -o {job_file.parent} -e {job_file.parent} {job_file}" in capsys.readouterr().out

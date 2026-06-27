@@ -1,6 +1,5 @@
 {
     "ele_name": "Broad_Band",
-    "CDet" : 30,
     
     "Broad_Band_Bandwidth" : 0.66,
     "Broad_Band_Gain" : 19500,

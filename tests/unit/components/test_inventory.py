@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from raser.supports.paths import PACKAGE_ROOT
 from raser.supports.paths import app_file_path
 from raser.supports.paths import component_file_path
@@ -101,7 +103,7 @@ def test_source_configs_expose_particle_or_laser_fields():
 
 
 def test_electronics_configs_expose_readout_thresholds():
-    analog_required = {"ele_name", "CDet", "noise_avg", "noise_rms", "threshold"}
+    analog_required = {"ele_name", "noise_avg", "noise_rms", "threshold"}
     for path in sorted((COMPONENT_ROOT / "electronics" / "analog").glob("*.json")):
         assert analog_required <= set(_load_json(path)), path
 
@@ -124,3 +126,22 @@ def test_app_level_json_configs_are_discoverable():
     assert app_file_path("timeres", "time_resolution.json").exists()
     assert app_file_path("bmos", "bmos.json").exists()
     assert app_file_path("telescope", "telescope.json").exists()
+    telescope = _load_json(app_file_path("telescope", "telescope.json"))
+    assert telescope["par_type"] == "e-"
+    assert telescope["par_energy"] >= 1000
+
+
+def test_planar_detector_estimates_capacitance_from_geometry():
+    from raser.core.device.build_device import Detector
+
+    detector = Detector("HPK-Si-PiN")
+
+    assert detector.capacitance == pytest.approx(3.44, rel=0.01)
+
+
+def test_3d_detector_requires_explicit_capacitance():
+    from raser.core.device.build_device import Detector
+
+    detector = Detector("3d_pixel")
+
+    assert detector.capacitance is None
