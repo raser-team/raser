@@ -2,7 +2,10 @@ import os
 import subprocess
 import sys
 
-from util.output import output
+try:
+    from ..util.output import output
+except ImportError:
+    from util.output import output
 
 def main(kwargs):
     label = kwargs['label'] # Operation label or detector name
@@ -14,9 +17,26 @@ def main(kwargs):
     elif label == 'readout':
         from . import readout
         readout.main(name)
+    elif label in (
+        'estimate_noise',
+        'estimate_noise_spectrum',
+        'noise_spectrum',
+        'estimate_spice_noise',
+        'estimate_spice_noise_spectrum',
+        'spice_noise',
+        'spice_noise_spectrum',
+    ):
+        from . import noise_estimation
+        noise_estimation.main(kwargs)
+    elif label in ('validate_noise', 'validate_noise_spectrum', 'noise_validation'):
+        from . import noise_validation
+        noise_validation.main(kwargs)
     elif label == 'batch_signal':
         if kwargs['job_file'] == None:
-            from util import batchjob
+            try:
+                from ..util import batchjob
+            except ImportError:
+                from util import batchjob
             args = sys.argv
 
             if kwargs['tct'] != None:
@@ -41,4 +61,3 @@ def main(kwargs):
             recreate_batch_signals.main(name, kwargs['source'], kwargs['job_file'], kwargs['tct'])
     else:
         raise NameError
-
