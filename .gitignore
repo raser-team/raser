@@ -1,23 +1,56 @@
+# OS metadata
 .DS_Store
-.vscode
-.venv
-.conda
-.raser
+
+# IDE/editor workspace metadata
+.vscode/
+.idea/
+.vs/
+.cursor/
+.zed/
+.fleet/
+.codegeex/
+.codeium/
+.continue/
+
+# Agent/harness local session metadata
+.codex/
+.agents/
+.claude/
+.gemini/
+.aider*
+.openhands/
+
+# Local Python/runtime environments
+.venv/
+.conda/
+raser-venv/
+
+# RASER local runtime state and isolated worktrees
+.raser/
 .worktrees/
 
-output
+# Simulation outputs and working directories
+output/
+work/
 
+# Python bytecode/cache files
 **/__pycache__
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Geant4/gmsh generated artifacts
 G4History.macro
 *.msh
 
-build
+# Python build/package artifacts
+build/
 raser.egg-info
-dist
+dist/
 
-raser-venv
-img
-bootstrap/ingredients
-# PCB GDML generated files
-setting/g4experiment/pcb_readout.gdml
-setting/g4experiment/pcb_readout_raw.gdml
+# Local image/bootstrap artifacts
+img/
+bootstrap/ingredients/
+
+# Generated GDML files
+*.gdml

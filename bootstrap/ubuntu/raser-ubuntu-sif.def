@@ -85,7 +85,12 @@ From: ubuntu:22.04
     rm -rf $UV_CACHE_DIR
 
     $VIRTUAL_ENV/bin/python --version
+    $VIRTUAL_ENV/bin/python -m pytest --version
+    $VIRTUAL_ENV/bin/python -m ruff --version
+    $VIRTUAL_ENV/bin/python -m mypy --version
     $VIRTUAL_ENV/bin/python -c "import importlib.util; assert importlib.util.find_spec('g4ppyy')"
+    $VIRTUAL_ENV/bin/python -c "import pymtl3"
+    $VIRTUAL_ENV/bin/tdr_convert --help >/dev/null
     $VIRTUAL_ENV/bin/python -c "import sqlite3; print(sqlite3.sqlite_version)"
     ngspice -v
 

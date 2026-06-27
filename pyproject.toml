@@ -25,6 +25,7 @@ dependencies = [
   "scipy",
   "pandas",
   "matplotlib",
+  "netCDF4",
   "h5py",
   "PyYAML",
   "tqdm",
@@ -34,14 +35,55 @@ dependencies = [
   "psutil",
   "devsim",
   "g4ppyy",
+  "pymtl3",
+]
+
+[dependency-groups]
+test = [
+  "mypy>=2",
+  "pytest>=7.4,<8",
+  "ruff>=0.15",
 ]
 
 [project.urls]
 Homepage = "https://github.com/raser-team/raser"
 Repository = "https://github.com/raser-team/raser"
 
+[project.scripts]
+raser = "raser.cli.raser:main"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
+include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+raser = [
+  "components/**/*",
+  "apps/*/*.json",
+  "apps/*/components/**/*",
+  "apps/bmos/*.cir",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+  "-ra",
+  "--strict-config",
+  "--strict-markers",
+]
+markers = [
+  "root: requires PyROOT",
+  "devsim: requires devsim",
+  "geant4: requires Geant4/g4ppyy",
+  "ngspice: requires ngspice executable",
+  "hardware: requires lab hardware",
+  "slow: long-running simulation or scan",
+]
+
+[tool.mypy]
+python_version = "3.11"
+check_untyped_defs = true
+ignore_missing_imports = true

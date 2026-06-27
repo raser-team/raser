@@ -1,0 +1,1 @@
+"""Particle interaction core package."""

@@ -1,0 +1,41 @@
+{
+    "det_name" : "general_strip",
+    "det_model" : "strip",
+    "material" : "Si",
+
+    "l_x" : 1000,
+    "l_y" : 1000,
+    "l_z" : 180,
+    "p_x" : 25,
+    "read_ele_num" : 40,
+
+    "doping":{
+        "Donors" : "ifelse(0.2e-4>x&&x>0e-4&&45.25e-4>y&&y>30.25e-4,1e20,0)+ifelse(0.4e-4>x&&x>0.2e-4&&45.25e-4>y&&y>30.25e-4,3e18,0)+ifelse(1.2e-4>x&&x>0.4e-4&&46.75e-4>y&&y>28.75e-4,1e17,0)",
+        "Acceptors" : "ifelse(y>0&&y<3e-4&&x>0e-4&&x<1.2e-4,2e18,0)+ifelse(y>0&&y<3e-4&&x>1.2e-4&&x<1.6e-4,1e15,0)+ifelse(y>72.5e-4&&y<75.5e-4&&x>0e-4&&x<1.2e-4,2e18,0)+ifelse(y>72.5e-4&&y<75.5e-4&&x>1.2e-4&&x<1.6e-4,1e15,0)+ifelse(x>0&&x<177e-4,6.64e12,0)+ifelse(x>147e-4&&x<179e-4,1e17,0)+ifelse(x>179e-4&&x<180e-4,2e19,0)"
+    },
+
+    "bias" : {
+        "electrode" : "bot",
+        "voltage" : -210
+    },
+    
+    "temperature" : 300,
+    "vector_delta_t": 1e-12,
+    "vector_boundary_tolerance": 0.1,
+    "vector_min_field_strength": 25.0,
+    "current_smoothing_window": 0,
+    "current_savgol_window": 0,
+    "current_savgol_poly": 0,
+
+    "cross_talk" : null,
+
+    "area_factor" : 1,
+    "default_dimension" : 2,
+    "read_out_contact" : [{"x_span":4, "y_span":0, "name":"top"}],
+    "field_shift_x" : 100,
+    "mesh" : {
+        "tcad_mesh" : {
+            "file" : "./output/field/general_strip/-210.0V.tdr"
+        }
+    }
+}

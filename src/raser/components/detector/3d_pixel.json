@@ -1,0 +1,39 @@
+{
+    "det_name" : "3D_pixel",
+    "det_model" : "3D_pixel",
+    "material" : "Si",
+
+    "l_x" : 1000,
+    "l_y" : 1000,
+    "l_z" : 100,
+
+    "p_x" : 25,
+    "p_y" : 25,
+
+    "x_ele_num" : 40,
+    "y_ele_num" : 40,
+    
+    "doping":{
+        "Acceptors" : "0",
+        "Donors" : "1e13"
+    },
+
+    "bias" : {
+        "electrode" : "center",
+        "voltage" : -500
+    },
+    
+    "temperature" : 300.0,
+
+    "area_factor" : 1,
+    "default_dimension" : 2,
+    "read_out_contact" : [{"x_span":0, "y_span":0, "name":"center"}],
+    "field_shift_x" : 0,
+    "field_shift_y" : 0,
+
+    "mesh" : {
+        "tcad_mesh" : {
+            "file" : "./output/field/3d_pixel/-500.0V.tdr"
+        }
+    }
+}
