@@ -22,6 +22,7 @@ from raser.supports.paths import project_path
 from raser.supports import runs
 
 CFD = 0.5 # partition
+CFD_LABEL = "CFD50"
 #TODO: get threshold and CFD from electronics setting
 
 class InputWaveform:
@@ -30,7 +31,7 @@ class InputWaveform:
     ToT : time over threshold
     amplitude : peak amplitude for charge sensitive preamp
     charge : total charge for current sensitive preamp
-    ToR : time of ratio (CFD)
+    CFD50 : time at 50% constant-fraction discriminator crossing
     """
     def __init__(self, input_entry, threshold, amplitude_threshold, read_ele_num, pitch_x, pitch_y, CFD=CFD,):
         self.waveforms = [None for _ in range(read_ele_num)]
@@ -43,7 +44,7 @@ class InputWaveform:
         self.ToT = [0 for i in range(read_ele_num)]
         self.amplitude = [0 for i in range(read_ele_num)] # for charge sensitive pre amp
         self.charge = [0 for i in range(read_ele_num)] # for current sensitive pre amp
-        self.ToR = [0 for i in range(read_ele_num)]
+        self.CFD50 = [0 for i in range(read_ele_num)]
         self.threshold = threshold
         self.amplitude_threshold = amplitude_threshold
 
@@ -60,12 +61,12 @@ class InputWaveform:
                 self.ToA[i] = None
                 self.ToT[i] = 0
                 self.charge[i] = 0
-                self.ToR[i] = None
+                self.CFD50[i] = None
             else:
                 self.ToA[i] = get_ToA(self.waveforms[i], self.threshold, self.peak_time[i])
                 self.ToT[i] = get_ToT(self.waveforms[i], self.threshold, self.peak_time[i])
                 self.charge[i] = get_charge(self.waveforms[i])
-                self.ToR[i] = get_ToR(self.waveforms[i], CFD, self.peak_time[i])
+                self.CFD50[i] = get_CFD50(self.waveforms[i], CFD, self.peak_time[i])
 
         self.get_total_data()
 
@@ -76,7 +77,7 @@ class InputWaveform:
             self.data["ToT"] = None
             self.data["amplitude"] = None
             self.data["charge"] = None
-            self.data["ToR"] = None
+            self.data[CFD_LABEL] = None
             self.data["gravity_center_ToT"] = None
             self.data["gravity_center_amplitude"] = None
             self.data["gravity_center_charge"] = None
@@ -91,7 +92,7 @@ class InputWaveform:
             self.data["ToT"] = self.ToT[0]
             self.data["amplitude"] = self.amplitude[0]
             self.data["charge"] = self.charge[0]
-            self.data["ToR"] = self.ToR[0]
+            self.data[CFD_LABEL] = self.CFD50[0]
             self.data["gravity_center_ToT"] = 0 # No spacial resolution
             self.data["gravity_center_amplitude"] = 0
             self.data["gravity_center_charge"] = 0
@@ -107,7 +108,7 @@ class InputWaveform:
             self.data["ToT"] = get_total_amp(self.ToT, 10e-9)
             self.data["amplitude"] = get_total_amp(self.amplitude, self.amplitude_threshold)
             self.data["charge"] = get_total_amp(self.charge, 0.0)
-            self.data["ToR"] = get_conjoined_time(self.ToR) # TODO: conjoint measurement
+            self.data[CFD_LABEL] = get_conjoined_time(self.CFD50) # TODO: conjoint measurement
             self.data["gravity_center_ToT"], self.data["cluster_size_ToT"] = ( get_gravity_center_and_cluster_size(self.ToT, 10e-9)
             )  # TODO: assign a proper value for all DAQ systems
             ( # TODO: assign a proper value for all DAQ systems
@@ -175,7 +176,7 @@ def get_charge(hist):
         charge += abs(hist.GetBinContent(i))
     return charge
 
-def get_ToR(hist, CFD, peak_time_bin):
+def get_CFD50(hist, CFD, peak_time_bin):
     amplitude = abs(hist.GetBinContent(peak_time_bin))
     target = amplitude * CFD
     for i in range(peak_time_bin, 0, -1):
@@ -240,52 +241,89 @@ def remove_none(list):
     return new_list
 
 class WaveformStatistics:
-    def __init__(self, input_path, my_d, threshold, amplitude_threshold, output_path, vis=False):
+    def __init__(
+        self,
+        my_d,
+        threshold,
+        amplitude_threshold,
+    ):
         if my_d.det_model == 'planar' or my_d.det_model == 'lgad':
             my_d.read_ele_num = 1
-            pitch_x = my_d.l_x
-            pitch_y = my_d.l_y
+            self.pitch_x = my_d.l_x
+            self.pitch_y = my_d.l_y
         elif my_d.det_model == 'strip':
             my_d.read_ele_num = my_d.read_ele_num
-            pitch_x = my_d.p_x
-            pitch_y = my_d.l_y
+            self.pitch_x = my_d.p_x
+            self.pitch_y = my_d.l_y
         elif my_d.det_model == 'pixel':
             my_d.read_ele_num = my_d.x_ele_num * my_d.y_ele_num
-            pitch_x = my_d.p_x
-            pitch_y = my_d.p_y
+            self.pitch_x = my_d.p_x
+            self.pitch_y = my_d.p_y
+        else:
+            raise ValueError("Unsupported detector model for waveform statistics: {}".format(my_d.det_model))
 
         # TODO: establish a better method to get the coordinate of the electrode
+        self.detector = my_d
+        self.threshold = threshold
+        self.amplitude_threshold = amplitude_threshold
         self.data = {}
         self.waveforms = [[] for i in range(my_d.read_ele_num)]
 
-        self.output_path = output_path
+    @classmethod
+    def from_batch(
+        cls,
+        input_path,
+        my_d,
+        threshold,
+        amplitude_threshold,
+        vis=False,
+    ):
+        statistics = cls(my_d, threshold, amplitude_threshold)
+        statistics.read_batch(input_path, vis=vis)
+        return statistics
 
-        files = os.listdir(input_path)
-        files.sort()
+    def read_batch(self, input_path, vis=False):
+        input_path = Path(input_path)
+        files = sorted(input_path.glob("*.root"))
+        if not files:
+            raise FileNotFoundError("No waveform ROOT files found in {}".format(input_path))
 
-        tag = ( str(my_d.voltage)+str(my_d.irradiation_flux)+str(my_d.g4experiment)+str(my_d.amplifier))
-
-        for file in files:
-            #if tag not in file:
-            #    continue
-            
-            path = os.path.join(input_path, file)
-            file_pointer = ROOT.TFile(path, "READ")
+        for path in files:
+            file_pointer = ROOT.TFile(str(path), "READ")
+            if file_pointer is None or file_pointer.IsZombie():
+                raise OSError("Cannot open waveform ROOT file {}".format(path))
             tree = file_pointer.Get("tree")
+            if tree is None:
+                file_pointer.Close()
+                raise ValueError("Missing tree TTree in {}".format(path))
             n = tree.GetEntries()
             for i in range(n):
                 tree.GetEntry(i) 
-                iw = InputWaveform(tree, threshold, amplitude_threshold, my_d.read_ele_num, pitch_x, pitch_y,)
+                iw = InputWaveform(
+                    tree,
+                    self.threshold,
+                    self.amplitude_threshold,
+                    self.detector.read_ele_num,
+                    self.pitch_x,
+                    self.pitch_y,
+                )
                 self.fill_data(iw.data)
                 if vis == True:
-                    for j in range(my_d.read_ele_num):
+                    for j in range(self.detector.read_ele_num):
                         self.waveforms[j].append(iw.waveforms[j])
 
-            print("read {n} events from {file}".format(n=n, file=file))
+            print("read {n} events from {file}".format(n=n, file=path.name))
             file_pointer.Close()
 
+    def draw(self, output_path, tag, vis=False):
+        if tag is None:
+            raise ValueError("Waveform statistics output tag must be explicit")
+        output_path = Path(output_path)
+        output_path.mkdir(parents=True, exist_ok=True)
+        self.output_path = str(output_path)
+
         if vis == True:
-            for j in range(my_d.read_ele_num):
+            for j in range(self.detector.read_ele_num):
                 canvas = ROOT.TCanvas("canvas", "Canvas", 800, 600)
                 multigraph = ROOT.TMultiGraph("mg","")
                 count = 0
@@ -298,11 +336,11 @@ class WaveformStatistics:
                     multigraph.Add(graph)
                     count += 1
                 multigraph.Draw("APL")
-                canvas.SaveAs(os.path.join(output_path, "waveform_electrode_{}.pdf".format(j)))
-                canvas.SaveAs(os.path.join(output_path, "waveform_electrode_{}.png".format(j)))
+                canvas.SaveAs(os.path.join(self.output_path, "waveform_electrode_{}.pdf".format(j)))
+                canvas.SaveAs(os.path.join(self.output_path, "waveform_electrode_{}.png".format(j)))
 
         self.time_resolution_fit(self.data["ToA"], "ToA", tag)
-        self.time_resolution_fit(self.data["ToR"], "ToR", tag)
+        self.time_resolution_fit(self.data[CFD_LABEL], CFD_LABEL, tag)
         self.amplitude_fit(self.data["charge"], "charge", tag)
         self.amplitude_fit(self.data["amplitude"], "amplitude", tag)
         self.amplitude_fit(self.data["ToT"], "ToT", tag)
@@ -315,9 +353,9 @@ class WaveformStatistics:
         self.gravity_center_error_fit(self.data["gravity_center_ToT_error"], "gravity_center_ToT_error", tag)
         self.gravity_center_error_fit(self.data["gravity_center_amplitude_error"], "gravity_center_amplitude_error", tag,)
         self.gravity_center_error_fit(self.data["gravity_center_charge_error"], "gravity_center_charge_error", tag)
-        self.ita_calibration(self.data["gravity_center_ToT"], self.data["original_x"], pitch_x, "ita_calibration_ToT", tag,)
-        self.ita_calibration(self.data["gravity_center_amplitude"], self.data["original_x"], pitch_x, "ita_calibration_amplitude", tag,)
-        self.ita_calibration(self.data["gravity_center_charge"], self.data["original_x"], pitch_x, "ita_calibration_charge", tag,)
+        self.ita_calibration(self.data["gravity_center_ToT"], self.data["original_x"], self.pitch_x, "ita_calibration_ToT", tag,)
+        self.ita_calibration(self.data["gravity_center_amplitude"], self.data["original_x"], self.pitch_x, "ita_calibration_amplitude", tag,)
+        self.ita_calibration(self.data["gravity_center_charge"], self.data["original_x"], self.pitch_x, "ita_calibration_charge", tag,)
     
     def fill_data(self, data):
         for key in data:
@@ -662,4 +700,6 @@ def main(kwargs):
         input_path = project_path("signal", signal_label, signal_source, "batch")
 
     output_path = output(__file__, det_name)
-    WaveformStatistics(input_path, my_d, threshold, amplitude_threshold, output_path)
+    tag = ( str(my_d.voltage)+str(my_d.irradiation_flux)+str(my_d.g4experiment)+str(my_d.amplifier))
+    statistics = WaveformStatistics.from_batch(input_path, my_d, threshold, amplitude_threshold)
+    statistics.draw(output_path, tag)

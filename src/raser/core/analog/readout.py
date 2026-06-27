@@ -14,16 +14,135 @@ import json
 import os
 import subprocess
 import time
+
+import numpy as np
 import ROOT
 
 from .ngspice import set_ngspice_input
 from .ngspice import set_tmp_cir
-from raser.supports.math import signal_convolution
 from raser.supports.output import output
 from raser.supports.output import delete_file
 from raser.supports.paths import optional_component_path
 
 ROOT.gROOT.SetBatch(True)
+
+
+def _new_histogram(name, title, n_bins, t_start, t_end):
+    add_directory = ROOT.TH1.AddDirectoryStatus()
+    ROOT.TH1.AddDirectory(False)
+    try:
+        return ROOT.TH1F(name, title, n_bins, t_start, t_end)
+    finally:
+        ROOT.TH1.AddDirectory(add_directory)
+
+
+def _hist_contents(hist: ROOT.TH1F) -> np.ndarray:
+    n_bins = hist.GetNbinsX()
+    return np.array(
+        [hist.GetBinContent(bin_idx) for bin_idx in range(1, n_bins + 1)],
+        dtype=np.float64,
+    )
+
+
+def _set_hist_contents(hist: ROOT.TH1F, values: np.ndarray):
+    n_bins = hist.GetNbinsX()
+    if len(values) != n_bins:
+        raise ValueError(
+            f"Histogram {hist.GetName()} has {n_bins} bins, got {len(values)} values"
+        )
+    for bin_idx, value in enumerate(values, start=1):
+        hist.SetBinContent(bin_idx, float(value))
+
+
+def _hist_bin_centers(hist: ROOT.TH1F) -> np.ndarray:
+    n_bins = hist.GetNbinsX()
+    axis = hist.GetXaxis()
+    return np.array(
+        [axis.GetBinCenter(bin_idx) for bin_idx in range(1, n_bins + 1)],
+        dtype=np.float64,
+    )
+
+
+def _convolve_samples(
+    values: np.ndarray,
+    t_bin: float,
+    pulse_responce_function_list: list,
+) -> np.ndarray:
+    if t_bin <= 0:
+        raise ValueError(f"Convolution bin width must be positive, got {t_bin}")
+    result = np.asarray(values, dtype=np.float64)
+    n_bins = len(result)
+    if n_bins == 0:
+        return result
+    times = np.arange(n_bins, dtype=np.float64) * t_bin
+    for response in pulse_responce_function_list:
+        kernel = np.array([response(time) for time in times], dtype=np.float64)
+        result = np.convolve(result, kernel, mode="full")[:n_bins] * t_bin
+    return result
+
+
+def _convolve_histogram_causal(
+    hist: ROOT.TH1F,
+    pulse_responce_function_list: list,
+) -> np.ndarray:
+    return _convolve_samples(
+        _hist_contents(hist),
+        hist.GetBinWidth(1),
+        pulse_responce_function_list,
+    )
+
+
+def _hist_activity_window(
+    hist: ROOT.TH1F,
+    relative_threshold: float = 0.02,
+    absolute_threshold: float = 0.0,
+):
+    values = np.abs(_hist_contents(hist))
+    if len(values) == 0:
+        return None
+
+    peak = float(np.max(values))
+    if peak <= 0.0:
+        return None
+
+    threshold = max(relative_threshold * peak, absolute_threshold)
+    active = np.flatnonzero(values >= threshold)
+    if len(active) == 0:
+        return None
+
+    centers = _hist_bin_centers(hist)
+    return float(centers[active[0]]), float(centers[active[-1]])
+
+
+def _combined_activity_window(histograms, absolute_thresholds=None):
+    if absolute_thresholds is None:
+        absolute_thresholds = [0.0] * len(histograms)
+
+    axis_min = min(hist.GetXaxis().GetXmin() for hist in histograms)
+    axis_max = max(hist.GetXaxis().GetXmax() for hist in histograms)
+    windows = []
+    for hist, absolute_threshold in zip(histograms, absolute_thresholds):
+        window = _hist_activity_window(
+            hist,
+            absolute_threshold=absolute_threshold,
+        )
+        if window is not None:
+            windows.append(window)
+
+    if not windows:
+        return axis_min, axis_max
+
+    xmax = max(window[1] for window in windows)
+    standard_ends = [1e-9, 2e-9, 5e-9, 10e-9, 20e-9, 50e-9, 100e-9]
+    selected_end = standard_ends[-1]
+    for candidate in standard_ends:
+        if xmax <= candidate:
+            selected_end = candidate
+            break
+
+    xmin = -0.25 * selected_end
+    return max(axis_min, xmin), min(axis_max, selected_end)
+
 
 class Amplifier:
     """Get current after amplifier with convolution, for each reading electrode
@@ -59,7 +178,14 @@ class Amplifier:
     ---------
         2024/09/14
     """
-    def __init__(self, currents: list[ROOT.TH1F], amplifier_name: str, seed = 0, CDet = None, is_cut = False,):
+    def __init__(
+        self,
+        currents: list[ROOT.TH1F],
+        amplifier_name: str,
+        seed = 0,
+        CDet = None,
+        is_cut = False,
+    ):
         self.amplified_currents = []
         self.read_ele_num = len(currents)
         self.time_unit = 10e-12
@@ -115,7 +241,7 @@ class Amplifier:
             2021/09/09
         """
         if CDet is None:
-            CDet = self.amplifier_parameters['CDet']
+            raise ValueError("Detector capacitance must be provided by the detector")
 
         if self.amplifier_parameters['ele_name'] == 'Charge_Sensitive':
             """ Current Sensitive Amplifier parameter initialization"""
@@ -207,10 +333,18 @@ class Amplifier:
     def fill_amplifier_output(self, currents: list[ROOT.TH1F]):
         for i in range(self.read_ele_num):
             cu = currents[i]
-            self.amplified_currents.append(ROOT.TH1F("electronics %s"%(self.name)+str(i+1), "electronics %s"%(self.name),
-                                cu.GetNbinsX(),cu.GetXaxis().GetXmin(),cu.GetXaxis().GetXmax(),))
+            self.amplified_currents.append(
+                _new_histogram(
+                    "electronics %s%s"%(self.name, i + 1),
+                    "electronics %s"%(self.name),
+                    cu.GetNbinsX(),
+                    cu.GetXaxis().GetXmin(),
+                    cu.GetXaxis().GetXmax(),
+                )
+            )
             self.amplified_currents[i].Reset()
-            signal_convolution(cu, self.amplified_currents[i], self.pulse_responce_list)
+            values = _convolve_histogram_causal(cu, self.pulse_responce_list)
+            _set_hist_contents(self.amplified_currents[i], values)
     
     def set_scope_output(self, currents: list[ROOT.TH1F]):
         for i in range(self.read_ele_num):
@@ -253,7 +387,8 @@ class Amplifier:
                     time.append(float(line.split()[0]))
                     volt.append(float(line.split()[1])*1e3) # convert V to mV
 
-            self.amplified_currents.append(ROOT.TH1F("electronics %s"%(self.name)+str(i+1), "electronics %s"%(self.name),
+            self.amplified_currents.append(_new_histogram(
+                                "electronics %s"%(self.name)+str(i+1), "electronics %s"%(self.name),
                                 int(time_limit/self.time_unit),0,time[-1],))
             # the .raw input is not uniform, so we need to slice the time range
             filled = set()
@@ -290,8 +425,11 @@ class Amplifier:
             a_min_scaled = temp_amplified_current.GetMinimum()
             a_max_scaled = temp_amplified_current.GetMaximum()
 
-            xmin = min(temp_current.GetXaxis().GetXmin(), temp_amplified_current.GetXaxis().GetXmin(),)
-            xmax = max(temp_current.GetXaxis().GetXmax(), temp_amplified_current.GetXaxis().GetXmax(),)
+            amplified_noise_floor = 3.0 * self.amplifier_parameters["noise_rms"] * scale_factor
+            xmin, xmax = _combined_activity_window(
+                [temp_current, temp_amplified_current],
+                absolute_thresholds=[0.0, amplified_noise_floor],
+            )
             combined_ymin = min(c_min, a_min_scaled)
             combined_ymax = max(c_max, a_max_scaled)
 
@@ -366,7 +504,7 @@ def main(name):
     for i in range(101, 301):
         my_th1f.SetBinContent(i, -0.05e-6*(300-i)) # A
 
-    ele = Amplifier([my_th1f], name)
+    ele = Amplifier([my_th1f], name, CDet=30)
     ele.draw_waveform([my_th1f], output(__file__, name))
 
 if __name__ == '__main__':

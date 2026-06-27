@@ -60,9 +60,16 @@ def main(kwargs):
         my_d.irradiation_flux = float(kwargs['irradiation'])
     if kwargs.get("events_per_job") is not None:
         my_d.g4_config["total_events"] = int(kwargs["events_per_job"])
+    if kwargs.get("g4_vis_driver"):
+        my_d.g4_config["g4_vis_driver"] = kwargs["g4_vis_driver"]
 
     g4_vis = kwargs['g4_vis']
     runs.prepare_run_record(kwargs, my_d)
+    if g4_vis:
+        my_d.g4_config["g4_vis_output"] = os.path.join(
+            kwargs["_run_path"],
+            "g4_geometry",
+        )
     my_d.device = kwargs["_field_source"]
     my_d.region = kwargs["_field_source"]
 
@@ -88,9 +95,9 @@ def main(kwargs):
             my_current.cross_talk_cu = cross_talk(det_name, my_d.cross_talk, my_current.sum_cu)
         else:
             my_current.cross_talk_cu = my_current.sum_cu
-        ele_current = Amplifier(my_current.cross_talk_cu, my_d.amplifier)
+        ele_current = Amplifier(my_current.cross_talk_cu, my_d.amplifier, CDet=my_d.capacitance)
     else:
-        ele_current = Amplifier(my_current.sum_cu, my_d.amplifier)
+        ele_current = Amplifier(my_current.sum_cu, my_d.amplifier, CDet=my_d.capacitance)
 
     path = kwargs["_run_path"]
     #energy_deposition(my_g4)   # Draw Geant4 depostion distribution

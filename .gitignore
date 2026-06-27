@@ -21,7 +21,9 @@
 .openhands/
 
 # Local Python/runtime environments
+.venv
 .venv/
+.conda
 .conda/
 raser-venv/
 
@@ -49,6 +51,7 @@ raser.egg-info
 dist/
 
 # Local image/bootstrap artifacts
+img
 img/
 bootstrap/ingredients/
 

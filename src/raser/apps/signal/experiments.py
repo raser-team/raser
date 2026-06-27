@@ -11,7 +11,7 @@ from raser.supports.paths import component_roots
 
 
 DEFAULT_EXPERIMENT = "charge_collection"
-DEFAULT_SOURCE = "decay/Am241"
+DEFAULT_SOURCE = "decay/Sr90"
 APP_EXPERIMENTS = {
     "charge_collection": PACKAGE_ROOT / "apps" / "cce" / "charge_collection.json",
     "time_resolution": PACKAGE_ROOT / "apps" / "timeres" / "time_resolution.json",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from concurrent.futures import ProcessPoolExecutor
 
 
@@ -34,7 +35,11 @@ def _run_local_job(args):
     index, command_prefix, tail = args
     command_args = [*command_prefix, *tail, "--job", str(index)]
     print(" ".join(command_args))
-    subprocess.run(["raser", *command_args], shell=False)
+    subprocess.run(
+        [sys.executable, "-m", "raser.cli.raser", *command_args],
+        shell=False,
+        check=True,
+    )
 
 
 def run_indexed_jobs(command_prefix, tail, count, *, use_cluster, mem, destination):
@@ -51,4 +56,4 @@ def run_indexed_jobs(command_prefix, tail, count, *, use_cluster, mem, destinati
     max_processes = min(count, os.cpu_count() or 4)
     task_args = [(index, command_prefix, tail) for index in range(count)]
     with ProcessPoolExecutor(max_workers=max_processes) as executor:
-        executor.map(_run_local_job, task_args)
+        list(executor.map(_run_local_job, task_args))

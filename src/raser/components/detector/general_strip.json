@@ -35,7 +35,7 @@
     "field_shift_x" : 100,
     "mesh" : {
         "tcad_mesh" : {
-            "file" : "./output/field/general_strip/-210.0V.tdr"
+            "file" : "./work/general_strip/field/default/-210.0V.tdr"
         }
     }
 }

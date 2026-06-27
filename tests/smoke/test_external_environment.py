@@ -18,7 +18,7 @@ def test_ngspice_executable_is_available():
 
 @pytest.mark.devsim
 def test_tcad_devsim_asset_contains_semiconductor_models():
-    devsim_file = Path("output/field/CMOS_strip_tcad/210.devsim")
+    devsim_file = Path("work/CMOS_strip_tcad/field/default/210.devsim")
     if not devsim_file.exists():
         pytest.skip(f"missing TCAD devsim smoke asset: {devsim_file}")
 

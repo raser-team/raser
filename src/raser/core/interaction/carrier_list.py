@@ -103,7 +103,7 @@ class CarrierListFromG4P:
     def batch_def(self, my_g4, j):
         self.beam_number = j
         self.track_position = [
-            [single_step[0], single_step[1], single_step[2], 1e-9]
+            [single_step[0], single_step[1], single_step[2], 0.0]
             for single_step in my_g4.p_steps_current[j]
         ]
         self.tracks_step = my_g4.energy_steps[j]

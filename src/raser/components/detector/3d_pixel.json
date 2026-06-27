@@ -33,7 +33,7 @@
 
     "mesh" : {
         "tcad_mesh" : {
-            "file" : "./output/field/3d_pixel/-500.0V.tdr"
+            "file" : "./work/3d_pixel/field/default/-500.0V.tdr"
         }
     }
 }

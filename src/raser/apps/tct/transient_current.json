@@ -1,0 +1,5 @@
+{
+    "name" : "transient_current",
+    "output_label" : "tct",
+    "amplifier" : "Broad_Band_UCSC"
+}

@@ -67,9 +67,10 @@ class Vector:
 def get_common_interpolate_1d(data):
     values = data['values']
     points = data['points']
+    interpolator = p1d(points, values)
 
     def f(x):
-        return p1d(points, values)(x)
+        return interpolator(x)
     return f
 
 def get_common_interpolate_2d(data):
@@ -83,9 +84,10 @@ def get_common_interpolate_2d(data):
     new_y = np.linspace(min(points_y), max(points_y), y_bin_2d)
     new_points = np.array(np.meshgrid(new_x, new_y)).T.reshape(-1, 2)
     new_values = griddata((points_x, points_y), values, new_points, method='linear')
+    interpolator = p2d(new_x, new_y, new_values)
 
     def f(x, y):
-        return p2d(new_x, new_y, new_values)(x,y)[0]
+        return interpolator(x, y)[0]
     return f
 
 
@@ -119,26 +121,42 @@ def get_common_interpolate_3d(data):
     return f
 
 def signal_convolution(signal_original: ROOT.TH1F, signal_convolved: ROOT.TH1F, pulse_responce_function_list: list[Callable[[float],float]],):
-    # assume so and sc share same bin width
     so = signal_original
     sc = signal_convolved
-    st = ROOT.TH1F("signal_temp","signal_temp",so.GetNbinsX(),so.GetXaxis().GetXmin(),so.GetXaxis().GetXmax(),)
-    st.Reset()
-    st.Add(so)
-
-    t_bin = so.GetBinWidth(0) # for uniform bin
     n_bin = so.GetNbinsX()
-    for pr in pulse_responce_function_list:
-        for i in range(n_bin):
-            st_i = st.GetBinContent(i)
-            for j in range(-i,n_bin-i): 
-                pr_j = pr(j*t_bin)
-                sc.Fill((i+j)*t_bin + 1e-14, st_i*pr_j*t_bin) # 1e-14 resolves float error
-        st.Reset()
-        st.Add(sc)
-        sc.Reset()
+    if sc.GetNbinsX() != n_bin:
+        raise ValueError("signal_convolved must have the same number of bins")
+    if so.GetXaxis().GetXmin() != sc.GetXaxis().GetXmin() or so.GetXaxis().GetXmax() != sc.GetXaxis().GetXmax():
+        raise ValueError("signal_convolved must have the same time range")
 
-    sc.Add(st)
+    t_bin = so.GetBinWidth(1)
+    if t_bin <= 0:
+        raise ValueError(f"Histogram bin width must be positive, got {t_bin}")
+
+    axis = so.GetXaxis()
+    centers = np.array(
+        [axis.GetBinCenter(bin_idx) for bin_idx in range(1, n_bin + 1)],
+        dtype=np.float64,
+    )
+    source = np.array(
+        [so.GetBinContent(bin_idx) for bin_idx in range(1, n_bin + 1)],
+        dtype=np.float64,
+    )
+    for pr in pulse_responce_function_list:
+        target = np.zeros(n_bin, dtype=np.float64)
+        for source_bin, source_value in enumerate(source):
+            if source_value == 0.0:
+                continue
+            response = np.array(
+                [pr(time - centers[source_bin]) for time in centers],
+                dtype=np.float64,
+            )
+            target += source_value * response * t_bin
+        source = target
+
+    sc.Reset()
+    for bin_idx, value in enumerate(source, start=1):
+        sc.SetBinContent(bin_idx, float(value))
 
 
 def calculate_gradient(function: Callable, component: list, coordinate: list):

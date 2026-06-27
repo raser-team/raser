@@ -77,7 +77,7 @@ def main(kwargs):
     my_current = ccrt.CalCurrentLaser(my_d, my_f, my_l)
     path = output(__file__, my_l.model)
 
-    ele_current = Amplifier(my_current.sum_cu, amplifier)
+    ele_current = Amplifier(my_current.sum_cu, amplifier, CDet=my_d.capacitance)
     if kwargs['scan'] != None: #assume parameter alter
         tag = my_l.fz_rel
         ele_current.save_signal_TTree(path, tag)

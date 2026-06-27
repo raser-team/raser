@@ -100,7 +100,7 @@ def main(kwargs):
 
             my_current.save_current(my_d)
             if 'ngspice' not in amplifier:
-                ele_current = Amplifier(my_current.sum_cu, amplifier)
+                ele_current = Amplifier(my_current.sum_cu, amplifier, CDet=my_d.capacitance)
                 my_current.draw_currents(path) # Draw current
                 ele_current.draw_waveform(my_current.sum_cu, path) # Draw waveform
                 if 'strip' in my_d.det_model:
@@ -149,7 +149,7 @@ def main(kwargs):
 
             my_current.save_current(my_d)
             if 'ngspice' not in amplifier:
-                ele_current = Amplifier(my_current.sum_cu, amplifier)
+                ele_current = Amplifier(my_current.sum_cu, amplifier, CDet=my_d.capacitance)
                 my_current.draw_currents(path) # Draw current
                 ele_current.draw_waveform(my_current.sum_cu, path) # Draw waveform
                 if 'strip' in my_d.det_model:

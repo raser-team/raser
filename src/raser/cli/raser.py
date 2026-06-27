@@ -105,10 +105,12 @@ def _add_detector_source(parser, default_source):
     parser.add_argument("--config", help="run configuration")
     parser.add_argument("--field", help="field asset name")
     parser.add_argument("--run", help="run id")
+    parser.add_argument("--collect", help="collect finished batch jobs", action="store_true")
     parser.add_argument("--events-per-job", type=int, help="events per batch job")
     parser.add_argument("-vol", "--voltage", type=str, help="bias voltage")
     parser.add_argument("-irr", "--irradiation", type=str, help="irradiation flux")
     parser.add_argument("-g4_vis", help="visualization of Geant4 experiment", action="store_true")
+    parser.add_argument("--g4-vis-driver", help="Geant4 visualization driver")
     parser.add_argument("-amp", "--amplifier", type=str, help="amplifier")
     parser.add_argument("-s", "--scan", type=int, help="instance number for scan mode")
     parser.add_argument(
@@ -120,20 +122,6 @@ def _add_detector_source(parser, default_source):
     )
     parser.add_argument("--job", type=int, help="flag of run in job")
     parser.add_argument("-mem", type=int, help="memory limit of the job in 8GB", default=1)
-
-
-def _add_analyze(parser, default_source):
-    parser.add_argument("det_name", help="name of the detector")
-    parser.add_argument("source", nargs="?", default=default_source, help="signal source")
-    parser.add_argument("--config", help="run configuration")
-    parser.add_argument("--field", help="field asset name")
-    parser.add_argument("--run", default="latest", help="run id to analyze")
-    parser.add_argument("-vol", "--voltage", type=str, help="bias voltage")
-    parser.add_argument("-irr", "--irradiation", type=str, help="irradiation flux")
-    parser.add_argument("-g4", "--g4experiment", type=str, help="model of Geant4 experiment")
-    parser.add_argument("-amp", "--amplifier", type=str, help="amplifier")
-    parser.add_argument("-daq", type=str, help="specify DAQ system")
-    parser.add_argument("-tct", type=str, help="specify TCT signal class")
 
 
 def _add_field(parser):
@@ -354,13 +342,8 @@ def _add_public_parsers(subparsers):
     _add_bmos(subparsers)
 
     parser_cce = subparsers.add_parser("cce", help="charge-collection experiment")
-    cce_steps = parser_cce.add_subparsers(dest="step", required=True)
-    cce_run = cce_steps.add_parser("run")
-    _add_detector_source(cce_run, None)
-    _entry(cce_run, ".apps.cce", "run", command="cce", group="app", prefix=("cce", "run"))
-    cce_analyze = cce_steps.add_parser("analyze")
-    _add_analyze(cce_analyze, None)
-    _entry(cce_analyze, ".apps.cce", "analyze", command="cce", group="app", prefix=("cce", "analyze"))
+    _add_detector_source(parser_cce, None)
+    _entry(parser_cce, ".apps.cce", "run", command="cce", group="app")
 
     _add_field_artifacts(subparsers)
 
@@ -378,32 +361,12 @@ def _add_public_parsers(subparsers):
     _entry(parser_project_create, ".cli.project", "main", command="project", group="cli")
 
     parser_signal = subparsers.add_parser("signal", help="single signal simulation")
-    _add_detector_source(parser_signal, "decay/Am241")
+    _add_detector_source(parser_signal, "decay/Sr90")
     _entry(parser_signal, ".apps.signal", "run_signal", command="signal", group="app")
 
     parser_timeres = subparsers.add_parser("timeres", help="time-resolution experiment")
-    steps = parser_timeres.add_subparsers(dest="step", required=True)
-    timeres_run = steps.add_parser("run")
-    _add_detector_source(timeres_run, None)
-    _entry(
-        timeres_run,
-        ".apps.timeres",
-        "run",
-        command="timeres",
-        group="app",
-        prefix=("timeres", "run"),
-    )
-
-    timeres_analyze = steps.add_parser("analyze")
-    _add_analyze(timeres_analyze, None)
-    _entry(
-        timeres_analyze,
-        ".apps.timeres",
-        "analyze",
-        command="timeres",
-        group="app",
-        prefix=("timeres", "analyze"),
-    )
+    _add_detector_source(parser_timeres, None)
+    _entry(parser_timeres, ".apps.timeres", "run", command="timeres", group="app")
 
     _add_tct(subparsers)
     _add_telescope(subparsers)
@@ -493,6 +456,11 @@ def _prepare_entry_args(kwargs):
 
 
 def main(argv=None):
+    if argv is None:
+        argv = list(sys.argv[1:])
+    else:
+        argv = list(argv)
+
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.subparser_name is None:
@@ -500,7 +468,7 @@ def main(argv=None):
         return 1
 
     kwargs = vars(args)
-    kwargs["_argv"] = list(sys.argv[1:] if argv is None else argv)
+    kwargs["_argv"] = argv
     command = kwargs["_command"]
     group = kwargs["_group"]
     _prepare_entry_args(kwargs)
@@ -510,10 +478,14 @@ def main(argv=None):
             batch_level = kwargs["global_batch"]
             from raser.supports import batchjob
 
-            shell_command = " ".join(sys.argv[1:] if argv is None else argv)
-            shell_command = shell_command.replace("--batch ", "")
-            shell_command = shell_command.replace("-b ", "")
-            batchjob.main(command, shell_command, batch_level, kwargs["test"])
+            batch_args = [
+                item
+                for item in (sys.argv[1:] if argv is None else argv)
+                if item not in ("-b", "--batch", "-t", "--test")
+            ]
+            shell_command = " ".join(batch_args)
+            with _project_context(command, kwargs):
+                batchjob.main(command, shell_command, batch_level, kwargs["test"])
         else:
             with _project_context(command, kwargs):
                 with _component_context(command, group):

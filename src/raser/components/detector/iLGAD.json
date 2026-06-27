@@ -29,7 +29,7 @@
 
     "mesh" : {
         "tcad_mesh" : {
-            "file" : "./output/field/iLGAD/-300.0V.tdr"
+            "file" : "./work/iLGAD/field/default/-300.0V.tdr"
         },
         "2D_mesh" : {
             "mesh_line" : [

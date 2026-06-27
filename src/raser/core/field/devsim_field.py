@@ -10,6 +10,8 @@
 import pickle
 import os
 import logging
+import math
+import re
 
 import ROOT
 from .assets import resolve_field_pickle
@@ -162,7 +164,7 @@ class DevsimField:
     def set_w_p(self, WeightingPotentialFiles):
         self.WeightingPotential = []
         for i in range(len(self.read_out_contact)):
-            WeightingPotentialFile = self._resolve_voltage_pickle(
+            WeightingPotentialFile = resolve_field_pickle(
                 os.path.dirname(WeightingPotentialFiles[i]), "Potential", 1
             )
             try:
