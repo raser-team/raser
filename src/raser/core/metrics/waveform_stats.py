@@ -179,10 +179,18 @@ def get_charge(hist):
 def get_CFD50(hist, CFD, peak_time_bin):
     amplitude = abs(hist.GetBinContent(peak_time_bin))
     target = amplitude * CFD
-    for i in range(peak_time_bin, 0, -1):
+    if amplitude <= 0:
+        return None
+    for i in range(peak_time_bin, 1, -1):
+        previous_content = abs(hist.GetBinContent(i - 1))
         content = abs(hist.GetBinContent(i))
-        if content > target:
-            return hist.GetBinCenter(i)
+        if previous_content <= target <= content:
+            previous_time = hist.GetBinCenter(i - 1)
+            time = hist.GetBinCenter(i)
+            if content == previous_content:
+                return previous_time
+            fraction = (target - previous_content) / (content - previous_content)
+            return previous_time + fraction * (time - previous_time)
     return None
 
 def get_conjoined_time(time_list):
