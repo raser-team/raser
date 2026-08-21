@@ -113,7 +113,9 @@ Field AC 计算还为 [Frontend](frontend.md) 提供传感器电学值。这些�
 
 ## 🔄 Converter
 
-Converter 调用 Juan Sanchez 的 `tdr-convert` 包，将 TCAD TDR 文件转换为 DEVSIM 格式。转换后的文件通过 DEVSIM 加载，指定数据集随后传给 Field I/O。
+Converter 读取 TCAD TDR 文件，在 DEVSIM 中构建设备网格与数据集，并将 `converted.devsim` 写入选定的 Field 输出目录。转换后的设备在同一进程中传给 Field I/O。
+
+TDR 读取器与 DEVSIM 导入器分别位于 `raser.core.field.tdr_reader` 和 `raser.core.field.tdr_import`。代码来源及许可记录见[第三方软件声明](../../third-party/tdr-convert.md)。
 
 转换配置包含 TDR 文件、偏压、坐标方向与指定 TCAD 数据集。当前实现读取 TCAD 电势、电场、掺杂、空间电荷、电子密度、空穴密度，以及电子和空穴复合数据。
 

@@ -41,7 +41,16 @@ conda create -p .conda/envs/raser -c conda-forge --file env/conda-linux-64.lock
 The host or an external installation provides Geant4. The conda environment
 provides the remaining native runtime.
 
-### Ubuntu 22.04 cluster SIF
+### IHEP computing cluster: Conda
+
+On the cluster, source the conda shell integration below; the remaining steps
+match the native Linux route.
+
+```bash
+source /cvmfs/common.ihep.ac.cn/software/anaconda/miniconda3-202505/etc/profile.d/conda.sh
+```
+
+### IHEP computing cluster: Ubuntu 22.04 SIF
 
 ```bash
 apptainer build --mksquashfs-args '-processors 1' \
@@ -51,7 +60,7 @@ apptainer build --mksquashfs-args '-processors 1' \
 This image supplies the project Python environment, ngspice, and Ubuntu runtime
 libraries. ROOT and Geant4 come from the matched `ubuntu2204` LCG view.
 
-### EL9 cluster SIF
+### IHEP computing cluster: EL9 SIF
 
 ```bash
 apptainer build --mksquashfs-args '-processors 1' \

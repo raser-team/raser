@@ -95,15 +95,29 @@ def import_field(kwargs):
         return plan
     plan.configuration.write(plan.device)
     _prepare_execution(plan, kwargs)
-    from . import extract_from_tcad
+    import devsim
 
-    extract_from_tcad.main(
-        str(plan.input_path),
-        str(plan.device.definition.source_path),
-        plan.directory,
-        plan.configuration.values["bias_voltage"],
-        is_flip=kwargs.get("flip", False),
-    )
+    from .save_milestone import save_milestone
+    from .tdr_import import import_tdr
+
+    if plan.input_path is None:
+        raise RuntimeError("Field import plan has no TCAD input")
+    output_path = plan.directory / "converted.devsim"
+    try:
+        device = import_tdr(plan.input_path, output_path)
+        print(device)
+        save_milestone(
+            device,
+            plan.configuration.values["bias_voltage"],
+            str(plan.directory),
+            plan.configuration.values["dimension"],
+            None,
+            False,
+            is_tcad=True,
+            is_flip=kwargs.get("flip", False),
+        )
+    finally:
+        devsim.reset_devsim()
     return plan
 
 

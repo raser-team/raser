@@ -164,9 +164,14 @@ from that potential when required.
 
 ## 🔄 Converter
 
-Converter calls Juan Sanchez's `tdr-convert` package to convert a TCAD TDR file
-into DEVSIM format. The converted file is loaded through DEVSIM, and the
-requested datasets are then passed to Field I/O.
+Converter reads a TCAD TDR file, constructs its mesh and datasets in DEVSIM,
+and writes `converted.devsim` in the selected Field output directory. The
+converted device is then passed to Field I/O in the same process.
+
+The TDR reader and DEVSIM importer are maintained in
+`raser.core.field.tdr_reader` and `raser.core.field.tdr_import`. Their source
+and licensing record is available in the
+[third-party software notice](../../third-party/tdr-convert.md).
 
 The conversion configuration contains the TDR file, bias voltage, coordinate
 orientation, and requested TCAD datasets. The current implementation reads the

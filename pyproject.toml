@@ -25,7 +25,6 @@ dependencies = [
   "scipy",
   "pandas",
   "matplotlib",
-  "netCDF4",
   "h5py",
   "PyYAML",
   "tqdm",
