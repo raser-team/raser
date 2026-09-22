@@ -105,7 +105,6 @@ def _add_detector_source(parser, default_source):
         help="signal source or beam configuration",
     )
     parser.add_argument("--config", help="run configuration")
-    parser.add_argument("--field", help="field asset name")
     parser.add_argument("--run", help="run id")
     parser.add_argument(
         "--collect", help="collect finished batch jobs", action="store_true"

@@ -10,6 +10,8 @@ from raser.core.metrics import waveform_stats
 from raser.supports.output import create_path
 from raser.supports import runs
 
+from .workflow import build_plan
+
 
 MEASURED_COLUMNS = {
     "amplified_amplitude",
@@ -34,11 +36,8 @@ RUN_COLUMNS = {"voltage", "irradiation_flux"}
 
 def _run_root(kwargs):
     run_id = kwargs.get("run")
-    source = kwargs.get("source")
-    voltage = kwargs.get("voltage")
-    field = kwargs.get("field")
     if run_id == "latest":
-        return runs.latest_run_path("cce", source=source, voltage=voltage, field=field)
+        return runs.latest_run_path("cce", specification=build_plan(kwargs).as_dict())
     path = Path(str(run_id))
     if path.is_absolute() or len(path.parts) > 1:
         return path

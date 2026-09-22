@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -69,15 +69,18 @@ def activate_plan(plan: WorkflowPlan, kwargs: dict[str, Any]) -> dict[str, Any]:
     run_id = runs.ensure_run_id(kwargs)
     root = runs.run_path(plan.workflow, run_id)
     record_path = root / "run.json"
-    specification = plan.as_dict()
     if record_path.is_file():
         record = json.loads(record_path.read_text(encoding="utf-8"))
-        for name in ("workflow", "device", "field", "components", "stages"):
+        if kwargs.get("job") is not None:
+            # Workers select one job from the existing run, not a new job count.
+            plan = replace(plan, work={**plan.work, "jobs": record["work"]["jobs"]})
+        specification = plan.as_dict()
+        for name in ("workflow", "device", "field", "components", "stages", "work"):
             if record.get(name) != specification.get(name):
                 raise ValueError(f"Run {run_id} has a different {name} specification")
     else:
         root, record = runs.write_run_record(
-            specification,
+            plan.as_dict(),
             workflow=plan.workflow,
             run_id=run_id,
         )

@@ -106,6 +106,44 @@ class FieldConfiguration:
             raise ValueError("Field source must be devsim or tcad")
         return cls(values)
 
+    @classmethod
+    def resolve(
+        cls,
+        device: ResolvedDevice,
+        replacements: Mapping[str, Any] | None = None,
+    ) -> "FieldConfiguration":
+        configuration = cls.from_device(device, replacements)
+        if str(configuration.values["source"]).lower() != "tcad":
+            return configuration
+
+        expected = configuration.as_dict()
+        converter = expected.pop("converter", {})
+        matches = []
+        for path in (device.definition.project_directory / "field").glob(
+            "*/config.json"
+        ):
+            imported = cls(json.loads(path.read_text(encoding="utf-8")))
+            values = imported.as_dict()
+            imported_converter = values.pop("converter", {})
+            if values != expected or not imported_converter.get("input_sha256"):
+                continue
+            if any(
+                imported_converter.get(key) != value for key, value in converter.items()
+            ):
+                continue
+            if path.parent != imported.directory(device):
+                raise ValueError(
+                    f"TCAD Field configuration does not match its directory: {path}"
+                )
+            matches.append(imported)
+        if not matches:
+            raise FileNotFoundError(
+                f"No TCAD Field import matches Device {device.name}"
+            )
+        if len(matches) != 1:
+            raise ValueError(f"Multiple TCAD Field imports match Device {device.name}")
+        return matches[0]
+
     @property
     def digest(self) -> str:
         return hashlib.sha256(_canonical(self.values).encode("utf-8")).hexdigest()
@@ -170,7 +208,10 @@ def plan_field(
             }
         )
         configuration_values["converter"] = converter
-    configuration = FieldConfiguration.from_device(device, configuration_values)
+    if action == "import":
+        configuration = FieldConfiguration.from_device(device, configuration_values)
+    else:
+        configuration = FieldConfiguration.resolve(device, configuration_values)
     return FieldPlan(
         action=action,
         device=device,
