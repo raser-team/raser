@@ -31,7 +31,15 @@ conda create -p .conda/envs/raser -c conda-forge --file env/conda-linux-64.lock
 
 Geant4 由主机或外部安装提供。其余原生运行时由 conda 环境提供。
 
-### Ubuntu 22.04 集群 SIF
+### IHEP 计算集群 Conda
+
+集群上的 conda 指令由以下脚本提供，其他步骤与上文相同：
+
+```bash
+source /cvmfs/common.ihep.ac.cn/software/anaconda/miniconda3-202505/etc/profile.d/conda.sh
+```
+
+### IHEP 计算集群 Ubuntu 22.04 SIF
 
 ```bash
 apptainer build --mksquashfs-args '-processors 1' \
@@ -40,7 +48,7 @@ apptainer build --mksquashfs-args '-processors 1' \
 
 该镜像提供项目 Python 环境、ngspice 与 Ubuntu 运行库。ROOT 和 Geant4 来自匹配的 `ubuntu2204` LCG view。
 
-### EL9 集群 SIF
+### IHEP 计算集群 EL9 SIF
 
 ```bash
 apptainer build --mksquashfs-args '-processors 1' \
