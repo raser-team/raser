@@ -6,5 +6,13 @@ dependencies:
   - uv=0.11.23
   - git
   - root_base
+  - geant4=11.3.2
   - ngspice=41
   - mkl
+  - libgl
+  - libglu
+  - xorg-libxcursor
+  - xorg-libxfixes
+  - xorg-libxft
+  - xorg-libxinerama
+  - xorg-libxrender

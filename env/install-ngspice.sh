@@ -1,10 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ "$(uname -s)" != "Darwin" ] || [ "$(uname -m)" != "arm64" ]; then
-    echo "This installer is only for native macOS arm64." >&2
-    exit 1
-fi
+case "$(uname -s)/$(uname -m)" in
+    Darwin/arm64)
+        sha256_command="shasum -a 256"
+        default_jobs=$(sysctl -n hw.ncpu)
+        ;;
+    Linux/aarch64)
+        sha256_command="sha256sum"
+        default_jobs=$(nproc)
+        ;;
+    *)
+        echo "This installer is for native macOS arm64 and Linux aarch64." >&2
+        exit 1
+        ;;
+esac
 
 if [ -z "${CONDA_PREFIX:-}" ]; then
     echo "Activate the target conda environment before running this script." >&2
@@ -27,7 +37,7 @@ if [ -x "$CONDA_PREFIX/bin/ngspice" ] && [ "${1:-}" != "--force" ]; then
     fi
 fi
 
-for tool in curl shasum tar make pkg-config; do
+for tool in curl ${sha256_command%% *} tar make pkg-config; do
     if ! command -v "$tool" >/dev/null 2>&1; then
         echo "Missing required build tool: $tool" >&2
         exit 1
@@ -40,7 +50,7 @@ trap 'rm -rf "$workdir"' EXIT
 tarball="$workdir/ngspice-${version}.tar.gz"
 curl -L --fail --retry 3 -o "$tarball" "$url"
 
-actual_sha256=$(shasum -a 256 "$tarball" | awk '{print $1}')
+actual_sha256=$($sha256_command "$tarball" | awk '{print $1}')
 if [ "$actual_sha256" != "$expected_sha256" ]; then
     echo "ngspice source checksum mismatch:" >&2
     echo "  expected: $expected_sha256" >&2
@@ -65,7 +75,7 @@ cd "$srcdir"
     --disable-openmp \
     --disable-debug
 
-jobs=${NGSPICE_MAKE_JOBS:-$(sysctl -n hw.ncpu 2>/dev/null || echo 2)}
+jobs=${NGSPICE_MAKE_JOBS:-$default_jobs}
 make -j "$jobs"
 make install
 
