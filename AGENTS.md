@@ -69,3 +69,8 @@ make tests
 
 Report every failed, skipped, unavailable, or truncated check. A focused pass
 does not override a broader failure.
+
+## 协作开发规范
+
+本仓库已选择正式多人协作开发流程。开始功能设计、实现或验证任务前，完整读取并遵守 `~/.codex/policies/collaborative-development.md`。
+本文件和 `docs/AGENTS.md` 的项目约定优先；Git 隔离、代码边界、科学契约、环境和验证要求沿用上文，共享规范补充未约定的文档、状态、日志与 worktree 生命周期要求。
