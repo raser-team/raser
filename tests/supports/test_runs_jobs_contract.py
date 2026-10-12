@@ -33,10 +33,13 @@ def test_run_record_is_reserved_once_and_selected_by_metadata(
 ) -> None:
     monkeypatch.setenv("RASER_PROJECT_PATH", str(tmp_path))
     specification = {
-        "source": "decay/Sr90",
-        "voltage": -300.0,
-        "field": "field-hash",
-        "device": {"name": "TestPad", "revision": "abc"},
+        "components": [{"kind": "Source", "name": "Sr90", "path": "decay/Sr90.json"}],
+        "field": {"hash": "field-hash"},
+        "device": {
+            "name": "TestPad",
+            "revision": "abc",
+            "state": {"bias_voltage": -300.0},
+        },
     }
     root, record = write_run_record(
         specification,
@@ -49,15 +52,7 @@ def test_run_record_is_reserved_once_and_selected_by_metadata(
     assert (root / "batch").is_dir()
     assert not (root / "analysis").exists()
     assert json.loads((root / "run.json").read_text(encoding="utf-8")) == record
-    assert (
-        latest_run_path(
-            "signal",
-            source="Sr90",
-            voltage=-300.0,
-            field="field-hash",
-        )
-        == root
-    )
+    assert latest_run_path("signal", specification=specification) == root
 
     with pytest.raises(FileExistsError):
         write_run_record(specification, workflow="signal", run_id="run-1")
@@ -88,7 +83,11 @@ def test_latest_run_selection_uses_record_creation_time(
 
     monkeypatch.setenv("RASER_PROJECT_PATH", str(tmp_path))
     monkeypatch.setattr("raser.supports.runs.datetime", RecordedDateTime)
-    specification = {"source": "Sr90", "voltage": 200.0, "field": "field-hash"}
+    specification = {
+        "components": [{"kind": "Source", "name": "Sr90", "path": "decay/Sr90.json"}],
+        "device": {"state": {"bias_voltage": 200.0}},
+        "field": {"hash": "field-hash"},
+    }
     write_run_record(specification, workflow="signal", run_id="z-earlier")
     _, later = write_run_record(
         specification,
@@ -96,12 +95,7 @@ def test_latest_run_selection_uses_record_creation_time(
         run_id="a-later",
     )
 
-    selected = latest_run_path(
-        "signal",
-        source="Sr90",
-        voltage=200.0,
-        field="field-hash",
-    )
+    selected = latest_run_path("signal", specification=specification)
     assert selected.name == later["run"]
 
 

@@ -46,7 +46,7 @@ def build_plan(kwargs) -> WorkflowPlan:
     if kwargs.get("voltage") is not None:
         state["bias_voltage"] = float(kwargs["voltage"])
     device = resolve_device(kwargs["det_name"], state=state)
-    field = FieldConfiguration.from_device(device)
+    field = FieldConfiguration.resolve(device)
     laser_path, laser = load_laser(kwargs["laser"])
     afe_path, afe = load_component(
         "afe", kwargs.get("amplifier") or defaults["amplifier"]

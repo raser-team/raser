@@ -28,7 +28,7 @@ def load_run_config(name: str | None = None):
 
 def apply_run_config(kwargs):
     config = load_run_config(kwargs.get("config"))
-    for key in ("source", "field", "events_per_job"):
+    for key in ("source", "events_per_job"):
         if kwargs.get(key) is None and key in config:
             kwargs[key] = config[key]
     kwargs["_run_config"] = config
@@ -125,19 +125,26 @@ def write_run_record(
     return root, record
 
 
-def latest_run_path(workflow, source=None, voltage=None, field=None):
+def latest_run_path(workflow, source=None, voltage=None, *, specification=None):
     base = project_path(workflow)
     candidates = []
     for run_json in base.glob("**/run.json"):
         with open(run_json) as file:
             record = json.load(file)
-        if source is not None and source_name(record.get("source")) != source_name(
-            source
+        if specification is not None and any(
+            record[name] != specification[name]
+            for name in ("device", "field", "components")
         ):
             continue
-        if voltage is not None and float(record.get("voltage")) != float(voltage):
-            continue
-        if field is not None and record.get("field") != field:
+        if source is not None:
+            source_component = next(
+                item for item in record["components"] if item["kind"] == "Source"
+            )
+            if source_name(source_component["path"]) != source_name(source):
+                continue
+        if voltage is not None and float(
+            record["device"]["state"]["bias_voltage"]
+        ) != float(voltage):
             continue
         try:
             created_at = datetime.fromisoformat(record["created_at"])
@@ -145,7 +152,7 @@ def latest_run_path(workflow, source=None, voltage=None, field=None):
             raise ValueError(f"Run record has invalid created_at: {run_json}") from exc
         candidates.append((created_at, run_json.parent))
     if not candidates:
-        raise FileNotFoundError(f"No runs found under {base}")
+        raise FileNotFoundError(f"No matching runs found under {base}")
     candidates.sort(key=lambda item: item[0])
     latest_time = candidates[-1][0]
     latest = [path for created_at, path in candidates if created_at == latest_time]

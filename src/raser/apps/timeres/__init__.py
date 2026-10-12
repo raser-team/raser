@@ -10,7 +10,6 @@ from raser.supports import runs
 from .workflow import build_plan
 from .workflow import load_defaults
 
-DEFAULT_FIELD = "default"
 DEFAULT_EVENTS_PER_JOB = 10000
 
 
@@ -18,8 +17,6 @@ def _prepare(kwargs):
     runs.apply_run_config(kwargs)
     if kwargs.get("source") is None:
         kwargs["source"] = load_defaults()["source"]
-    if kwargs.get("field") is None:
-        kwargs["field"] = DEFAULT_FIELD
     if kwargs.get("events_per_job") is None:
         kwargs["events_per_job"] = DEFAULT_EVENTS_PER_JOB
     kwargs["workflow"] = "timeres"
@@ -29,13 +26,8 @@ def _prepare(kwargs):
 
 def _run_root(kwargs):
     run_id = kwargs.get("run")
-    source = kwargs.get("source")
-    voltage = kwargs.get("voltage")
-    field = kwargs.get("field")
     if run_id == "latest":
-        return runs.latest_run_path(
-            "timeres", source=source, voltage=voltage, field=field
-        )
+        return runs.latest_run_path("timeres", specification=build_plan(kwargs).as_dict())
     path = Path(str(run_id))
     if path.is_absolute() or len(path.parts) > 1:
         return path
@@ -80,13 +72,13 @@ def _run_jobs(kwargs):
 
 def run(kwargs):
     _prepare(kwargs)
+    if kwargs.get("collect") and not kwargs.get("dry_run"):
+        collect(kwargs)
+        return
     plan = build_plan(kwargs)
     if kwargs.get("dry_run"):
         plan.show()
         return plan
-    if kwargs.get("collect"):
-        collect(kwargs)
-        return
     activate_plan(plan, kwargs)
     if _run_jobs(kwargs):
         collect(kwargs)

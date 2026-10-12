@@ -34,10 +34,17 @@ def _state(kwargs) -> dict:
 
 
 def _work(kwargs) -> dict:
-    events = int(kwargs.get("events_per_job") or 1)
+    events = kwargs.get("events_per_job")
+    jobs = 1
+    scan = kwargs.get("scan")
+    if scan is not None:
+        if kwargs.get("signal_batch"):
+            jobs = int(scan)
+        else:
+            events = scan
+    events = int(1 if events is None else events)
     if events <= 0:
         raise ValueError("Events per job must be positive")
-    jobs = int(kwargs.get("scan") or 1)
     if jobs <= 0:
         raise ValueError("Job count must be positive")
     return {
@@ -57,7 +64,7 @@ def build_plan(
 ) -> WorkflowPlan:
     defaults = load_defaults()
     device = resolve_device(kwargs["det_name"], state=_state(kwargs))
-    field = FieldConfiguration.from_device(device)
+    field = FieldConfiguration.resolve(device)
 
     source_path, source = load_source(
         kwargs.get("source") or default_source or defaults["source"]
