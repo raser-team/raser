@@ -79,7 +79,6 @@
     "mesh": {
         "gmsh_mesh": {
             "file": "pixel_ayyouby.msh",
-            "generator": "pixel_ayyouby",
             "axes_um": {
                 "depth": [
                     0,
