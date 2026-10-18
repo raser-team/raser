@@ -8,7 +8,6 @@
 @Version :   1.0
 '''
 
-import math
 import os
 import time
 
@@ -20,7 +19,6 @@ if __name__ == "__main__":
 from ..device.build_device import Detector
 from .create_mesh import DevsimMesh
 from .create_parameter import create_parameter
-from .memory_solver import configure_linear_solver
 from . import save_milestone
 from . import loop_section
 from . import physics_drift_diffusion
@@ -90,7 +88,6 @@ def main (kwargs):
     configuration = kwargs.get("_field_configuration")
     if configuration is None:
         raise ValueError("Field execution requires a resolved configuration")
-    configure_linear_solver(configuration["solver"].get("linear_solver"))
     paras = _legacy_solver_parameters(configuration, weightfield=is_wf)
 
     MyDetector = Detector(simname)
@@ -104,27 +101,12 @@ def main (kwargs):
     device = MyDetector.device
     region = MyDetector.region
     field_directory = kwargs.get("_field_directory")
-    resume_checkpoint = kwargs.get("_resume_checkpoint")
-    resume_voltage = kwargs.get("_resume_voltage")
-    if resume_checkpoint is not None:
-        bias_contact = MyDetector.device_dict["bias"]["electrode"]
-        devsim.circuit_element(
-            name="V1", n1=physics_drift_diffusion.GetContactBiasName(bias_contact),
-            n2=0, value=0.0, acreal=paras["acreal"], acimag=paras["acimag"],
-        )
-        devsim.load_devices(file=resume_checkpoint)
-        # The saved drift-diffusion state still names these removed initial models.
-        # They are unused by PotentialEquation and cannot be re-evaluated on export.
-        for name in ("PotentialIntrinsicCharge", "PotentialIntrinsicCharge:Potential"):
-            if name in devsim.get_node_model_list(device=device, region=region):
-                devsim.delete_node_model(device=device, region=region, name=name)
-    else:
-        MyDevsimMesh = DevsimMesh(
-            MyDetector,
-            devsim_solve_paras=paras,
-            output_directory=field_directory,
-        )
-        MyDevsimMesh.mesh_define()
+    MyDevsimMesh = DevsimMesh(
+        MyDetector,
+        devsim_solve_paras=paras,
+        output_directory=field_directory,
+    )
+    MyDevsimMesh.mesh_define()
 
     default_dimension = MyDetector.dimension
     if "irradiation" in MyDetector.device_dict and not is_wf:
@@ -160,7 +142,7 @@ def main (kwargs):
                 devsim.circuit_element(name="V{}".format(i+1), n1=physics_drift_diffusion.GetContactBiasName(c), n2=0,
                         value=0.0, acreal=paras['acreal'], acimag=paras['acimag'],)
             
-    elif resume_checkpoint is None:
+    else:
         bias_contact = MyDetector.device_dict['bias']['electrode']
         devsim.circuit_element(name="V1", n1=physics_drift_diffusion.GetContactBiasName(bias_contact), n2=0,
                            value=0.0, acreal=paras['acreal'], acimag=paras['acimag'],)
@@ -203,29 +185,14 @@ def main (kwargs):
             devsim.write_devices(file=os.path.join(folder_path,"weightingfield.dat"), type="tecplot")
             
     elif is_wf == False:
-        if resume_checkpoint is None:
-            loop.initial_solver(contact=bias_contact, set_contact_type=None, impact_model=impact_model, irradiation_model=irradiation_model, irradiation_flux=irradiation_flux,)
-            v_current = 0
-            loop.loop_solver(circuit_contact=bias_contact, v_trial=0, area_factor=paras["area_factor"])
-            save_milestone.save_milestone(device=device, v=0, path=path, dimension=default_dimension, contact_name=bias_contact, is_wf=is_wf,)
-            dd = os.path.join(path, '0V.dd')
-            devsim_device = os.path.join(path, '0V.devsim')
-            devsim.write_devices(file=dd, type="tecplot")
-            devsim.write_devices(file=devsim_device, type="devsim")
-        else:
-            v_current = float(resume_voltage)
-            for contact in devsim.get_contact_list(device=device):
-                devsim.set_parameter(
-                    device=device,
-                    name=physics_drift_diffusion.GetContactBiasName(contact),
-                    value=v_current if contact == bias_contact else 0.0,
-                )
-            for name in ("Potential", "Electrons", "Holes"):
-                values = devsim.get_node_model_values(device=device, region=region, name=name)
-                if len(values) == 0 or not all(math.isfinite(float(value)) for value in values):
-                    raise ValueError(f"Field checkpoint contains invalid {name} values")
-            print(f"Resuming field from {v_current} V; IV output covers the resumed interval")
-            loop.loop_solver(circuit_contact=bias_contact, v_trial=v_current, area_factor=paras["area_factor"])
+        loop.initial_solver(contact=bias_contact, set_contact_type=None, impact_model=impact_model, irradiation_model=irradiation_model, irradiation_flux=irradiation_flux,)
+        v_current = 0
+        loop.loop_solver(circuit_contact=bias_contact, v_trial=0, area_factor=paras["area_factor"])
+        save_milestone.save_milestone(device=device, v=0, path=path, dimension=default_dimension, contact_name=bias_contact, is_wf=is_wf,)
+        dd = os.path.join(path, '0V.dd')
+        devsim_device = os.path.join(path, '0V.devsim')
+        devsim.write_devices(file=dd, type="tecplot")
+        devsim.write_devices(file=devsim_device, type="devsim")
         # solve and save at 0V
         if v_goal is None:
             v_goal = float(MyDetector.device_dict['bias']['voltage'])
@@ -240,7 +207,7 @@ def main (kwargs):
         step_too_small = False
         milestone_flag = False
         goal_flag = False
-        voltage_milestones = [v for v in _voltage_milestones(v_goal, milestone_step) if abs(v) > abs(v_current)]
+        voltage_milestones = _voltage_milestones(v_goal, milestone_step)
         while abs(v_current) <= abs(v_goal):
             v_trial = v_current + voltage_step
             if abs(v_trial) > abs(v_goal):
@@ -256,8 +223,6 @@ def main (kwargs):
                 else:
                     pass
                 print("=========RASER info===========\nConvergence success, voltage = {}, increased voltage step = {}\n================".format(v_trial, voltage_step))
-                if configuration["solver"].get("checkpoint_every_step", False):
-                    devsim.write_devices(file=os.path.join(path, str(v_trial) + 'V.devsim'), type="devsim")
                 if (paras['milestone_mode']) and (milestone_flag or goal_flag):
                     save_milestone.save_milestone(device=device, v=v_trial, path=path, dimension=default_dimension, contact_name=bias_contact, is_wf=is_wf,)
                     dd = os.path.join(path, str(v_trial) + 'V.dd')

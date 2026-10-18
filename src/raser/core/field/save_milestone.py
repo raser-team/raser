@@ -407,8 +407,7 @@ def milestone_save_3D(device, v, path, is_tcad):
             if ( devsim.get_material(device=device, region=region) == "Aluminum" or devsim.get_material(device=device, region=region) == "air"
             ):
                 continue      
-            # These plots use edge scalars; element vectors retain an unused
-            # tetrahedral reconstruction with substantial 3D memory cost.
+            devsim.element_from_edge_model(edge_model=E, device=device, region=region)
             devsim.edge_average_model(device=device, region=region, node_model="x", edge_model="xmid")
             devsim.edge_average_model(device=device, region=region, node_model="y", edge_model="ymid")
             devsim.edge_average_model(device=device, region=region, node_model="z", edge_model="zmid")
@@ -462,7 +461,7 @@ def milestone_save_wf_3D(device, v, path, contact_name, is_tcad):
         y.extend(devsim.get_node_model_values(device=device, region=region, name="y"))
         z.extend(devsim.get_node_model_values(device=device, region=region, name="z"))
         Potential.extend(devsim.get_node_model_values(device=device, region=region, name="Potential"))
-        # Weighting-field plots also consume edge scalars directly.
+        devsim.element_from_edge_model(edge_model="ElectricField", device=device, region=region)
         devsim.edge_average_model(device=device, region=region, node_model="x", edge_model="xmid")
         devsim.edge_average_model(device=device, region=region, node_model="y", edge_model="ymid")
         devsim.edge_average_model(device=device, region=region, node_model="z", edge_model="zmid")
