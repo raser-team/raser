@@ -6,7 +6,7 @@ from typing import Any, Callable, Mapping, Sequence
 
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
-from scipy.interpolate import griddata
+from scipy.interpolate import LinearNDInterpolator
 from scipy.interpolate import interp1d
 from scipy.spatial import cKDTree
 
@@ -18,7 +18,26 @@ def interpolate_1d(data: Mapping[str, Any]):
 def interpolate_2d(data: Mapping[str, Any]):
     points = np.asarray(data["points"], dtype=np.float64)
     values = np.asarray(data["values"], dtype=np.float64)
-    return lambda x, y: float(griddata(points, values, (x, y), method="linear"))
+    if points.ndim != 2 or points.shape[1] != 2:
+        raise ValueError("2D interpolation points must have shape N x 2")
+    if values.ndim != 1 or len(values) != len(points):
+        raise ValueError("2D interpolation values must match the point count")
+    if (
+        len(points) < 3
+        or not np.all(np.isfinite(points))
+        or not np.all(np.isfinite(values))
+    ):
+        raise ValueError("2D interpolation requires finite points and values")
+    # Reuse the triangulation during carrier drift; retain linear interpolation.
+    interpolator = LinearNDInterpolator(points, values)
+
+    def interpolate(x: float, y: float) -> float:
+        value = float(interpolator(x, y).item())
+        if not np.isfinite(value):
+            raise ValueError("2D interpolation coordinates are outside the field domain")
+        return value
+
+    return interpolate
 
 
 def _interpolation_bins_3d(
@@ -109,15 +128,37 @@ def calculate_gradient(
     coordinates: Sequence[float],
     *,
     step: float = 1.0e-5,
+    bounds: Sequence[tuple[float, float]] | None = None,
 ) -> tuple[float, ...]:
-    if step <= 0:
-        raise ValueError("Gradient step must be positive")
+    """Differentiate within the supplied domain, in the coordinate units."""
+    if not np.isfinite(step) or step <= 0:
+        raise ValueError("Gradient step must be finite and positive")
     point = tuple(map(float, coordinates))
+    if not all(np.isfinite(coordinate) for coordinate in point):
+        raise ValueError("Gradient coordinates must be finite")
+    if bounds is not None and len(bounds) != len(point):
+        raise ValueError("Gradient bounds must match the coordinate count")
     gradient = []
     for axis in range(len(point)):
         upper = list(point)
         lower = list(point)
         upper[axis] += step / 2.0
         lower[axis] -= step / 2.0
-        gradient.append((float(function(*upper)) - float(function(*lower))) / step)
+        width = step
+        if bounds is not None:
+            minimum, maximum = map(float, bounds[axis])
+            if (
+                not np.isfinite(minimum)
+                or not np.isfinite(maximum)
+                or minimum >= maximum
+            ):
+                raise ValueError("Gradient bounds must be finite and increasing")
+            if not minimum <= point[axis] <= maximum:
+                raise ValueError("Gradient coordinates are outside the field domain")
+            # Shift the stencil at contacts; never extrapolate a solved potential.
+            width = min(step, maximum - minimum)
+            lower[axis] = max(minimum, min(lower[axis], maximum - width))
+            upper[axis] = min(maximum, lower[axis] + width)
+            width = upper[axis] - lower[axis]
+        gradient.append((float(function(*upper)) - float(function(*lower))) / width)
     return tuple(gradient)

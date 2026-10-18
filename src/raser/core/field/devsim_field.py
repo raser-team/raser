@@ -164,10 +164,24 @@ class DevsimField:
             return
         
         if PotentialNotUniform['metadata']['dimension'] == 1:
+            potential_points = tuple(map(float, PotentialNotUniform['points']))
+            self.potential_bounds = ((min(potential_points), max(potential_points)),)
             PotentialUniform = interpolate_1d(PotentialNotUniform)
         elif PotentialNotUniform['metadata']['dimension'] == 2:
+            potential_points = tuple(
+                tuple(map(float, point)) for point in PotentialNotUniform['points']
+            )
+            self.potential_bounds = tuple(
+                (min(axis), max(axis)) for axis in zip(*potential_points)
+            )
             PotentialUniform = interpolate_2d(PotentialNotUniform)
         elif PotentialNotUniform['metadata']['dimension'] == 3:
+            potential_points = tuple(
+                tuple(map(float, point)) for point in PotentialNotUniform['points']
+            )
+            self.potential_bounds = tuple(
+                (min(axis), max(axis)) for axis in zip(*potential_points)
+            )
             PotentialUniform = interpolate_3d(
                 PotentialNotUniform, bins=self.interpolation_bins
             )
@@ -301,32 +315,42 @@ class DevsimField:
         x, y, z = x / 1e4, y / 1e4, z / 1e4  # um to cm
 
         if self.dimension == 1:
-            nabla_U = calculate_gradient(self.Potential, [z])
+            nabla_U = calculate_gradient(
+                self.Potential, [z], bounds=self.potential_bounds
+            )
             E_z = -1 * nabla_U[0]
             return (0, 0, E_z)
 
         elif self.dimension == 2:
             if self.is_plugin:
                 # 2D插件使用x,y坐标
-                nabla_U = calculate_gradient(self.Potential, [x, y])
+                nabla_U = calculate_gradient(
+                    self.Potential, [x, y], bounds=self.potential_bounds
+                )
                 E_x = -1 * nabla_U[0]
                 E_y = -1 * nabla_U[1]
                 return (E_x, E_y, 0)
             else:
-                nabla_U = calculate_gradient(self.Potential, [z, x])
+                nabla_U = calculate_gradient(
+                    self.Potential, [z, x], bounds=self.potential_bounds
+                )
                 E_z = -1 * nabla_U[0]
                 E_x = -1 * nabla_U[1]
                 return (E_x, 0, E_z)
 
         elif self.dimension == 3:
             if self.mesher == "sde": # SDE使用x,y,z坐标
-                nabla_U = calculate_gradient(self.Potential, [x, y, z])
+                nabla_U = calculate_gradient(
+                    self.Potential, [x, y, z], bounds=self.potential_bounds
+                )
                 E_x = -1 * nabla_U[0]
                 E_y = -1 * nabla_U[1]
                 E_z = -1 * nabla_U[2]
                 return (E_x, E_y, E_z)
             else:
-                nabla_U = calculate_gradient(self.Potential, [z, x, y])
+                nabla_U = calculate_gradient(
+                    self.Potential, [z, x, y], bounds=self.potential_bounds
+                )
                 E_z = -1 * nabla_U[0]
                 E_x = -1 * nabla_U[1]
                 E_y = -1 * nabla_U[2]

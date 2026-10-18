@@ -10,6 +10,7 @@ from pathlib import Path
 import devsim
 import matplotlib.pyplot as plt
 
+from raser.components.device.pixel_ayyouby import generate_mesh as generate_pixel_mesh
 from ..device.build_device import Detector
 from raser.supports.output import create_path
 from raser.supports.output import output
@@ -24,6 +25,20 @@ def _resolve_mesh_file(mesh_file, definition_path):
     if not path.is_file():
         raise FileNotFoundError(f"Cannot find Device mesh: {path}")
     return path
+
+
+def _prepare_gmsh_file(mesh, definition, definition_path, output_directory):
+    generator = mesh.get("generator")
+    if generator is None:
+        return _resolve_mesh_file(mesh["file"], definition_path)
+    if generator != "pixel_ayyouby":
+        raise ValueError(f"Unknown Device mesh generator: {generator}")
+    if output_directory is None:
+        raise ValueError("Generated Device mesh requires a Field output directory")
+    name = Path(mesh["file"])
+    if name.name != str(name):
+        raise ValueError("Generated Device mesh file must be a local filename")
+    return generate_pixel_mesh(Path(output_directory) / name, definition=definition)
 
 
 class DevsimMesh:
@@ -114,7 +129,9 @@ class DevsimMesh:
     def createGmshMesh(self):
         mesh_name = self.device
         mesh = self.device_dict["mesh"]["gmsh_mesh"]
-        mesh_file = _resolve_mesh_file(mesh["file"], self.definition_path)
+        mesh_file = _prepare_gmsh_file(
+            mesh, self.device_dict, self.definition_path, self.output_directory
+        )
         devsim.create_gmsh_mesh (mesh=mesh_name, file=str(mesh_file))
         if self.solve_paras["weightfield"] == True :
             for region in mesh["region"]:

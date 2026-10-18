@@ -9,6 +9,7 @@ import sys
 
 from raser.core.device import resolve_device
 
+from .checkpoint import require_checkpoint
 from .configuration import FieldPlan
 from .configuration import plan_field
 
@@ -47,8 +48,27 @@ def build_plan(kwargs) -> FieldPlan:
     )
 
 
-def _show(plan: FieldPlan) -> None:
-    print(json.dumps(plan.as_dict(), indent=2, sort_keys=True))
+def _prepare_resume(plan: FieldPlan, kwargs) -> None:
+    voltage = kwargs.get("v_current")
+    if voltage is None:
+        return
+    if plan.action != "solve" or kwargs.get("cv") or kwargs.get("noise"):
+        raise ValueError("Field resume is only supported for the electric-field sweep")
+    checkpoint = require_checkpoint(
+        plan.directory, voltage, plan.configuration.values["bias_voltage"]
+    )
+    kwargs["_resume_checkpoint"] = str(checkpoint)
+    kwargs["_resume_voltage"] = float(voltage)
+
+
+def _show(plan: FieldPlan, kwargs=None) -> None:
+    description = plan.as_dict()
+    if kwargs and kwargs.get("_resume_checkpoint"):
+        description["resume"] = {
+            "checkpoint": kwargs["_resume_checkpoint"],
+            "voltage_V": kwargs["_resume_voltage"],
+        }
+    print(json.dumps(description, indent=2, sort_keys=True))
 
 
 def _prepare_execution(plan: FieldPlan, kwargs) -> None:
@@ -63,8 +83,9 @@ def _prepare_execution(plan: FieldPlan, kwargs) -> None:
 def solve(kwargs):
     _configure_logging(kwargs.get("verbose", 0))
     plan = build_plan(kwargs)
+    _prepare_resume(plan, kwargs)
     if kwargs.get("dry_run"):
-        _show(plan)
+        _show(plan, kwargs)
         return plan
     plan.configuration.write(plan.device)
     _prepare_execution(plan, kwargs)
@@ -90,8 +111,9 @@ def solve(kwargs):
 def import_field(kwargs):
     _configure_logging(kwargs.get("verbose", 0))
     plan = build_plan(kwargs)
+    _prepare_resume(plan, kwargs)
     if kwargs.get("dry_run"):
-        _show(plan)
+        _show(plan, kwargs)
         return plan
     plan.configuration.write(plan.device)
     _prepare_execution(plan, kwargs)
@@ -124,8 +146,9 @@ def import_field(kwargs):
 def weight(kwargs):
     kwargs["wf"] = True
     plan = build_plan(kwargs)
+    _prepare_resume(plan, kwargs)
     if kwargs.get("dry_run"):
-        _show(plan)
+        _show(plan, kwargs)
         return plan
     plan.configuration.write(plan.device)
     _prepare_execution(plan, kwargs)
