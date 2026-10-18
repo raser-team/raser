@@ -1,0 +1,296 @@
+{
+    "det_name": "pixel_ayyouby",
+    "det_model": "lgadpixel",
+    "material": "Si",
+    "l_x": 58,
+    "l_y": 58,
+    "l_z": 50,
+    "p_x": 20,
+    "doping": {
+        "Acceptors": "3.0e16*exp(-0.5*pow((x-5.5e-4)/(0.17e-4),2)) + 3.0e12*step(x-5.5e-4) + 1.0e19*step(x-49e-4) + 1.0e13*step(1e-4-x)*((step(y-18.5e-4)*step(19.5e-4-y) + step(y-38.5e-4)*step(39.5e-4-y)) + (step(z-18.5e-4)*step(19.5e-4-z) + step(z-38.5e-4)*step(39.5e-4-z)) - (step(y-18.5e-4)*step(19.5e-4-y) + step(y-38.5e-4)*step(39.5e-4-y))*(step(z-18.5e-4)*step(19.5e-4-z) + step(z-38.5e-4)*step(39.5e-4-z)))",
+        "Donors": "1.0e19*step(1e-4-x)*(step(18e-4-y) + step(y-20e-4)*step(38e-4-y) + step(y-40e-4))*(step(18e-4-z) + step(z-20e-4)*step(38e-4-z) + step(z-40e-4)) + 3.0e12*step(5.5e-4-x) + 3.0e16*exp(-0.5*pow((x-4.0e-4)/(0.17e-4),2))"
+    },
+    "bias": {
+        "electrode": "bot",
+        "voltage": -200.0
+    },
+    "temperature": 300.0,
+    "avalanche_bond": 5.5,
+    "avalanche_model": "vanOverstraeten",
+    "gain_algorithm": "local_path",
+    "local_gain_integration_steps": 11,
+    "area_factor": 1,
+    "default_dimension": 3,
+    "field_shift_x": 0,
+    "capacitance_pF": 0.0008145852787776002,
+    "p_y": 20,
+    "x_ele_num": 3,
+    "y_ele_num": 3,
+    "electrode_width_um": 18,
+    "field_shift_y": 0,
+    "comment": "3x3 Ayyoub-inspired DJ-LGAD pixel. Pitch 20x20 um, local n++/metal windows 18x18 um, 2 um gaps. The two lateral p-stop bands in each direction form a union grid, 1 um wide/deep, acceptors 1e13 cm^-3; intersections are not double-doped. Buried coefficient Gaussian profiles, bulk and backside doping retain the strip formulas exactly. DEVSIM coordinates (x,y,z) are (depth,pixel_x,pixel_y) in cm. No oxide/interface charge, external guard ring, measured mutual capacitance, or mesh-convergence claim. Per-pixel frontend capacitance is the pitch-area parallel-plate estimate.",
+    "read_out_contact": [
+        {
+            "x_span": 0,
+            "y_span": 0,
+            "name": "top1"
+        },
+        {
+            "x_span": 0,
+            "y_span": 0,
+            "name": "top2"
+        },
+        {
+            "x_span": 0,
+            "y_span": 0,
+            "name": "top3"
+        },
+        {
+            "x_span": 0,
+            "y_span": 0,
+            "name": "top4"
+        },
+        {
+            "x_span": 0,
+            "y_span": 0,
+            "name": "top5"
+        },
+        {
+            "x_span": 0,
+            "y_span": 0,
+            "name": "top6"
+        },
+        {
+            "x_span": 0,
+            "y_span": 0,
+            "name": "top7"
+        },
+        {
+            "x_span": 0,
+            "y_span": 0,
+            "name": "top8"
+        },
+        {
+            "x_span": 0,
+            "y_span": 0,
+            "name": "top9"
+        }
+    ],
+    "mesh": {
+        "gmsh_mesh": {
+            "file": "pixel_ayyouby.msh",
+            "generator": "pixel_ayyouby",
+            "axes_um": {
+                "depth": [
+                    0,
+                    0.25,
+                    0.5,
+                    0.75,
+                    1,
+                    1.25,
+                    2,
+                    2.5,
+                    3,
+                    3.4,
+                    3.45,
+                    3.5,
+                    3.55,
+                    3.6,
+                    3.65,
+                    3.7,
+                    3.75,
+                    3.8,
+                    3.83,
+                    3.85,
+                    3.9,
+                    3.95,
+                    4,
+                    4.05,
+                    4.1,
+                    4.15,
+                    4.17,
+                    4.2,
+                    4.25,
+                    4.3,
+                    4.35,
+                    4.4,
+                    4.45,
+                    4.5,
+                    4.55,
+                    4.6,
+                    4.75,
+                    4.9,
+                    4.95,
+                    5.0,
+                    5.05,
+                    5.1,
+                    5.15,
+                    5.2,
+                    5.25,
+                    5.3,
+                    5.33,
+                    5.35,
+                    5.4,
+                    5.45,
+                    5.5,
+                    5.55,
+                    5.6,
+                    5.65,
+                    5.67,
+                    5.7,
+                    5.75,
+                    5.8,
+                    5.85,
+                    5.9,
+                    5.95,
+                    6.0,
+                    6.05,
+                    6.1,
+                    6.5,
+                    7,
+                    8,
+                    9,
+                    10,
+                    12,
+                    15,
+                    20,
+                    25,
+                    30,
+                    35,
+                    40,
+                    45,
+                    48,
+                    49,
+                    49.25,
+                    49.5,
+                    49.75,
+                    50
+                ],
+                "pixel_x": [
+                    0,
+                    9,
+                    18,
+                    18.25,
+                    18.5,
+                    19,
+                    19.5,
+                    19.75,
+                    20,
+                    29,
+                    38,
+                    38.25,
+                    38.5,
+                    39,
+                    39.5,
+                    39.75,
+                    40,
+                    49,
+                    58
+                ],
+                "pixel_y": [
+                    0,
+                    9,
+                    18,
+                    18.25,
+                    18.5,
+                    19,
+                    19.5,
+                    19.75,
+                    20,
+                    29,
+                    38,
+                    38.25,
+                    38.5,
+                    39,
+                    39.5,
+                    39.75,
+                    40,
+                    49,
+                    58
+                ]
+            },
+            "region": [
+                {
+                    "region": "pixel_ayyouby",
+                    "material": "Silicon",
+                    "gmsh_name": "pixel_ayyouby"
+                }
+            ],
+            "contact": [
+                {
+                    "name": "top1",
+                    "region": "pixel_ayyouby",
+                    "material": "metal",
+                    "gmsh_name": "top1"
+                },
+                {
+                    "name": "top2",
+                    "region": "pixel_ayyouby",
+                    "material": "metal",
+                    "gmsh_name": "top2"
+                },
+                {
+                    "name": "top3",
+                    "region": "pixel_ayyouby",
+                    "material": "metal",
+                    "gmsh_name": "top3"
+                },
+                {
+                    "name": "top4",
+                    "region": "pixel_ayyouby",
+                    "material": "metal",
+                    "gmsh_name": "top4"
+                },
+                {
+                    "name": "top5",
+                    "region": "pixel_ayyouby",
+                    "material": "metal",
+                    "gmsh_name": "top5"
+                },
+                {
+                    "name": "top6",
+                    "region": "pixel_ayyouby",
+                    "material": "metal",
+                    "gmsh_name": "top6"
+                },
+                {
+                    "name": "top7",
+                    "region": "pixel_ayyouby",
+                    "material": "metal",
+                    "gmsh_name": "top7"
+                },
+                {
+                    "name": "top8",
+                    "region": "pixel_ayyouby",
+                    "material": "metal",
+                    "gmsh_name": "top8"
+                },
+                {
+                    "name": "top9",
+                    "region": "pixel_ayyouby",
+                    "material": "metal",
+                    "gmsh_name": "top9"
+                },
+                {
+                    "name": "bot",
+                    "region": "pixel_ayyouby",
+                    "material": "metal",
+                    "gmsh_name": "bot"
+                }
+            ]
+        }
+    },
+    "field": {
+        "source": "devsim",
+        "dimension": 3,
+        "solver": {
+            "saved_voltage_interval": 25,
+            "voltage_step": {
+                "maximum": 2.0,
+                "initial": 0.015625
+            },
+            "linear_solver": "umfpack_memory_bounded",
+            "checkpoint_every_step": true
+        }
+    }
+}
