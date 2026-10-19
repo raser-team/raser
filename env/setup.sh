@@ -158,6 +158,26 @@ unalias raser raser-test mesh raser-shell raser-exec 2>/dev/null || true
 unset -f raser raser-test mesh raser-shell raser-exec 2>/dev/null || true
 
 if [ -n "$raser_sif_host" ]; then
+    # Recheck inherited session mounts on the host that starts the container.
+    raser_apptainer() (
+        for raser_bind_name in APPTAINER_BIND APPTAINER_BINDPATH SINGULARITY_BIND SINGULARITY_BINDPATH BINDPATH RASER_SIF_BIND RASER_SIF_EXTRA_BINDS; do
+            [ -n "${!raser_bind_name:-}" ] || continue
+            IFS=, read -r -a raser_binds <<< "${!raser_bind_name}"
+            raser_filtered_binds=
+            for raser_bind in "${raser_binds[@]}"; do
+                raser_bind_source=${raser_bind%%:*}
+                if [[ ! -e "$raser_bind_source" && ( "$raser_bind_source" =~ ^/run/user/[0-9]+/?$ ||
+                    ( -n "${XDG_RUNTIME_DIR:-}" && "${raser_bind_source%/}" = "${XDG_RUNTIME_DIR%/}" ) ) ]]; then
+                    continue
+                fi
+                raser_filtered_binds=${raser_filtered_binds:+$raser_filtered_binds,}$raser_bind
+            done
+            unset "$raser_bind_name"
+            [ -z "$raser_filtered_binds" ] || export "$raser_bind_name=$raser_filtered_binds"
+        done
+        apptainer "$@"
+    )
+
     raser-shell() {
         if [ -z "${RASER_SIF_IMAGE:-}" ]; then
             echo "raser-shell: source env/setup_cvmfs.sh ubuntu or el9 first" >&2
@@ -170,7 +190,7 @@ if [ -n "$raser_sif_host" ]; then
             printf '%s\n' '. env/setup.sh || exit $?'
             printf '%s\n' 'PS1="(raser) ${PS1:-\u@\h:\w\$ }"'
         } > "$raser_shellrc"
-        apptainer exec "$RASER_SIF_IMAGE" bash --rcfile "$raser_shellrc" -i
+        raser_apptainer exec "$RASER_SIF_IMAGE" bash --rcfile "$raser_shellrc" -i
     }
 
     raser-exec() {
@@ -178,7 +198,7 @@ if [ -n "$raser_sif_host" ]; then
             echo "raser-exec: source env/setup_cvmfs.sh ubuntu or el9 first" >&2
             return 2
         fi
-        apptainer exec "$RASER_SIF_IMAGE" \
+        raser_apptainer exec "$RASER_SIF_IMAGE" \
             bash -lc 'cd "$1" || exit $?; shift; . env/setup.sh || exit $?; exec "$@"' bash "$dir_raser" "$@"
     }
 
