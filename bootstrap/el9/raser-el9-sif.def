@@ -1,5 +1,5 @@
 Bootstrap: docker
-From: almalinux:9
+From: quay.io/almalinuxorg/almalinux:9
 
 %files
     env/uv.txt /opt/raser-uv.txt

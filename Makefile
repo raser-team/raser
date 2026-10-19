@@ -48,19 +48,19 @@ build-raser-sandbox:
 	apptainer build --force --fakeroot --sandbox /tmp/raser-sandbox/ $(RASER_BOOTSTRAP_DEF)
 
 shell-raser-sandbox:
-	apptainer shell --env-file .raser/env --fakeroot -w /tmp/raser-sandbox 
+	apptainer shell --fakeroot -w /tmp/raser-sandbox
 
 test-raser-sandbox:
-	apptainer shell --env-file .raser/env -B "$${BINDPATH:?source env/setup.sh first}" /tmp/raser-sandbox 
+	apptainer shell -B "$${BINDPATH:?source env/setup.sh first}" /tmp/raser-sandbox
 
 build-raser-sif:
 	apptainer build --force --fakeroot --mksquashfs-args '$(RASER_MKSQUASHFS_ARGS)' raser.sif /tmp/raser-sandbox
 
 shell-raser-sif:
-	apptainer shell --env-file .raser/env -B "$${BINDPATH:?source env/setup.sh first}" raser.sif 
+	apptainer shell -B "$${BINDPATH:?source env/setup.sh first}" raser.sif
 
 run-raser-sif-macos:
-	limactl shell --workdir "$$(pwd)" $(RASER_LIMA_INSTANCE) sh -lc 'source env/setup.sh && apptainer exec --bind "$$BINDPATH" --env-file .raser/env "$$IMGFILE" $(RASER_SIF_COMMAND)'
+	limactl shell --workdir "$$(pwd)" $(RASER_LIMA_INSTANCE) sh -lc 'source env/setup.sh && apptainer exec --bind "$$BINDPATH" "$$IMGFILE" $(RASER_SIF_COMMAND)'
 
 shell-raser-sif-macos:
-	limactl shell --workdir "$$(pwd)" $(RASER_LIMA_INSTANCE) sh -lc 'source env/setup.sh && apptainer shell --env-file .raser/env -B "$$BINDPATH" "$$IMGFILE"'
+	limactl shell --workdir "$$(pwd)" $(RASER_LIMA_INSTANCE) sh -lc 'source env/setup.sh && apptainer shell -B "$$BINDPATH" "$$IMGFILE"'

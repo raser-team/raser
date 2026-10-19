@@ -1,5 +1,5 @@
 Bootstrap: docker
-From: ubuntu:22.04
+From: public.ecr.aws/ubuntu/ubuntu:22.04
 
 %files
     env/uv.txt /opt/raser-uv.txt
@@ -48,13 +48,18 @@ From: ubuntu:22.04
         libglu1-mesa \
         libhdf5-103-1 \
         libicu70 \
+        libjbig0 \
+        libopenblas-dev \
+        libdeflate0 \
         libqt5gui5 \
         libqt5opengl5 \
         libqt5widgets5 \
         libtbb12 \
         libx11-6 \
+        libxcursor1 \
         libxext6 \
         libxft2 \
+        libxinerama1 \
         libxm4 \
         libxmu6 \
         libxpm4 \
@@ -91,6 +96,7 @@ From: ubuntu:22.04
     $VIRTUAL_ENV/bin/python -c "import importlib.util; assert importlib.util.find_spec('g4ppyy')"
     $VIRTUAL_ENV/bin/python -c "import pymtl3"
     $VIRTUAL_ENV/bin/python -c "import sqlite3; print(sqlite3.sqlite_version)"
+    $VIRTUAL_ENV/bin/python -c "import devsim"
     ngspice -v
 
 %runscript
