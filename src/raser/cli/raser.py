@@ -529,9 +529,9 @@ def main(argv=None):
             batch_level = kwargs["global_batch"]
             from raser.supports import batchjob
 
-            batch_args = [
-                item for item in argv if item not in ("-b", "--batch", "-t", "--test")
-            ]
+            # Global options such as -bb precede the sub-command; the worker
+            # must not see them, or it would submit itself again.
+            batch_args = argv[argv.index(args.subparser_name) :]
             with _project_context(command, kwargs):
                 batchjob.main(
                     command,

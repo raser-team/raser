@@ -13,7 +13,7 @@ the [documentation index](../docs/README.md).
 | Route | Definition | Runtime contract |
 | --- | --- | --- |
 | Ubuntu 22.04 | `ubuntu/raser-ubuntu-sif.def` | Project Python and ngspice in the image; ROOT and Geant4 from the matched `ubuntu2204` LCG view |
-| EL9 | `el9/raser-el9-sif.def` | Project Python, ROOT, ngspice, and supporting libraries in the image; Geant4 from the external EL9 installation |
+| EL9 | `el9/raser-el9-sif.def` | Project Python, ngspice, and supporting libraries in the image; ROOT from the matched `x86_64-el9` LCG view and Geant4 from the external EL9 installation |
 
 The route-specific setup scripts under `ubuntu/` and `el9/` prepare container
 binds and runtime paths. `env/setup_cvmfs.sh` is the public activation entry

@@ -111,8 +111,11 @@ def run_indexed_jobs(
                 batchjob.main(destination, command, mem, is_test=False)
             except Exception as exc:
                 pending = list(range(index, len(plan.commands)))
+                submission_state = (
+                    "queued" if os.environ.get("RASER_SUBMIT_QUEUE") else "accepted"
+                )
                 raise RuntimeError(
-                    f"Cluster accepted indices {accepted}; pending indices {pending}"
+                    f"Cluster {submission_state} indices {accepted}; pending indices {pending}"
                 ) from exc
             accepted.append(index)
         return plan

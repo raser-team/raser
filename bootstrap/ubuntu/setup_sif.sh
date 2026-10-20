@@ -25,9 +25,12 @@ raser_sif_bind=$dir_raser
 [ -n "${RASER_SIF_EXTRA_BINDS:-}" ] && raser_sif_bind=$raser_sif_bind,$RASER_SIF_EXTRA_BINDS
 [ -z "${RASER_CLHEP_PREFIX:-}" ] && [ -n "${G4PPYY_INCLUDE_DIRS:-}" ] && raser_sif_bind=$raser_sif_bind,$G4PPYY_INCLUDE_DIRS
 [ -z "${RASER_CLHEP_PREFIX:-}" ] && [ -n "${G4PPYY_LIBRARY_DIRS:-}" ] && raser_sif_bind=$raser_sif_bind,$G4PPYY_LIBRARY_DIRS
-[ -d /tmp/.X11-unix ] && raser_sif_bind=$raser_sif_bind,/tmp/.X11-unix
-[ -n "${XAUTHORITY:-}" ] && [ -e "$XAUTHORITY" ] && raser_sif_bind=$raser_sif_bind,$XAUTHORITY
-[ -z "${XAUTHORITY:-}" ] && [ -e "$HOME/.Xauthority" ] && raser_sif_bind=$raser_sif_bind,$HOME/.Xauthority
+# X11 is bound only for a shell with a display; cluster jobs unset DISPLAY.
+if [ -n "${DISPLAY:-}" ]; then
+    [ -d /tmp/.X11-unix ] && raser_sif_bind=$raser_sif_bind,/tmp/.X11-unix
+    [ -n "${XAUTHORITY:-}" ] && [ -e "$XAUTHORITY" ] && raser_sif_bind=$raser_sif_bind,$XAUTHORITY
+    [ -z "${XAUTHORITY:-}" ] && [ -e "$HOME/.Xauthority" ] && raser_sif_bind=$raser_sif_bind,$HOME/.Xauthority
+fi
 [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$XDG_RUNTIME_DIR" ] && raser_sif_bind=$raser_sif_bind,$XDG_RUNTIME_DIR
 export RASER_SIF_BIND=${RASER_SIF_BIND:-$raser_sif_bind}
 if [ -n "${APPTAINER_BINDPATH:-}" ]; then

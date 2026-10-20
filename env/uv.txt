@@ -12,7 +12,7 @@ devsim==2.10.0
 executing==2.2.1
 fonttools==4.60.2
 g4ppyy==0.1.0
-gmsh==4.15.2
+gmsh==4.15.2 ; sys_platform != "linux" or platform_machine != "aarch64"
 greenlet==3.5.3
 h5py==3.14.0
 hypothesis==6.155.7

@@ -1,0 +1,17 @@
+python=3.11
+uv=0.11.23
+git
+root_base
+geant4=11.3.2
+python-gmsh=4.15.2
+c-compiler
+cxx-compiler
+binutils
+make
+pkg-config
+bison
+flex
+curl
+fftw
+ncurses
+readline
