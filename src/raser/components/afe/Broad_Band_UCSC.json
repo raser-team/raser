@@ -1,0 +1,25 @@
+{
+    "ele_name": "Broad_Band",
+    
+    "Broad_Band_Bandwidth" : 0.66,
+    "Broad_Band_Gain" : 19500,
+    "Broad_Band_Imp" : 10,
+    "OscBW" : 2,
+
+    "noise_avg" : 0,
+    "noise_rms" : 0.25,
+    "noise_spectrum" : {
+        "model" : "spieler",
+        "density_type" : "amplitude",
+        "unit_scale" : 1000,
+        "voltage_noise_nV_per_sqrtHz" : 0.00025,
+        "current_noise_fA_per_sqrtHz" : 0.9,
+        "flicker_voltage_noise_nV2_Hz" : 0,
+        "points_per_decade" : 100,
+        "min_frequency_hz" : 100,
+        "max_frequency_hz" : 1000000000,
+        "required" : true
+    },
+
+    "threshold" : 0
+}

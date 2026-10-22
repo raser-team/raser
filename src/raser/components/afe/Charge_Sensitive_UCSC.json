@@ -1,0 +1,12 @@
+{
+    "ele_name": "Charge_Sensitive",
+
+    "t_rise" : 0.7,
+    "t_fall" : 100,
+    "trans_imp" : 5,
+
+    "noise_avg" : 0,
+    "noise_rms" : 0,
+
+    "threshold" : 15
+}

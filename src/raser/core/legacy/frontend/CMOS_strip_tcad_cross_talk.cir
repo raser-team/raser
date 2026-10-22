@@ -1,0 +1,59 @@
+.title KiCad schematic
+
+R5 left_2 0 1kOhm
+R4 right_1 0 1kOhm
+V1 /single_strip/bias 0 DC 0 
+I1 0 IN PULSE( 0 0.3uA 1n 10p 3n 10p ) 
+R2 left_1 0 1kOhm
+R3 main 0 1kOhm
+R1 left_2 0 1kOhm
+R7 left_2 /single_strip/right_DC 21GOhm
+C2 left_2 /single_strip/bias 0.5p
+R6 0 left_2 3MegOhm
+C1 left_2 left_2 40p
+C3 /single_strip/right_DC left_2 40f
+C4 left_1 left_2 660f
+C7 /single_strip/right_DC /single_strip/bias 0.5p
+C5 left_2 left_1 40f
+R8 0 /single_strip/right_DC 3MegOhm
+C6 left_1 /single_strip/right_DC 40p
+R10 /single_strip/right_DC IN 21GOhm
+C9 /single_strip/right_DC /single_strip/bias 0.5p
+R9 0 /single_strip/right_DC 3MegOhm
+C8 left_1 /single_strip/right_DC 40p
+C10 IN left_1 40f
+C11 main left_1 660f
+C14 IN /single_strip/bias 0.5p
+C12 /single_strip/right_DC main 40f
+R11 0 IN 3MegOhm
+C13 main IN 40p
+R13 IN /single_strip2/right_DC 21GOhm
+C16 IN /single_strip/bias 0.5p
+R12 0 IN 3MegOhm
+C15 main IN 40p
+C17 /single_strip2/right_DC main 40f
+C18 right_1 main 660f
+C21 /single_strip2/right_DC /single_strip/bias 0.5p
+C19 IN right_1 40f
+R14 0 /single_strip2/right_DC 3MegOhm
+C20 right_1 /single_strip2/right_DC 40p
+R16 /single_strip2/right_DC left_2 21GOhm
+C23 /single_strip2/right_DC /single_strip/bias 0.5p
+R15 0 /single_strip2/right_DC 3MegOhm
+C22 right_1 /single_strip2/right_DC 40p
+C24 left_2 right_1 40f
+C25 left_2 right_1 660f
+C28 left_2 /single_strip/bias 0.5p
+C26 /single_strip2/right_DC left_2 40f
+R17 0 left_2 3MegOhm
+C27 left_2 left_2 40p
+
+.control
+tran 10p 20n
+* <step> <stopping time>
+wrdata output/afe/ABCStar_fe/cross_talk.raw v(main)/1k v(left_1)/1k v(left_2)/1k
+* 1k for 1kOhm
+* save raw data
+.endc
+
+.end

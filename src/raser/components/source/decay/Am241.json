@@ -1,0 +1,10 @@
+{
+    "name" : "Am241",
+    "kind" : "decay_source",
+    "description" : "Am-241 alpha source",
+    "par_type" : "alpha",
+    "par_energy" : 5.54,
+    "par_in" : [0, 0, 500],
+    "par_out" : [86.6025, 0, 450.1100]
+}
+  

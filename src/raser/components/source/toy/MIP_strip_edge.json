@@ -1,0 +1,20 @@
+{
+    "name": "MIP_strip_edge",
+    "kind": "toy_mip",
+    "description": "Straight toy MIP crossing a strip boundary.",
+    "pairs_per_um": 80.0,
+    "start": [210.0, 270.0, 0.0],
+    "end": [210.0, 270.0, 67.3],
+    "position_range_um": {
+        "x": [150.0, 270.0],
+        "y": [270.0, 270.0]
+    },
+    "direction_sigma_mrad": {
+        "x": 10.0,
+        "y": 0.0
+    },
+    "landau_sampling": true,
+    "landau_width_mev_per_um": 2.0e-5,
+    "fano_sampling": true,
+    "fano_factor": 0.115
+}

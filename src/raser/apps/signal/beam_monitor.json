@@ -1,0 +1,14 @@
+{
+    "geant4_model" : "beam_monitor",
+    "total_events" : 1000,
+    
+    "object":{},
+
+    "world" : "G4_Galactic",
+    "par_type" : "proton",
+    "par_energy" : 1600,
+    "maxstep" : 2,
+    "g4_vis" : false,
+    "par_in" : [0, 0, 500],
+    "par_out" : [0, 0, 0]
+}

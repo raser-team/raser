@@ -1,0 +1,96 @@
+{
+    "acts-geometry-hierarchy-map": {
+      "format-version": 0,
+      "value-identifier": "digitization-configuration"
+    },
+    "entries": [
+      {
+        "description": "pixel layer",
+        "volume": 1,
+        "value": {
+          "geometric": {
+            "digital": false,
+            "indices": [
+              0,
+              1
+            ],
+            "segmentation": {
+              "binningdata": [
+                {
+                  "bins": 10240,
+                  "max": 128,
+                  "min": -128,
+                  "option": "open",
+                  "type": "equidistant",
+                  "value": "binX"
+                },
+                {
+                  "bins": 10240,
+                  "max": 128,
+                  "min": -128,
+                  "option": "open",
+                  "type": "equidistant",
+                  "value": "binY"
+                }
+              ]
+            },
+            "thickness": 0.020,
+            "threshold": 0.01,
+            "charge-smearing": {
+              "mean" : 0.0, "stddev" : 0.015, "type" : "Gauss"
+            }
+          }
+        }
+      },
+
+      {
+        "volume": 2,
+        "value": {
+          "smearing": [
+            { "index": 0, "stddev": 0.025, "type": "Gauss" },
+            { "index": 1, "stddev": 0.025, "type": "Gauss" }
+          ]
+        }
+      },
+
+      {
+        "description": "pixel positive endcap (inner ring)",
+        "volume": 3,
+        "extra": 1,
+        "value": {
+          "geometric": {
+            "digital": true,
+            "indices": [
+              0,
+              1
+            ],
+            "segmentation": {
+              "binningdata": [
+                {
+                  "bins": 1933,
+                  "max": 14.5,
+                  "min": -14.5,
+                  "option": "open",
+                  "type": "equidistant",
+                  "value": "binX"
+                },
+                {
+                  "bins": 4533,
+                  "max": 34.00,
+                  "min": -34.00,
+                  "option": "open",
+                  "type": "equidistant",
+                  "value": "binY"
+                }
+              ]
+            },
+            "thickness": 0.125,
+            "threshold": 0.01,
+            "charge-smearing": {
+              "mean" : 0.0, "stddev" : 0.015, "type" : "Gauss"
+            }
+          }
+        }
+      }
+    ]
+  }

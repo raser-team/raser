@@ -1,0 +1,20 @@
+{
+  "model": "ac_lgad_rc_sheet",
+  "incident_particle": "mip",
+  "coupling": "ac",
+  "pitch_um": 340.0,
+  "grid_nodes": 15,
+  "sheet_resistance_ohm_per_square": 1000.0,
+  "backplane_capacitance_fF_per_node": 35.0,
+  "coupling_capacitance_fF": 80.0,
+  "input_impedance_ohm": 50.0,
+  "mip_charge_fC": 4.0,
+  "gain": 20.0,
+  "pulse_sigma_ps": 45.0,
+  "pulse_center_ps": 180.0,
+  "time_step_ps": 5.0,
+  "duration_ns": 6.0,
+  "cfd_fraction": 0.5,
+  "noise_current_uA": 0.2,
+  "minimum_signal_uA": 0.5
+}

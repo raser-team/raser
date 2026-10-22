@@ -1,0 +1,13 @@
+{
+    "ele_name": "Broad_Band",
+    
+    "Broad_Band_Bandwidth" : 0.66,
+    "Broad_Band_Gain" : 19500,
+    "Broad_Band_Imp" : 10,
+    "OscBW" : 2,
+
+    "noise_avg" : 0,
+    "noise_rms" : 15,
+
+    "threshold" : 0
+}

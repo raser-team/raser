@@ -1,0 +1,6 @@
+{
+  "source": "decay/Am241",
+  "afe": "Broad_Band_UCSC",
+  "adc": "Alibava",
+  "g4setup": "time_resolution"
+}

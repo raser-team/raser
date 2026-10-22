@@ -1,0 +1,11 @@
+{
+    "name": "MIP_pixel_edge_fast",
+    "kind": "toy_mip",
+    "description": "Low-statistics toy MIP crossing a pixel boundary for field-shape checks.",
+    "pairs_per_um": 80.0,
+    "packets": 5,
+    "start": [600.0, 450.0, 0.0],
+    "end": [600.0, 450.0, 300.0],
+    "landau_sampling": false,
+    "fano_sampling": false
+}

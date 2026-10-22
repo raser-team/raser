@@ -1,0 +1,14 @@
+{
+    "geant4_model" : "beta_source",
+    "total_events" : 100,
+    
+    "object":{},
+
+    "world" : "G4_Galactic",
+    "par_type" : "e-",
+    "par_energy" : 2.28,
+    "maxstep" : 2,
+    "g4_vis" : false,
+    "par_in" : [0, 0, 0],
+    "par_out" : [0, 0, 300.5]
+}

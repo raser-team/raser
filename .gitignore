@@ -1,0 +1,33 @@
+# ===== 先忽略所有 =====
+*
+
+# ===== 放行 4 个目录（白名单必须在前面） =====
+!bootstrap/
+!bootstrap/**
+!docs/
+!docs/**
+!src/
+!src/**
+!tests/
+!tests/**
+
+# ===== 强制排除（必须放在白名单之后，后写的规则优先） =====
+
+# Python 缓存与打包产物
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# 你要求忽略的 JSON（匹配任意层级）
+**/MIM-Diamond.json
+
+# 你要求忽略的 work 目录
+work/
+
+# 临时备份文件
+*_copy.json
+
+# 放行 .gitignore 自身
+!.gitignore

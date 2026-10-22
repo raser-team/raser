@@ -1,0 +1,13 @@
+{
+    "name": "MIP_pixel_edge",
+    "kind": "toy_mip",
+    "description": "Straight toy MIP crossing a pixel boundary.",
+    "pairs_per_um": 80.0,
+    "packets": 50,
+    "start": [600.0, 450.0, 0.0],
+    "end": [600.0, 450.0, 300.0],
+    "landau_sampling": true,
+    "landau_width_mev_per_um": 2.0e-5,
+    "fano_sampling": true,
+    "fano_factor": 0.115
+}

@@ -1,0 +1,9 @@
+{
+    "name" : "source",
+    "kind" : "decay_source",
+    "description" : "Template for a decay source; copy into a project and choose par_type, par_energy, par_in, and par_out.",
+    "par_type" : "alpha",
+    "par_energy" : 5.0,
+    "par_in" : [0, 0, 0],
+    "par_out" : [0, 0, 1]
+}

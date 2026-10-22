@@ -1,0 +1,10 @@
+{
+    "name": "MIP",
+    "kind": "toy_mip",
+    "description": "Straight toy MIP through the active sensor volume with Landau and Fano fluctuations.",
+    "pairs_per_um": 80.0,
+    "landau_sampling": true,
+    "landau_width_mev_per_um": 2.0e-5,
+    "fano_sampling": true,
+    "fano_factor": 0.115
+}

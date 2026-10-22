@@ -1,0 +1,84 @@
+{
+    "geant4_model": "cflm",
+    "pipe": {
+        "name": "pipe",
+        "material": "G4_Cu",
+        "Rmin": 28,
+        "Rmax": 31,
+        "Pipe_Z": 700,
+        "PipeSphi": 0,  
+        "PipeDphi": 360, 
+        "colour": [
+            0,
+            1,
+            0
+        ],
+        "position_x": 0,
+        "position_y": 0,
+        "position_z": 250
+    },
+    "vacuum": {
+        "name": "vacuum",
+        "VACmin": 0,
+        "VACmax": 28,
+        "VAC_Z": 700,
+        "VACSphi": 0,
+        "VACDphi": 360,
+        "colour": [
+            1,
+            0,
+            0
+        ],
+        "position_x": 0,
+        "position_y": 0,
+        "position_z": 250
+    },
+    "world": "G4_AIR",
+    "BeamOn": 1,
+    "NumofGun": 3,
+    "par_type": "e-",
+    "par_energy": [
+        21.906,
+        25.9726,
+        24.7832
+    ],
+    "par_in": [
+        [
+            27.913,
+            -2.7834,
+            98.2917
+        ],
+        [
+            -27.893,
+            2.647,
+            108.2917
+        ],
+        [
+            27.8585,
+            2.8364,
+            78.2917
+        ]
+    ],
+    "par_direct": [
+        [
+            0.0321,
+            -0.0023,
+            21.906
+        ],
+        [
+            -0.0483,
+            0.003,
+            25.9725
+        ],
+        [
+            0.0434,
+            0.003,
+            24.7832
+        ]
+    ],
+    "maxStep": 2,
+    "DetModule": "NJU-PiN-cflm.json",
+    "vis": 0,
+    "EdepBaseName": "test.root",
+    "CurrentName": "test.root"
+}

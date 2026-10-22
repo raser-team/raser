@@ -1,0 +1,144 @@
+{
+    "geant4_model" : "telescope",
+    "total_events" : 1000,
+
+    "ltz": [20000.0,60000.0,100000.0,140000.0,180000.0,220000.0],
+    "seedcharge": 100,
+
+    "object" : {
+        "pixel"  : {
+            "Taichu":{
+                "name": "Taichu",
+                "material" : "G4_Si",
+                "side_x" : 25,
+                "side_y" : 25,
+                "side_z" : 20,
+                "colour" : [1,0.1,0.8]
+            },
+            "Taichu_2":{
+                "name": "Taichu_2",
+                "material" : "G4_Si",
+                "side_x" : 25,
+                "side_y" : 25,
+                "side_z" : 150,
+                "colour" : [1,0.1,0.8],
+                "part_1":{
+                    "name": "part_1",
+                    "element_1" : "Si",
+                    "element_2" : "Al",
+                    "mixture_name" :"Pminus",
+                    "density" : 2.2,
+                    "natoms_1" : 33.4,
+                    "natoms_2" : 66.6,
+                    "side_x" : 25,
+                    "side_y" : 25,
+                    "side_z" : 100,
+                    "position_x" : 0,
+                    "position_y" : 0,
+                    "position_z" : -25,
+                    "colour" : [1,0,1]
+                },
+                "part_2":{
+                    "name": "part_2",
+                    "element_1" : "Si",
+                    "element_2" : "Al",
+                    "mixture_name" :"Pplusplus",
+                    "density" : 2.2,
+                    "natoms_1" : 33.4,
+                    "natoms_2" : 66.6,
+                    "side_x" : 25,
+                    "side_y" : 25,
+                    "side_z" : 50,
+                    "position_x" : 0,
+                    "position_y" : 0,
+                    "position_z" : 50,
+                    "colour" : [1,0.5,0.8]
+                }
+            }
+        },
+
+        "layer"  : {
+            "Layer_0":{
+                "name": "Layer_0",
+                "pixel_type": "Taichu",
+                "row": 60,
+                "column":60,
+                "position_x" : 0,
+                "position_y" : 0,
+                "position_z" : -100000,
+                "rotation_xyz": [0,0,0],
+                "colour" : [0,1,0]
+            },
+
+            "Layer_1":{
+                "name": "Layer_1",
+                "pixel_type": "Taichu",
+                "row": 60,
+                "column":60,
+                "position_x" : 0,
+                "position_y" : 0,
+                "position_z" : -60000,
+                "rotation_xyz": [0,0,0],
+                "colour" : [0,1,0]
+            },
+
+            "Layer_2":{
+                "name": "Layer_2",
+                "pixel_type": "Taichu",
+                "row": 60,
+                "column":60,
+                "position_x" : 0,
+                "position_y" : 0,
+                "position_z" : -20000,
+                "rotation_xyz": [0,0,0],
+                "colour" : [0,1,0]
+            },
+
+            "Layer_3":{
+                "name": "Layer_3",
+                "pixel_type": "Taichu",
+                "row": 60,
+                "column":60,
+                "position_x" : 0,
+                "position_y" : 0,
+                "position_z" : 20000,
+                "rotation_xyz": [0,0,0],
+                "colour" : [0,1,0]
+            },
+
+            "Layer_4":{
+                "name": "Layer_4",
+                "pixel_type": "Taichu",
+                "row": 60,
+                "column":60,
+                "position_x" : 0,
+                "position_y" : 0,
+                "position_z" : 60000,
+                "rotation_xyz": [0,0,0],
+                "colour" : [0,1,0]
+            },
+
+            "Layer_5":{
+                "name": "Layer_5",
+                "pixel_type": "Taichu",
+                "row": 60,
+                "column":60,
+                "position_x" : 0,
+                "position_y" : 0,
+                "position_z" : 100000,
+                "rotation_xyz": [0,0,0],
+                "colour" : [0,1,0]
+            }
+        }
+    },
+    
+    "world" : "G4_Galactic",
+    "par_type" : "e-",
+    "par_energy" : 5000,
+    "maxstep" : 2,
+    "g4_vis" : false,
+    "par_in" : [0, 0, -600000],
+    "par_out" : [0, 0, 100000],
+    "par_randx": 750,
+    "par_randy": 750
+}

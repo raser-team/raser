@@ -1,0 +1,44 @@
+{
+    "det_name" : "3D_column_series",
+    "det_model" : "3D_column_series",
+    "material" : "Si",
+
+    "l_x" : 50,
+    "l_y" : 50,
+    "l_z" : 100,
+
+    "p_x" : 25,
+    "p_y" : 25,
+    "column_cell_x_um" : 50,
+    "column_cell_y_um" : 50,
+    "column_radius_um" : 3,
+    "readout_column_x_um" : 25,
+    "readout_column_y_um" : 25,
+    "ground_columns_um" : [[0, 0], [0, 50], [50, 0], [50, 50]],
+    "weighting_series_terms" : 51,
+
+    "x_ele_num" : 1,
+    "y_ele_num" : 1,
+
+    "doping": {
+        "Acceptors" : "0",
+        "Donors" : "1e13"
+    },
+
+    "bias" : {
+        "electrode" : "center",
+        "voltage" : -50
+    },
+
+    "temperature" : 300.0,
+
+    "area_factor" : 1,
+    "field" : {
+        "source" : "devsim",
+        "dimension" : 3
+    },
+    "default_dimension" : 3,
+    "read_out_contact" : [{"x_span": 0, "y_span": 0, "name": "readout"}],
+    "field_shift_x" : 0,
+    "field_shift_y" : 0
+}

@@ -1,0 +1,58 @@
+{
+    "geant4_model": "cflm",
+    "pipe": {
+        "name": "pipe",
+        "material": "G4_Cu",
+        "Rmin": 28,
+        "Rmax": 31,
+        "Pipe_Z": 6000,
+        "PipeSphi": 0,
+        "PipeDphi": 360,
+        "colour": [
+            0,
+            1,
+            0
+        ],
+        "position_x": 0,
+        "position_y": 0,
+        "position_z": 2000
+    },
+    "vacuum": {
+        "name": "vacuum",
+        "VACmin": 0,
+        "VACmax": 28,
+        "VAC_Z": 6000,
+        "VACSphi": 0,
+        "VACDphi": 360,
+        "colour": [
+            1,
+            0,
+            0
+        ],
+        "position_x": 0,
+        "position_y": 0,
+        "position_z": 2000
+    },
+    "world": "G4_AIR",
+    "BeamOn": 1,
+    "NumofGun": 1,
+    "par_type": "gamma",
+    "par_energy": [
+        120e-6
+    ],
+    "par_in": [
+        [-28,
+         0,
+         100  
+        ]
+    ],
+    "par_direct": [
+        [-1.7e-4,
+         0,
+         1
+        ]
+    ],
+    "maxStep": 1,
+    "vis": 0,
+    "PosBaseName": "SecondaryParticle_0"
+}

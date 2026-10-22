@@ -1,0 +1,28 @@
+{
+    "geant4_model" : "reactor",
+    "total_events" : 30000,
+    
+    "object" : {
+        "elemental" : {
+            "Ni" : {
+                "name" : "Ni",
+                "material" : "G4_Ni",
+                "side_x" : 5000,
+                "side_y" : 5000,
+                "side_z" : 0.1,
+                "colour" : [1,0.1,0.8],
+                "position_x" : 0,
+                "position_y" : 0,
+                "position_z" : 30.05
+            }
+        }
+    },
+
+    "world" : "G4_Galactic",
+    "par_type" : "gamma",
+    "par_energy" : 1.33,
+    "maxstep" : 2,
+    "g4_vis" : false,
+    "par_in" : [0, 0, 1000],
+    "par_out" : [0, 0, 0]
+}

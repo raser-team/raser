@@ -1,0 +1,22 @@
+{
+    "tech" : "TPA",
+    "direction" : "edge",
+    "laser_model" : "TPA_edge_Si",
+    
+    "beta_2" : 1.5E-11,
+    "refractionIndex" : 3.51,
+
+    "wavelength" : 1550,
+    "temporal_FWHM" : 60e-15,
+    "pulse_energy" : 5e-11,
+    "spacial_FWHM" : 1,
+    "l_Rayleigh" : 15.7,
+    "central_time" : 1e-9,
+    
+    "r_step" : 1,
+    "h_step" : 1,
+
+    "fx_rel" : 0.5,
+    "fy_rel" : 0.5,
+    "fz_rel" : 0.5
+}

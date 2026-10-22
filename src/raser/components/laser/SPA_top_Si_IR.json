@@ -1,0 +1,21 @@
+{
+    "tech" : "SPA",
+    "direction" : "top",
+    "laser_model" : "SPA_top_Si_IR",
+    
+    "alpha" : 987,
+    "refractionIndex" : 3.51,
+
+    "wavelength" : 1064,
+    "temporal_FWHM" : 350e-12,
+    "pulse_energy" : 1e-13,
+    "spacial_FWHM" : 8,
+    "central_time" : 1e-9,
+
+    "r_step" : 1,
+    "h_step" : 1,
+
+    "fx_rel" : 0.25,
+    "fy_rel" : 0.5,
+    "fz_rel" : 0.0
+}

@@ -1,0 +1,59 @@
+{
+    "det_name": "3D-LGAD",
+    "det_model": "lgad_pixel",
+    "material": "Si",
+
+    "l_x": 35.0,
+    "l_y": 35.0,
+    "l_z": 30.0,
+
+    "p_x": 35.0,
+    "p_y": 35.0,
+    "x_ele_num": 1,
+    "y_ele_num": 1,
+
+    "doping": {
+        "Acceptors": "2e13",
+        "Donors": "0"
+    },
+
+    "bias": {
+        "electrode": "center",
+        "voltage": 57
+    },
+
+    "temperature": 300.0,
+
+    "avalanche_model": "vanOverstraeten",
+    "enable_gain": true,
+    "gain_algorithm": "local_path",
+    "gain_pair_threshold": 0.05,
+    "gain_max_carriers": 50000,
+    "local_gain_emit_slices": 4,
+
+    "area_factor": 1,
+    "field": {
+        "source": "tcad",
+        "dimension": 3
+    },
+    "default_dimension": 3,
+    "read_out_contact": [
+        {
+            "x_span": 0,
+            "y_span": 0,
+            "name": "center"
+        }
+    ],
+    "field_shift_x": 0,
+    "field_shift_y": 0,
+    "field_interpolation_bins": {
+        "x": 80,
+        "y": 80,
+        "z": 80
+    },
+    "vector_collection_weighting_epsilon": 0.005,
+
+    "mesh": {
+        "mesher": "sde"
+    }
+}

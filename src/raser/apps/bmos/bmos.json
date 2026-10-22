@@ -1,0 +1,45 @@
+{
+    "geant4_model" : "bmos",
+    "object" : {
+        "binary_compounds" : {
+            "detector" : {
+                "name" : "detector",
+                "material_1" : "Si",
+                "material_2" : "C",
+                "compound_name" :"SiC",
+                "density" : 3.2,
+                "natoms_1" : 50,
+                "natoms_2" : 50,
+                "side_x" : 5000,                
+                "side_y" : 5000,
+                "side_z" : 100,
+                "colour" : [0,0.5,0.8],
+                "position_x" : 0,
+                "position_y" : 0,
+                "position_z" : 0
+            }
+    }
+},
+    "g4_vis" : "False",
+     
+    "world_type"    : "G4_Galactic",
+    "world_size"    :   25000,
+    
+    "BeamOn"   : 1,
+    "maxstep" : 2,
+    
+    "par_num" : 3,
+    "par_type" : "proton",
+    "par_energy" : 80,
+    "par_in" : [[-1, 1, -100], [0, 1, -100], [1, 1, -100], [-1, 0, -100], [0, 0, -100], [1, 0, -100], [-1, -1, -100], [-1, -1, -100], [1, -1, -100], [2, 2, -100]],
+    "par_direction" : [[0, 0, 1], [0, 0, 1], [0, 0, 1], [0, 0, 1], [0, 0, 1], [0, 0, 1], [0, 0, 1], [0, 0, 1], [0, 0, 1], [0, 0, 1]],
+
+    "maxStep" : 0.5,
+
+    "DetModule" : "NJU-PiN-bmos.json",
+
+    "vis" : 0,
+
+    "CurrentName"  : "Current.root" 
+
+}

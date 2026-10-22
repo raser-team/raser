@@ -1,0 +1,51 @@
+{
+    "det_name" : "ITk-md8",
+    "det_model" : "planar",
+    "material" : "Si",
+
+    "l_x" : 1300,
+    "l_y" : 1300,
+    "l_z" : 50,
+
+    "doping": {
+        "Acceptors" : "4e12*step(x-1e-4)+1e15*step(x-300e-4)",
+        "Donors" : "1e19*step(1e-4-x)"
+    },
+
+    "bias" : {
+        "electrode" : "bot",
+        "voltage" : -700
+    },
+    
+    "temperature" : 254.0,
+    "irradiation" : {
+        "irradiation_model" : "Schwandt",
+        "irradiation_flux" : 1e15
+    },
+
+    "area_factor" : 1.73,
+    "default_dimension" : 1,
+    "read_out_contact" : [{"x_span":0, "y_span":0, "name":"top"}],
+    "field_shift_x" : 0,
+
+    "mesh" : {
+        "1D_mesh" : {
+            "mesh_line" : [
+                {"pos" : 0,      "ps" : 5e-5, "tag" : "top"},
+                {"pos" : 305e-4, "ps" : 5e-5, "tag" : "bot"}
+            ],
+            "region" : [
+                {
+                    "material" : "Silicon", 
+                    "region" : "ITk-md8", 
+                    "tag1" : "top", 
+                    "tag2" : "bot"
+                }
+            ],
+            "contact" : [
+                {"name" : "top", "tag" : "top", "material" : "metal"},
+                {"name" : "bot", "tag" : "bot", "material" : "metal"}
+            ]
+        }
+    }
+}

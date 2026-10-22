@@ -1,0 +1,6 @@
+{
+  "source": "decay/Am241",
+  "afe": "Charge_Sensitive_UCSC",
+  "adc": "Alibava",
+  "g4setup": "charge_collection_diamond"
+}

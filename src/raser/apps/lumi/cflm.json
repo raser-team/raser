@@ -1,0 +1,63 @@
+{
+    "geant4_model" : "cflm",
+    "object" : {
+        "elemental" : {
+            "pipe" : {
+                "name" : "pipe",
+                "material" : "G4_Cu",
+                "Rmin" : 28,
+                "Rmax" :31,
+                "Pipe_Z" : 200,
+                "PipeSphi" : 0,
+                "PipeDphi" : 180,
+                "colour" : [0, 1, 0],
+                "position_x" : 0,
+                "position_y" : 0,
+                "position_z" : 100
+    
+            }
+
+        },
+
+        "binary_compounds" : {
+            "detector" : {
+                "name" : "detector",
+                "material_1" : "Si",
+                "material_2" : "C",
+                "compound_name" :"SiC",
+                "density" : 3.2,
+                "natoms_1" : 50,
+                "natoms_2" : 50,
+                "side_x" : 50,                
+                "side_y" : 0.1,
+                "side_z" : 200,
+                "colour" : [0,0.5,0.8],
+                "position_x" : -31.05,
+                "position_y" : 0,
+                "position_z" : 100
+            }
+    }
+},
+
+     
+    "world"    : "G4_Galactic",
+    
+    "BeamOn"   : 1,
+    
+    "NumofGun" : 1,
+    "par_type" : "e-",
+    "par_energy" : [24],
+    "par_in" : [[-26.9, 0, -100]],
+    "par_direct" : [[-0.01, 0, 1]],
+    
+    "maxStep" : 0.5,
+
+    "DetModule" : "NJU-PiN-cflm.json",
+
+    "vis" : 0,
+
+    "EdepBaseName" : "test.root",
+    "PosBaseName"  : "test.txt",
+    "CurrentName"  : "Current_test.root" 
+
+}
