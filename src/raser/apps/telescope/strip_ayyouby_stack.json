@@ -1,0 +1,14 @@
+{
+  "name": "strip_ayyouby_stack",
+  "device": "strip_ayyouby",
+  "stereo_angle_deg": 45.0,
+  "silicon_gap_um": 50.0,
+  "source": "toy/MIP",
+  "amplifier": "Broad_Band_UCSC",
+  "packets_per_layer": 32,
+  "beta": 1.0,
+  "reference_um": [0.0, 0.0, 0.0],
+  "slope_x": 0.0,
+  "slope_y": 0.0,
+  "field_scope": "Independent identical 2D strip fields extruded along local y; each silicon slab is rotated in global x-y. Inter-layer electrostatic coupling and scattering require a separate model."
+}

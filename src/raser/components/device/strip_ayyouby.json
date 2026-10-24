@@ -1,0 +1,308 @@
+{
+    "det_name": "strip_ayyouby",
+    "det_model": "lgadstrip",
+    "material": "Si",
+    "comment": "Ayyoub-inspired three-channel DJ-LGAD strip. Pitch 20 um, metal and local n++ implant width 18 um, gaps 2 um. Lateral contact windows are 0-18, 20-38, 40-58 um. Each gap has a centered 1 um wide, 1 um deep p-stop with acceptor concentration 1e13 cm^-3. The 1 um deep n++ implants are confined to the metal windows. Buried Gaussian gain layers, bulk backgrounds, and backside p+ retain the exact coefficient-version formulas. Metal width is a user-approved implementation choice, not a specified Ayyoub paper value. Geometry is 58 um by 5 mm by 50 um; 2D DEVSIM x is depth and y is lateral, both in cm. No external guard ring or oxide/interface charge is included. Frontend capacitance uses the same pitch-times-strip-length parallel-plate estimate; mutual strip capacitances are not supplied. Mesh resolves p-stop and implant edges at 0.1 um laterally and the buried gain peaks at 0.05 um in depth.",
+    "l_x": 58,
+    "l_y": 5000,
+    "l_z": 50,
+    "p_x": 20,
+    "read_ele_num": 3,
+    "doping": {
+        "Acceptors": "3.0e16*exp(-0.5*pow((x-5.5e-4)/(0.17e-4),2)) + 3.0e12*step(x-5.5e-4) + 1.0e19*step(x-49e-4) + 1.0e13*step(1e-4-x)*(step(y-18.5e-4)*step(19.5e-4-y) + step(y-38.5e-4)*step(39.5e-4-y))",
+        "Donors": "1.0e19*step(1e-4-x)*(step(18e-4-y) + step(y-20e-4)*step(38e-4-y) + step(y-40e-4)) + 3.0e12*step(5.5e-4-x) + 3.0e16*exp(-0.5*pow((x-4.0e-4)/(0.17e-4),2))"
+    },
+    "bias": {
+        "electrode": "bot",
+        "voltage": -200.0
+    },
+    "temperature": 300.0,
+    "avalanche_bond": 5.5,
+    "avalanche_model": "vanOverstraeten",
+    "gain_algorithm": "local_path",
+    "local_gain_integration_steps": 11,
+    "area_factor": 0.01,
+    "default_dimension": 2,
+    "read_out_contact": [
+        {
+            "x_span": 0,
+            "y_span": 0,
+            "name": "top1"
+        },
+        {
+            "x_span": 0,
+            "y_span": 0,
+            "name": "top2"
+        },
+        {
+            "x_span": 0,
+            "y_span": 0,
+            "name": "top3"
+        }
+    ],
+    "field_shift_x": 0,
+    "mesh": {
+        "2D_mesh": {
+            "mesh_line": [
+                {
+                    "dir": "x",
+                    "pos": -0.0002,
+                    "ps": 0.0002
+                },
+                {
+                    "dir": "x",
+                    "pos": 0.0,
+                    "ps": 1e-05
+                },
+                {
+                    "dir": "x",
+                    "pos": 2.5e-05,
+                    "ps": 1e-05
+                },
+                {
+                    "dir": "x",
+                    "pos": 5e-05,
+                    "ps": 1e-05
+                },
+                {
+                    "dir": "x",
+                    "pos": 7.500000000000001e-05,
+                    "ps": 1e-05
+                },
+                {
+                    "dir": "x",
+                    "pos": 0.0001,
+                    "ps": 1e-05
+                },
+                {
+                    "dir": "x",
+                    "pos": 0.000125,
+                    "ps": 1e-05
+                },
+                {
+                    "dir": "x",
+                    "pos": 0.00035,
+                    "ps": 5e-05
+                },
+                {
+                    "dir": "x",
+                    "pos": 0.000383,
+                    "ps": 5e-06
+                },
+                {
+                    "dir": "x",
+                    "pos": 0.0004,
+                    "ps": 5e-06
+                },
+                {
+                    "dir": "x",
+                    "pos": 0.000417,
+                    "ps": 5e-06
+                },
+                {
+                    "dir": "x",
+                    "pos": 0.000533,
+                    "ps": 5e-06
+                },
+                {
+                    "dir": "x",
+                    "pos": 0.00055,
+                    "ps": 5e-06
+                },
+                {
+                    "dir": "x",
+                    "pos": 0.000567,
+                    "ps": 5e-06
+                },
+                {
+                    "dir": "x",
+                    "pos": 0.0006,
+                    "ps": 1e-05
+                },
+                {
+                    "dir": "x",
+                    "pos": 0.0025,
+                    "ps": 5e-05
+                },
+                {
+                    "dir": "x",
+                    "pos": 0.0049,
+                    "ps": 1e-05
+                },
+                {
+                    "dir": "x",
+                    "pos": 0.005,
+                    "ps": 1e-05
+                },
+                {
+                    "dir": "x",
+                    "pos": 0.0052,
+                    "ps": 0.0002
+                },
+                {
+                    "dir": "y",
+                    "pos": 0.0,
+                    "ps": 5e-05
+                },
+                {
+                    "dir": "y",
+                    "pos": 0.0009000000000000001,
+                    "ps": 0.0001
+                },
+                {
+                    "dir": "y",
+                    "pos": 0.0018000000000000002,
+                    "ps": 1e-05
+                },
+                {
+                    "dir": "y",
+                    "pos": 0.001825,
+                    "ps": 1e-05
+                },
+                {
+                    "dir": "y",
+                    "pos": 0.00185,
+                    "ps": 1e-05
+                },
+                {
+                    "dir": "y",
+                    "pos": 0.0019,
+                    "ps": 1e-05
+                },
+                {
+                    "dir": "y",
+                    "pos": 0.0019500000000000001,
+                    "ps": 1e-05
+                },
+                {
+                    "dir": "y",
+                    "pos": 0.001975,
+                    "ps": 1e-05
+                },
+                {
+                    "dir": "y",
+                    "pos": 0.002,
+                    "ps": 1e-05
+                },
+                {
+                    "dir": "y",
+                    "pos": 0.0029000000000000002,
+                    "ps": 0.0001
+                },
+                {
+                    "dir": "y",
+                    "pos": 0.0038,
+                    "ps": 1e-05
+                },
+                {
+                    "dir": "y",
+                    "pos": 0.0038250000000000003,
+                    "ps": 1e-05
+                },
+                {
+                    "dir": "y",
+                    "pos": 0.00385,
+                    "ps": 1e-05
+                },
+                {
+                    "dir": "y",
+                    "pos": 0.0039000000000000003,
+                    "ps": 1e-05
+                },
+                {
+                    "dir": "y",
+                    "pos": 0.00395,
+                    "ps": 1e-05
+                },
+                {
+                    "dir": "y",
+                    "pos": 0.003975,
+                    "ps": 1e-05
+                },
+                {
+                    "dir": "y",
+                    "pos": 0.004,
+                    "ps": 1e-05
+                },
+                {
+                    "dir": "y",
+                    "pos": 0.0049,
+                    "ps": 0.0001
+                },
+                {
+                    "dir": "y",
+                    "pos": 0.0058000000000000005,
+                    "ps": 5e-05
+                }
+            ],
+            "region": [
+                {
+                    "material": "Silicon",
+                    "region": "strip_ayyouby",
+                    "xl": 0,
+                    "xh": 0.005,
+                    "yl": 0,
+                    "yh": 0.0058
+                },
+                {
+                    "material": "air",
+                    "region": "air1",
+                    "xl": -0.0002,
+                    "xh": 0
+                },
+                {
+                    "material": "air",
+                    "region": "air2",
+                    "xl": 0.005,
+                    "xh": 0.0052
+                }
+            ],
+            "contact": [
+                {
+                    "name": "top1",
+                    "material": "metal",
+                    "region": "strip_ayyouby",
+                    "xl": 0,
+                    "xh": 0,
+                    "yl": 0.0,
+                    "yh": 0.0018000000000000002,
+                    "bloat": 1e-10
+                },
+                {
+                    "name": "top2",
+                    "material": "metal",
+                    "region": "strip_ayyouby",
+                    "xl": 0,
+                    "xh": 0,
+                    "yl": 0.002,
+                    "yh": 0.0038,
+                    "bloat": 1e-10
+                },
+                {
+                    "name": "top3",
+                    "material": "metal",
+                    "region": "strip_ayyouby",
+                    "xl": 0,
+                    "xh": 0,
+                    "yl": 0.004,
+                    "yh": 0.0058000000000000005,
+                    "bloat": 1e-10
+                },
+                {
+                    "name": "bot",
+                    "material": "metal",
+                    "region": "strip_ayyouby",
+                    "xl": 0.005,
+                    "xh": 0.005,
+                    "bloat": 1e-10
+                }
+            ]
+        }
+    },
+    "capacitance_pF": 0.20364631969440006,
+    "field": {
+        "solver": {
+            "saved_voltage_interval": 25.0
+        }
+    }
+}
