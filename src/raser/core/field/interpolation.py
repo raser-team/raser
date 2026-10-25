@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import Any, Callable, Mapping, Sequence
 
 import numpy as np
+from scipy.interpolate import LinearNDInterpolator
 from scipy.interpolate import RegularGridInterpolator
-from scipy.interpolate import griddata
 from scipy.interpolate import interp1d
 from scipy.spatial import cKDTree
 
@@ -18,7 +18,9 @@ def interpolate_1d(data: Mapping[str, Any]):
 def interpolate_2d(data: Mapping[str, Any]):
     points = np.asarray(data["points"], dtype=np.float64)
     values = np.asarray(data["values"], dtype=np.float64)
-    return lambda x, y: float(griddata(points, values, (x, y), method="linear"))
+    # 只做一次 Delaunay 三角剖分；griddata 每次调用都会重建
+    interpolator = LinearNDInterpolator(points, values)
+    return lambda x, y: float(interpolator(x, y))
 
 
 def _interpolation_bins_3d(
