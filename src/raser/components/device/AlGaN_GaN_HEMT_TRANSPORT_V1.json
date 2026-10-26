@@ -182,6 +182,13 @@
           "yh": 0.0,
           "bloat": 1e-10
         }
+      ],
+      "interface": [
+        {
+          "name": "AlGaN_GaN_interface",
+          "region0": "AlGaN_barrier",
+          "region1": "GaN_buffer"
+        }
       ]
     }
   },
