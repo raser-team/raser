@@ -98,6 +98,10 @@ def main (kwargs):
     MyDetector.device_dict["field_dimension"] = MyDetector.dimension
     MyDetector.device_dict["temperature"] = MyDetector.temperature
     MyDetector.device_dict["bias"]["voltage"] = MyDetector.voltage
+    # HEMT_TRANSPORT_V1_DISPATCH
+    if MyDetector.device_dict.get("hemt_physics", {}).get("transport_model") == "drift_diffusion_v1":
+        from .hemt_solver_2d_transport_v1 import run_hemt_transport
+        return run_hemt_transport(MyDetector, kwargs, paras)
     device = MyDetector.device
     region = MyDetector.region
     field_directory = kwargs.get("_field_directory")

@@ -1,0 +1,218 @@
+{
+  "det_name": "AlGaN_GaN_HEMT_TRANSPORT_V1",
+  "det_model": "planar",
+  "material": "GaN",
+  "l_x": 5000,
+  "l_y": 5000,
+  "l_z": 2.0,
+  "doping": {
+    "Acceptors": "0",
+    "Donors": "1.0e15",
+    "donors_ir": "0",
+    "by_region": {
+      "AlGaN_barrier": {
+        "Donors": "0.0",
+        "Acceptors": "0"
+      },
+      "GaN_buffer": {
+        "Donors": "1000000000000000.0",
+        "Acceptors": "0"
+      }
+    }
+  },
+  "bias": {
+    "electrode": "gate",
+    "voltage": 0.0
+  },
+  "temperature": 300.0,
+  "field_source": "devsim",
+  "field_dimension": 2,
+  "area_factor": 1,
+  "default_dimension": 2,
+  "read_out_contact": [
+    {
+      "x_span": 0.0,
+      "y_span": 2e-06,
+      "name": "source"
+    },
+    {
+      "x_span": 0.0002,
+      "y_span": 0.0,
+      "name": "gate"
+    },
+    {
+      "x_span": 0.0005,
+      "y_span": 2e-06,
+      "name": "drain"
+    }
+  ],
+  "mesh": {
+    "2D_mesh": {
+      "mesh_line": [
+        {
+          "dir": "x",
+          "pos": 0,
+          "ps": 2e-06
+        },
+        {
+          "dir": "x",
+          "pos": 5e-05,
+          "ps": 2e-06
+        },
+        {
+          "dir": "x",
+          "pos": 0.0002,
+          "ps": 2e-06
+        },
+        {
+          "dir": "x",
+          "pos": 0.0003,
+          "ps": 2e-06
+        },
+        {
+          "dir": "x",
+          "pos": 0.00045,
+          "ps": 2e-06
+        },
+        {
+          "dir": "x",
+          "pos": 0.0005,
+          "ps": 2e-06
+        },
+        {
+          "dir": "y",
+          "pos": -1e-06,
+          "ps": 2e-07
+        },
+        {
+          "dir": "y",
+          "pos": 0,
+          "ps": 5e-08
+        },
+        {
+          "dir": "y",
+          "pos": 2e-06,
+          "ps": 5e-08
+        },
+        {
+          "dir": "y",
+          "pos": 2.05e-06,
+          "ps": 5e-08
+        },
+        {
+          "dir": "y",
+          "pos": 0.0002,
+          "ps": 1e-05
+        }
+      ],
+      "region": [
+        {
+          "material": "AlGaN",
+          "region": "AlGaN_barrier",
+          "xl": 0,
+          "xh": 0.0005,
+          "yl": 0,
+          "yh": 2e-06
+        },
+        {
+          "material": "GaN",
+          "region": "GaN_buffer",
+          "xl": 0,
+          "xh": 0.0005,
+          "yl": 2e-06,
+          "yh": 0.0002
+        },
+        {
+          "material": "air",
+          "region": "air_top",
+          "xl": 0,
+          "xh": 0.0005,
+          "yl": -1e-06,
+          "yh": 0
+        }
+      ],
+      "contact": [
+        {
+          "name": "source",
+          "material": "metal",
+          "region": "GaN_buffer",
+          "xl": 0.0,
+          "xh": 0.0,
+          "yl": 2e-06,
+          "yh": 0.0002,
+          "bloat": 1e-10
+        },
+        {
+          "name": "gate",
+          "material": "metal",
+          "region": "AlGaN_barrier",
+          "xl": 0.0002,
+          "xh": 0.0003,
+          "yl": 0.0,
+          "yh": 0.0,
+          "bloat": 1e-10
+        },
+        {
+          "name": "drain",
+          "material": "metal",
+          "region": "GaN_buffer",
+          "xl": 0.0005,
+          "xh": 0.0005,
+          "yl": 2e-06,
+          "yh": 0.0002,
+          "bloat": 1e-10
+        },
+        {
+          "name": "hemt_free_left",
+          "material": "surface",
+          "region": "AlGaN_barrier",
+          "xl": 0.0,
+          "xh": 0.0002,
+          "yl": 0.0,
+          "yh": 0.0,
+          "bloat": 1e-10
+        },
+        {
+          "name": "hemt_free_right",
+          "material": "surface",
+          "region": "AlGaN_barrier",
+          "xl": 0.0003,
+          "xh": 0.0005,
+          "yl": 0.0,
+          "yh": 0.0,
+          "bloat": 1e-10
+        }
+      ],
+      "interface": [
+        {
+          "name": "AlGaN_GaN_interface",
+          "region0": "AlGaN_barrier",
+          "region1": "GaN_buffer"
+        }
+      ]
+    }
+  },
+  "hemt_physics": {
+    "al_mole_fraction": 0.24,
+    "ga_face": true,
+    "pseudomorphic_barrier": true,
+    "carrier_statistics": "DEVSIM_Fermi3D_Joyce_Dixon",
+    "polarization_spread_nm": 5.0,
+    "transport_model": "drift_diffusion_v1",
+    "model_provenance": "Exploratory electron-only 2D drift-diffusion branch; no paper calibration",
+    "transport_v1": {
+      "mu_n_gan_cm2_Vs": 1000.0,
+      "mu_n_algan_cm2_Vs": 300.0,
+      "drain_bias_V": 0.05,
+      "drain_ramp_steps": 5,
+      "gate_start_V": -3.0,
+      "gate_stop_V": 1.0,
+      "gate_step_V": 0.25,
+      "gate_ramp_steps": 20,
+      "polarization_ramp_steps": 20,
+      "absolute_error": 1e-12,
+      "relative_error": 1e-07,
+      "maximum_iterations": 100
+    }
+  }
+}

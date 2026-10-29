@@ -108,6 +108,18 @@ class DevsimMesh:
                 devsim.add_2d_contact  (mesh=mesh_name, **ac_contact)
             for interface in mesh["interface"]:
                 devsim.add_2d_interface(mesh=mesh_name, **interface)
+        # HEMT_TRANSPORT_V1_INTERFACE
+        if (
+            self.device_dict.get("hemt_physics", {}).get("transport_model")
+            == "drift_diffusion_v1"
+            and not self.solve_paras.get("ac-weightfield", False)
+        ):
+            interfaces = mesh.get("interface", [])
+            if not interfaces:
+                raise ValueError("HEMT transport requires a configured mesh interface")
+            for interface in interfaces:
+                devsim.add_2d_interface(mesh=mesh_name, **interface)
+
         devsim.finalize_mesh(mesh=mesh_name)
         devsim.create_device(mesh=mesh_name, device=mesh_name)
 
