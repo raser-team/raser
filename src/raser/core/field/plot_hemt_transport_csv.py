@@ -7,10 +7,19 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-# Existing RASER simulation output
+# Locate simulation outputs relative to the repository.
+# An alternative field directory can be supplied via an
+# environment variable.
+import os
+
+REPO_ROOT = Path(__file__).resolve().parents[4]
+
 ROOT = Path(
-    "/root/raser/work/AlGaN_GaN_HEMT_TRANSPORT_V1/field"
-)
+    os.environ.get(
+        "RASER_HEMT_FIELD_DIR",
+        REPO_ROOT / "work" / "AlGaN_GaN_HEMT_TRANSPORT_V1" / "field"
+    )
+).expanduser()
 
 profiles = sorted(
     ROOT.glob("*/HEMT_TRANSPORT_final_profile.csv"),
