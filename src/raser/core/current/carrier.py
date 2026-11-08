@@ -298,6 +298,22 @@ class VectorizedCarrierSystem:
             raise RuntimeError("Weighting potential is required for contact collection")
         return potential >= 1.0 - self._params["collection_weighting_epsilon"]
     
+    def _drifts_toward_contact(self, my_f, my_d, x, y, x_reduced, y_reduced, z, delta_x, delta_y, delta_z):
+        # 漂移一步就离开器件：在读出电极附近只可能是正在穿过该电极表面
+        if not (
+            0.0 <= x + delta_x <= my_d.l_x
+            and 0.0 <= y + delta_y <= my_d.l_y
+            and 0.0 <= z + delta_z <= my_d.l_z
+        ):
+            return True
+        before = my_f.get_w_p_cached(x_reduced, y_reduced, z, 0)
+        after = my_f.get_w_p_cached(
+            x_reduced + delta_x, y_reduced + delta_y, z + delta_z, 0
+        )
+        if before is None or after is None:
+            raise RuntimeError("Weighting potential is required for contact collection")
+        return after > before
+    
     def _calculate_electrode_numbers(self, x, y, my_d):
         """计算电极编号"""
         try:
@@ -486,8 +502,11 @@ class VectorizedCarrierSystem:
                 self.active[idx] = False
                 n_terminated += 1
                 continue
+            # 只收集朝读出电极漂移的载流子；背离电极的载流子（如在电极附近产生的空穴）继续漂移
             if self._should_terminate_at_contact(
                 my_f, new_x_reduced, new_y_reduced, new_z
+            ) and self._drifts_toward_contact(
+                my_f, my_d, x, y, x_reduced, y_reduced, z, delta_x, delta_y, delta_z
             ):
                 self.active[idx] = False
                 self.end_conditions[idx] = 5
@@ -647,7 +666,7 @@ class VectorizedCarrierSystem:
         except Exception as e:
             carrier.signal = [[]]
 
-    def get_signal_batch(self, my_d, my_f, delta_t=1e-12):
+    def get_signal_batch(self, my_d, my_f, delta_t):
         """批量计算载流子信号 - 重新设计版本"""
         start_time = time.time()
         e0 = 1.60217733e-19

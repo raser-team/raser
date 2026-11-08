@@ -108,6 +108,8 @@ class CalCurrent:
             relative_end = t_end[1]
             relative_start = t_start[1]
         self.delta_t = delta_t[1] if my_d.is_plugin() else delta_t[my_d.dimension]
+        # 漂移步长、时间轴换算和俘获衰减必须使用同一个步长
+        self.delta_t = getattr(my_d, "vector_delta_t", self.delta_t)
         creation_times = [float(position[3]) for position in track_position]
         first_creation = min(creation_times, default=0.0)
         last_creation = max(creation_times, default=0.0)
@@ -232,7 +234,7 @@ class CalCurrent:
     def drifting_loop(self, my_d, my_f):
         """漂移循环 - 使用向量化系统"""
         logger.info(f"向量化漂移: 电子系统={self.electron_system is not None}, 空穴系统={self.hole_system is not None}")
-        delta_t_sim = getattr(my_d, "vector_delta_t", self.delta_t)
+        delta_t_sim = self.delta_t
         
         try:            
             # 批量处理电子
@@ -242,7 +244,7 @@ class CalCurrent:
                     self.electron_system.drift_batch(my_d, my_f, delta_t=delta_t_sim)
                 logger.info("电子漂移结束，开始信号计算...")
                 with self.timings.record("electron_signal"):
-                    self.electron_system.get_signal_batch(my_d, my_f)
+                    self.electron_system.get_signal_batch(my_d, my_f, delta_t=delta_t_sim)
             
             # 批量处理空穴
             if self.hole_system:
@@ -251,7 +253,7 @@ class CalCurrent:
                     self.hole_system.drift_batch(my_d, my_f, delta_t=delta_t_sim)
                 logger.info("空穴漂移结束，开始信号计算...")
                 with self.timings.record("hole_signal"):
-                    self.hole_system.get_signal_batch(my_d, my_f)
+                    self.hole_system.get_signal_batch(my_d, my_f, delta_t=delta_t_sim)
                             
             cache_stats = my_f.get_cache_stats()
             logger.info(
@@ -670,9 +672,9 @@ class CalCurrentGain(CalCurrent):
         self.t_bin = t_bin[my_d.dimension]
         self.t_end = t_end[my_d.dimension]
         self.t_start = t_start[my_d.dimension]
-        self.delta_t = delta_t[my_d.dimension]
+        self.delta_t = getattr(my_d, "vector_delta_t", delta_t[my_d.dimension])
         self.n_bin = int((self.t_end+t_tol-self.t_start)/self.t_bin)
-    
+
         self.read_ele_num = my_current.read_ele_num
         self.read_out_contact = my_current.read_out_contact
 
