@@ -10,8 +10,7 @@ RASER 将可复用的科学计算与组装传感器研究或测试场景的应�
 flowchart TB
     user([用户]) --> cli[CLI]
     cli --> apps[应用]
-    cli --> core[Core]
-    apps --> core
+    apps --> core[Core]
     apps --> components[组件]
     apps --> supports[Supports]
     core --> supports

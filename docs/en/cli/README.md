@@ -19,9 +19,6 @@ raser <command> --help
 | `bmos` | [`apps/bmos`](../apps/bmos.md) |
 | `cce` | [`apps/cce`](../apps/cce.md) |
 | `field` | [`apps/field`](../apps/field.md) |
-| `frontend` | [Frontend](../core/frontend.md) |
-| `current` | [Current](../core/current.md) |
-| `metrics` | [Metrics](../core/metrics.md) |
 | `lumi` | [`apps/lumi`](../apps/lumi.md) |
 | `signal` | [`apps/signal`](../apps/signal.md) |
 | `tct` | [`apps/tct`](../apps/tct.md) |

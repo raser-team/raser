@@ -7,8 +7,7 @@ _RASER 5.0 command parsing, dispatch context, and process-exit semantics_
 ## 📋 Scope
 
 The installed `raser` entry point owns command syntax and dispatch. It converts
-an argument vector into one selected application or Core capability and
-keeps command-line concerns outside scientific code.
+an argument vector into one selected application and keeps command-line concerns outside scientific code.
 
 | Area | CLI responsibility | Downstream responsibility |
 | --- | --- | --- |
@@ -19,7 +18,7 @@ keeps command-line concerns outside scientific code.
 | **Exit** | Return the selected status and guarantee cleanup | Raise or return a visible failure |
 
 Detector construction, physical defaults, result interpretation, and workflow
-execution belong to the selected application or Core capability. The CLI
+execution belong to the selected application. The CLI
 provides routing interfaces internally and exposes the installed `raser`
 command described in the [CLI overview](README.md).
 
@@ -48,7 +47,7 @@ A valid invocation produces exactly one of these outcomes:
 | **Failure** | A non-zero status or exception reaches the caller |
 
 The CLI restores temporary environment context before it returns. The selected
-application or Core capability owns every generated scientific artifact.
+application owns every generated scientific artifact.
 
 ## ⚙️ Dispatch lifecycle
 
@@ -75,22 +74,20 @@ were loaded.
 ## 🔗 Dependency direction
 
 The router may import Supports at startup and lazily import the selected
-application or Core entry. Lazy imports confine heavy scientific runtimes to
+application entry. Lazy imports confine heavy scientific runtimes to
 the selected entry.
 
 ```text
 user -> CLI -> selected application -> Core
-           \-> selected Core capability
            \-> Supports
 ```
 
 The dependency rules are:
 
-- dependency edges point from the CLI toward Applications and Core
+- dependency edges point from the CLI toward Applications and Supports
 - applications receive the parsed top-level argument values
 - Python import state comes from the installed package and active environment
 - each route names one concrete module and callable
-- Core capabilities are exposed through their corresponding top-level commands
 
 Project inference and component lookup are defined in
 [Runtime paths](../supports/paths.md). Workflow fan-out is defined in
@@ -102,8 +99,8 @@ Each terminal parser registers a complete dispatch descriptor:
 
 | Field | Meaning |
 | --- | --- |
-| **Command** | Stable owning command such as `signal`, `field`, or `metrics` |
-| **Group** | Application or Core capability |
+| **Command** | Stable owning command such as `signal`, `field`, or `tct` |
+| **Group** | Owning application |
 | **Prefix** | Tokens that identify the worker command during fan-out |
 | **Module** | One importable target module |
 | **Callable** | One function on that module |

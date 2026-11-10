@@ -12,8 +12,7 @@ project that defines its meaning.
 flowchart TB
     user([User]) --> cli[CLI]
     cli --> apps[Applications]
-    cli --> core[Core]
-    apps --> core
+    apps --> core[Core]
     apps --> components[Components]
     apps --> supports[Supports]
     core --> supports
