@@ -65,7 +65,7 @@ apptainer build --mksquashfs-args '-processors 1' \
 
 该镜像提供项目 Python 环境、ngspice 与 EL9 运行库。ROOT 来自匹配的 `x86_64-el9` LCG view，Geant4 来自外部 EL9 安装。可选源码归档可缓存在 `bootstrap/ingredients/` 下。
 
-单进程 squashfs 选项用于受限集群节点。镜像细节见[容器路径说明](../../bootstrap/README.md)。
+单进程 squashfs 选项可避免受限集群节点上的线程创建失败。镜像细节见[容器路径说明](../../bootstrap/README.md)。
 
 ### 原生 Apple Silicon
 

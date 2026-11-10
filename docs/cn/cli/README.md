@@ -34,4 +34,4 @@ CLI help 是命令语法与选项的依据。未注册的顶层形式会明确�
 
 ## ⚙️ 批处理边界
 
-全局 `raser -t -b <command>` 提交一条完整命令。应用的索引模式将一次已记录运行展开为多个 worker。相应边界见 [Jobs](../supports/jobs.md) 与 [Runs](../supports/runs.md)。
+全局 `raser -t -b <command>` 提交一条完整命令。应用的索引模式将一次已记录运行展开为多个 worker。二者是相互独立的解析与所属边界；相应边界见 [Jobs](../supports/jobs.md) 与 [Runs](../supports/runs.md)。
