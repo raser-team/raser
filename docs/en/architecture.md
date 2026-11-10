@@ -67,8 +67,7 @@ flowchart LR
     field --> current
     interaction --> current
 
-    device --> frontend[Frontend]
-    field --> frontend
+    field --> frontend[Frontend]
     current --> frontend
     electronics[PCB, ASIC, or AFE definition] --> frontend
 
@@ -85,9 +84,11 @@ G4Setup with a Source or Laser and supplies carrier creation positions and
 populations.
 
 Current transports those populations and produces one instantaneous induced
-current source for each readout electrode. Frontend turns Device values or
-Field AC data into a sensor netlist, then connects that netlist, the induced
-current sources, and the selected AFE in one circuit calculation.
+current source for each readout electrode. Sensor capacitance and the other
+sensor electrical values are calculated and provided by Field in principle;
+custom values may also be used. Frontend turns these electrical values into a
+sensor netlist, then connects that netlist, the induced current sources, and
+the selected AFE in one circuit calculation.
 
 Metrics receives analog waveforms or ADC samples together with the readout
 layout and analysis settings. Applications select the calculations, pass their

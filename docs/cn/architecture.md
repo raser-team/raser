@@ -52,8 +52,7 @@ flowchart LR
     field --> current
     interaction --> current
 
-    device --> frontend[Frontend]
-    field --> frontend
+    field --> frontend[Frontend]
     current --> frontend
     electronics[PCB、ASIC 或 AFE 定义] --> frontend
 
@@ -65,7 +64,7 @@ flowchart LR
 
 Device 提供传感器定义和解析后的工作状态。Field 为该状态计算或加载静电、输运、权重场与 AC 数据。Interaction 将 Device 几何或应用 G4Setup 与 Source 或 Laser 组合，并提供载流子产生位置和数量。
 
-Current 输运这些载流子，并为每个读出电极产生一个瞬时感应电流源。Frontend 根据 Device 数值或 Field AC 数据生成传感器网表，再在同一电路计算中连接该网表、感应电流源和所选 AFE。
+Current 输运这些载流子，并为每个读出电极产生一个瞬时感应电流源。传感器电容等电学值原则上由 Field 计算并提供，也可采用自定义值。Frontend 根据这些电学值生成传感器网表，再在同一电路计算中连接该网表、感应电流源和所选 AFE。
 
 Metrics 接收模拟波形或 ADC 样本，以及读出布局与分析设置。应用选择计算、传入明确输入，并保存产生的运行产物。
 
