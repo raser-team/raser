@@ -71,8 +71,9 @@ flowchart LR
     current --> frontend
     electronics[PCB, ASIC, or AFE definition] --> frontend
 
+    current --> metrics[Metrics]
     frontend --> waveform[Waveforms]
-    waveform --> metrics[Metrics]
+    waveform --> metrics
     waveform --> adc[ADC]
     adc --> metrics
 ```
@@ -90,7 +91,8 @@ custom values may also be used. Frontend turns these electrical values into a
 sensor netlist, then connects that netlist, the induced current sources, and
 the selected AFE in one circuit calculation.
 
-Metrics receives analog waveforms or ADC samples together with the readout
+Metrics receives electrode induced currents, analog waveforms, or ADC samples
+together with the readout
 layout and analysis settings. Applications select the calculations, pass their
 explicit inputs, and store the resulting run products.
 

@@ -56,8 +56,9 @@ flowchart LR
     current --> frontend
     electronics[PCB、ASIC 或 AFE 定义] --> frontend
 
+    current --> metrics[Metrics]
     frontend --> waveform[波形]
-    waveform --> metrics[Metrics]
+    waveform --> metrics
     waveform --> adc[ADC]
     adc --> metrics
 ```
@@ -66,7 +67,7 @@ Device 提供传感器定义和解析后的工作状态。Field 为该状态计�
 
 Current 输运这些载流子，并为每个读出电极产生一个瞬时感应电流源。传感器电容等电学值原则上由 Field 计算并提供，也可采用自定义值。Frontend 根据这些电学值生成传感器网表，再在同一电路计算中连接该网表、感应电流源和所选 AFE。
 
-Metrics 接收模拟波形或 ADC 样本，以及读出布局与分析设置。应用选择计算、传入明确输入，并保存产生的运行产物。
+Metrics 接收电极感应电流、模拟波形或 ADC 样本，以及读出布局与分析设置。应用选择计算、传入明确输入，并保存产生的运行产物。
 
 ## Core 文档
 
