@@ -17,7 +17,7 @@ raser <command> --help
 | --- | --- |
 | `bmos` | [`apps/bmos`](../apps/bmos.md) |
 | `cce` | [`apps/cce`](../apps/cce.md) |
-| `field` | [Core Field](../core/field.md) |
+| `field` | [`apps/field`](../apps/field.md) |
 | `frontend` | [Frontend](../core/frontend.md) |
 | `current` | [Current](../core/current.md) |
 | `metrics` | [Metrics](../core/metrics.md) |

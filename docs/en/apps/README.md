@@ -20,6 +20,7 @@ depend on the scenario are stored in the application project.
 
 | Application | Bound components | Calculation |
 | --- | --- | --- |
+| [Field](field.md) | Device | Static field, weighting field, IV, and CV |
 | [Signal](signal.md) | Device, Source, and frontend electronics | Particle interaction, induced current, and frontend waveform |
 | [TCT](tct.md) | Device, Laser, and frontend electronics | Laser injection, induced current, and scan response |
 | [Time resolution](timeres.md) | Device, Source, frontend electronics, ADC, and its G4Setup | Signal production and timing analysis in the time-resolution setup |

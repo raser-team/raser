@@ -12,6 +12,7 @@
 
 | 应用 | 绑定组件 | 计算 |
 | --- | --- | --- |
+| [Field](field.md) | Device | 静电场、权重场、IV 与 CV |
 | [Signal](signal.md) | Device、Source 与前端电子学 | 粒子相互作用、感应电流与前端波形 |
 | [TCT](tct.md) | Device、Laser 与前端电子学 | 激光注入、感应电流与扫描响应 |
 | [时间分辨](timeres.md) | Device、Source、前端电子学、ADC 及其 G4Setup | 时间分辨装置中的信号生成与时间分析 |

@@ -29,6 +29,7 @@ PCB, ASIC, and ADC designs are maintained under
 
 | Document | Scenario |
 | --- | --- |
+| [Field](apps/field.md) | Field-data calculation for a Device |
 | [Signal](apps/signal.md) | Particle-source response of a Device |
 | [TCT](apps/tct.md) | Laser transient-current and position scans |
 | [Time resolution](apps/timeres.md) | Timing measurement with its own apparatus |

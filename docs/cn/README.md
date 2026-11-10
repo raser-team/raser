@@ -27,6 +27,7 @@ PCB、ASIC 和 ADC 设计维护在 [`core/draft/`](core/draft/) 下。
 
 | 文档 | 场景 |
 | --- | --- |
+| [Field](apps/field.md) | Device 的场数据计算 |
 | [Signal](apps/signal.md) | Device 对粒子源的响应 |
 | [TCT](apps/tct.md) | 激光瞬态电流与位置扫描 |
 | [时间分辨](apps/timeres.md) | 使用专属装置的时间测量 |
