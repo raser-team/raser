@@ -69,7 +69,7 @@ apptainer build --mksquashfs-args '-processors 1' \
 
 ### 原生 Apple Silicon
 
-固定版本的 Python 包要求 arm64 上的 macOS 14 或更新版本。ROOT 与 Geant4 11.3.2 及其数据集由 conda 提供；ngspice 构建至该 conda 环境中。同一安装脚本及其选项覆盖本平台：
+本路径面向 Apple 芯片的 Mac。ROOT 与 Geant4 11.3.2 及其数据集由 conda 提供；ngspice 构建至该 conda 环境中。同一安装脚本及其选项覆盖本平台：
 
 ```bash
 env/install_conda.sh

@@ -91,7 +91,7 @@ for image-specific details.
 
 ### Native Apple Silicon
 
-The pinned Python packages require macOS 14 or newer on arm64. ROOT and Geant4
+This route targets Apple-silicon Macs. ROOT and Geant4
 11.3.2 with its datasets are provided by conda; ngspice is built into the conda
 environment. The same installer and options cover this platform:
 
