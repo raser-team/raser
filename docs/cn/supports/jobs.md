@@ -1,6 +1,6 @@
 # 索引任务与集群任务
 
-_位于 `src/raser/supports/jobs.py` 和 `batchjob.py` 的 RASER 5.0 执行机制_
+_位于 `src/raser/supports/jobs.py` 和 `scheduler.py` 的 RASER 5.0 执行机制_
 
 ---
 

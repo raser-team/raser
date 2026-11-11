@@ -15,7 +15,7 @@ remain with their owning layers.
 | `paths.py` | Work/project roots, component lookup, and app assets | [Paths](paths.md) |
 | `runs.py` | Run configuration, identity, records, and selection | [Runs](runs.md) |
 | `jobs.py` | Indexed local execution | [Jobs](jobs.md) |
-| `batchjob.py` | IHEP submission and Apptainer worker command | [Jobs](jobs.md) |
+| `scheduler.py` | IHEP submission and Apptainer worker command | [Jobs](jobs.md) |
 | `output.py` | Owned directories and small filesystem operations | [Output](output.md) |
 
 `io_decorator.py`, `memory_decorator.py`, and `root_tree.py` provide narrow
