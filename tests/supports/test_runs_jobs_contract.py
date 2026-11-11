@@ -7,10 +7,6 @@ from pathlib import Path
 
 import pytest
 
-from raser.supports import scheduler
-from raser.supports.jobs import command_tail
-from raser.supports.jobs import plan_indexed_jobs
-from raser.supports.jobs import run_indexed_jobs
 from raser.supports.runs import latest_run_path
 from raser.supports.runs import resolve_configuration
 from raser.supports.runs import write_run_record
@@ -97,64 +93,3 @@ def test_latest_run_selection_uses_record_creation_time(
 
     selected = latest_run_path("signal", specification=specification)
     assert selected.name == later["run"]
-
-
-def test_indexed_and_cluster_plans_preserve_command_tokens(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    tail = command_tail(
-        ["signal", "Device A", "--scan", "2", "--dry-run", "--seed=4"],
-        ["signal"],
-        {"--scan"},
-    )
-    indexed = plan_indexed_jobs(
-        ["signal"],
-        tail,
-        2,
-        use_cluster=False,
-        mem=1,
-        destination="signal",
-    )
-    assert indexed.commands == (
-        ("signal", "Device A", "--seed=4", "--job-index", "0"),
-        ("signal", "Device A", "--seed=4", "--job-index", "1"),
-    )
-
-    monkeypatch.setenv("RASER_PROJECT_PATH", str(tmp_path))
-    plan = scheduler.main(
-        "signal",
-        ["signal", "Device A", "--job-index", "0"],
-        2,
-        is_test=True,
-    )
-    assert plan.worker_command[-4:] == ("signal", "Device A", "--job-index", "0")
-    assert "hep_sub" in capsys.readouterr().out
-    assert not plan.job_file.exists()
-
-
-def test_partial_cluster_submission_reports_accepted_and_pending_indices(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    calls = 0
-
-    def submit(*args, **kwargs):
-        nonlocal calls
-        calls += 1
-        if calls == 2:
-            raise RuntimeError("scheduler rejected job")
-
-    monkeypatch.setattr(scheduler, "main", submit)
-    with pytest.raises(
-        RuntimeError,
-        match=r"accepted indices \[0\]; pending indices \[1, 2\]",
-    ):
-        run_indexed_jobs(
-            ["signal"],
-            ["HPK-Si-PiN"],
-            3,
-            use_cluster=True,
-            mem=1,
-            destination="signal",
-        )

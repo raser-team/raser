@@ -106,21 +106,34 @@ def run_indexed_jobs(
         from raser.supports import scheduler
 
         accepted: list[int] = []
+        failed: dict[int, Exception] = {}
         for index, command in enumerate(plan.commands):
             try:
                 scheduler.main(destination, command, mem, is_test=False)
             except Exception as exc:
-                pending = list(range(index, len(plan.commands)))
-                submission_state = (
-                    "queued" if os.environ.get("RASER_SUBMIT_QUEUE") else "accepted"
-                )
-                raise RuntimeError(
-                    f"Cluster {submission_state} indices {accepted}; pending indices {pending}"
-                ) from exc
-            accepted.append(index)
+                failed[index] = exc
+            else:
+                accepted.append(index)
+        if failed:
+            submission_state = (
+                "queued" if os.environ.get("RASER_SUBMIT_QUEUE") else "accepted"
+            )
+            raise RuntimeError(
+                f"Cluster {submission_state} indices {accepted}; "
+                f"failed indices {list(failed)}"
+            ) from next(iter(failed.values()))
         return plan
 
     max_processes = min(count, os.cpu_count() or 4)
     with ProcessPoolExecutor(max_workers=max_processes) as executor:
-        list(executor.map(_run_local_job, plan.commands))
+        futures = [executor.submit(_run_local_job, command) for command in plan.commands]
+    errors = {
+        index: error
+        for index, future in enumerate(futures)
+        if (error := future.exception()) is not None
+    }
+    if errors:
+        raise RuntimeError(
+            f"Local jobs failed for indices {list(errors)}"
+        ) from next(iter(errors.values()))
     return plan
