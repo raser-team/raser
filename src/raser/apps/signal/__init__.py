@@ -82,11 +82,8 @@ def _run_scan(kwargs):
 
 
 def _run_signal_samples(kwargs):
-    sample_count = kwargs["jobs"]
-    kwargs["events_per_job"] = sample_count
     kwargs["job_index"] = 0
-    kwargs["jobs"] = None
-    kwargs["_signal_plot_samples"] = sample_count
+    kwargs["_signal_plot_samples"] = kwargs["events_per_job"]
     from . import gen_signal_scan
 
     gen_signal_scan.main(kwargs)
@@ -108,14 +105,13 @@ def run_signal(kwargs):
     if kwargs.get("_run_path") is None:
         activate_plan(plan, kwargs)
     if kwargs["jobs"] is not None:
-        if kwargs.get("_command") == "signal" and not kwargs["signal_batch"]:
-            _run_signal_samples(kwargs)
-        else:
-            _run_scan(kwargs)
+        _run_scan(kwargs)
     elif kwargs["job_index"] is not None:
         from . import gen_signal_scan
 
         gen_signal_scan.main(kwargs)
+    elif kwargs.get("_command") == "signal" and kwargs.get("events_per_job"):
+        _run_signal_samples(kwargs)
     else:
         from . import gen_signal_main
 

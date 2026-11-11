@@ -49,7 +49,7 @@ def _job_tail(kwargs):
     tail = jobs.command_tail(
         kwargs["_argv"],
         kwargs["_entry_command_prefix"],
-        {"-s", "--jobs", "--job-index", "--run", "--events-per-job"},
+        {"-s", "--jobs", "--job-index", "--run", "-evt", "--events-per-job"},
     )
     tail.extend(["--run", runs.ensure_run_id(kwargs)])
     tail.extend(["--events-per-job", str(kwargs["events_per_job"])])
@@ -64,11 +64,7 @@ def _run_jobs(kwargs):
         signal.run_signal(kwargs)
         return False
 
-    count = 1
-    if kwargs.get("signal_batch"):
-        count = kwargs["jobs"] or 1
-    elif kwargs.get("jobs") is not None:
-        kwargs["events_per_job"] = kwargs["jobs"]
+    count = kwargs["jobs"] or 1
 
     jobs.run_indexed_jobs(
         kwargs["_entry_command_prefix"],

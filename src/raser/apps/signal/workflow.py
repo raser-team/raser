@@ -35,13 +35,8 @@ def _state(kwargs) -> dict:
 
 def _work(kwargs) -> dict:
     events = kwargs.get("events_per_job")
-    jobs = 1
-    scan = kwargs.get("jobs")
-    if scan is not None:
-        if kwargs.get("signal_batch"):
-            jobs = int(scan)
-        else:
-            events = scan
+    jobs = kwargs.get("jobs")
+    jobs = int(1 if jobs is None else jobs)
     events = int(1 if events is None else events)
     if events <= 0:
         raise ValueError("Events per job must be positive")
