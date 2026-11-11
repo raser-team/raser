@@ -13,6 +13,17 @@ from .workflow import load_defaults
 DEFAULT_EVENTS_PER_JOB = 10000
 
 
+def register(subparsers):
+    parser = subparsers.add_parser("timeres", help="time-resolution experiment")
+    signal.add_arguments(parser, None)
+    parser.add_argument(
+        "--collect", help="collect finished batch jobs", action="store_true"
+    )
+    parser.set_defaults(
+        _run=run, _project="det_name", _components=("timeres", "signal")
+    )
+
+
 def _prepare(kwargs):
     runs.apply_run_config(kwargs)
     if kwargs.get("source") is None:
