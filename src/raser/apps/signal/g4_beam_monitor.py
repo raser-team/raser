@@ -19,7 +19,7 @@ import json
 import os
 
 import numpy as np
-import g4ppyy as g4b
+from raser.core.interaction.geant4 import g4b
 
 from raser.core.interaction.interaction import GeneralG4Interaction
 from raser.core.interaction.detector_construction import GeneralDetectorConstruction

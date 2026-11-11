@@ -3,7 +3,7 @@ import os
 import math
 import array
 import ROOT
-import g4ppyy as g4b
+from raser.core.interaction.geant4 import g4b
 g4b.include("G4VUserDetectorConstruction.hh")
 g4b.include("G4VUserActionInitialization.hh")
 g4b.include("G4VUserPrimaryGeneratorAction.hh")

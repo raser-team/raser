@@ -8,6 +8,7 @@ Description:  telescope_g4.py
 @version    : 2.0
 """
 
+import raser.core.interaction.geant4  # noqa: F401
 from g4ppyy import *
 
 # TODO(g4ppyy): verify telescope and replace wildcard imports with explicit names.

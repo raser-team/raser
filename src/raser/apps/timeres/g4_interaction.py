@@ -5,7 +5,7 @@ Description:  g4_sr90_time_resolution.py
 @version    : 2.0
 """
 
-import g4ppyy as g4b
+from raser.core.interaction.geant4 import g4b
 
 from raser.core.interaction.primary_generator_action import (
     GeneralPrimaryGeneratorAction,

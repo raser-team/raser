@@ -11,7 +11,7 @@ import os
 import copy
 from pathlib import Path
 
-import g4ppyy as g4b
+from raser.core.interaction.geant4 import g4b
 
 from .detector_construction import GeneralDetectorConstruction
 from .action_initialization import GeneralActionInitialization

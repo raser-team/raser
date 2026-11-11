@@ -5,7 +5,7 @@ Description:  event_action.py
 @version    : 2.0
 '''
 
-import g4ppyy as g4b
+from raser.core.interaction.geant4 import g4b
 
 g4b.include("G4UserEventAction.hh")
 import numpy as np
