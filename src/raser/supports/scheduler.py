@@ -40,13 +40,20 @@ class ClusterJobPlan:
     job_file: Path
     worker_command: tuple[str, ...]
     submit_command: tuple[str, ...]
+    submit_file: Path | None = None
+    submit_description: str | None = None
 
     def as_dict(self) -> dict:
-        return {
+        result = {
             "job_file": str(self.job_file),
             "worker_command": list(self.worker_command),
             "submit_command": list(self.submit_command),
         }
+        if self.submit_file is not None:
+            result["submit_file"] = str(self.submit_file)
+        if self.submit_description is not None:
+            result["submit_description"] = self.submit_description
+        return result
 
 
 def job_dir(destination_subfolder):
@@ -94,25 +101,65 @@ def plan_job(destination_subfolder, command, batch_level, *, group=None):
     command_tokens = _tokens(command)
     if not command_tokens:
         raise ValueError("Batch worker command must contain tokens")
-    group_name = group or grp.getgrgid(os.stat(".").st_gid)[0]
     memory_mb = 8000 * batch_level
     directory = job_dir(destination_subfolder)
     command_name = "_".join(command_tokens).replace("/", "_")
     job_file = directory / f"{command_name}.job"
     worker = ("raser", *command_tokens)
-    submit = (
-        "hep_sub",
-        "-o",
-        str(directory),
-        "-e",
-        str(directory),
-        str(job_file),
-        "-mem",
-        str(memory_mb),
-        "-g",
-        group_name,
+    scheduler = os.environ.get("RASER_SCHEDULER", "hep_sub")
+    if scheduler == "hep_sub":
+        group_name = group or grp.getgrgid(os.stat(".").st_gid)[0]
+        submit = (
+            "hep_sub",
+            "-o",
+            str(directory),
+            "-e",
+            str(directory),
+            str(job_file),
+            "-mem",
+            str(memory_mb),
+            "-g",
+            group_name,
+        )
+        return ClusterJobPlan(job_file, worker, submit)
+    if scheduler != "condor":
+        raise ValueError(f"Unknown scheduler: {scheduler}")
+
+    flavour = os.environ.get("RASER_CONDOR_JOB_FLAVOUR", "workday")
+    allowed_flavours = {
+        "espresso",
+        "microcentury",
+        "longlunch",
+        "workday",
+        "tomorrow",
+        "testmatch",
+        "nextweek",
+    }
+    if flavour not in allowed_flavours:
+        raise ValueError(f"Unknown HTCondor job flavour: {flavour}")
+    submit_file = directory / f"{command_name}.sub"
+    absolute_directory = directory.resolve()
+    absolute_job_file = job_file.resolve()
+    submit_description = "\n".join(
+        (
+            f"executable = {absolute_job_file}",
+            f"output = {absolute_directory / f'{command_name}.out'}",
+            f"error = {absolute_directory / f'{command_name}.err'}",
+            f"log = {absolute_directory / f'{command_name}.log'}",
+            f"request_memory = {memory_mb}",
+            "getenv = True",
+            f'+JobFlavour = "{flavour}"',
+            "queue",
+        )
     )
-    return ClusterJobPlan(job_file, worker, submit)
+    submit = ("condor_submit", str(submit_file))
+    return ClusterJobPlan(
+        job_file,
+        worker,
+        submit,
+        submit_file,
+        submit_description,
+    )
 
 
 def main(destination_subfolder, command, batch_level, is_test=False):
@@ -123,9 +170,15 @@ def main(destination_subfolder, command, batch_level, is_test=False):
     if is_test:
         print(f"# {plan.job_file}")
         print(script)
+        if plan.submit_file is not None and plan.submit_description is not None:
+            print(f"# {plan.submit_file}")
+            print(plan.submit_description)
         print(shlex.join(plan.submit_command))
         return plan
     gen_job(plan.job_file, script)
+    if plan.submit_file is not None and plan.submit_description is not None:
+        plan.submit_file.parent.mkdir(parents=True, exist_ok=True)
+        plan.submit_file.write_text(plan.submit_description + "\n", encoding="utf-8")
     submit_job(plan)
     return plan
 
