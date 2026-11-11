@@ -93,7 +93,7 @@ def test_global_batch_submits_the_command_without_the_global_options(
 ) -> None:
     submitted: list[list[str]] = []
     monkeypatch.setattr(
-        raser.batchjob,
+        raser.scheduler,
         "main",
         lambda destination, command, level, is_test=False: submitted.append(
             list(command)

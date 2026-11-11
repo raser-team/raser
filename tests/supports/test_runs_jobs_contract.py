@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from raser.supports import batchjob
+from raser.supports import scheduler
 from raser.supports.jobs import command_tail
 from raser.supports.jobs import plan_indexed_jobs
 from raser.supports.jobs import run_indexed_jobs
@@ -123,7 +123,7 @@ def test_indexed_and_cluster_plans_preserve_command_tokens(
     )
 
     monkeypatch.setenv("RASER_PROJECT_PATH", str(tmp_path))
-    plan = batchjob.main(
+    plan = scheduler.main(
         "signal",
         ["signal", "Device A", "--job-index", "0"],
         2,
@@ -145,7 +145,7 @@ def test_partial_cluster_submission_reports_accepted_and_pending_indices(
         if calls == 2:
             raise RuntimeError("scheduler rejected job")
 
-    monkeypatch.setattr(batchjob, "main", submit)
+    monkeypatch.setattr(scheduler, "main", submit)
     with pytest.raises(
         RuntimeError,
         match=r"accepted indices \[0\]; pending indices \[1, 2\]",

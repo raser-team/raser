@@ -6,7 +6,7 @@ import importlib
 import sys
 from contextlib import contextmanager
 
-from raser.supports import batchjob
+from raser.supports import scheduler
 from raser.supports import lifecycle
 from raser.supports.paths import infer_project_root
 from raser.supports.paths import project_root_context
@@ -80,7 +80,7 @@ def main(argv=None):
             if kwargs["global_batch"] != 0 and not kwargs.get("signal_batch", False):
                 # Global options such as -bb precede the sub-command; the worker
                 # must not see them, or it would submit itself again.
-                batchjob.main(
+                scheduler.main(
                     command,
                     argv[argv.index(command) :],
                     kwargs["global_batch"],

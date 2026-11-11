@@ -103,12 +103,12 @@ def run_indexed_jobs(
         return plan
 
     if use_cluster:
-        from raser.supports import batchjob
+        from raser.supports import scheduler
 
         accepted: list[int] = []
         for index, command in enumerate(plan.commands):
             try:
-                batchjob.main(destination, command, mem, is_test=False)
+                scheduler.main(destination, command, mem, is_test=False)
             except Exception as exc:
                 pending = list(range(index, len(plan.commands)))
                 submission_state = (
