@@ -120,7 +120,7 @@ def test_execution_activates_one_immutable_plan_before_worker_dispatch(
         "voltage": None,
         "irradiation": None,
         "events_per_job": 4,
-        "scan": 2,
+        "jobs": 2,
         "signal_batch": True,
         "seed": 7,
         "run": "run-1",
@@ -156,7 +156,7 @@ def test_signal_runtime_uses_the_components_recorded_in_the_active_plan(
         "voltage": None,
         "irradiation": None,
         "events_per_job": 4,
-        "scan": None,
+        "jobs": None,
         "seed": 7,
         "run": "run-1",
     }
@@ -187,7 +187,7 @@ def test_tct_runtime_uses_the_components_recorded_in_the_active_plan(
         "laser": "SPA_top_Si_IR",
         "amplifier": None,
         "voltage": 200.0,
-        "scan": None,
+        "jobs": None,
         "seed": 7,
         "run": "run-1",
     }

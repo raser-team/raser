@@ -14,12 +14,12 @@ def _command_tail(kwargs):
     return jobs.command_tail(
         kwargs["_argv"],
         command_prefix,
-        {"-s", "--scan", "--job", "--run"},
+        {"-s", "--jobs", "--job-index", "--run"},
     )
 
 
 def _run_scan(kwargs):
-    scan_number = kwargs["scan"]
+    scan_number = kwargs["jobs"]
     mem = kwargs["mem"]
     use_cluster = kwargs["signal_batch"]
     command_prefix = list(kwargs["_entry_command_prefix"])
@@ -37,10 +37,10 @@ def _run_scan(kwargs):
 
 
 def _run_signal_samples(kwargs):
-    sample_count = kwargs["scan"]
+    sample_count = kwargs["jobs"]
     kwargs["events_per_job"] = sample_count
-    kwargs["job"] = 0
-    kwargs["scan"] = None
+    kwargs["job_index"] = 0
+    kwargs["jobs"] = None
     kwargs["_signal_plot_samples"] = sample_count
     from . import gen_signal_scan
 
@@ -62,12 +62,12 @@ def run_signal(kwargs):
 
     if kwargs.get("_run_path") is None:
         activate_plan(plan, kwargs)
-    if kwargs["scan"] is not None:
+    if kwargs["jobs"] is not None:
         if kwargs.get("_command") == "signal" and not kwargs["signal_batch"]:
             _run_signal_samples(kwargs)
         else:
             _run_scan(kwargs)
-    elif kwargs["job"] is not None:
+    elif kwargs["job_index"] is not None:
         from . import gen_signal_scan
 
         gen_signal_scan.main(kwargs)

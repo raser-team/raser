@@ -57,12 +57,12 @@ def job_main(kwargs):
     ele_current = Amplifier(
         my_current.sum_cu,
         amplifier,
-        seed=execution_seed(kwargs, offset=int(kwargs["job"])),
+        seed=execution_seed(kwargs, offset=int(kwargs["job_index"])),
         CDet=my_d.capacitance,
     )
-    if kwargs['job'] is not None:
+    if kwargs['job_index'] is not None:
         # key = my_l.fz_rel
-        tag = kwargs['job']
+        tag = kwargs['job_index']
         ele_current.save_signal_TTree(path, tag)
     else:
         my_current.draw_currents(path) # Draw current

@@ -81,7 +81,7 @@ def main(kwargs):
         seed=execution_seed(kwargs),
         CDet=my_d.capacitance,
     )
-    if kwargs['scan'] != None: #assume parameter alter
+    if kwargs['jobs'] != None: #assume parameter alter
         tag = my_l.fz_rel
         ele_current.save_signal_TTree(path, tag)
     else:

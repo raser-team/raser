@@ -75,7 +75,7 @@ def build_plan(kwargs) -> WorkflowPlan:
         stages=tuple(stages),
         output=Path(project_path("tct")),
         work={
-            "jobs": int(kwargs.get("scan") or 1),
+            "jobs": int(kwargs.get("jobs") or 1),
             "seed": int(kwargs.get("seed") or 0),
         },
     )

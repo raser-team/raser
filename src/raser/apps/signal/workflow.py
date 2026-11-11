@@ -36,7 +36,7 @@ def _state(kwargs) -> dict:
 def _work(kwargs) -> dict:
     events = kwargs.get("events_per_job")
     jobs = 1
-    scan = kwargs.get("scan")
+    scan = kwargs.get("jobs")
     if scan is not None:
         if kwargs.get("signal_batch"):
             jobs = int(scan)

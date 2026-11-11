@@ -23,13 +23,13 @@ def _run_scan(kwargs):
     tail = jobs.command_tail(
         kwargs["_argv"],
         prefix,
-        {"-s", "--scan", "--job", "--run"},
+        {"-s", "--jobs", "--job-index", "--run"},
     )
     tail.extend(["--run", runs.ensure_run_id(kwargs)])
     return jobs.run_indexed_jobs(
         prefix,
         tail,
-        kwargs["scan"],
+        kwargs["jobs"],
         use_cluster=kwargs["signal_batch"],
         mem=kwargs["mem"],
         destination="tct",
@@ -47,11 +47,11 @@ def run_signal(kwargs):
 
     activate_plan(plan, kwargs)
     _apply_defaults(kwargs)
-    if kwargs["job"] is not None:
+    if kwargs["job_index"] is not None:
         from . import tct_signal_scan
 
         tct_signal_scan.job_main(kwargs)
-    elif kwargs["scan"] is not None:
+    elif kwargs["jobs"] is not None:
         _run_scan(kwargs)
     else:
         from . import tct_signal
@@ -72,12 +72,12 @@ def run_position_signal(kwargs):
     _apply_defaults(kwargs)
     from . import tct_signal_position_scan
 
-    if kwargs["job"] is not None:
+    if kwargs["job_index"] is not None:
         tct_signal_position_scan.job_main(kwargs)
-    elif kwargs["scan"] is not None:
+    elif kwargs["jobs"] is not None:
         _run_scan(kwargs)
     else:
-        kwargs["job"] = 0
+        kwargs["job_index"] = 0
         tct_signal_position_scan.job_main(kwargs)
 
 

@@ -38,7 +38,7 @@ def _job_tail(kwargs):
     tail = jobs.command_tail(
         kwargs["_argv"],
         kwargs["_entry_command_prefix"],
-        {"-s", "--scan", "--job", "--run", "--events-per-job"},
+        {"-s", "--jobs", "--job-index", "--run", "--events-per-job"},
     )
     tail.extend(["--run", runs.ensure_run_id(kwargs)])
     tail.extend(["--events-per-job", str(kwargs["events_per_job"])])
@@ -46,7 +46,7 @@ def _job_tail(kwargs):
 
 
 def _run_jobs(kwargs):
-    if kwargs.get("job") is not None:
+    if kwargs.get("job_index") is not None:
         from .g4_interaction import TimeresActionInitialization
 
         kwargs["_g4_action_initialization"] = TimeresActionInitialization
@@ -55,9 +55,9 @@ def _run_jobs(kwargs):
 
     count = 1
     if kwargs.get("signal_batch"):
-        count = kwargs["scan"] or 1
-    elif kwargs.get("scan") is not None:
-        kwargs["events_per_job"] = kwargs["scan"]
+        count = kwargs["jobs"] or 1
+    elif kwargs.get("jobs") is not None:
+        kwargs["events_per_job"] = kwargs["jobs"]
 
     jobs.run_indexed_jobs(
         kwargs["_entry_command_prefix"],

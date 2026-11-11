@@ -71,7 +71,7 @@ def activate_plan(plan: WorkflowPlan, kwargs: dict[str, Any]) -> dict[str, Any]:
     record_path = root / "run.json"
     if record_path.is_file():
         record = json.loads(record_path.read_text(encoding="utf-8"))
-        if kwargs.get("job") is not None:
+        if kwargs.get("job_index") is not None:
             # Workers select one job from the existing run, not a new job count.
             plan = replace(plan, work={**plan.work, "jobs": record["work"]["jobs"]})
         specification = plan.as_dict()

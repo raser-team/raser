@@ -201,7 +201,7 @@ def prepare_run_record(kwargs, detector):
         "events_per_job": int(
             kwargs.get("events_per_job") or config.get("events_per_job", 0) or 0
         ),
-        "jobs": kwargs.get("scan"),
+        "jobs": kwargs.get("jobs"),
         "amplifier": getattr(detector, "amplifier", None),
         "daq": getattr(detector, "daq", None),
     }

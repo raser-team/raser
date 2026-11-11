@@ -63,7 +63,7 @@ def plan_indexed_jobs(
     if mem <= 0:
         raise ValueError("Indexed job memory level must be positive")
     commands = tuple(
-        tuple([*command_prefix, *tail, "--job", str(index)]) for index in range(count)
+        tuple([*command_prefix, *tail, "--job-index", str(index)]) for index in range(count)
     )
     return IndexedJobPlan(
         commands=commands,

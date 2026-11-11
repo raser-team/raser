@@ -118,18 +118,18 @@ def test_indexed_and_cluster_plans_preserve_command_tokens(
         destination="signal",
     )
     assert indexed.commands == (
-        ("signal", "Device A", "--seed=4", "--job", "0"),
-        ("signal", "Device A", "--seed=4", "--job", "1"),
+        ("signal", "Device A", "--seed=4", "--job-index", "0"),
+        ("signal", "Device A", "--seed=4", "--job-index", "1"),
     )
 
     monkeypatch.setenv("RASER_PROJECT_PATH", str(tmp_path))
     plan = batchjob.main(
         "signal",
-        ["signal", "Device A", "--job", "0"],
+        ["signal", "Device A", "--job-index", "0"],
         2,
         is_test=True,
     )
-    assert plan.worker_command[-4:] == ("signal", "Device A", "--job", "0")
+    assert plan.worker_command[-4:] == ("signal", "Device A", "--job-index", "0")
     assert "hep_sub" in capsys.readouterr().out
     assert not plan.job_file.exists()
 

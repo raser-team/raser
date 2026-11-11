@@ -117,7 +117,7 @@ def _add_detector_source(parser, default_source):
     )
     parser.add_argument("--g4-vis-driver", help="Geant4 visualization driver")
     parser.add_argument("-amp", "--amplifier", type=str, help="amplifier")
-    parser.add_argument("-s", "--scan", type=int, help="instance number for scan mode")
+    parser.add_argument("-s", "--jobs", type=int, help="instance number for scan mode")
     parser.add_argument(
         "-b",
         "--batch",
@@ -125,7 +125,7 @@ def _add_detector_source(parser, default_source):
         help="submit signal scan jobs to cluster (used with -s)",
         dest="signal_batch",
     )
-    parser.add_argument("--job", type=int, help="flag of run in job")
+    parser.add_argument("--job-index", type=int, help="flag of run in job")
     parser.add_argument(
         "-mem", type=int, help="memory limit of the job in 8GB", default=1
     )
@@ -311,10 +311,10 @@ def _add_tct(subparsers):
     signal.add_argument("laser", help="name of the laser")
     signal.add_argument("-vol", "--voltage", type=str, help="bias voltage")
     signal.add_argument("-amp", "--amplifier", type=str, help="amplifier")
-    signal.add_argument("-s", "--scan", type=int, help="instance number for scan mode")
+    signal.add_argument("-s", "--jobs", type=int, help="instance number for scan mode")
     signal.add_argument("-b", "--batch", action="store_true", dest="signal_batch")
     signal.add_argument("-mem", type=int, default=1)
-    signal.add_argument("--job", type=int, help="flag of run in job")
+    signal.add_argument("--job-index", type=int, help="flag of run in job")
     signal.add_argument("--run", help="run id")
     signal.add_argument("--seed", type=int, default=0)
     signal.add_argument("--dry-run", action="store_true")
@@ -326,7 +326,7 @@ def _add_tct(subparsers):
     position_signal.add_argument("-vol", "--voltage", type=str, help="bias voltage")
     position_signal.add_argument("-amp", "--amplifier", type=str, help="amplifier")
     position_signal.add_argument(
-        "-s", "--scan", type=int, help="instance number for scan mode"
+        "-s", "--jobs", type=int, help="instance number for scan mode"
     )
     position_signal.add_argument(
         "-b",
@@ -335,7 +335,7 @@ def _add_tct(subparsers):
         dest="signal_batch",
     )
     position_signal.add_argument("-mem", type=int, default=1)
-    position_signal.add_argument("--job", type=int, help="flag of run in job")
+    position_signal.add_argument("--job-index", type=int, help="flag of run in job")
     position_signal.add_argument("--run", help="run id")
     position_signal.add_argument("--seed", type=int, default=0)
     position_signal.add_argument("--dry-run", action="store_true")

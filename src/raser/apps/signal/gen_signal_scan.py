@@ -493,7 +493,7 @@ def main(kwargs):
     g4_dic = my_d.g4_config
     total_events = int(g4_dic['total_events'])
 
-    job_number = kwargs['job']
+    job_number = kwargs['job_index']
     instance_number = job_number
 
     g4_seed = execution_seed(kwargs, offset=instance_number * total_events)

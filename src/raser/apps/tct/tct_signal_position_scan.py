@@ -267,9 +267,9 @@ def job_main(kwargs):
                     path = kwargs["_run_batch_path"]
 
                     ele_current = Amplifier(my_current.sum_cu, amplifier, CDet=my_d.capacitance)
-                    if kwargs['job'] is not None:
+                    if kwargs['job_index'] is not None:
                         # key = my_l.fz_rel
-                        tag = 'pos'+str(i)+'_'+'job'+str(kwargs['job'])
+                        tag = 'pos'+str(i)+'_'+'job'+str(kwargs['job_index'])
                         ele_current.save_signal_TTree(path, tag)
                     else:
                         my_current.draw_currents(path) # Draw current
@@ -282,7 +282,7 @@ def job_main(kwargs):
     else:
         # TCT must be with laser
         raise NameError
-    if kwargs["job"] is not None:
+    if kwargs["job_index"] is not None:
         return
     pos_scan = position_scan(kwargs,my_l,laser_dic,effective_pos_num)
 
