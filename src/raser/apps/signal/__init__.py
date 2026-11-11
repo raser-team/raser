@@ -9,6 +9,51 @@ from raser.supports import jobs
 from raser.supports import runs
 
 
+def add_arguments(parser, default_source):
+    parser.add_argument("det_name", help="Device project")
+    parser.add_argument(
+        "source",
+        nargs="?",
+        default=default_source,
+        help="signal source or beam configuration",
+    )
+    parser.add_argument("--config", help="run configuration")
+    parser.add_argument("--run", help="run id")
+    parser.add_argument("-evt", "--events-per-job", type=int, help="events per job")
+    parser.add_argument("-vol", "--voltage", type=float, help="bias voltage")
+    parser.add_argument("-irr", "--irradiation", type=float, help="irradiation flux")
+    parser.add_argument(
+        "-g4_vis", help="visualization of Geant4 experiment", action="store_true"
+    )
+    parser.add_argument("--g4-vis-driver", help="Geant4 visualization driver")
+    parser.add_argument("-amp", "--amplifier", type=str, help="amplifier")
+    parser.add_argument("-s", "--jobs", type=int, help="number of jobs")
+    parser.add_argument(
+        "-b",
+        "--batch",
+        action="store_true",
+        help="submit the jobs to the cluster",
+        dest="signal_batch",
+    )
+    parser.add_argument("--job-index", type=int, help="index of this job")
+    parser.add_argument(
+        "-mem", type=int, help="memory limit of the job in 8GB", default=1
+    )
+    parser.add_argument("--seed", type=int, default=0, help="run random seed")
+    parser.add_argument("--adc", help="ADC component")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="resolve and display the workflow plan",
+    )
+
+
+def register(subparsers):
+    parser = subparsers.add_parser("signal", help="single signal simulation")
+    add_arguments(parser, "decay/Sr90")
+    parser.set_defaults(_run=run_signal, _project="det_name", _components=("signal",))
+
+
 def _command_tail(kwargs):
     command_prefix = list(kwargs["_entry_command_prefix"])
     return jobs.command_tail(
