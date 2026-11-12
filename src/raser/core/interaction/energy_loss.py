@@ -6,6 +6,8 @@ import math
 
 import ROOT
 
+from raser.core.seeding import stream
+
 ROOT.gROOT.SetBatch(True)
 
 
@@ -20,7 +22,7 @@ def sample_fano_pairs(mean_pairs, fano_factor, rng=None):
     if fano_factor == 0.0 or mean_pairs == 0.0:
         return mean_pairs
     if rng is None:
-        rng = ROOT.gRandom
+        rng = stream("energy_loss")
     sigma = math.sqrt(fano_factor * mean_pairs)
     return max(0.0, float(rng.Gaus(mean_pairs, sigma)))
 
@@ -36,5 +38,5 @@ def sample_landau_energy_loss(mean_energy_mev, landau_width_mev, rng=None):
     if landau_width_mev == 0.0 or mean_energy_mev == 0.0:
         return mean_energy_mev
     if rng is None:
-        rng = ROOT.gRandom
+        rng = stream("energy_loss")
     return max(0.0, float(rng.Landau(mean_energy_mev, landau_width_mev)))
