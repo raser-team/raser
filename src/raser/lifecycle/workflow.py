@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import hashlib
 import itertools
 import json
@@ -35,6 +34,10 @@ class Workflow:
     device: bool = True  # the command names a device
     command: Callable | None = None  # extra words of the job command
     extract: Callable | None = None  # (point folder, [(seed folder, job)]) -> a summary row
+    # TODO(ana): nothing calls extract yet. A separate `raser ana` command is to
+    # collect the results of an experiment folder: it takes the points and jobs
+    # from `finished` and hands them to the analysis. Until it exists, cce and
+    # timeres have no command that writes their summary.
 
     @property
     def words(self):
@@ -68,22 +71,7 @@ def execute(workflow, kwargs):
         root = Path(project_path(*workflow.words))
         config = _read(root / "config.json")
     given = {key: kwargs[key] for key in workflow.keys if kwargs.get(key) is not None}
-    fixed = {**workflow.defaults, **config.get("set", {}), **given}
-
-    # The points: one for every combination of the scanned values. A point's
-    # folder is named by the scanned options that differ from the unscanned run.
-    scan = dict(config.get("scan", {}))
-    for item in kwargs["scan"]:
-        key, _, values = item.partition("=")
-        scan[key] = [_parse(value) for value in values.split(",")]
-    scan = {key: values for key, values in scan.items() if key not in given}
-    base, _ = _point(workflow, kwargs, fixed)
-    points = {}  # folder inside the experiment -> (options, files)
-    for combination in itertools.product(*scan.values()):
-        options, files = _point(workflow, kwargs, {**fixed, **dict(zip(scan, combination))})
-        changed = [key for key in scan if options[key] != base[key]]
-        name = "_".join(f"{key}_{_text(options[key])}" for key in changed)
-        points[name] = (options, files)
+    scan, points = _points(workflow, kwargs, config, given)
 
     # The seed folder of this command in every point, and the jobs left in it.
     if kwargs["seed"] is None:
@@ -125,26 +113,50 @@ def execute(workflow, kwargs):
             (folder / "batch").mkdir(parents=True, exist_ok=True)
             _write(folder / "run.json", record)
             _start(workflow, kwargs, folder, left)
-
-    # The summary: one row per point, from the finished jobs of every seed folder
-    # of the point that ran with the same commit, options and files.
-    rows = []
-    for (name, (options, _)), (_, _, _, record) in zip(points.items(), todo):
-        done = [
-            (folder, int(path.stem.split("_")[1]))
-            for folder in _seed_folders(root / name, record)
-            for path in sorted((folder / "batch").glob("job_*.done"))
-        ]
-        if workflow.extract is not None and done:
-            scanned = {key: options[key] for key in scan}
-            row = workflow.extract(root / name, done)
-            rows.append({"point": name or ".", **scanned, "jobs": len(done), **row})
-    if rows:
-        with (root / "summary.csv").open("w", newline="") as stream:
-            writer = csv.DictWriter(stream, list(dict.fromkeys(k for row in rows for k in row)))
-            writer.writeheader()
-            writer.writerows(rows)
     return None
+
+
+def finished(workflow, kwargs, root) -> list[tuple[str, dict, list[tuple[Path, int]]]]:
+    """The points of the experiment in `root`, each with its folder name, its
+    options and the finished (seed folder, job index) pairs.
+
+    A point's jobs come from all its seed folders that ran with the options and
+    files the experiment has now, whatever their seed and commit. Folders kept
+    aside by a rerun are left out: their name is not seed_<their seed>."""
+    _, points = _points(workflow, kwargs, _read(root / "config.json"), {})
+    result = []
+    for name, (options, files) in points.items():
+        now = json.loads(json.dumps({"options": options, "files": files}))
+        done = []
+        for path in sorted((root / name).glob("*/run.json")):
+            old, label = _read(path), path.parent.name
+            kept = label.startswith("seed_") and label != f"seed_{old['seed']}"
+            if not kept and {key: old[key] for key in now} == now:
+                marks = sorted((path.parent / "batch").glob("job_*.done"))
+                done += [(path.parent, int(mark.stem.split("_")[1])) for mark in marks]
+        result.append((name, options, done))
+    return result
+
+
+def _points(workflow, kwargs, config, given) -> tuple[dict, dict]:
+    """The scanned options and the points of an experiment.
+
+    One point for every combination of the scanned values. A point's folder is
+    named by the scanned options that differ from the unscanned run."""
+    fixed = {**workflow.defaults, **config.get("set", {}), **given}
+    scan = dict(config.get("scan", {}))
+    for item in kwargs["scan"]:
+        key, _, values = item.partition("=")
+        scan[key] = [_parse(value) for value in values.split(",")]
+    scan = {key: values for key, values in scan.items() if key not in given}
+    base, _ = _point(workflow, kwargs, fixed)
+    points = {}  # folder inside the experiment -> (options, files)
+    for combination in itertools.product(*scan.values()):
+        options, files = _point(workflow, kwargs, {**fixed, **dict(zip(scan, combination))})
+        changed = [key for key in scan if options[key] != base[key]]
+        name = "_".join(f"{key}_{_text(options[key])}" for key in changed)
+        points[name] = (options, files)
+    return scan, points
 
 
 def _point(workflow, kwargs, options) -> tuple[dict, dict]:
@@ -191,19 +203,6 @@ def _start(workflow, kwargs, folder, left) -> None:
         destination=workflow.words[0],
         indices=left,
     )
-
-
-def _seed_folders(point, record) -> list[Path]:
-    """The seed folders of a point that ran with this record apart from the seed.
-    A folder kept aside by a rerun is left out: its name is not seed_<its seed>."""
-    same = {key: value for key, value in record.items() if key != "seed"}
-    folders = []
-    for path in sorted(point.glob("*/run.json")):
-        old, name = _read(path), path.parent.name
-        kept = name.startswith("seed_") and name != f"seed_{old['seed']}"
-        if not kept and {key: value for key, value in old.items() if key != "seed"} == same:
-            folders.append(path.parent)
-    return folders
 
 
 def _run_job(workflow, kwargs):

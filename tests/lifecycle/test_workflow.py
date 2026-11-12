@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import csv
 import json
 import sys
 from pathlib import Path
@@ -423,68 +422,47 @@ def test_a_fixed_seed_runs_again_under_another_commit_or_uncommitted_changes(
     assert len(_kept(tmp_path / "toy")) == 1
 
 
-def _summary(experiment: Path) -> list[dict[str, str]]:
-    with (experiment / "summary.csv").open(newline="") as stream:
-        return list(csv.DictReader(stream))
-
-
-def _counting(received: list[Any]) -> Workflow:
-    def extract(point: Path, done: list[tuple[Path, int]]) -> dict[str, Any]:
-        received.append((point, done))
-        return {"seeds": len({folder for folder, _ in done})}
-
-    return Workflow(
-        name="toy",
-        job=lambda options: None,
-        keys=("gain", "width"),
-        defaults={"gain": 5, "width": 1.0},
-        device=False,
-        extract=extract,
-    )
-
-
-def test_the_summary_has_a_row_per_point_from_all_its_seed_folders(
-    started: list[Any], tmp_path: Path
-) -> None:
-    workflow = _counting([])
-    scan = ["gain=5,7"]
-
-    execute(workflow, _kwargs(gain=None, width=None, scan=scan, seed=1, jobs=2))
-    execute(workflow, _kwargs(gain=None, width=None, scan=scan, seed=2, jobs=3))
-
-    assert _summary(tmp_path / "toy") == [
-        {"point": ".", "gain": "5", "jobs": "5", "seeds": "2"},
-        {"point": "gain_7", "gain": "7", "jobs": "5", "seeds": "2"},
+def _finished(experiment: Path) -> list[tuple[str, int, list[str]]]:
+    """Per point: its folder name, its gain, and the seed folders of its finished jobs."""
+    points = workflow_module.finished(GAIN, _kwargs(), experiment)
+    return [
+        (name, options["gain"], [f"{folder.name}:{index}" for folder, index in done])
+        for name, options, done in points
     ]
 
 
-def test_the_summary_leaves_out_seed_folders_that_ran_with_another_record(
+def test_finished_lists_every_point_with_the_jobs_of_all_its_seed_folders(
     started: list[Any], tmp_path: Path
 ) -> None:
-    received: list[Any] = []
-    workflow = _counting(received)
-    execute(workflow, _kwargs(gain=None, width=None, seed=1, jobs=2))
-    execute(workflow, _kwargs(gain=None, width=None, seed=2, jobs=2))
+    scan = ["gain=5,7"]
+    execute(GAIN, _kwargs(gain=None, width=None, scan=scan, seed=1, jobs=2))
+    execute(GAIN, _kwargs(gain=None, width=None, scan=scan, seed=2, jobs=1))
 
-    execute(workflow, _kwargs(gain=None, width=2.0, seed=1, jobs=2))
-
-    experiment = tmp_path / "toy"
-    point, done = received[-1]
-    assert point == experiment
-    assert done == [(experiment / "seed_1", 0), (experiment / "seed_1", 1)]
-    assert _summary(experiment) == [{"point": ".", "jobs": "2", "seeds": "1"}]
+    assert _finished(tmp_path / "toy") == [
+        ("", 5, ["seed_1:0", "seed_1:1", "seed_2:0"]),
+        ("gain_7", 7, ["seed_1:0", "seed_1:1", "seed_2:0"]),
+    ]
 
 
-def test_the_summary_leaves_out_a_folder_kept_aside_with_the_same_record(
+def test_finished_leaves_out_seed_folders_that_ran_with_other_options(
+    started: list[Any], tmp_path: Path
+) -> None:
+    execute(GAIN, _kwargs(gain=None, width=None, seed=1, jobs=2))
+    execute(GAIN, _kwargs(gain=None, width=2.0, seed=2, jobs=2))
+
+    assert _finished(tmp_path / "toy") == [("", 5, ["seed_1:0", "seed_1:1"])]
+
+
+def test_finished_leaves_out_a_folder_kept_aside_and_takes_any_commit(
     started: list[Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(workflow_module, "_commit", lambda: "abc+dirty")
-    workflow = _counting([])
+    execute(GAIN, _kwargs(gain=None, width=None, seed=1, jobs=2))
+    execute(GAIN, _kwargs(gain=None, width=None, seed=1, jobs=1))
+    monkeypatch.setattr(workflow_module, "_commit", lambda: "def")
+    execute(GAIN, _kwargs(gain=None, width=None, seed=2, jobs=1))
 
-    execute(workflow, _kwargs(gain=None, width=None, seed=1, jobs=2))
-    execute(workflow, _kwargs(gain=None, width=None, seed=1, jobs=2))
-
-    assert _summary(tmp_path / "toy") == [{"point": ".", "jobs": "2", "seeds": "1"}]
+    assert _finished(tmp_path / "toy") == [("", 5, ["seed_1:0", "seed_2:0"])]
 
 
 def _point_seeds(seeded: list[int], experiment: Path, **given: Any) -> list[list[int]]:
