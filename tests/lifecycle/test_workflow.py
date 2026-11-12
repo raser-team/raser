@@ -219,7 +219,8 @@ def disk(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         return Path(f"{selector}.json"), {"kind": kind, "selector": selector, **content}
 
     def load_definition(selector: str) -> SimpleNamespace:
-        return SimpleNamespace(raw={"det_name": selector, **content})
+        bias = {"electrode": "top", "voltage": 200.0}
+        return SimpleNamespace(raw={"det_name": selector, "bias": bias, **content})
 
     monkeypatch.setattr(workflow_module, "load_component", load_component)
     monkeypatch.setattr(workflow_module, "load_definition", load_definition)
@@ -241,7 +242,11 @@ def test_run_json_holds_the_device_file_and_the_files_the_options_name(
 
     files = json.loads((tmp_path / "toy" / "seed_42" / "run.json").read_text())["files"]
     assert files == {
-        "device": {"det_name": "dev", "marker": "first"},
+        "device": {
+            "det_name": "dev",
+            "bias": {"electrode": "top", "voltage": 200.0},
+            "marker": "first",
+        },
         "afe": {"kind": "afe", "selector": "fast", "marker": "first"},
     }
 
@@ -267,3 +272,35 @@ def test_a_job_reads_its_files_from_run_json_and_not_from_disk(
     assert received[0]["_files"] == {
         "afe": {"kind": "afe", "selector": "standard", "marker": "first"}
     }
+
+
+BIASED = Workflow(
+    name="toy",
+    job=lambda options: None,
+    keys=("voltage",),
+    in_file={"voltage": "device.bias.voltage"},
+)
+
+
+def _record(folder: Path) -> dict[str, Any]:
+    return json.loads((folder / "run.json").read_text())
+
+
+def test_an_option_that_sits_in_a_file_takes_the_value_of_the_file_when_not_given(
+    started: list[Any], disk: dict[str, Any], tmp_path: Path
+) -> None:
+    execute(BIASED, _kwargs(det_name="dev", voltage=None, jobs=2))
+
+    record = _record(tmp_path / "toy" / "seed_42")
+    assert record["options"]["voltage"] == 200.0
+    assert record["files"]["device"]["bias"]["voltage"] == 200.0
+
+
+def test_an_option_that_sits_in_a_file_is_written_into_the_recorded_file_when_given(
+    started: list[Any], disk: dict[str, Any], tmp_path: Path
+) -> None:
+    execute(BIASED, _kwargs(det_name="dev", voltage=300.0, jobs=2))
+
+    record = _record(tmp_path / "toy" / "seed_42")
+    assert record["options"]["voltage"] == 300.0
+    assert record["files"]["device"]["bias"] == {"electrode": "top", "voltage": 300.0}

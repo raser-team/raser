@@ -27,6 +27,7 @@ class Workflow:
     keys: tuple = ()  # the options an experiment may set
     defaults: Mapping = field(default_factory=dict)  # their values when nobody set them
     components: Mapping = field(default_factory=dict)  # kind of json file -> the option naming it
+    in_file: Mapping = field(default_factory=dict)  # option -> where its value sits in a file
     device: bool = True  # the command names a device
     command: Callable | None = None  # extra words of the job command
 
@@ -68,6 +69,18 @@ def execute(workflow, kwargs):
         files["device"] = dict(load_definition(kwargs["det_name"]).raw)
     for kind, key in workflow.components.items():
         files[kind] = load_component(kind, options[key])[1]
+
+    # An option that is a value inside a file, such as the bias in the device:
+    # given, it is written into the file; not given, it takes the file's value.
+    for key, address in workflow.in_file.items():
+        kind, *steps, last = address.split(".")
+        place = files[kind]
+        for step in steps:
+            place = place[step]
+        if options.get(key) is None:
+            options[key] = place[last]
+        else:
+            place[last] = options[key]
 
     # The seed folder of this command, and the jobs that are left in it.
     if kwargs["seed"] is None:
