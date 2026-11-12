@@ -35,7 +35,7 @@ def run(kwargs):
     if setup == "acts_v1":
         from .telescope_acts import main
 
-        return main()
+        return main(kwargs["seed"])
     from .telescope_g4 import main
 
     return main()
