@@ -21,7 +21,6 @@ from .fitting import fit_data_normal
 from .fitting import is_number
 from raser.supports.paths import component_path
 from raser.supports.paths import project_path
-from raser.supports import runs
 
 CFD = 0.5 # partition
 CFD_LABEL = "CFD50"
@@ -715,11 +714,6 @@ def main(kwargs):
         input_path = project_path("tct", tct)
     elif kwargs.get("_run_batch_path"):
         input_path = kwargs["_run_batch_path"]
-    elif kwargs.get("run") == "latest":
-        signal_label = kwargs.get("signal_output_label") or kwargs.get("workflow") or "cce"
-        signal_source = Path(str(kwargs.get("signal_source") or kwargs.get("source") or "Am241")).stem
-        latest = runs.latest_run_path(signal_label, signal_source)
-        input_path = latest / "batch"
     else:
         signal_label = kwargs.get("signal_output_label") or "cce"
         signal_source = Path(str(kwargs.get("signal_source") or kwargs.get("source") or "Am241")).stem
