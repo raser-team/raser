@@ -10,9 +10,15 @@ import pytest
 import ROOT
 
 from raser.core import seeding
+from raser.core.current.carrier import VectorizedCarrierSystem
 from raser.core.interaction.energy_loss import sample_fano_pairs
 from raser.core.interaction.energy_loss import sample_landau_energy_loss
 from raser.core.interaction.toy_mip import ToyMIPInteraction
+
+
+def _drift() -> object:
+    system = VectorizedCarrierSystem.__new__(VectorizedCarrierSystem)
+    return system._calculate_diffusion(1.0)
 
 
 def _energy_loss() -> object:
@@ -37,7 +43,7 @@ def _toy_mip_tracks() -> object:
     return interaction.p_steps
 
 
-@pytest.mark.parametrize("draw", [_energy_loss, _toy_mip_tracks])
+@pytest.mark.parametrize("draw", [_drift, _energy_loss, _toy_mip_tracks])
 def test_module_draws_follow_the_seed_and_ignore_other_generators(
     draw: Callable[[], object],
 ) -> None:

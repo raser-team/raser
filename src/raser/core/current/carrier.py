@@ -9,7 +9,7 @@ Description:
 import math
 import logging
 import time
-import random
+from raser.core.seeding import stream
 
 import numpy as np
 
@@ -568,9 +568,10 @@ class VectorizedCarrierSystem:
     def _calculate_diffusion(self, diffusion_constant):
         """计算扩散位移"""
         try:
-            return (random.gauss(0.0, diffusion_constant),
-                   random.gauss(0.0, diffusion_constant), 
-                   random.gauss(0.0, diffusion_constant))
+            generator = stream("drift")
+            return (generator.Gaus(0.0, diffusion_constant),
+                   generator.Gaus(0.0, diffusion_constant), 
+                   generator.Gaus(0.0, diffusion_constant))
         except:
             return 0.0, 0.0, 0.0
 
