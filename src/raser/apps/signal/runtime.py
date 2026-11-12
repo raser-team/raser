@@ -66,7 +66,7 @@ def apply_signal_plan(detector, kwargs):
 
 def build_interaction(detector, seed, g4_vis, **options):
     if detector.g4_config.get("source_kind") == "toy_mip":
-        return ToyMIPInteraction(detector, detector.g4_config, seed)
+        return ToyMIPInteraction(detector, detector.g4_config)
 
     from raser.core.interaction.interaction import GeneralG4Interaction
 

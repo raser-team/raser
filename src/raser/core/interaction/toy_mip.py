@@ -6,7 +6,7 @@ import math
 from dataclasses import dataclass
 
 import numpy as np
-import ROOT
+from raser.core.seeding import stream
 
 from .energy_loss import sample_fano_pairs
 from .energy_loss import sample_landau_energy_loss
@@ -129,7 +129,7 @@ class ToyMIPInteraction:
 
     geant4_model = "toy_mip"
 
-    def __init__(self, sensor, config, seed):
+    def __init__(self, sensor, config):
         self.config = dict(config)
         self.total_events = int(self.config.get("total_events", 1))
         self.packets = (
@@ -152,7 +152,6 @@ class ToyMIPInteraction:
         self.position_range_um = self.config.get("position_range_um")
         self.direction_sigma_mrad = self.config.get("direction_sigma_mrad", 0.0)
 
-        ROOT.gRandom.SetSeed(int(seed))
         self.sources = []
         self.eventIDs = []
         self.edep_devices = []
@@ -184,6 +183,7 @@ class ToyMIPInteraction:
             self.p_steps_current.append(steps)
 
     def _sample_track(self, sensor):
+        generator = stream("toy_mip")
         start = self.start or [
             float(sensor.l_x) / 2.0,
             float(sensor.l_y) / 2.0,
@@ -200,18 +200,18 @@ class ToyMIPInteraction:
         if self.position_range_um is not None:
             x_range = self.position_range_um.get("x", [start[0], start[0]])
             y_range = self.position_range_um.get("y", [start[1], start[1]])
-            start[0] = float(ROOT.gRandom.Uniform(*map(float, x_range)))
-            start[1] = float(ROOT.gRandom.Uniform(*map(float, y_range)))
+            start[0] = float(generator.Uniform(*map(float, x_range)))
+            start[1] = float(generator.Uniform(*map(float, y_range)))
 
         sigma_x_mrad, sigma_y_mrad = self._direction_sigmas()
         dz = end[2] - start[2]
         slope_x = (
-            float(ROOT.gRandom.Gaus(0.0, sigma_x_mrad * 1.0e-3))
+            float(generator.Gaus(0.0, sigma_x_mrad * 1.0e-3))
             if sigma_x_mrad > 0.0
             else 0.0
         )
         slope_y = (
-            float(ROOT.gRandom.Gaus(0.0, sigma_y_mrad * 1.0e-3))
+            float(generator.Gaus(0.0, sigma_y_mrad * 1.0e-3))
             if sigma_y_mrad > 0.0
             else 0.0
         )
