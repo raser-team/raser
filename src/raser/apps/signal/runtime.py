@@ -1,9 +1,7 @@
 """Runtime construction shared by Signal entry points."""
 
 from copy import deepcopy
-
-from raser.lifecycle.planning import ComponentSelection
-from raser.lifecycle.planning import WorkflowPlan
+from pathlib import Path
 
 from raser.core.current import cal_current as current
 from raser.core.interaction.toy_mip import ToyMIPInteraction
@@ -19,49 +17,30 @@ DEVICE_G4_CONFIG = {
 }
 
 
-def _component(
-    plan: WorkflowPlan,
-    kind: str,
-    *,
-    required: bool = True,
-) -> ComponentSelection | None:
-    matches = [component for component in plan.components if component.kind == kind]
-    if len(matches) == 1:
-        return matches[0]
-    if not matches and not required:
-        return None
-    raise ValueError(f"{plan.workflow} requires one {kind} component")
+def component_name(kwargs, kind, option):
+    """Name of a component: the one in its file, else the file it was read from."""
+    return str(kwargs["_files"][kind].get("name") or Path(str(kwargs[option])).stem)
 
 
 def apply_signal_plan(detector, kwargs):
-    plan = kwargs.get("_workflow_plan")
-    if not isinstance(plan, WorkflowPlan):
-        raise RuntimeError("Signal requires an activated workflow plan")
-
-    source = _component(plan, "Source")
-    afe = _component(plan, "AFE")
-    g4setup = _component(plan, "G4Setup", required=False)
-    adc = _component(plan, "ADC", required=False)
-    assert source is not None
-    assert afe is not None
-
-    g4_config = deepcopy(
-        dict(g4setup.values) if g4setup is not None else DEVICE_G4_CONFIG
-    )
-    g4_config.update(source.values)
-    if "kind" in source.values:
-        g4_config["source_kind"] = source.values["kind"]
+    """Configure the detector from the component files recorded for the run."""
+    state = kwargs["_files"]
+    g4_config = deepcopy(state.get("g4setup", DEVICE_G4_CONFIG))
+    g4_config.update(state["source"])
+    if "kind" in state["source"]:
+        g4_config["source_kind"] = state["source"]["kind"]
     for metadata_key in ("name", "kind", "description"):
         g4_config.pop(metadata_key, None)
 
-    detector.g4experiment = g4setup.name if g4setup is not None else "device"
+    detector.g4experiment = "device"
+    if "g4setup" in state:
+        detector.g4experiment = component_name(kwargs, "g4setup", "g4setup")
     detector.g4_config = g4_config
-    detector.amplifier = afe.name
-    if adc is not None:
-        detector.daq = adc.name
-    detector.signal_source = source.name
-    detector.signal_output_label = plan.workflow
-    return plan
+    detector.amplifier = component_name(kwargs, "afe", "amplifier")
+    if "adc" in state:
+        detector.daq = component_name(kwargs, "adc", "adc")
+    detector.signal_source = component_name(kwargs, "source", "source")
+    detector.signal_output_label = kwargs["_signal_label"]
 
 
 def build_interaction(detector, seed, g4_vis, **options):

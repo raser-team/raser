@@ -1,104 +1,47 @@
 """Time-resolution experiment application."""
 
+import json
 from pathlib import Path
 
 from raser.apps import signal
-from raser.lifecycle.planning import activate_plan
-from raser.lifecycle import jobs
-from raser.supports import runs
+from raser.lifecycle.workflow import Workflow
 
-from .workflow import build_plan
-from .workflow import load_defaults
+DEFAULTS = json.loads((Path(__file__).parent / "time_resolution.json").read_text("utf-8"))
 
-DEFAULT_EVENTS_PER_JOB = 10000
+
+def _job(kwargs):
+    from .g4_interaction import TimeresActionInitialization
+
+    kwargs["_g4_action_initialization"] = TimeresActionInitialization
+    signal.run_job(kwargs, "timeres")
+
+
+def _extract(point_root, done):
+    from raser.apps.timeres import summary
+
+    return summary.collect_point(point_root, done)
+
+
+WORKFLOW = Workflow(
+    name="timeres",
+    keys=signal.KEYS + ("g4setup",),
+    defaults={
+        "source": DEFAULTS["source"],
+        "events_per_job": 10000,
+        "amplifier": DEFAULTS["afe"],
+        "adc": DEFAULTS["adc"],
+        "g4setup": DEFAULTS["g4setup"],
+    },
+    components={**signal.COMPONENTS, "g4setup": "g4setup", "adc": "adc"},
+    in_file=signal.IN_FILE,
+    job=_job,
+    extract=_extract,
+    command=signal.job_command,
+)
 
 
 def register(subparsers):
     parser = subparsers.add_parser("timeres", help="time-resolution experiment")
-    signal.add_arguments(parser, None)
-    parser.add_argument(
-        "--collect", help="collect finished batch jobs", action="store_true"
-    )
-    parser.set_defaults(
-        _run=run, _project="det_name", _components=("timeres", "signal")
-    )
-
-
-def _prepare(kwargs):
-    runs.apply_run_config(kwargs)
-    if kwargs.get("source") is None:
-        kwargs["source"] = load_defaults()["source"]
-    if kwargs.get("events_per_job") is None:
-        kwargs["events_per_job"] = DEFAULT_EVENTS_PER_JOB
-    kwargs["workflow"] = "timeres"
-    kwargs["signal_output_label"] = "timeres"
-    kwargs["signal_source"] = Path(str(kwargs["source"])).stem
-
-
-def _run_root(kwargs):
-    run_id = kwargs.get("run")
-    if run_id == "latest":
-        return runs.latest_run_path("timeres", specification=build_plan(kwargs).as_dict())
-    path = Path(str(run_id))
-    if path.is_absolute() or len(path.parts) > 1:
-        return path
-    return runs.run_path("timeres", str(run_id))
-
-
-def _job_tail(kwargs):
-    tail = jobs.command_tail(
-        kwargs["_argv"],
-        kwargs["_entry_command_prefix"],
-        {"-s", "--jobs", "--job-index", "--run", "-evt", "--events-per-job"},
-    )
-    tail.extend(["--run", runs.ensure_run_id(kwargs)])
-    tail.extend(["--events-per-job", str(kwargs["events_per_job"])])
-    return tail
-
-
-def _run_jobs(kwargs):
-    if kwargs.get("job_index") is not None:
-        from .g4_interaction import TimeresActionInitialization
-
-        kwargs["_g4_action_initialization"] = TimeresActionInitialization
-        signal.run_signal(kwargs)
-        return False
-
-    count = kwargs["jobs"] or 1
-
-    jobs.run_indexed_jobs(
-        kwargs["_entry_command_prefix"],
-        _job_tail(kwargs),
-        count,
-        use_cluster=kwargs["signal_batch"],
-        mem=kwargs["mem"],
-        destination="timeres",
-    )
-    return not kwargs["signal_batch"]
-
-
-def run(kwargs):
-    _prepare(kwargs)
-    if kwargs.get("collect") and not kwargs.get("dry_run"):
-        collect(kwargs)
-        return
-    plan = build_plan(kwargs)
-    if kwargs.get("dry_run"):
-        plan.show()
-        return plan
-    activate_plan(plan, kwargs)
-    if _run_jobs(kwargs):
-        collect(kwargs)
-
-
-def collect(kwargs):
-    from raser.apps.timeres import summary
-
-    _prepare(kwargs)
-    if kwargs.get("run") is None:
-        kwargs["run"] = "latest"
-    run_root = _run_root(kwargs)
-    summary.collect(run_root)
-
-
-run_signal = run
+    signal.add_arguments(parser)
+    WORKFLOW.attach(parser)
+    parser.set_defaults(_project="det_name", _components=("timeres", "signal"))

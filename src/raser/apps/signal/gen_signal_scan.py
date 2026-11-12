@@ -15,7 +15,6 @@ import json
 import ROOT
 ROOT.gROOT.SetBatch(True)
 
-from raser.lifecycle.planning import execution_seed
 
 ELECTRON_CHARGE_C = 1.60217733e-19
 
@@ -489,7 +488,7 @@ def main(kwargs):
     job_number = kwargs['job_index']
     instance_number = job_number
 
-    g4_seed = execution_seed(kwargs, offset=instance_number * total_events)
+    g4_seed = kwargs["seed"]
     interaction_options = {}
     if kwargs.get("_g4_action_initialization") is not None:
         interaction_options["MyActionInitialization"] = kwargs[
@@ -502,7 +501,7 @@ def main(kwargs):
         **interaction_options,
     )
 
-    store_waveforms = kwargs.get("workflow") != "cce"
+    store_waveforms = my_d.signal_output_label != "cce"
     try:
         batch_loop(
             my_d,

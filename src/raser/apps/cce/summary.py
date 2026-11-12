@@ -8,9 +8,6 @@ import ROOT
 
 from raser.core.metrics import waveform_stats
 from raser.supports.output import create_path
-from raser.supports import runs
-
-from .workflow import build_plan
 
 
 MEASURED_COLUMNS = {
@@ -34,20 +31,13 @@ TRUTH_COLUMNS = {
 RUN_COLUMNS = {"voltage", "irradiation_flux"}
 
 
-def _run_root(kwargs):
-    run_id = kwargs.get("run")
-    if run_id == "latest":
-        return runs.latest_run_path("cce", specification=build_plan(kwargs).as_dict())
-    path = Path(str(run_id))
-    if path.is_absolute() or len(path.parts) > 1:
-        return path
-    return runs.run_path("cce", str(run_id))
-
-
-def _read_event_arrays(batch_path):
-    event_files = sorted(batch_path.glob("stats_*.root"))
+def _read_event_arrays(point_root, jobs):
+    event_files = [
+        Path(folder) / "batch" / f"stats_{index}.root" for folder, index in jobs
+    ]
+    event_files = [path for path in event_files if path.is_file()]
     if not event_files:
-        raise FileNotFoundError(f"No CCE ROOT statistics files found in {batch_path}")
+        raise FileNotFoundError(f"No CCE ROOT statistics files found in {point_root}")
 
     columns = {}
     for event_file in event_files:
@@ -179,20 +169,25 @@ def _plot_with_existing_functions(columns, output_path):
     return written
 
 
-def collect(kwargs):
-    run_root = _run_root(kwargs)
-    batch_path = run_root / "batch"
-    output_path = run_root / "analysis"
+def collect_point(point_root, jobs):
+    """Analyse the finished (seed folder, job index) pairs of one point."""
+    point_root = Path(point_root)
+    output_path = point_root / "analysis"
     create_path(output_path)
 
-    columns = _read_event_arrays(batch_path)
+    columns = _read_event_arrays(point_root, jobs)
     summary = _summary(columns)
     with open(output_path / "cce_summary_stats.json", "w") as f_out:
         json.dump(summary, f_out, indent=2, sort_keys=True)
         f_out.write("\n")
+    _plot_with_existing_functions(columns, output_path)
 
-    preview_paths = _plot_with_existing_functions(columns, output_path)
-    print(f"CCE summary entries: {summary['events']}")
-    print(f"CCE summary stats: {output_path / 'cce_summary_stats.json'}")
-    for preview_path in preview_paths:
-        print(f"CCE summary preview: {preview_path}")
+    result = {"events": summary["events"]}
+    for group, name in (
+        ("measured", "amplified_charge"),
+        ("measured", "amplified_amplitude"),
+        ("truth", "generated_charge"),
+        ("truth", "e_dep"),
+    ):
+        result[f"{name}_mean"] = summary[group][name]["mean"]
+    return result

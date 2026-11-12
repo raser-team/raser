@@ -5,20 +5,26 @@ Description:  signal/__init__.py
 @version    : 2.0
 """
 
-from raser.lifecycle import jobs
-from raser.supports import runs
+import json
+from pathlib import Path
+
+from raser.core.device import resolve_device
+from raser.core.field import FieldConfiguration
+from raser.lifecycle.workflow import Workflow
+
+DEFAULTS = json.loads((Path(__file__).parent / "signal.json").read_text("utf-8"))
+KEYS = ("source", "events_per_job", "voltage", "irradiation", "amplifier", "adc")
+COMPONENTS = {"source": "source", "afe": "amplifier"}  # kind of file -> option
+IN_FILE = {"voltage": "device.bias.voltage"}  # option -> where it sits in a file
 
 
-def add_arguments(parser, default_source):
+def add_arguments(parser):
     parser.add_argument("det_name", help="Device project")
     parser.add_argument(
         "source",
         nargs="?",
-        default=default_source,
         help="signal source or beam configuration",
     )
-    parser.add_argument("--config", help="run configuration")
-    parser.add_argument("--run", help="run id")
     parser.add_argument("-evt", "--events-per-job", type=int, help="events per job")
     parser.add_argument("-vol", "--voltage", type=float, help="bias voltage")
     parser.add_argument("-irr", "--irradiation", type=float, help="irradiation flux")
@@ -27,92 +33,68 @@ def add_arguments(parser, default_source):
     )
     parser.add_argument("--g4-vis-driver", help="Geant4 visualization driver")
     parser.add_argument("-amp", "--amplifier", type=str, help="amplifier")
-    parser.add_argument("-s", "--jobs", type=int, help="number of jobs")
-    parser.add_argument(
-        "-b",
-        "--batch",
-        action="store_true",
-        help="submit the jobs to the cluster",
-        dest="signal_batch",
-    )
-    parser.add_argument("--job-index", type=int, help="index of this job")
-    parser.add_argument(
-        "-mem", type=int, help="memory limit of the job in 8GB", default=1
-    )
-    parser.add_argument("--seed", type=int, default=0, help="run random seed")
     parser.add_argument("--adc", help="ADC component")
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="resolve and display the workflow plan",
-    )
 
 
-def register(subparsers):
-    parser = subparsers.add_parser("signal", help="single signal simulation")
-    add_arguments(parser, "decay/Sr90")
-    parser.set_defaults(_run=run_signal, _project="det_name", _components=("signal",))
+def _device(kwargs):
+    """The device at the bias and irradiation of the options."""
+    values = {}
+    if kwargs.get("voltage") is not None:
+        values["bias_voltage"] = float(kwargs["voltage"])
+    if kwargs.get("irradiation") is not None:
+        values["irradiation"] = {"fluence": float(kwargs["irradiation"])}
+    return resolve_device(kwargs["det_name"], state=values)
 
 
-def _command_tail(kwargs):
-    command_prefix = list(kwargs["_entry_command_prefix"])
-    return jobs.command_tail(
-        kwargs["_argv"],
-        command_prefix,
-        {"-s", "--jobs", "--job-index", "--run"},
-    )
+def field_of(kwargs):
+    """Hash and folder of the solved field at this bias and irradiation."""
+    device = _device(kwargs)
+    solved = FieldConfiguration.resolve(device)
+    return solved.digest, str(solved.directory(device))
 
 
-def _run_scan(kwargs):
-    scan_number = kwargs["jobs"]
-    mem = kwargs["mem"]
-    use_cluster = kwargs["signal_batch"]
-    command_prefix = list(kwargs["_entry_command_prefix"])
-    command_tail_list = _command_tail(kwargs)
-    run_id = runs.ensure_run_id(kwargs)
-    command_tail_list.extend(["--run", run_id])
-    jobs.run_indexed_jobs(
-        command_prefix,
-        command_tail_list,
-        scan_number,
-        use_cluster=use_cluster,
-        mem=mem,
-        destination=command_prefix[0],
-    )
+def job_command(kwargs):
+    command = []
+    if kwargs.get("g4_vis"):
+        command.append("-g4_vis")
+    if kwargs.get("g4_vis_driver"):
+        command.extend(["--g4-vis-driver", kwargs["g4_vis_driver"]])
+    return command
 
 
-def _run_signal_samples(kwargs):
-    kwargs["job_index"] = 0
-    kwargs["_signal_plot_samples"] = kwargs["events_per_job"]
-    from . import gen_signal_scan
-
-    gen_signal_scan.main(kwargs)
-
-
-def run_signal(kwargs):
-    runs.apply_run_config(kwargs)
-    from .workflow import build_plan
-
-    plan = kwargs.get("_workflow_plan") or build_plan(
-        kwargs,
-        workflow=kwargs.get("workflow") or "signal",
-    )
-    if kwargs.get("dry_run"):
-        plan.show()
-        return plan
-    from raser.lifecycle.planning import activate_plan
-
-    if kwargs.get("_run_path") is None:
-        activate_plan(plan, kwargs)
-    if kwargs["jobs"] is not None:
-        _run_scan(kwargs)
-    elif kwargs["job_index"] is not None:
+def run_job(kwargs, label="signal"):
+    """One signal job inside its seed folder."""
+    kwargs["_signal_label"] = label
+    kwargs["_field_set"], kwargs["_field_directory"] = field_of(kwargs)
+    if kwargs.get("job_index") is not None:
         from . import gen_signal_scan
 
         gen_signal_scan.main(kwargs)
-    elif kwargs.get("_command") == "signal" and kwargs.get("events_per_job"):
-        _run_signal_samples(kwargs)
+    elif kwargs.get("events_per_job"):
+        kwargs["job_index"] = 0
+        kwargs["_signal_plot_samples"] = kwargs["events_per_job"]
+        from . import gen_signal_scan
+
+        gen_signal_scan.main(kwargs)
     else:
         from . import gen_signal_main
 
         gen_signal_main.main(kwargs)
+
+
+WORKFLOW = Workflow(
+    name="signal",
+    keys=KEYS,
+    defaults={"source": DEFAULTS["source"], "amplifier": DEFAULTS["afe"]},
+    components=COMPONENTS,
+    in_file=IN_FILE,
+    job=run_job,
+    command=job_command,
+)
+
+
+def register(subparsers):
+    parser = subparsers.add_parser("signal", help="single signal simulation")
+    add_arguments(parser)
+    WORKFLOW.attach(parser)
+    parser.set_defaults(_project="det_name", _components=("signal",))

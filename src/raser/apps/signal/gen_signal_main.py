@@ -19,7 +19,6 @@ ROOT.gROOT.SetBatch(True)
 from raser.core.device import build_device as bdv
 from raser.core.field import devsim_field as devfield
 from raser.core.frontend.legacy_readout import Amplifier
-from raser.lifecycle.planning import execution_seed
 from .draw_save import energy_deposition, draw_drift_path
 from .runtime import apply_signal_plan
 from .runtime import build_current
@@ -81,7 +80,7 @@ def main(kwargs):
     if "lgad" in my_d.det_model:
         my_d.gain_rate_cal(my_f)
     
-    g4_seed = execution_seed(kwargs)
+    g4_seed = kwargs["seed"]
     interaction_options = {}
     if kwargs.get("_g4_action_initialization") is not None:
         interaction_options["MyActionInitialization"] = kwargs[
