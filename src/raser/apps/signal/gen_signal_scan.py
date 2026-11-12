@@ -11,7 +11,6 @@ import os
 from array import array
 import subprocess
 import json
-import random
 
 import ROOT
 ROOT.gROOT.SetBatch(True)
@@ -27,7 +26,6 @@ from raser.core.frontend.legacy_readout import Amplifier
 from raser.core.metrics import waveform_stats
 from raser.supports.output import create_path
 from raser.supports.paths import component_path
-from raser.supports.paths import optional_component_path
 from .runtime import apply_signal_plan
 from .draw_save import draw_drift_path
 from .runtime import build_current, build_interaction, is_toy_mip_source
@@ -157,7 +155,6 @@ def _write_cce_event_stats(
     my_g4,
     total_events,
     instance_number,
-    g4_seed,
     output_path,
 ):
     start_n = instance_number * total_events
@@ -289,7 +286,6 @@ def batch_loop(
     my_d,
     my_f,
     my_g4,
-    g4_seed,
     total_events,
     instance_number,
     output_path,
@@ -321,7 +317,6 @@ def batch_loop(
             my_g4,
             total_events,
             instance_number,
-            g4_seed,
             output_path,
         )
         return
@@ -495,7 +490,6 @@ def main(kwargs):
     instance_number = job_number
 
     g4_seed = execution_seed(kwargs, offset=instance_number * total_events)
-    random.seed(g4_seed)
     interaction_options = {}
     if kwargs.get("_g4_action_initialization") is not None:
         interaction_options["MyActionInitialization"] = kwargs[
@@ -508,33 +502,12 @@ def main(kwargs):
         **interaction_options,
     )
 
-    ele_json = optional_component_path("afe", my_d.amplifier + ".json")
-    ele_cir = optional_component_path("afe", my_d.amplifier + ".cir")
-    if ele_json is not None and os.path.exists(ele_json):
-        ROOT.gRandom.SetSeed(instance_number) # to ensure time resolution result reproducible
-    elif ele_cir is not None and os.path.exists(ele_cir):
-        # subprocess.run(['ngspice -b '+ele_cir], shell=True)
-        # noise_raw = "./output/elec/" + amplifier + "/noise.raw" # need to be fixed in the .cir
-        # try:
-        #     with open(noise_raw, 'r') as f_in:
-        #         lines = f_in.readlines()
-        #         freq, noise = [],[]
-        #         for line in lines:
-        #             freq.append(float(line.split()[0]))
-        #         noise.append(float(line.split()[1]))
-        # except FileNotFoundError:
-        #     print("Warning: ngspice .noise experiment is not set.")
-        #     print("Please check the .cir file or make sure you have set an TRNOISE source.")
-        # TODO: fix noise seed, add noise from ngspice .noise spectrum
-        pass
-    
     store_waveforms = kwargs.get("workflow") != "cce"
     try:
         batch_loop(
             my_d,
             my_f,
             my_g4,
-            g4_seed,
             total_events,
             instance_number,
             kwargs["_run_batch_path"],
