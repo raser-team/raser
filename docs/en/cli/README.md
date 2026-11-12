@@ -38,6 +38,20 @@ from the router.
 Each route declares at most one project selector. Project inference and
 component lookup follow [Supports paths](../supports/paths.md).
 
+## 📁 Inside an experiment folder
+
+When the current folder holds an experiment's `config.json`, the command
+words and the Device come from it and the command line gives only options:
+
+```bash
+cd work/HPK-Si-PiN/cce
+raser -s 4 --seed 7
+raser -bb -s 4
+```
+
+The first line is `raser cce HPK-Si-PiN -s 4 --seed 7`. The global options
+`-b` and `-t` come first.
+
 ## ⚙️ Batch boundaries
 
 Global `raser -t -b <command>` submits one complete command. An application's

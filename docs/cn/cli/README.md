@@ -32,6 +32,18 @@ CLI help 是命令语法与选项的依据。未注册的顶层形式会明确�
 
 每条路由最多声明一个项目选择器。项目推断与组件查找遵循 [Supports 路径](../supports/paths.md)。
 
+## 📁 在实验文件夹里
+
+实验文件夹里有 `config.json` 时，命令名和 Device 取自其中，命令行只写选项：
+
+```bash
+cd work/HPK-Si-PiN/cce
+raser -s 4 --seed 7
+raser -bb -s 4
+```
+
+第一条等同于 `raser cce HPK-Si-PiN -s 4 --seed 7`。全局选项 `-b`、`-t` 写在最前面。
+
 ## ⚙️ 批处理边界
 
 全局 `raser -t -b <command>` 提交一条完整命令。应用的索引模式将一次已记录运行展开为多个 worker。二者是相互独立的解析与所属边界；相应边界见 [Jobs](../lifecycle/jobs.md) 与 [Runs](../lifecycle/runs.md)。

@@ -140,3 +140,30 @@ def test_global_test_before_a_command_with_jobs_is_its_dry_run(
     folder = work_root / "HPK-Si-PiN" / "cce" / "seed_1"
     assert capsys.readouterr().out == f"{folder}: jobs [0, 1]\n"
     assert not work_root.exists()
+
+
+def test_inside_an_experiment_folder_the_command_and_device_come_from_its_config(
+    work_root: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    submitted: list[tuple[list[str], bool, int]] = []
+    monkeypatch.setattr(
+        jobs,
+        "run_indexed_jobs",
+        lambda prefix, tail, count, *, use_cluster, mem, **kwargs: submitted.append(
+            ([*prefix, *tail[:-2]], use_cluster, mem)
+        ),
+    )
+    first = ["cce", "HPK-Si-PiN", "--scan", "voltage=200,300", "-s", "1", "--seed", "1"]
+    assert main(first) == 0
+    experiment = work_root / "HPK-Si-PiN" / "cce"
+    monkeypatch.chdir(experiment)
+    capsys.readouterr()
+
+    assert main(["-s", "2", "--seed", "2", "--dry-run"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        f"{experiment / 'seed_2'}: jobs [0, 1]",
+        f"{experiment / 'voltage_300' / 'seed_2'}: jobs [0, 1]",
+    ]
+    submitted.clear()
+    assert main(["-bb", "-s", "2", "--seed", "3"]) == 0
+    assert submitted == [(["cce", "HPK-Si-PiN"], True, 2)] * 2

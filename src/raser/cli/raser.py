@@ -3,7 +3,10 @@
 
 import argparse
 import importlib
+import json
+import re
 import sys
+from pathlib import Path
 from contextlib import contextmanager
 
 from raser.lifecycle import scheduler
@@ -62,8 +65,35 @@ def build_parser():
     return parser
 
 
+GLOBAL_OPTIONS = {"-t", "--test", "--batch"}  # and -b, -bb, ...
+
+
+def _experiment_arguments(argv):
+    """Inside an experiment folder `raser <options>` runs the experiment: the
+    command words and the device come from its config.json and go after the
+    global options."""
+    config = Path.cwd() / "config.json"
+    if (
+        not config.is_file()
+        or {"-h", "--help", "--version"}.intersection(argv)
+        or any(argument in APPLICATIONS for argument in argv)
+    ):
+        return argv
+    experiment = json.loads(config.read_text(encoding="utf-8"))
+    words = str(experiment.get("workflow", "")).split()
+    if not words or words[0] not in APPLICATIONS:
+        return argv
+    device = [experiment["device"]] if "device" in experiment else []
+    lead = 0
+    while lead < len(argv) and (
+        argv[lead] in GLOBAL_OPTIONS or re.fullmatch(r"-b+", argv[lead])
+    ):
+        lead += 1
+    return [*argv[:lead], *words, *device, *argv[lead:]]
+
+
 def main(argv=None):
-    argv = list(sys.argv[1:] if argv is None else argv)
+    argv = _experiment_arguments(list(sys.argv[1:] if argv is None else argv))
 
     parser = build_parser()
     kwargs = vars(parser.parse_args(argv))
