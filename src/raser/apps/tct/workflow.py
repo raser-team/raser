@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from raser.apps._planning import ComponentSelection
-from raser.apps._planning import WorkflowPlan
-from raser.apps._planning import component_selection
+from raser.lifecycle.planning import ComponentSelection
+from raser.lifecycle.planning import WorkflowPlan
+from raser.lifecycle.planning import component_selection
 from raser.components import load_component
 from raser.components import load_laser
 from raser.core.device import resolve_device

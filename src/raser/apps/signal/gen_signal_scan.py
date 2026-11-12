@@ -16,7 +16,7 @@ import random
 import ROOT
 ROOT.gROOT.SetBatch(True)
 
-from raser.apps._planning import execution_seed
+from raser.lifecycle.planning import execution_seed
 
 ELECTRON_CHARGE_C = 1.60217733e-19
 

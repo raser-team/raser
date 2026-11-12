@@ -103,7 +103,7 @@ def run_indexed_jobs(
         return plan
 
     if use_cluster:
-        from raser.supports import scheduler
+        from raser.lifecycle import scheduler
 
         accepted: list[int] = []
         failed: dict[int, Exception] = {}

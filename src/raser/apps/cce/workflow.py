@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 
-from raser.apps._planning import WorkflowPlan
-from raser.apps._planning import component_selection
+from raser.lifecycle.planning import WorkflowPlan
+from raser.lifecycle.planning import component_selection
 from raser.apps.signal.workflow import build_plan as build_signal_plan
 from raser.components import load_component
 from raser.supports.paths import PACKAGE_ROOT

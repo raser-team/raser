@@ -2,8 +2,8 @@
 
 from copy import deepcopy
 
-from raser.apps._planning import ComponentSelection
-from raser.apps._planning import WorkflowPlan
+from raser.lifecycle.planning import ComponentSelection
+from raser.lifecycle.planning import WorkflowPlan
 
 from raser.core.current import cal_current as current
 from raser.core.interaction.toy_mip import ToyMIPInteraction

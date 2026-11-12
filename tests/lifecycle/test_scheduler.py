@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from raser.supports import scheduler
+from raser.lifecycle import scheduler
 
 
 COMMAND = ["signal", "run"]

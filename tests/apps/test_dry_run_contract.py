@@ -8,8 +8,8 @@ from typing import Any
 
 import pytest
 
-from raser.apps._planning import activate_plan
-from raser.apps._planning import execution_seed
+from raser.lifecycle.planning import activate_plan
+from raser.lifecycle.planning import execution_seed
 from raser.apps.cce.workflow import build_plan as build_cce_plan
 from raser.apps.signal.runtime import apply_signal_plan
 from raser.apps.signal.workflow import build_plan

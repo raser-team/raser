@@ -5,7 +5,7 @@ Description:  tct/__init__.py
 @version    : 2.0
 """
 
-from raser.supports import jobs
+from raser.lifecycle import jobs
 from raser.supports import runs
 
 from .workflow import load_defaults
@@ -89,7 +89,7 @@ def run_signal(kwargs):
     if kwargs.get("dry_run"):
         plan.show()
         return plan
-    from raser.apps._planning import activate_plan
+    from raser.lifecycle.planning import activate_plan
 
     activate_plan(plan, kwargs)
     _apply_defaults(kwargs)
@@ -112,7 +112,7 @@ def run_position_signal(kwargs):
     if kwargs.get("dry_run"):
         plan.show()
         return plan
-    from raser.apps._planning import activate_plan
+    from raser.lifecycle.planning import activate_plan
 
     activate_plan(plan, kwargs)
     _apply_defaults(kwargs)

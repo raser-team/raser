@@ -22,7 +22,7 @@ from raser.supports.output import output
 from .workflow import runtime_components
 
 from raser.core.interaction.laser import LaserInjection
-from raser.apps._planning import execution_seed
+from raser.lifecycle.planning import execution_seed
 
 
 def job_main(kwargs):

@@ -19,7 +19,7 @@ ROOT.gROOT.SetBatch(True)
 from raser.core.device import build_device as bdv
 from raser.core.field import devsim_field as devfield
 from raser.core.frontend.legacy_readout import Amplifier
-from raser.apps._planning import execution_seed
+from raser.lifecycle.planning import execution_seed
 from .draw_save import energy_deposition, draw_drift_path
 from .runtime import apply_signal_plan
 from .runtime import build_current

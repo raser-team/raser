@@ -6,8 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from raser.apps._planning import WorkflowPlan
-from raser.apps._planning import component_selection
+from raser.lifecycle.planning import WorkflowPlan
+from raser.lifecycle.planning import component_selection
 from raser.components import load_component
 from raser.components import load_source
 from raser.core.device import resolve_device

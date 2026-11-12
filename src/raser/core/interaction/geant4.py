@@ -2,7 +2,7 @@
 
 import g4ppyy as g4b
 
-from raser.supports import lifecycle
+from raser.lifecycle import process
 
 
 def _release():
@@ -15,4 +15,4 @@ def _release():
             setattr(g4b._managers, name, None)
 
 
-lifecycle.at_process_end(_release)
+process.at_process_end(_release)

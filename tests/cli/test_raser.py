@@ -10,7 +10,7 @@ import pytest
 from raser.cli import raser
 from raser.cli.raser import main
 from raser.core.field import command as field_command
-from raser.supports import lifecycle
+from raser.lifecycle import process
 
 
 SOURCE_ROOT = Path(__file__).resolve().parents[2] / "src"
@@ -69,7 +69,7 @@ def test_failing_application_is_cleaned_up_before_its_error_propagates(
     released: list[str] = []
 
     def run(kwargs):
-        lifecycle.at_process_end(lambda: released.append("runtime"))
+        process.at_process_end(lambda: released.append("runtime"))
         raise RuntimeError("field failed")
 
     monkeypatch.setattr(field_command, "main", run)

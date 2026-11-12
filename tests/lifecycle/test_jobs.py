@@ -6,8 +6,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from raser.supports import jobs
-from raser.supports import scheduler
+from raser.lifecycle import jobs
+from raser.lifecycle import scheduler
 
 
 def test_task_command_drops_the_listed_options_together_with_their_values() -> None:

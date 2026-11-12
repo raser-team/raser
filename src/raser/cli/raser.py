@@ -6,8 +6,8 @@ import importlib
 import sys
 from contextlib import contextmanager
 
-from raser.supports import scheduler
-from raser.supports import lifecycle
+from raser.lifecycle import scheduler
+from raser.lifecycle import process
 from raser.supports.paths import infer_project_root
 from raser.supports.paths import project_root_context
 from raser.supports.paths import work_root
@@ -89,7 +89,7 @@ def main(argv=None):
             else:
                 kwargs["_run"](kwargs)
     finally:
-        lifecycle.close()
+        process.close()
     return 0
 
 
