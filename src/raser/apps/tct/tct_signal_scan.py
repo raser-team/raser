@@ -7,6 +7,7 @@
 @version    : 2.0
 """
 import os
+from pathlib import Path
 import array
 import time
 
@@ -18,7 +19,6 @@ from raser.core.field import devsim_field as devfield
 from raser.core.current import cal_current as ccrt
 from raser.core.frontend.legacy_readout import Amplifier
 from raser.supports.output import output
-from .workflow import runtime_components
 
 from raser.core.interaction.laser import LaserInjection
 
@@ -26,7 +26,9 @@ from raser.core.interaction.laser import LaserInjection
 def job_main(kwargs):
     det_name = kwargs['det_name']
     my_d = bdv.Detector(det_name)
-    laser_dic, amplifier = runtime_components(kwargs)
+    files = kwargs["_files"]
+    laser_dic = dict(files["laser"])
+    amplifier = str(files["afe"].get("name") or Path(str(kwargs["amplifier"])).stem)
     
     if kwargs['voltage'] != None:
         voltage = kwargs['voltage']

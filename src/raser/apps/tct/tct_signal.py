@@ -10,6 +10,7 @@ Description:  tct_signal.py
 
 import sys
 import os
+from pathlib import Path
 import array
 import time
 import subprocess
@@ -24,7 +25,6 @@ from raser.core.current import cal_current as ccrt
 from raser.core.frontend.legacy_readout import Amplifier
 from raser.core.interaction.laser import LaserInjection
 from raser.supports.output import output, create_path
-from .workflow import runtime_components
 
 def main(kwargs):
     """
@@ -48,7 +48,9 @@ def main(kwargs):
 
     det_name = kwargs['det_name']
     my_d = bdv.Detector(det_name)
-    laser_dic, amplifier = runtime_components(kwargs)
+    files = kwargs["_files"]
+    laser_dic = dict(files["laser"])
+    amplifier = str(files["afe"].get("name") or Path(str(kwargs["amplifier"])).stem)
     
     if kwargs['voltage'] != None:
         voltage = kwargs['voltage']
