@@ -13,7 +13,6 @@ Description:
 """
 
 import sys
-import random
 import math
 import json
 import os
@@ -40,7 +39,7 @@ flag = 0
 # Geant4 main process
 class TelescopeG4Interaction(GeneralG4Interaction):
     def __init__(
-        self, my_d, g4experiment, g4_seed=random.randint(0, 1e7), g4_vis=False
+        self, my_d, g4experiment, g4_seed, g4_vis=False
     ):
         """
         Description:

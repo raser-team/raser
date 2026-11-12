@@ -2,6 +2,7 @@
 
 import importlib
 
+from raser.lifecycle.workflow import Workflow
 from raser.supports.output import output
 
 TASKS = {
@@ -17,13 +18,16 @@ TASKS = {
     "current": "get_current_p1",
     "Pixel_current": "pixel_current_plot",
 }
+WORKFLOWS = ("spd_dis", "p1_sample", "current")
 
 
 def register(subparsers):
     parser = subparsers.add_parser("lumi", help="CEPC Fast Luminosity Monitor")
     tasks = parser.add_subparsers(dest="lumi_task", required=True)
     for task in TASKS:
-        tasks.add_parser(task)
+        task_parser = tasks.add_parser(task)
+        if task in WORKFLOWS:
+            Workflow(name=f"lumi {task}", job=run, device=False).attach(task_parser)
     parser.set_defaults(_run=run)
 
 
