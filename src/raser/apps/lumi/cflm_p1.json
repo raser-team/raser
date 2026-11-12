@@ -35,6 +35,7 @@
     },
     "world": "G4_AIR",
     "BeamOn": 1,
+    "seed": 3020122,
     "NumofGun": 3,
     "par_type": "e-",
     "par_energy": [

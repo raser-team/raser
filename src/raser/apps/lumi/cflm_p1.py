@@ -115,7 +115,7 @@ class cflmPixelG4Particles:
             runManager = g4b.G4RunManager.GetRunManager() or g4b.G4RunManager()
             rand_engine= g4b.cppyy.gbl.CLHEP.RanecuEngine()
             g4b.cppyy.gbl.CLHEP.HepRandom.setTheEngine(rand_engine)
-            g4b.cppyy.gbl.CLHEP.HepRandom.setTheSeed(3020122)
+            g4b.cppyy.gbl.CLHEP.HepRandom.setTheSeed(g4_dic['seed'])
             UImanager = g4b.G4UImanager.GetUIpointer()
 
             physicsList = g4b.FTFP_BERT()
