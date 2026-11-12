@@ -1,9 +1,10 @@
-"""`raser <command> -s <n>`: an experiment folder, a seed folder in it, n jobs."""
+"""`raser <command> -s <n>`: an experiment, its points, a seed folder in each, n jobs."""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
+import itertools
 import json
 import secrets
 import time
@@ -41,6 +42,7 @@ class Workflow:
         parser.add_argument("-mem", type=int, default=1)
         parser.add_argument("--seed", type=int)
         parser.add_argument("--dry-run", action="store_true")
+        parser.add_argument("--scan", action="append", default=[])
         parser.add_argument("--job-dir", help=argparse.SUPPRESS)
         parser.add_argument("--job-index", type=int, help=argparse.SUPPRESS)
         parser.set_defaults(_run=lambda kwargs: execute(self, kwargs))
@@ -62,24 +64,44 @@ def execute(workflow, kwargs):
         config = _read(root / "config.json")
     given = {key: kwargs[key] for key in workflow.keys if kwargs.get(key) is not None}
     fixed = {**workflow.defaults, **config.get("set", {}), **given}
-    options, files = _point(workflow, kwargs, fixed)
 
-    # The seed folder of this command, and the jobs that are left in it.
+    # The points: one for every combination of the scanned values. A point's
+    # folder is named by the scanned options that differ from the unscanned run.
+    scan = dict(config.get("scan", {}))
+    for item in kwargs["scan"]:
+        key, _, values = item.partition("=")
+        scan[key] = [_parse(value) for value in values.split(",")]
+    scan = {key: values for key, values in scan.items() if key not in given}
+    base, _ = _point(workflow, kwargs, fixed)
+    points = {}  # folder inside the experiment -> (options, files)
+    for combination in itertools.product(*scan.values()):
+        options, files = _point(workflow, kwargs, {**fixed, **dict(zip(scan, combination))})
+        changed = [key for key in scan if options[key] != base[key]]
+        name = "_".join(f"{key}_{_text(options[key])}" for key in changed)
+        points[name] = (options, files)
+
+    # The seed folder of this command in every point, and the jobs left in it.
     if kwargs["seed"] is None:
         label, seed = time.strftime("%Y_%m%d_%H%M%S"), secrets.randbits(31)
     else:
         label, seed = f"seed_{kwargs['seed']}", kwargs["seed"]
-    folder = root / label
-    left = [i for i in range(kwargs["jobs"] or 1) if not _done(folder, i).exists()]
-    print(f"{folder}: jobs {left}")
-    if kwargs["dry_run"] or not left:
+    todo = []
+    for name, (options, files) in points.items():
+        folder = root / name / label
+        left = [i for i in range(kwargs["jobs"] or 1) if not _done(folder, i).exists()]
+        print(f"{folder}: jobs {left}")
+        todo.append((folder, left, {"seed": seed, "options": options, "files": files}))
+    if kwargs["dry_run"]:
         return None
 
-    (folder / "batch").mkdir(parents=True, exist_ok=True)
     if not config:
-        _write(root / "config.json", {**identity, "set": given})
-    _write(folder / "run.json", {"seed": seed, "options": options, "files": files})
-    _start(workflow, kwargs, folder, left)
+        root.mkdir(parents=True, exist_ok=True)
+        _write(root / "config.json", {**identity, "set": given, "scan": scan})
+    for folder, left, record in todo:
+        if left:
+            (folder / "batch").mkdir(parents=True, exist_ok=True)
+            _write(folder / "run.json", record)
+            _start(workflow, kwargs, folder, left)
     return None
 
 
@@ -148,6 +170,18 @@ def _run_job(workflow, kwargs):
 
 def _done(folder, index) -> Path:
     return folder / "batch" / f"job_{index}.done"
+
+
+def _text(value) -> str:
+    number = isinstance(value, (int, float)) and not isinstance(value, bool)
+    return "%g" % value if number else str(value).rstrip("/").split("/")[-1]
+
+
+def _parse(text):
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return text
 
 
 def _read(path) -> dict:

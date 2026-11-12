@@ -42,7 +42,7 @@ def seeded(monkeypatch: pytest.MonkeyPatch) -> list[int]:
 
 def _kwargs(**given: Any) -> dict[str, Any]:
     kwargs = {"jobs": None, "batch": False, "mem": 1, "seed": 42, "dry_run": False}
-    return {**kwargs, "_entry_command_prefix": ("toy",), **given}
+    return {**kwargs, "scan": [], "_entry_command_prefix": ("toy",), **given}
 
 
 TOY = Workflow(name="toy", job=lambda options: None, device=False)
@@ -169,7 +169,7 @@ def test_the_first_run_writes_the_config_and_later_runs_follow_it(
     execute(GAIN, _kwargs(gain=None, width=None, seed=2, jobs=2))
 
     config = json.loads((tmp_path / "toy" / "config.json").read_text())
-    assert config == {"workflow": "toy", "set": {"gain": 9}}
+    assert config == {"workflow": "toy", "set": {"gain": 9}, "scan": {}}
     assert _options(tmp_path / "toy" / "seed_2") == {"gain": 9, "width": 1.0}
 
 
@@ -304,3 +304,63 @@ def test_an_option_that_sits_in_a_file_is_written_into_the_recorded_file_when_gi
     record = _record(tmp_path / "toy" / "seed_42")
     assert record["options"]["voltage"] == 300.0
     assert record["files"]["device"]["bias"] == {"electrode": "top", "voltage": 300.0}
+
+
+def _folders(started: list[Any], experiment: Path) -> list[str]:
+    return [str(Path(tail[-1]).relative_to(experiment)) for _, tail, _, _ in started]
+
+
+def test_a_scan_runs_every_value_and_only_values_that_differ_get_a_folder(
+    started: list[Any], disk: dict[str, Any], tmp_path: Path
+) -> None:
+    scan = ["voltage=200,300"]
+
+    execute(BIASED, _kwargs(det_name="dev", voltage=None, scan=scan, jobs=2))
+
+    experiment = tmp_path / "toy"
+    assert _folders(started, experiment) == ["seed_42", "voltage_300/seed_42"]
+    assert _record(experiment / "seed_42")["options"]["voltage"] == 200
+    assert _record(experiment / "voltage_300" / "seed_42")["options"]["voltage"] == 300
+
+
+def test_two_scanned_options_give_every_combination_named_by_what_differs(
+    started: list[Any], tmp_path: Path
+) -> None:
+    scan = ["gain=5,7", "width=1.0,2.0"]
+
+    execute(GAIN, _kwargs(gain=None, width=None, scan=scan, jobs=2))
+
+    assert _folders(started, tmp_path / "toy") == [
+        "seed_42",
+        "width_2/seed_42",
+        "gain_7/seed_42",
+        "gain_7_width_2/seed_42",
+    ]
+
+
+def test_a_value_given_for_an_option_the_config_scans_runs_only_that_value(
+    started: list[Any], tmp_path: Path
+) -> None:
+    experiment = tmp_path / "toy"
+    experiment.mkdir()
+    config = {"workflow": "toy", "scan": {"gain": [5, 7]}}
+    (experiment / "config.json").write_text(json.dumps(config))
+
+    execute(GAIN, _kwargs(gain=9, width=None, jobs=2))
+
+    assert _folders(started, experiment) == ["seed_42"]
+    assert _options(experiment / "seed_42")["gain"] == 9
+
+
+def test_the_first_run_writes_its_scan_to_the_config_and_later_runs_repeat_it(
+    started: list[Any], tmp_path: Path
+) -> None:
+    execute(GAIN, _kwargs(gain=None, width=None, scan=["gain=5,7"], seed=1, jobs=2))
+    execute(GAIN, _kwargs(gain=None, width=None, seed=2, jobs=2))
+
+    assert _folders(started, tmp_path / "toy") == [
+        "seed_1",
+        "gain_7/seed_1",
+        "seed_2",
+        "gain_7/seed_2",
+    ]
