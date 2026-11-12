@@ -22,7 +22,6 @@ from raser.supports.output import output
 from .workflow import runtime_components
 
 from raser.core.interaction.laser import LaserInjection
-from raser.lifecycle.planning import execution_seed
 
 
 def job_main(kwargs):
@@ -57,7 +56,6 @@ def job_main(kwargs):
     ele_current = Amplifier(
         my_current.sum_cu,
         amplifier,
-        seed=execution_seed(kwargs, offset=int(kwargs["job_index"])),
         CDet=my_d.capacitance,
     )
     if kwargs['job_index'] is not None:

@@ -215,7 +215,6 @@ def _write_cce_event_stats(
         ele_current = Amplifier(
             my_current.sum_cu,
             my_d.amplifier,
-            seed=g4_seed + event - start_n,
             CDet=my_d.capacitance,
             is_cut=True,
         )
@@ -401,7 +400,6 @@ def batch_loop(
                 ele_current = Amplifier(
                     my_current.sum_cu,
                     my_d.amplifier,
-                    seed=g4_seed + event - start_n,
                     CDet=my_d.capacitance,
                     is_cut=True,
                 )

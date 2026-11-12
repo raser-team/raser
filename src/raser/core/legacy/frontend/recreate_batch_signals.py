@@ -51,7 +51,7 @@ def main(amp_name, det_name, file_name, tct=None):
             cross_talked_current[j].Reset()
             cross_talked_current[j].Add(temp_cross_talked_current[j])
 
-        amp = Amplifier(cross_talked_current, amp_name, seed=i, CDet=my_d.capacitance)
+        amp = Amplifier(cross_talked_current, amp_name, CDet=my_d.capacitance)
         for j in range(my_d.read_ele_num):
             amplified_waveform[j].Reset()
             amplified_waveform[j].Add(amp.amplified_currents[j])

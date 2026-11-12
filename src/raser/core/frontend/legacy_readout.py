@@ -22,6 +22,7 @@ import ROOT
 from .ngspice import set_ngspice_input
 from .ngspice import set_tmp_cir
 from .noise import synthesize_noise_from_config
+from raser.core.seeding import stream
 from raser.supports.output import output
 from raser.supports.output import delete_file
 from raser.supports.paths import optional_component_path
@@ -184,7 +185,6 @@ class Amplifier:
         self,
         currents: list[ROOT.TH1F],
         amplifier_name: str,
-        seed = 0,
         CDet = None,
         is_cut = False,
     ):
@@ -215,7 +215,7 @@ class Amplifier:
             self.amplifier_define(CDet)
             self.fill_amplifier_output(currents)
             self.set_scope_output(currents)
-            self.add_noise(seed)
+            self.add_noise()
             if is_cut:
                 self.judge_threshold_CFD()
 
@@ -252,7 +252,7 @@ class Amplifier:
                 )
             self.read_raw_file(raws)
             if noise_config is not None:
-                self._add_spectral_noise(noise_config, seed)
+                self._add_spectral_noise(noise_config)
             # TODO: delete the files properly
             for tmp_cir in tmp_cirs:
                 delete_file(tmp_cir)
@@ -395,21 +395,21 @@ class Amplifier:
             output_Q_max = self.amplified_currents[i].GetMaximum()
             self.amplified_currents[i].Scale(self.scale(output_Q_max, input_Q_tot))
 
-    def add_noise(self, seed):
+    def add_noise(self):
         noise_spectrum = self.amplifier_parameters.get("noise_spectrum")
         if noise_spectrum is not None:
-            self._add_spectral_noise(noise_spectrum, seed)
+            self._add_spectral_noise(noise_spectrum)
             return
         noise_avg = self.amplifier_parameters["noise_avg"]
         noise_rms = self.amplifier_parameters["noise_rms"]
-        ROOT.gRandom.SetSeed(0 if seed is None else int(seed))
+        generator = stream("amplifier")
         for i in range(self.read_ele_num):
             cu = self.amplified_currents[i]
             for j in range(1, cu.GetNbinsX() + 1):
-                noise_height=ROOT.gRandom.Gaus(noise_avg,noise_rms)
+                noise_height=generator.Gaus(noise_avg,noise_rms)
                 cu.SetBinContent(j,cu.GetBinContent(j)+noise_height)
 
-    def _add_spectral_noise(self, noise_spectrum, seed):
+    def _add_spectral_noise(self, noise_spectrum):
         config = dict(noise_spectrum)
         if str(config.get("model", "")).lower() == "spieler":
             if self.detector_capacitance_pF is None:
@@ -427,14 +427,15 @@ class Amplifier:
                 config["pole_frequency_hz"] = 1.0 / (2.0 * math.pi * tau)
 
         rms_values = []
-        for channel, histogram in enumerate(self.amplified_currents):
+        generator = stream("amplifier")
+        for histogram in self.amplified_currents:
             noise, frequencies, density = synthesize_noise_from_config(
                 config,
                 histogram.GetNbinsX(),
                 histogram.GetBinWidth(1),
                 base_dir=self.electronics_dir,
                 sensor_capacitance_pF=self.detector_capacitance_pF,
-                seed=None if seed is None else int(seed) + channel,
+                seed=int(generator.Integer(2**31 - 1)),
                 mean=float(self.amplifier_parameters.get("noise_avg", 0.0)),
             )
             _set_hist_contents(histogram, _hist_contents(histogram) + noise)

@@ -99,7 +99,6 @@ def main(kwargs):
         ele_current = Amplifier(
             my_current.sum_cu,
             my_d.amplifier,
-            seed=g4_seed,
             CDet=my_d.capacitance,
         )
 
