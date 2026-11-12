@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import itertools
 import json
@@ -33,6 +34,7 @@ class Workflow:
     in_file: Mapping = field(default_factory=dict)  # option -> where its value sits in a file
     device: bool = True  # the command names a device
     command: Callable | None = None  # extra words of the job command
+    extract: Callable | None = None  # (point folder, [(seed folder, job)]) -> a summary row
 
     @property
     def words(self):
@@ -119,6 +121,25 @@ def execute(workflow, kwargs):
             (folder / "batch").mkdir(parents=True, exist_ok=True)
             _write(folder / "run.json", record)
             _start(workflow, kwargs, folder, left)
+
+    # The summary: one row per point, from the finished jobs of every seed folder
+    # of the point that ran with the same commit, options and files.
+    rows = []
+    for (name, (options, _)), (_, _, _, record) in zip(points.items(), todo):
+        done = [
+            (folder, int(path.stem.split("_")[1]))
+            for folder in _seed_folders(root / name, record)
+            for path in sorted((folder / "batch").glob("job_*.done"))
+        ]
+        if workflow.extract is not None and done:
+            scanned = {key: options[key] for key in scan}
+            row = workflow.extract(root / name, done)
+            rows.append({"point": name or ".", **scanned, "jobs": len(done), **row})
+    if rows:
+        with (root / "summary.csv").open("w", newline="") as stream:
+            writer = csv.DictWriter(stream, list(dict.fromkeys(k for row in rows for k in row)))
+            writer.writeheader()
+            writer.writerows(rows)
     return None
 
 
@@ -166,6 +187,19 @@ def _start(workflow, kwargs, folder, left) -> None:
         destination=workflow.words[0],
         indices=left,
     )
+
+
+def _seed_folders(point, record) -> list[Path]:
+    """The seed folders of a point that ran with this record apart from the seed.
+    A folder kept aside by a rerun is left out: its name is not seed_<its seed>."""
+    same = {key: value for key, value in record.items() if key != "seed"}
+    folders = []
+    for path in sorted(point.glob("*/run.json")):
+        old, name = _read(path), path.parent.name
+        kept = name.startswith("seed_") and name != f"seed_{old['seed']}"
+        if not kept and {key: value for key, value in old.items() if key != "seed"} == same:
+            folders.append(path.parent)
+    return folders
 
 
 def _run_job(workflow, kwargs):
