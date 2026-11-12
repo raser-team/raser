@@ -16,6 +16,7 @@ import acts
 import numpy as np
 
 from raser.apps.telescope.g4_interaction import TelescopeG4Interaction
+from raser.core.seeding import stream
 from raser.core.device.build_device import Detector
 from raser.core.current.cal_current_diffuse import CalCurrentDiffuse
 from raser.supports.output import create_path
@@ -407,7 +408,7 @@ class PixelHitTest:
     def generate(self,Num):
         #dont let bx,by change by pixelsize
         bx,by = 512* 25.0,512* 25.0
-        random_generator = ROOT.TRandom()
+        random_generator = stream("pixel_hit_test")
         min_value = -256.0* 25.0/(self.layer_z[5]-self.laserz)
         max_value = -min_value
         for i in range(Num):
