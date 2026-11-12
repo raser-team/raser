@@ -1,53 +1,74 @@
-# Indexed and cluster jobs
+# Jobs
 
-_RASER 5.0 execution mechanics in `src/raser/lifecycle/jobs.py` and `scheduler.py`_
+_Local and cluster execution in `src/raser/lifecycle/jobs.py` and `scheduler.py`_
 
 ---
 
-## 📋 Responsibility
+## Input
 
-Jobs expands one logical run into indexed local workers or cluster
-submissions. The owning application supplies a structured command, worker
-count, backend, resource request, and shared seed folder. The
-application also supplies event physics, workflow defaults, and collection
-metrics through its recorded configuration.
+One command in [Run records](runs.md#run) creates a seed folder for every point.
+The computation of a seed folder is then split into several jobs, numbered from
+0; `-s 4` means 4 jobs per seed folder.
 
-## ⚙️ Indexed execution
+| Option | Meaning |
+| --- | --- |
+| `-s <n>` | Number of jobs; 1 when omitted |
+| `-b` | Submit to the cluster; run on this machine when omitted |
+| `-mem <n>` | Memory of a cluster job in units of 8 GB; 1 by default |
 
-Every worker receives the same seed folder and one unique zero-based
-index. Each worker command equals the normalized command followed by
-`--job-index <index>`.
+## Run
 
-| Backend | Execution contract | Completion meaning |
-| --- | --- | --- |
-| Local | Invoke the active Python environment with bounded concurrency | Every worker exited successfully |
-| Cluster | Write and submit one safely quoted `raser` command per index | Every requested job was accepted |
-| Dry run | Return the worker and scheduler plans | Filesystem and scheduler remain unchanged |
+Take `raser cce HPK-Si-PiN -s 4 --seed 42`. RASER first creates the seed folder
+`seed_42/`, then generates and executes one internal command for each of the 4
+jobs:
 
-Local concurrency is bounded by requested workers and available CPUs. Command
-arguments remain a token sequence through local execution and planning; shell
-quoting occurs once when the cluster job file is written.
+```bash
+raser cce HPK-Si-PiN --job-dir work/HPK-Si-PiN/cce/seed_42 --job-index 0
+raser cce HPK-Si-PiN --job-dir work/HPK-Si-PiN/cce/seed_42 --job-index 1
+raser cce HPK-Si-PiN --job-dir work/HPK-Si-PiN/cce/seed_42 --job-index 2
+raser cce HPK-Si-PiN --job-dir work/HPK-Si-PiN/cce/seed_42 --job-index 3
+```
 
-## 📤 Cluster adapter
+With a scan, the seed folder of every point has such a set of jobs.
 
-Real cluster submission requires the activated route to provide `IMGFILE`.
-Generated jobs execute `raser` inside that Apptainer image and keep job files
-and scheduler output under the active project.
+A job reads all its inputs from [`run.json`](runs.md#output) in the seed folder.
 
-Submission and worker execution are separate phases. A successful submitter
-reports accepted indices. Worker completion and application collection produce
-their own later records.
+**Local**: the jobs run in parallel as separate processes; the number running
+at once is at most the number of jobs and the number of CPUs.
 
-## 🔗 Boundary
+**Cluster**: every job gets a job script, which is then submitted. The script
+enters the RASER directory, activates the environment again, and executes the
+job command; scripts and scheduler output are kept in `work/<application>/jobs/`.
 
-The CLI exposes global batch routing while applications may request
-workflow-owned indexed execution. Both use these mechanics with explicit
-commands. Scheduled workers return through the same
-[CLI route](../cli/raser.md) and read the existing [run record](runs.md).
+| Environment variable | Meaning |
+| --- | --- |
+| `RASER_SCHEDULER` | `hep_sub` (default) or `condor` |
+| `RASER_CONDOR_JOB_FLAVOUR` | HTCondor JobFlavour; `workday` by default |
 
-## ⚠️ Failure contract
+## Output
 
-Non-positive counts or memory fail before execution. Local worker errors
-propagate. Missing images, job-file errors, scheduler rejection, and partial
-submission report accepted and pending indices before failing. Every retry
-retains the seed folder and normalized inputs.
+A job writes its products to `batch/` of the seed folder and, when it finishes,
+a `job_<index>.json` with the finish time and commit:
+
+```text
+work/HPK-Si-PiN/cce/seed_42/
+├── run.json
+└── batch/
+    ├── job_0.json
+    └── stats_0.root
+```
+
+Running the same seed folder again runs only the unfinished jobs.
+
+A workflow with a summary writes it to `analysis/` after all local jobs end. After cluster jobs
+end, `--collect` summarises; [Run records](runs.md#output) shows where:
+
+```bash
+raser cce HPK-Si-PiN --collect
+```
+
+## Failure
+
+A non-positive job count or memory value fails before anything runs. Failed
+local jobs are reported by index; a failed cluster submission reports the
+accepted and the failed indices.

@@ -1,35 +1,63 @@
-# 索引任务与集群任务
+# 任务
 
-_位于 `src/raser/lifecycle/jobs.py` 和 `scheduler.py` 的 RASER 5.0 执行机制_
+_位于 `src/raser/lifecycle/jobs.py` 和 `scheduler.py` 的本地与集群执行_
 
 ---
 
-## 📋 职责
+## 输入
 
-Jobs 将一次逻辑运行展开为多个索引化本地 worker 或集群提交。所属应用提供结构化命令、worker 数量、后端、资源请求及共享的种子文件夹。应用还通过其记录的配置提供事件物理、工作流默认值与收集 metrics。
+[运行记录](runs.md#运行)里的一条命令为每个点建一个种子文件夹。一个种子文件夹的计算再分成若干个任务，编号从 0 开始；`-s 4` 就是每个种子文件夹 4 个任务。
 
-## ⚙️ 索引化执行
+| 选项 | 含义 |
+| --- | --- |
+| `-s <n>` | 任务数；不给时为 1 |
+| `-b` | 提交到集群；不给时在本机运行 |
+| `-mem <n>` | 集群任务的内存，单位 8 GB；默认 1 |
 
-每个 worker 接收同一种子文件夹与一个从零开始的唯一索引。每条 worker 命令由规范化命令加 `--job-index <index>` 构成。
+## 运行
 
-| 后端 | 执行契约 | 完成含义 |
-| --- | --- | --- |
-| 本地 | 在当前 Python 环境中以有限并发调用 | 每个 worker 均成功退出 |
-| 集群 | 为每个索引写入并提交一条安全引用的 `raser` 命令 | 每项指定任务均被接受 |
-| Dry run | 返回 worker 与调度器计划 | 文件系统与调度器保持原状态 |
+以 `raser cce HPK-Si-PiN -s 4 --seed 42` 为例。RASER 先建好种子文件夹 `seed_42/`，再为 4 个任务各生成一条内部命令并执行：
 
-本地并发受指定 worker 数和可用 CPU 限制。在本地执行与规划期间，命令参数保持 token 序列；写入集群任务文件时执行一次 shell 引用。
+```bash
+raser cce HPK-Si-PiN --job-dir work/HPK-Si-PiN/cce/seed_42 --job-index 0
+raser cce HPK-Si-PiN --job-dir work/HPK-Si-PiN/cce/seed_42 --job-index 1
+raser cce HPK-Si-PiN --job-dir work/HPK-Si-PiN/cce/seed_42 --job-index 2
+raser cce HPK-Si-PiN --job-dir work/HPK-Si-PiN/cce/seed_42 --job-index 3
+```
 
-## 📤 集群适配器
+有扫描时，每个点的种子文件夹各有这样一组任务。
 
-真实集群提交要求当前环境路径提供 `IMGFILE`。生成的任务在该 Apptainer 镜像中执行 `raser`，并将任务文件与调度器输出保存在当前项目下。
+任务的全部输入读自种子文件夹里的 [`run.json`](runs.md#输出)。
 
-提交与 worker 执行是两个阶段。成功的提交器报告已接受索引。Worker 完成与应用收集各自产生后续记录。
+**本机**：各任务作为独立进程并行运行，同时运行的个数不超过任务数和 CPU 数。
 
-## 🔗 边界
+**集群**：每个任务生成一份任务脚本并提交。脚本先进入 RASER 目录、重新启用环境，再执行任务命令；脚本和调度器的输出放在 `work/<应用>/jobs/`。
 
-CLI 公开全局批处理路由，应用可请求工作流持有的索引化执行。两者均以明确命令使用这些机制。调度的 worker 经同一条 [CLI 路由](../cli/raser.md)返回，并读取现有[运行记录](runs.md)。
+| 环境变量 | 含义 |
+| --- | --- |
+| `RASER_SCHEDULER` | `hep_sub`（默认）或 `condor` |
+| `RASER_CONDOR_JOB_FLAVOUR` | HTCondor 的 JobFlavour；默认 `workday` |
 
-## ⚠️ 失败契约
+## 输出
 
-非正数数量或内存值在执行前失败。本地 worker 错误继续向上传播。缺少镜像、任务文件错误、调度器拒绝及部分提交在失败前报告已接受与待处理索引。每次重试保留种子文件夹与规范化输入。
+任务向种子文件夹的 `batch/` 写入产物，完成后写一份 `job_<编号>.json`，记完成时间和 commit：
+
+```text
+work/HPK-Si-PiN/cce/seed_42/
+├── run.json
+└── batch/
+    ├── job_0.json
+    └── stats_0.root
+```
+
+同一个种子文件夹再次运行时，只跑没有完成的任务。
+
+带汇总的工作流在本机任务全部结束后汇总到 `analysis/`。集群任务结束后，用 `--collect` 汇总，汇总的位置见[运行记录](runs.md#输出)：
+
+```bash
+raser cce HPK-Si-PiN --collect
+```
+
+## 失败
+
+任务数或内存不是正数时，在运行前报错。本机任务失败时报出失败的编号；集群提交失败时报出已接受和失败的编号。
