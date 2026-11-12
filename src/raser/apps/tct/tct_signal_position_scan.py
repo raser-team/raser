@@ -10,7 +10,6 @@ import os
 from array import array
 import time
 import json
-import random
 import numpy as np
 
 import ROOT

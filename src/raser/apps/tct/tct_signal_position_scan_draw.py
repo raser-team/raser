@@ -11,7 +11,6 @@ from array import array
 import time
 import subprocess
 import json
-import random
 import numpy as np
 
 import ROOT

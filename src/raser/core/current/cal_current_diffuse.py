@@ -8,7 +8,7 @@ Description:
 @version    : 2.0
 '''
 
-import random
+from raser.core.seeding import stream
 import math
 import os
 
@@ -76,8 +76,9 @@ class CarrierCluster:
         mu = mobility.cal_mobility(my_d.temperature, Neff, self.charge, intensity)
         diffusion = (2.0*kboltz*mu*my_d.temperature*delta_t)**0.5
         #diffusion = 0.0
-        dif_x=random.gauss(0.0,diffusion)*1e4
-        dif_y=random.gauss(0.0,diffusion)*1e4
+        generator = stream("diffusion")
+        dif_x=generator.Gaus(0.0,diffusion)*1e4
+        dif_y=generator.Gaus(0.0,diffusion)*1e4
         dif_z=0
 
         if((self.x+dif_x)>=my_d.l_x): 

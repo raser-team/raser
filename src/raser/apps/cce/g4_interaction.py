@@ -10,7 +10,6 @@ Description:  g4_sic_energy_deposition.py
 import sys
 import os
 import array
-import random
 import math
 
 from raser.core.interaction.geant4 import g4b

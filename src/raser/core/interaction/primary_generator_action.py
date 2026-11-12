@@ -5,7 +5,7 @@ Description:  primary_generator_action.py
 @version    : 2.0
 '''
 
-import random
+from raser.core.seeding import stream
 
 from raser.core.interaction.geant4 import g4b
 
@@ -34,10 +34,11 @@ class GeneralPrimaryGeneratorAction(g4b.G4VUserPrimaryGeneratorAction):
         self.randy = par_randy
 
     def GeneratePrimaries(self, event):
-        rdo_x = random.uniform(-self.randx,self.randx)
-        rdo_y = random.uniform(-self.randy,self.randy)
-        rdi_x = random.uniform(-self.randx,self.randx)
-        rdi_y = random.uniform(-self.randy,self.randy)
+        generator = stream("source")
+        rdo_x = generator.Uniform(-self.randx,self.randx)
+        rdo_y = generator.Uniform(-self.randy,self.randy)
+        rdi_x = generator.Uniform(-self.randx,self.randx)
+        rdi_y = generator.Uniform(-self.randy,self.randy)
         direction = g4b.G4ThreeVector(self.par_direction[0]+rdo_x,self.par_direction[1]+rdo_y,self.par_direction[2],)
         self.particleGun.SetParticleMomentumDirection(direction)
         self.particleGun.SetParticlePosition(g4b.G4ThreeVector(self.position[0]*g4b.um,

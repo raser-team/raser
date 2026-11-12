@@ -23,7 +23,6 @@ from raser.core.field import devsim_field as devfield
 from raser.core.current import cal_current as ccrt
 from raser.core.frontend.legacy_readout import Amplifier
 from raser.core.interaction.laser import LaserInjection
-from raser.lifecycle.planning import execution_seed
 from raser.supports.output import output, create_path
 from .workflow import runtime_components
 
@@ -78,7 +77,6 @@ def main(kwargs):
     ele_current = Amplifier(
         my_current.sum_cu,
         amplifier,
-        seed=execution_seed(kwargs),
         CDet=my_d.capacitance,
     )
     if kwargs['jobs'] != None: #assume parameter alter
