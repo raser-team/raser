@@ -57,13 +57,15 @@ def plan_indexed_jobs(
     use_cluster: bool,
     mem: int,
     destination: str,
+    indices: Sequence[int] | None = None,
 ) -> IndexedJobPlan:
     if count <= 0:
         raise ValueError("Indexed job count must be positive")
     if mem <= 0:
         raise ValueError("Indexed job memory level must be positive")
     commands = tuple(
-        tuple([*command_prefix, *tail, "--job-index", str(index)]) for index in range(count)
+        tuple([*command_prefix, *tail, "--job-index", str(index)])
+        for index in (range(count) if indices is None else indices)
     )
     return IndexedJobPlan(
         commands=commands,
@@ -90,6 +92,7 @@ def run_indexed_jobs(
     mem,
     destination,
     dry_run=False,
+    indices=None,
 ):
     plan = plan_indexed_jobs(
         command_prefix,
@@ -98,16 +101,18 @@ def run_indexed_jobs(
         use_cluster=use_cluster,
         mem=mem,
         destination=destination,
+        indices=indices,
     )
     if dry_run:
         return plan
+    numbers = range(count) if indices is None else indices
 
     if use_cluster:
         from raser.lifecycle import scheduler
 
         accepted: list[int] = []
         failed: dict[int, Exception] = {}
-        for index, command in enumerate(plan.commands):
+        for index, command in zip(numbers, plan.commands):
             try:
                 scheduler.main(destination, command, mem, is_test=False)
             except Exception as exc:
@@ -124,12 +129,12 @@ def run_indexed_jobs(
             ) from next(iter(failed.values()))
         return plan
 
-    max_processes = min(count, os.cpu_count() or 4)
+    max_processes = min(len(plan.commands), os.cpu_count() or 4)
     with ProcessPoolExecutor(max_workers=max_processes) as executor:
         futures = [executor.submit(_run_local_job, command) for command in plan.commands]
     errors = {
         index: error
-        for index, future in enumerate(futures)
+        for index, future in zip(numbers, futures)
         if (error := future.exception()) is not None
     }
     if errors:

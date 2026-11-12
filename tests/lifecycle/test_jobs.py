@@ -116,3 +116,44 @@ def test_failed_local_task_does_not_stop_the_remaining_tasks(
 
     worker = (sys.executable, "-m", "raser.cli.raser", "signal", "HPK-Si-PiN")
     assert sorted(started) == [(*worker, "--job-index", str(i)) for i in range(3)]
+
+
+def test_chosen_indices_run_alone_and_failures_name_the_task_index(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    submitted: list[str] = []
+    started: list[str] = []
+
+    def submit(destination, command, level, is_test=False):
+        submitted.append(command[-1])
+        if command[-1] == "3":
+            raise RuntimeError("scheduler rejected job")
+
+    def run(command, **kwargs):
+        started.append(command[-1])
+        if command[-1] == "3":
+            raise subprocess.CalledProcessError(2, command)
+
+    monkeypatch.setattr(scheduler, "main", submit)
+    monkeypatch.setattr(jobs, "ProcessPoolExecutor", ThreadPoolExecutor)
+    monkeypatch.setattr(jobs.subprocess, "run", run)
+
+    def rerun(use_cluster: bool) -> None:
+        jobs.run_indexed_jobs(
+            ["signal"],
+            ["HPK-Si-PiN"],
+            2,
+            use_cluster=use_cluster,
+            mem=1,
+            destination="signal",
+            indices=[2, 3],
+        )
+
+    with pytest.raises(
+        RuntimeError, match=r"accepted indices \[2\]; failed indices \[3\]"
+    ):
+        rerun(use_cluster=True)
+    with pytest.raises(RuntimeError, match=r"failed for indices \[3\]$"):
+        rerun(use_cluster=False)
+    assert submitted == ["2", "3"]
+    assert sorted(started) == ["2", "3"]
