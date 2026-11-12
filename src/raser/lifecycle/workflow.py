@@ -45,6 +45,7 @@ class Workflow:
         parser.add_argument("-b", "--batch", action="store_true")
         parser.add_argument("-mem", type=int, default=1)
         parser.add_argument("--seed", type=int)
+        parser.add_argument("--same-seeds", action="store_true")
         parser.add_argument("--dry-run", action="store_true")
         parser.add_argument("--scan", action="append", default=[])
         parser.add_argument("--job-dir", help=argparse.SUPPRESS)
@@ -92,10 +93,12 @@ def execute(workflow, kwargs):
     # A seed folder that was run with another record is run again from the start,
     # and so is any when the code has uncommitted changes; the old one is kept.
     commit = _commit()
+    same_seeds = kwargs["same_seeds"] or config.get("same_seeds", False)
     todo = []
     for name, (options, files) in points.items():
         folder = root / name / label
-        record = {"seed": seed, "commit": commit, "options": options, "files": files}
+        record = {"seed": seed, "point": name, "same_seeds": same_seeds}
+        record.update(commit=commit, options=options, files=files)
         record = json.loads(json.dumps(record))
         old = _read(folder / "run.json")
         stale = bool(old) and (old != record or commit.endswith("+dirty"))
@@ -113,7 +116,8 @@ def execute(workflow, kwargs):
 
     if not config:
         root.mkdir(parents=True, exist_ok=True)
-        _write(root / "config.json", {**identity, "set": given, "scan": scan})
+        new = {**identity, "set": given, "scan": scan, "same_seeds": same_seeds}
+        _write(root / "config.json", new)
     for folder, left, stale, record in todo:
         if stale:
             folder.rename(folder.with_name(f"{label}_{time.strftime('%Y_%m%d_%H%M%S')}"))
@@ -203,12 +207,19 @@ def _seed_folders(point, record) -> list[Path]:
 
 
 def _run_job(workflow, kwargs):
-    """One job: its options, files and seed come from the run.json of its seed folder."""
+    """One job: its options, files and seed come from the run.json of its seed folder.
+
+    The job's seed is a hash of the run's seed, the point and the job index, so
+    points draw different random numbers; with same_seeds the point is left out
+    and the jobs with one index draw the same numbers in every point."""
     from raser.core.seeding import seed_generators  # loads ROOT
 
     folder, index = Path(kwargs["job_dir"]), kwargs.get("job_index") or 0
     record = _read(folder / "run.json")
-    digest = hashlib.sha256(f"{record['seed']}/{index}".encode()).digest()
+    source = f"{record['seed']}/{index}"
+    if not record["same_seeds"]:
+        source = f"{record['seed']}/{record['point']}/{index}"
+    digest = hashlib.sha256(source.encode()).digest()
     options = {**kwargs, **record["options"]}
     options["seed"] = 1 + int.from_bytes(digest[:8], "big") % (2**31 - 1)
     options["_run_path"] = str(folder)

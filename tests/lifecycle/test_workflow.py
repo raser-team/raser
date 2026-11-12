@@ -43,8 +43,10 @@ def seeded(monkeypatch: pytest.MonkeyPatch) -> list[int]:
 
 
 def _kwargs(**given: Any) -> dict[str, Any]:
+    kwargs: dict[str, Any]
     kwargs = {"jobs": None, "batch": False, "mem": 1, "seed": 42, "dry_run": False}
-    return {**kwargs, "scan": [], "_entry_command_prefix": ("toy",), **given}
+    kwargs.update(scan=[], same_seeds=False, _entry_command_prefix=("toy",))
+    return {**kwargs, **given}
 
 
 TOY = Workflow(name="toy", job=lambda options: None, device=False)
@@ -171,7 +173,12 @@ def test_the_first_run_writes_the_config_and_later_runs_follow_it(
     execute(GAIN, _kwargs(gain=None, width=None, seed=2, jobs=2))
 
     config = json.loads((tmp_path / "toy" / "config.json").read_text())
-    assert config == {"workflow": "toy", "set": {"gain": 9}, "scan": {}}
+    assert config == {
+        "workflow": "toy",
+        "set": {"gain": 9},
+        "scan": {},
+        "same_seeds": False,
+    }
     assert _options(tmp_path / "toy" / "seed_2") == {"gain": 9, "width": 1.0}
 
 
@@ -478,3 +485,43 @@ def test_the_summary_leaves_out_a_folder_kept_aside_with_the_same_record(
     execute(workflow, _kwargs(gain=None, width=None, seed=1, jobs=2))
 
     assert _summary(tmp_path / "toy") == [{"point": ".", "jobs": "2", "seeds": "1"}]
+
+
+def _point_seeds(seeded: list[int], experiment: Path, **given: Any) -> list[list[int]]:
+    """Job seeds of the two points of a gain scan, for job indices 0 and 1."""
+    execute(GAIN, _kwargs(gain=None, width=None, scan=["gain=5,7"], jobs=2, **given))
+    seeds = []
+    for point in ("", "gain_7"):
+        seeded.clear()
+        for index in (0, 1):
+            folder = str(experiment / point / "seed_42")
+            execute(
+                GAIN, _kwargs(gain=None, width=None, job_dir=folder, job_index=index)
+            )
+        seeds.append(list(seeded))
+    return seeds
+
+
+def test_points_draw_different_job_seeds_unless_same_seeds_is_given(
+    started: list[Any], seeded: list[int], tmp_path: Path
+) -> None:
+    root, seven = _point_seeds(seeded, tmp_path / "toy")
+    assert not set(root) & set(seven)
+
+    root, seven = _point_seeds(seeded, tmp_path / "toy", same_seeds=True)
+    assert root == seven
+    assert root[0] != root[1]
+
+
+def test_same_seeds_in_the_config_holds_without_the_option(
+    started: list[Any], seeded: list[int], tmp_path: Path
+) -> None:
+    experiment = tmp_path / "toy"
+    experiment.mkdir()
+    (experiment / "config.json").write_text(
+        json.dumps({"workflow": "toy", "same_seeds": True})
+    )
+
+    root, seven = _point_seeds(seeded, experiment)
+
+    assert root == seven
