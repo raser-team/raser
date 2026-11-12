@@ -1,20 +1,20 @@
-# Command-line interface
+# Command line
 
-_RASER 5.0 installed entry point under `src/raser/cli/`_
-
-The supported entry point is `raser`. User instructions use this installed
-command; source-tree module invocations remain implementation details.
+_Under `src/raser/cli/`_
 
 ---
 
-## ⌨️ Command surface
+## Commands
 
 ```bash
-raser --help
-raser <command> --help
+raser cce HPK-Si-PiN -s 4
+raser tct signal HPK-Si-PiN SPA_top_Si_IR
 ```
 
-| Public command | Owning package |
+The command comes first, two words for commands such as `tct signal`; the
+device and the options follow. The application each command belongs to:
+
+| Command | Application |
 | --- | --- |
 | `bmos` | [`apps/bmos`](../apps/bmos.md) |
 | `cce` | [`apps/cce`](../apps/cce.md) |
@@ -25,36 +25,44 @@ raser <command> --help
 | `telescope` | [`apps/telescope`](../apps/telescope.md) |
 | `timeres` | [`apps/timeres`](../apps/timeres.md) |
 
-CLI help is the authoritative syntax and option reference. Unregistered
-top-level forms fail explicitly.
+`raser --help` lists all commands; `raser <command> --help` lists the options
+of one.
 
-## 🔀 Routing
+The device decides where a command runs: `HPK-Si-PiN` runs under
+`work/HPK-Si-PiN/`, and component files are looked up first in
+`work/HPK-Si-PiN/components/` (see [paths](../supports/paths.md)).
 
-[`raser.py`](raser.md) owns parsing, route descriptors, lazy import, temporary
-project/component context, process exit status, global batch dispatch, and
-runtime cleanup. Applications receive the parsed top-level argument values
-from the router.
-
-Each route declares at most one project selector. Project inference and
-component lookup follow [Supports paths](../supports/paths.md).
-
-## 📁 Inside an experiment folder
-
-When the current folder holds an experiment's `config.json`, the command
-words and the Device come from it and the command line gives only options:
+## Inside an experiment folder
 
 ```bash
 cd work/HPK-Si-PiN/cce
-raser -s 4 --seed 7
-raser -bb -s 4
+raser -s 4 --seed 7        # same as raser cce HPK-Si-PiN -s 4 --seed 7
 ```
 
-The first line is `raser cce HPK-Si-PiN -s 4 --seed 7`. The global options
-`-b` and `-t` come first.
+When the current folder holds an experiment's `config.json`, the command and
+the device come from it; only options are written.
 
-## ⚙️ Batch boundaries
+## To the cluster
 
-Global `raser -t -b <command>` submits one complete command. An application's
-indexed mode expands one recorded run into workers. These are separate parser
-and ownership boundaries; see [Jobs](../lifecycle/jobs.md) and
-[Runs](../lifecycle/runs.md).
+`-b` hands a command to the cluster. As many `b`s as you write, that many
+times 8 GB of memory.
+
+Commands that run in jobs, such as cce, signal and tct, submit one cluster job
+per job, with `-b` before or after the command alike:
+
+```bash
+raser -bb cce HPK-Si-PiN -s 10
+raser cce HPK-Si-PiN -s 10 -b -mem 2       # the same
+```
+
+`field` is submitted as one job for the whole command:
+
+```bash
+raser -bb field HPK-Si-PiN
+```
+
+`-t` shows without submitting: for `field` it prints the job script and the
+submit command, for commands that run in jobs it is `--dry-run`.
+
+How jobs are split and where results go: [jobs](../lifecycle/jobs.md) and
+[runs](../lifecycle/runs.md).
