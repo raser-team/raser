@@ -1,12 +1,21 @@
 """BMOS application package."""
 
+from raser.lifecycle.workflow import Workflow
+
 
 def register(subparsers):
     parser = subparsers.add_parser("bmos", help="Beam Monitor Online System")
-    parser.add_argument("sensor", help="sensor or BMOS detector config")
     actions = parser.add_subparsers(dest="bmos_action", required=True)
-    actions.add_parser("GetSignal", help="generate BMOS signal")
-    actions.add_parser("histogram_signal", help="generate BMOS histogram signal")
+    get_signal = actions.add_parser("GetSignal", help="generate BMOS signal")
+    get_signal.add_argument("det_name", help="sensor or BMOS detector config")
+    get_signal.set_defaults(_project="det_name")
+    Workflow(name="bmos GetSignal", job=run).attach(get_signal)
+    histogram_signal = actions.add_parser(
+        "histogram_signal", help="generate BMOS histogram signal"
+    )
+    Workflow(name="bmos histogram_signal", job=run, device=False).attach(
+        histogram_signal
+    )
     actions.add_parser("one_histogram", help="draw one BMOS histogram")
     actions.add_parser("all_histogram", help="draw all BMOS histograms")
     parser.set_defaults(_run=run)
@@ -17,7 +26,7 @@ def run(kwargs):
     if action == "GetSignal":
         from .get_signal import get_signal
 
-        return get_signal(kwargs["sensor"])
+        return get_signal(kwargs["det_name"])
     if action == "histogram_signal":
         from .histogram_signal import get_signal
 

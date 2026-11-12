@@ -45,7 +45,7 @@ from acts.examples.reconstruction import (
 
 # get run result
 @iod
-def main():
+def main(seed):
     u = acts.UnitConstants
 
     detector, trackingGeometry, decorators = acts.examples.TelescopeDetector.create(
@@ -61,7 +61,7 @@ def main():
     create_path( outputDir)
     inputDir = component_path("acts")
     
-    rnd = acts.examples.RandomNumbers(seed=42)
+    rnd = acts.examples.RandomNumbers(seed=seed)
 
     s = acts.examples.Sequencer(events=1, numThreads=1, logLevel=acts.logging.INFO)
     
