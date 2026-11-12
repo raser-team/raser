@@ -8,15 +8,15 @@ _RASER 5.0 execution mechanics in `src/raser/lifecycle/jobs.py` and `scheduler.p
 
 Jobs expands one logical run into indexed local workers or cluster
 submissions. The owning application supplies a structured command, worker
-count, backend, resource request, destination, and shared run ID. The
+count, backend, resource request, and shared seed folder. The
 application also supplies event physics, workflow defaults, and collection
 metrics through its recorded configuration.
 
 ## ⚙️ Indexed execution
 
-Every worker receives the same recorded run ID and one unique zero-based
+Every worker receives the same seed folder and one unique zero-based
 index. Each worker command equals the normalized command followed by
-`--job <index>`.
+`--job-index <index>`.
 
 | Backend | Execution contract | Completion meaning |
 | --- | --- | --- |
@@ -50,4 +50,4 @@ commands. Scheduled workers return through the same
 Non-positive counts or memory fail before execution. Local worker errors
 propagate. Missing images, job-file errors, scheduler rejection, and partial
 submission report accepted and pending indices before failing. Every retry
-retains the run identity and normalized inputs.
+retains the seed folder and normalized inputs.

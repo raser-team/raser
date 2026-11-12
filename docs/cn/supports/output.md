@@ -12,7 +12,7 @@ Output 将声明的所属者与相对标签映射到当前项目下，创建明�
 
 | 所属者 | 命名空间 |
 | --- | --- |
-| 应用工作流 | `<project>/<workflow>/<run_id>/...` |
+| 应用工作流 | `<project>/<workflow>/<种子文件夹>/...` |
 | 直接 Core 命令 | `<project>/<core-subsystem>/...` |
 | 外部调用者 | `<project>/<declared-owner>/...` |
 

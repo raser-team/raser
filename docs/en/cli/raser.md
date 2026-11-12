@@ -121,7 +121,7 @@ The two batch surfaces have different owners:
 
 Global batch preparation removes the CLI control tokens and preserves every
 remaining command token until the cluster adapter serializes the job file.
-Indexed workers receive the same route prefix and normalized run ID, plus one
+Indexed workers receive the same route prefix and seed folder, plus one
 unique job index.
 
 ## ⚠️ Failure semantics
