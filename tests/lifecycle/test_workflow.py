@@ -59,7 +59,7 @@ def test_s_starts_that_many_jobs_of_the_same_command_in_the_seed_folder(
     folder = tmp_path / "toy" / "run" / "seed_42"
     tail = ["run", "dev", "--fast", "--job-dir", str(folder)]
     assert started == [(("toy",), tail, [0, 1, 2], False)]
-    assert json.loads((folder / "run.json").read_text()) == {"seed": 42}
+    assert json.loads((folder / "run.json").read_text())["seed"] == 42
 
 
 def test_without_s_the_single_job_runs_in_this_process_without_a_job_index(
@@ -99,7 +99,7 @@ def test_without_a_seed_the_folder_is_a_timestamp_and_the_drawn_seed_is_recorded
 ) -> None:
     execute(TOY, _kwargs(seed=None, jobs=2))
 
-    (folder,) = (tmp_path / "toy").iterdir()
+    (folder,) = (path for path in (tmp_path / "toy").iterdir() if path.is_dir())
     assert not folder.name.startswith("seed_")
     assert isinstance(json.loads((folder / "run.json").read_text())["seed"], int)
 
@@ -131,3 +131,79 @@ def test_dry_run_prints_the_seed_folder_and_its_jobs_and_writes_nothing(
     assert capsys.readouterr().out == f"{tmp_path / 'toy' / 'seed_42'}: jobs [0, 1]\n"
     assert started == []
     assert not (tmp_path / "toy").exists()
+
+
+GAIN = Workflow(
+    name="toy",
+    job=lambda options: None,
+    keys=("gain", "width"),
+    defaults={"gain": 5, "width": 1.0},
+    device=False,
+)
+
+
+def _options(folder: Path) -> dict[str, Any]:
+    return json.loads((folder / "run.json").read_text())["options"]
+
+
+def test_options_are_the_defaults_then_the_config_then_the_command_line(
+    started: list[Any], tmp_path: Path
+) -> None:
+    experiment = tmp_path / "toy"
+    experiment.mkdir()
+    config = {"workflow": "toy", "set": {"gain": 7, "width": 2.0}}
+    (experiment / "config.json").write_text(json.dumps(config))
+
+    execute(GAIN, _kwargs(gain=None, width=None, seed=1))
+    execute(GAIN, _kwargs(gain=9, width=None, seed=2, jobs=2))
+
+    assert _options(experiment / "seed_1") == {"gain": 7, "width": 2.0}
+    assert _options(experiment / "seed_2") == {"gain": 9, "width": 2.0}
+
+
+def test_the_first_run_writes_the_config_and_later_runs_follow_it(
+    started: list[Any], tmp_path: Path
+) -> None:
+    execute(GAIN, _kwargs(gain=9, width=None, seed=1, jobs=2))
+    execute(GAIN, _kwargs(gain=None, width=None, seed=2, jobs=2))
+
+    config = json.loads((tmp_path / "toy" / "config.json").read_text())
+    assert config == {"workflow": "toy", "set": {"gain": 9}}
+    assert _options(tmp_path / "toy" / "seed_2") == {"gain": 9, "width": 1.0}
+
+
+def test_a_job_receives_the_options_recorded_in_its_seed_folder(
+    started: list[Any], seeded: list[int], tmp_path: Path
+) -> None:
+    received: list[dict[str, Any]] = []
+    workflow = Workflow(
+        name="toy",
+        job=received.append,
+        keys=("gain",),
+        defaults={"gain": 5},
+        device=False,
+    )
+    execute(workflow, _kwargs(gain=9, jobs=2))
+
+    folder = str(tmp_path / "toy" / "seed_42")
+    execute(workflow, _kwargs(gain=None, job_dir=folder, job_index=1))
+
+    assert received[0]["gain"] == 9
+
+
+def test_a_config_here_for_this_command_makes_this_folder_the_experiment(
+    started: list[Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mine, other = tmp_path / "mine", tmp_path / "other"
+    for folder, name in ((mine, "toy"), (other, "something else")):
+        folder.mkdir()
+        (folder / "config.json").write_text(json.dumps({"workflow": name}))
+
+    monkeypatch.chdir(mine)
+    execute(GAIN, _kwargs(gain=None, width=None, jobs=2))
+    monkeypatch.chdir(other)
+    execute(GAIN, _kwargs(gain=None, width=None, jobs=2))
+
+    assert (mine / "seed_42" / "run.json").is_file()
+    assert not (other / "seed_42").exists()
+    assert (other / "toy" / "seed_42" / "run.json").is_file()
