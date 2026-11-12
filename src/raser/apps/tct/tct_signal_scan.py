@@ -9,7 +9,6 @@
 import os
 import array
 import time
-import random
 
 import ROOT
 ROOT.gROOT.SetBatch(True)

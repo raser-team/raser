@@ -5,7 +5,6 @@ Description:  interaction.py
 @version    : 1.0
 """
 
-import random
 import json
 import os
 import copy
@@ -74,7 +73,7 @@ class GeneralG4Interaction:
         self,
         my_d,
         g4experiment,
-        g4_seed=random.randint(0, 1e7),
+        g4_seed,
         g4_vis=False,
         MyDetectorConstruction=GeneralDetectorConstruction,
         MyActionInitialization=GeneralActionInitialization,

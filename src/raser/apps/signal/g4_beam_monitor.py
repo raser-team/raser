@@ -13,7 +13,6 @@ Description:
 """
 
 import sys
-import random
 import math
 import json
 import os
@@ -33,7 +32,7 @@ world_size = 25000
 
 # Geant4 main process
 class BeamMonitorG4Interaction(GeneralG4Interaction):
-    def __init__(self, my_d, g4experiment, g4_seed = random.randint(0, 1e7), g4_vis = False):
+    def __init__(self, my_d, g4experiment, g4_seed, g4_vis = False):
         """
         Description:
             Geant4 main process

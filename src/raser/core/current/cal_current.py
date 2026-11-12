@@ -8,7 +8,6 @@ Description:
 @version    : 3.0
 '''
 
-import random
 import math
 import os
 from array import array
