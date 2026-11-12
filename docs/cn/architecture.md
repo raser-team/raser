@@ -10,13 +10,16 @@ RASER 将可复用的科学计算与组装传感器研究或测试场景的应�
 flowchart TB
     user([用户]) --> cli[CLI]
     cli --> apps[应用]
+    apps --> lifecycle[Lifecycle]
     apps --> core[Core]
+    lifecycle --> core
+    lifecycle --> supports
     apps --> components[组件]
     apps --> supports[Supports]
     core --> supports
 ```
 
-CLI 路由命令。应用组装完整计算。应用项目使用组件选择 Device、PCB 或 ASIC 项目，通过 G4Setup 放置其几何，并连接场景所用的 Source、Laser、AFE 或 ADC。Core 包含可复用的科学计算。Supports 提供项目路径、运行记录与共享执行工具。
+CLI 路由命令。应用组装完整计算。应用项目使用组件选择 Device、PCB 或 ASIC 项目，通过 G4Setup 放置其几何，并连接场景所用的 Source、Laser、AFE 或 ADC。Core 包含可复用的科学计算。Lifecycle 管理实验、运行记录与任务执行。Supports 提供项目路径与共享工具。
 
 安装后的软件包采用以下布局：
 
@@ -24,6 +27,7 @@ CLI 路由命令。应用组装完整计算。应用项目使用组件选择 Dev
 src/raser/
 ├── cli/
 ├── apps/
+├── lifecycle/
 ├── components/
 ├── core/
 └── supports/

@@ -12,7 +12,10 @@ project that defines its meaning.
 flowchart TB
     user([User]) --> cli[CLI]
     cli --> apps[Applications]
+    apps --> lifecycle[Lifecycle]
     apps --> core[Core]
+    lifecycle --> core
+    lifecycle --> supports
     apps --> components[Components]
     apps --> supports[Supports]
     core --> supports
@@ -22,7 +25,8 @@ The CLI routes commands. Applications assemble complete calculations. An
 application project uses Components to select a Device, PCB, or ASIC project,
 place their geometries through a G4Setup, and connect the Source, Laser, AFE,
 or ADC used by the scenario. Core contains reusable scientific calculations.
-Supports provides project paths, run records, and shared execution utilities.
+Lifecycle manages experiments, run records, and job execution. Supports
+provides project paths and shared utilities.
 
 The installed package follows this layout:
 
@@ -30,6 +34,7 @@ The installed package follows this layout:
 src/raser/
 ├── cli/
 ├── apps/
+├── lifecycle/
 ├── components/
 ├── core/
 └── supports/

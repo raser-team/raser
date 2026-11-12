@@ -51,12 +51,17 @@ PCB、ASIC 和 ADC 设计维护在 [`core/draft/`](core/draft/) 下。
 | [Source 组件](components/source/README.md) | 束流源与衰变源 |
 | [Laser 组件](components/laser.md) | 光注入 |
 
+## 生命周期
+
+| 文档 | 主题 |
+| --- | --- |
+| [Runs](lifecycle/runs.md) | 实验、扫描与运行记录 |
+| [Jobs](lifecycle/jobs.md) | 本地与集群执行 |
+
 ## 支撑模块
 
 | 文档 | 主题 |
 | --- | --- |
 | [Supports](supports/README.md) | 共享运行时服务 |
 | [Paths](supports/paths.md) | 项目上下文与定义查找 |
-| [Runs](lifecycle/runs.md) | 已解析的运行配置与记录 |
-| [Jobs](lifecycle/jobs.md) | 本地与集群执行 |
 | [Output](supports/output.md) | 产物路径与写入器 |
