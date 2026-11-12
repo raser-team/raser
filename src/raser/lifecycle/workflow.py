@@ -7,6 +7,7 @@ import hashlib
 import itertools
 import json
 import secrets
+import subprocess
 import time
 from dataclasses import dataclass
 from dataclasses import field
@@ -16,6 +17,7 @@ from typing import Callable, Mapping
 from raser.components import load_component
 from raser.core.device import load_definition
 from raser.lifecycle import jobs
+from raser.supports.paths import REPO_ROOT
 from raser.supports.paths import project_path
 
 
@@ -85,19 +87,34 @@ def execute(workflow, kwargs):
         label, seed = time.strftime("%Y_%m%d_%H%M%S"), secrets.randbits(31)
     else:
         label, seed = f"seed_{kwargs['seed']}", kwargs["seed"]
+    # A seed folder that was run with another record is run again from the start,
+    # and so is any when the code has uncommitted changes; the old one is kept.
+    commit = _commit()
     todo = []
     for name, (options, files) in points.items():
         folder = root / name / label
-        left = [i for i in range(kwargs["jobs"] or 1) if not _done(folder, i).exists()]
-        print(f"{folder}: jobs {left}")
-        todo.append((folder, left, {"seed": seed, "options": options, "files": files}))
+        record = {"seed": seed, "commit": commit, "options": options, "files": files}
+        record = json.loads(json.dumps(record))
+        old = _read(folder / "run.json")
+        stale = bool(old) and (old != record or commit.endswith("+dirty"))
+        left = [
+            i
+            for i in range(kwargs["jobs"] or 1)
+            if stale or not _done(folder, i).exists()
+        ]
+        print(f"{folder}: jobs {left}" + (", the old run is kept aside" if stale else ""))
+        todo.append((folder, left, stale, record))
     if kwargs["dry_run"]:
         return None
+    if commit.endswith("+dirty"):
+        print("warning: the code has uncommitted changes; run.json records this")
 
     if not config:
         root.mkdir(parents=True, exist_ok=True)
         _write(root / "config.json", {**identity, "set": given, "scan": scan})
-    for folder, left, record in todo:
+    for folder, left, stale, record in todo:
+        if stale:
+            folder.rename(folder.with_name(f"{label}_{time.strftime('%Y_%m%d_%H%M%S')}"))
         if left:
             (folder / "batch").mkdir(parents=True, exist_ok=True)
             _write(folder / "run.json", record)
@@ -190,3 +207,15 @@ def _read(path) -> dict:
 
 def _write(path, content) -> None:
     path.write_text(json.dumps(content, indent=2) + "\n")
+
+
+def _commit() -> str:
+    """The commit of the code; +dirty when files differ from it or it is unknown."""
+
+    def git(*words):
+        command = ["git", "-C", str(REPO_ROOT), *words]
+        result = subprocess.run(command, capture_output=True, text=True)
+        return result.stdout.strip() if result.returncode == 0 else None
+
+    commit, changes = git("rev-parse", "HEAD"), git("status", "--short")
+    return (commit or "unknown") + ("" if commit and changes == "" else "+dirty")

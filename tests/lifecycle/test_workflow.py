@@ -28,6 +28,7 @@ def started(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> list[Any]:
             (Path(tail[-1]) / "batch" / f"job_{index}.done").touch()
 
     monkeypatch.setattr(jobs, "run_indexed_jobs", run_indexed_jobs)
+    monkeypatch.setattr(workflow_module, "_commit", lambda: "abc")
     return calls
 
 
@@ -364,3 +365,51 @@ def test_the_first_run_writes_its_scan_to_the_config_and_later_runs_repeat_it(
         "seed_2",
         "gain_7/seed_2",
     ]
+
+
+def _kept(experiment: Path) -> list[Path]:
+    return sorted(experiment.glob("seed_42_*"))
+
+
+def test_a_fixed_seed_given_other_options_runs_again_and_keeps_the_old_run(
+    started: list[Any], tmp_path: Path
+) -> None:
+    execute(GAIN, _kwargs(gain=5, width=None, jobs=2))
+    execute(GAIN, _kwargs(gain=7, width=None, jobs=2))
+
+    experiment = tmp_path / "toy"
+    assert [indices for _, _, indices, _ in started] == [[0, 1], [0, 1]]
+    (kept,) = _kept(experiment)
+    assert _options(kept)["gain"] == 5
+    assert (kept / "batch" / "job_0.done").is_file()
+    assert _options(experiment / "seed_42")["gain"] == 7
+
+
+def test_a_fixed_seed_runs_again_when_a_file_it_uses_changed(
+    started: list[Any], disk: dict[str, Any], tmp_path: Path
+) -> None:
+    execute(BIASED, _kwargs(det_name="dev", voltage=None, jobs=2))
+    disk["marker"] = "edited"
+    execute(BIASED, _kwargs(det_name="dev", voltage=None, jobs=2))
+
+    assert [indices for _, _, indices, _ in started] == [[0, 1], [0, 1]]
+    assert len(_kept(tmp_path / "toy")) == 1
+
+
+@pytest.mark.parametrize(
+    ("first", "second"), [("abc", "def"), ("abc+dirty", "abc+dirty")]
+)
+def test_a_fixed_seed_runs_again_under_another_commit_or_uncommitted_changes(
+    started: list[Any],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    first: str,
+    second: str,
+) -> None:
+    monkeypatch.setattr(workflow_module, "_commit", lambda: first)
+    execute(GAIN, _kwargs(gain=None, width=None, jobs=2))
+    monkeypatch.setattr(workflow_module, "_commit", lambda: second)
+    execute(GAIN, _kwargs(gain=None, width=None, jobs=2))
+
+    assert [indices for _, _, indices, _ in started] == [[0, 1], [0, 1]]
+    assert len(_kept(tmp_path / "toy")) == 1
