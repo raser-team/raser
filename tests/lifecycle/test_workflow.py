@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 
 from raser.lifecycle import jobs
+from raser.lifecycle import workflow as workflow_module
 from raser.lifecycle.workflow import Workflow
 from raser.lifecycle.workflow import execute
 
@@ -48,7 +49,7 @@ TOY = Workflow(name="toy", job=lambda options: None, device=False)
 
 
 def test_s_starts_that_many_jobs_of_the_same_command_in_the_seed_folder(
-    started: list[Any], tmp_path: Path
+    started: list[Any], disk: dict[str, Any], tmp_path: Path
 ) -> None:
     workflow = Workflow(
         name="toy run", job=lambda options: None, command=lambda kwargs: ["--fast"]
@@ -207,3 +208,62 @@ def test_a_config_here_for_this_command_makes_this_folder_the_experiment(
     assert (mine / "seed_42" / "run.json").is_file()
     assert not (other / "seed_42").exists()
     assert (other / "toy" / "seed_42" / "run.json").is_file()
+
+
+@pytest.fixture
+def disk(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    """The json files on disk: a device and components, named by kind and selector."""
+    content: dict[str, Any] = {"marker": "first"}
+
+    def load_component(kind: str, selector: str) -> tuple[Path, dict[str, Any]]:
+        return Path(f"{selector}.json"), {"kind": kind, "selector": selector, **content}
+
+    def load_definition(selector: str) -> SimpleNamespace:
+        return SimpleNamespace(raw={"det_name": selector, **content})
+
+    monkeypatch.setattr(workflow_module, "load_component", load_component)
+    monkeypatch.setattr(workflow_module, "load_definition", load_definition)
+    return content
+
+
+def test_run_json_holds_the_device_file_and_the_files_the_options_name(
+    started: list[Any], disk: dict[str, Any], tmp_path: Path
+) -> None:
+    workflow = Workflow(
+        name="toy",
+        job=lambda options: None,
+        keys=("amplifier",),
+        defaults={"amplifier": "standard"},
+        components={"afe": "amplifier"},
+    )
+
+    execute(workflow, _kwargs(det_name="dev", amplifier="fast", jobs=2))
+
+    files = json.loads((tmp_path / "toy" / "seed_42" / "run.json").read_text())["files"]
+    assert files == {
+        "device": {"det_name": "dev", "marker": "first"},
+        "afe": {"kind": "afe", "selector": "fast", "marker": "first"},
+    }
+
+
+def test_a_job_reads_its_files_from_run_json_and_not_from_disk(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], tmp_path: Path
+) -> None:
+    received: list[dict[str, Any]] = []
+    workflow = Workflow(
+        name="toy",
+        job=received.append,
+        keys=("amplifier",),
+        defaults={"amplifier": "standard"},
+        components={"afe": "amplifier"},
+        device=False,
+    )
+    execute(workflow, _kwargs(amplifier=None, jobs=2))
+    disk["marker"] = "edited after the run was created"
+
+    folder = str(tmp_path / "toy" / "seed_42")
+    execute(workflow, _kwargs(amplifier=None, job_dir=folder, job_index=0))
+
+    assert received[0]["_files"] == {
+        "afe": {"kind": "afe", "selector": "standard", "marker": "first"}
+    }

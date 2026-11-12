@@ -12,6 +12,8 @@ from dataclasses import field
 from pathlib import Path
 from typing import Callable, Mapping
 
+from raser.components import load_component
+from raser.core.device import load_definition
 from raser.lifecycle import jobs
 from raser.supports.paths import project_path
 
@@ -24,6 +26,7 @@ class Workflow:
     job: Callable  # runs one job; receives the options as a dict
     keys: tuple = ()  # the options an experiment may set
     defaults: Mapping = field(default_factory=dict)  # their values when nobody set them
+    components: Mapping = field(default_factory=dict)  # kind of json file -> the option naming it
     device: bool = True  # the command names a device
     command: Callable | None = None  # extra words of the job command
 
@@ -59,6 +62,13 @@ def execute(workflow, kwargs):
     given = {key: kwargs[key] for key in workflow.keys if kwargs.get(key) is not None}
     options = {**workflow.defaults, **config.get("set", {}), **given}
 
+    # The json files the run uses: the device, and the files its options name.
+    files = {}
+    if workflow.device:
+        files["device"] = dict(load_definition(kwargs["det_name"]).raw)
+    for kind, key in workflow.components.items():
+        files[kind] = load_component(kind, options[key])[1]
+
     # The seed folder of this command, and the jobs that are left in it.
     if kwargs["seed"] is None:
         label, seed = time.strftime("%Y_%m%d_%H%M%S"), secrets.randbits(31)
@@ -73,7 +83,7 @@ def execute(workflow, kwargs):
     (folder / "batch").mkdir(parents=True, exist_ok=True)
     if not config:
         _write(root / "config.json", {**identity, "set": given})
-    _write(folder / "run.json", {"seed": seed, "options": options})
+    _write(folder / "run.json", {"seed": seed, "options": options, "files": files})
     if kwargs["jobs"] is None and not kwargs["batch"]:
         return _run_job(workflow, {**kwargs, "job_dir": str(folder)})  # in this process
     tail = workflow.words[1:]
@@ -94,7 +104,7 @@ def execute(workflow, kwargs):
 
 
 def _run_job(workflow, kwargs):
-    """One job: its options and seed come from the run.json of its seed folder."""
+    """One job: its options, files and seed come from the run.json of its seed folder."""
     from raser.core.seeding import seed_generators  # loads ROOT
 
     folder, index = Path(kwargs["job_dir"]), kwargs.get("job_index") or 0
@@ -104,6 +114,7 @@ def _run_job(workflow, kwargs):
     options["seed"] = 1 + int.from_bytes(digest[:8], "big") % (2**31 - 1)
     options["_run_path"] = str(folder)
     options["_run_batch_path"] = str(folder / "batch")
+    options["_files"] = record["files"]
     seed_generators(options["seed"])
     workflow.job(options)
     _done(folder, index).touch()
