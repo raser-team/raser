@@ -6,7 +6,7 @@
 
 所选对象记录为具有明确类型的[组件](../components/README.md)。Device 组件提供传感器及其工作状态。Source 或 Laser 组件定义激励。PCB、ASIC、AFE 和 ADC 组件定义测量所用的电子学。周围几何参与相互作用时，G4Setup 组件定义 Geant4 场景。
 
-应用将这些定义交给 [Core](../core/README.md)，并通过 [Runs](../supports/runs.md) 记录解析后的选择。依赖具体场景的结果保存在应用项目中。
+应用将这些定义交给 [Core](../core/README.md)，并通过 [Runs](../lifecycle/runs.md) 记录解析后的选择。依赖具体场景的结果保存在应用项目中。
 
 ## 应用绑定
 
@@ -36,4 +36,4 @@
         └── analysis/
 ```
 
-具体运行布局由[运行记录](../supports/runs.md)定义。
+具体运行布局由[运行记录](../lifecycle/runs.md)定义。

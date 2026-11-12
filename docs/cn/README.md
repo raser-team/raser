@@ -57,6 +57,6 @@ PCB、ASIC 和 ADC 设计维护在 [`core/draft/`](core/draft/) 下。
 | --- | --- |
 | [Supports](supports/README.md) | 共享运行时服务 |
 | [Paths](supports/paths.md) | 项目上下文与定义查找 |
-| [Runs](supports/runs.md) | 已解析的运行配置与记录 |
-| [Jobs](supports/jobs.md) | 本地与集群执行 |
+| [Runs](lifecycle/runs.md) | 已解析的运行配置与记录 |
+| [Jobs](lifecycle/jobs.md) | 本地与集群执行 |
 | [Output](supports/output.md) | 产物路径与写入器 |

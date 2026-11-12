@@ -11,9 +11,9 @@ Supports 提供 CLI、Applications 与 Core 共用的机制。科学模型、物
 | 模块 | 职责 | 详细契约 |
 | --- | --- | --- |
 | `paths.py` | 工作根目录、项目根目录、组件查找与应用资产 | [Paths](paths.md) |
-| `runs.py` | 运行配置、标识、记录与选择 | [Runs](runs.md) |
-| `jobs.py` | 索引化本地执行 | [Jobs](jobs.md) |
-| `scheduler.py` | IHEP 提交与 Apptainer worker 命令 | [Jobs](jobs.md) |
+| `runs.py` | 运行配置、标识、记录与选择 | [Runs](../lifecycle/runs.md) |
+| `jobs.py` | 索引化本地执行 | [Jobs](../lifecycle/jobs.md) |
+| `scheduler.py` | IHEP 提交与 Apptainer worker 命令 | [Jobs](../lifecycle/jobs.md) |
 | `output.py` | 所属目录与小型文件系统操作 | [Output](output.md) |
 
 `io_decorator.py`、`memory_decorator.py` 与 `root_tree.py` 提供范围明确的诊断或格式工具。调用者决定测量、转换或序列化在工作流中的位置。

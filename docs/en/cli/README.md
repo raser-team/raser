@@ -42,5 +42,5 @@ component lookup follow [Supports paths](../supports/paths.md).
 
 Global `raser -t -b <command>` submits one complete command. An application's
 indexed mode expands one recorded run into workers. These are separate parser
-and ownership boundaries; see [Jobs](../supports/jobs.md) and
-[Runs](../supports/runs.md).
+and ownership boundaries; see [Jobs](../lifecycle/jobs.md) and
+[Runs](../lifecycle/runs.md).

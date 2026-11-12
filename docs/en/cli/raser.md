@@ -91,7 +91,7 @@ The dependency rules are:
 
 Project inference and component lookup are defined in
 [Runtime paths](../supports/paths.md). Workflow fan-out is defined in
-[Jobs](../supports/jobs.md).
+[Jobs](../lifecycle/jobs.md).
 
 ## 📦 Route descriptor
 

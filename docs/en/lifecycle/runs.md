@@ -59,7 +59,7 @@ directory is reused when the specifications match.
 ## Directory and run selection
 
 The run directory is `<project>/<workflow>/<run_id>/` (product ownership is
-described in [Output](output.md)):
+described in [Output](../supports/output.md)):
 
 ```text
 <project>/<workflow>/<run_id>/

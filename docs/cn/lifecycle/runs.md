@@ -36,7 +36,7 @@ _位于 `src/raser/supports/runs.py` 的运行标识、记录与选择_
 
 ## 目录与运行选择
 
-运行目录位于 `<project>/<workflow>/<run_id>/`（产物归属见 [Output](output.md)）：
+运行目录位于 `<project>/<workflow>/<run_id>/`（产物归属见 [Output](../supports/output.md)）：
 
 ```text
 <project>/<workflow>/<run_id>/

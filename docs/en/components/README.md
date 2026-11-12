@@ -34,7 +34,7 @@ to use that object in the scenario.
 
 An application binds the component types required by its setup. Named run
 configuration and invocation values refine that selection through
-[Run records](../supports/runs.md).
+[Run records](../lifecycle/runs.md).
 
 A Device, PCB, or ASIC entry refers to the project that owns the object's
 definition and reusable products. The component records the state adopted by

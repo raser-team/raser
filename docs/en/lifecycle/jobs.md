@@ -1,6 +1,6 @@
 # Indexed and cluster jobs
 
-_RASER 5.0 execution mechanics in `src/raser/supports/jobs.py` and `scheduler.py`_
+_RASER 5.0 execution mechanics in `src/raser/lifecycle/jobs.py` and `scheduler.py`_
 
 ---
 

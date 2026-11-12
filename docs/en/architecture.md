@@ -52,7 +52,7 @@ Products defined by a sensor configuration are stored with Device. Products
 that also depend on an application scenario are stored with that application.
 The detailed storage contracts are defined by [Device](core/device.md),
 [Field](core/field.md), [Device components](components/device.md), and
-[Run records](supports/runs.md).
+[Run records](lifecycle/runs.md).
 
 ## Scientific data flow
 

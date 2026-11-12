@@ -60,6 +60,6 @@ scenario.
 | --- | --- |
 | [Supports](supports/README.md) | Shared runtime services |
 | [Paths](supports/paths.md) | Project context and definition lookup |
-| [Runs](supports/runs.md) | Resolved run configuration and records |
-| [Jobs](supports/jobs.md) | Local and cluster execution |
+| [Runs](lifecycle/runs.md) | Resolved run configuration and records |
+| [Jobs](lifecycle/jobs.md) | Local and cluster execution |
 | [Output](supports/output.md) | Artifact paths and writers |

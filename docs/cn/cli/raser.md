@@ -78,7 +78,7 @@ flowchart LR
 - Python 导入状态来自安装后的软件包与当前环境
 - 每条路由指定一个具体模块和可调用对象
 
-项目推断与组件查找见[运行时路径](../supports/paths.md)。工作流展开见 [Jobs](../supports/jobs.md)。
+项目推断与组件查找见[运行时路径](../supports/paths.md)。工作流展开见 [Jobs](../lifecycle/jobs.md)。
 
 ## 📦 路由描述
 

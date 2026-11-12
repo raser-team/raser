@@ -37,7 +37,7 @@ RASER 分别组织传感器自身研究，以及传感器应用或测试场景�
 
 应用项目通过 Device 组件记录场景所选的 Device 与工作状态。其运行产物还取决于粒子源、扫描、电子学或分析配置。
 
-由传感器配置定义的产物保存在 Device 中。还依赖应用场景的产物保存在相应应用中。具体存储契约见 [Device](core/device.md)、[Field](core/field.md)、[Device 组件](components/device.md)与[运行记录](supports/runs.md)。
+由传感器配置定义的产物保存在 Device 中。还依赖应用场景的产物保存在相应应用中。具体存储契约见 [Device](core/device.md)、[Field](core/field.md)、[Device 组件](components/device.md)与[运行记录](lifecycle/runs.md)。
 
 ## 科学数据流
 
