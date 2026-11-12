@@ -72,12 +72,21 @@ def main(argv=None):
         parser.print_help()
         return 1
 
+    if kwargs["global_batch"] != 0 and "batch" in kwargs:
+        # A command that splits into jobs submits every job itself: -b, -bb, ...
+        # before it is its own -b, with the memory level the b's count, and -t
+        # is its --dry-run.
+        kwargs["dry_run"] = kwargs["dry_run"] or kwargs["test"]
+        kwargs["batch"] = True
+        kwargs["mem"] = max(kwargs["mem"], kwargs["global_batch"])
+        kwargs["global_batch"] = 0
+
     kwargs["_argv"] = argv
     kwargs["_entry_command_prefix"] = (command,)
 
     try:
         with _context(kwargs):
-            if kwargs["global_batch"] != 0 and not kwargs.get("signal_batch", False):
+            if kwargs["global_batch"] != 0:
                 # Global options such as -bb precede the sub-command; the worker
                 # must not see them, or it would submit itself again.
                 scheduler.main(

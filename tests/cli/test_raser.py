@@ -10,6 +10,7 @@ import pytest
 from raser.cli import raser
 from raser.cli.raser import main
 from raser.core.field import command as field_command
+from raser.lifecycle import jobs
 from raser.lifecycle import process
 
 
@@ -106,3 +107,36 @@ def test_global_batch_submits_the_command_without_the_global_options(
     main(["-t", "-bb", "field", "HPK-Si-PiN", "-bias", "-200"])
 
     assert submitted == [["field", "HPK-Si-PiN", "-bias", "-200"]]
+
+
+def test_global_batch_before_a_command_with_jobs_submits_each_job_itself(
+    work_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    submitted: list[tuple[bool, int]] = []
+    monkeypatch.setattr(
+        raser.scheduler, "main", lambda *args, **kwargs: pytest.fail("submitted whole")
+    )
+    monkeypatch.setattr(
+        jobs,
+        "run_indexed_jobs",
+        lambda *args, use_cluster, mem, **kwargs: submitted.append((use_cluster, mem)),
+    )
+
+    assert main(["-bb", "cce", "HPK-Si-PiN", "-s", "2", "--seed", "1"]) == 0
+    assert main(["-b", "cce", "HPK-Si-PiN", "-s", "2", "--seed", "2", "-mem", "3"]) == 0
+
+    assert submitted == [(True, 2), (True, 3)]
+
+
+def test_global_test_before_a_command_with_jobs_is_its_dry_run(
+    work_root: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    monkeypatch.setattr(
+        jobs, "run_indexed_jobs", lambda *args, **kwargs: pytest.fail("submitted")
+    )
+
+    assert main(["-t", "-b", "cce", "HPK-Si-PiN", "-s", "2", "--seed", "1"]) == 0
+
+    folder = work_root / "HPK-Si-PiN" / "cce" / "seed_1"
+    assert capsys.readouterr().out == f"{folder}: jobs [0, 1]\n"
+    assert not work_root.exists()
