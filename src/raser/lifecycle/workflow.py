@@ -61,7 +61,31 @@ def execute(workflow, kwargs):
         root = Path(project_path(*workflow.words))
         config = _read(root / "config.json")
     given = {key: kwargs[key] for key in workflow.keys if kwargs.get(key) is not None}
-    options = {**workflow.defaults, **config.get("set", {}), **given}
+    fixed = {**workflow.defaults, **config.get("set", {}), **given}
+    options, files = _point(workflow, kwargs, fixed)
+
+    # The seed folder of this command, and the jobs that are left in it.
+    if kwargs["seed"] is None:
+        label, seed = time.strftime("%Y_%m%d_%H%M%S"), secrets.randbits(31)
+    else:
+        label, seed = f"seed_{kwargs['seed']}", kwargs["seed"]
+    folder = root / label
+    left = [i for i in range(kwargs["jobs"] or 1) if not _done(folder, i).exists()]
+    print(f"{folder}: jobs {left}")
+    if kwargs["dry_run"] or not left:
+        return None
+
+    (folder / "batch").mkdir(parents=True, exist_ok=True)
+    if not config:
+        _write(root / "config.json", {**identity, "set": given})
+    _write(folder / "run.json", {"seed": seed, "options": options, "files": files})
+    _start(workflow, kwargs, folder, left)
+    return None
+
+
+def _point(workflow, kwargs, options) -> tuple[dict, dict]:
+    """The options and json files of one run, from the options that were set."""
+    options = dict(options)
 
     # The json files the run uses: the device, and the files its options name.
     files = {}
@@ -81,24 +105,14 @@ def execute(workflow, kwargs):
             options[key] = place[last]
         else:
             place[last] = options[key]
+    return options, files
 
-    # The seed folder of this command, and the jobs that are left in it.
-    if kwargs["seed"] is None:
-        label, seed = time.strftime("%Y_%m%d_%H%M%S"), secrets.randbits(31)
-    else:
-        label, seed = f"seed_{kwargs['seed']}", kwargs["seed"]
-    folder = root / label
-    left = [i for i in range(kwargs["jobs"] or 1) if not _done(folder, i).exists()]
-    print(f"{folder}: jobs {left}")
-    if kwargs["dry_run"] or not left:
-        return None
 
-    (folder / "batch").mkdir(parents=True, exist_ok=True)
-    if not config:
-        _write(root / "config.json", {**identity, "set": given})
-    _write(folder / "run.json", {"seed": seed, "options": options, "files": files})
+def _start(workflow, kwargs, folder, left) -> None:
+    """Start the jobs `left` of a seed folder."""
     if kwargs["jobs"] is None and not kwargs["batch"]:
-        return _run_job(workflow, {**kwargs, "job_dir": str(folder)})  # in this process
+        _run_job(workflow, {**kwargs, "job_dir": str(folder)})  # in this process
+        return
     tail = workflow.words[1:]
     if workflow.device:
         tail.append(kwargs["det_name"])
@@ -113,7 +127,6 @@ def execute(workflow, kwargs):
         destination=workflow.words[0],
         indices=left,
     )
-    return None
 
 
 def _run_job(workflow, kwargs):
