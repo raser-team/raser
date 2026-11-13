@@ -91,7 +91,9 @@ class VectorizedCarrierSystem:
             if my_d is not None:
                 params['temperature'] = self._get_param(my_d, 'temperature', 300.0)
                 params['field_resolution'] = self._resolve_field_resolution(my_d)
-                params['boundary_tolerance'] = self._resolve_boundary_tolerance(my_d)
+                params['boundary_tolerance'] = self._resolve_boundary_tolerance(
+                    my_d, params['field_resolution']
+                )
                 params['max_drift_time'] = 100e-9   # 增加最大漂移时间
                 params['min_field_strength'] = self._resolve_min_field_strength(my_d)
                 params['max_vector_steps'] = self._get_param(my_d, 'vector_max_steps', 200000, param_type=int)
@@ -214,9 +216,9 @@ class VectorizedCarrierSystem:
             resolution = None
         if resolution is None or resolution <= 0:
             resolution = tolerance_default
-        my_d.resolution = resolution
+        return resolution
 
-    def _resolve_boundary_tolerance(self, my_d):
+    def _resolve_boundary_tolerance(self, my_d, field_res):
         """根据探测器和网格分辨率决定边界容差"""
         custom_tol = getattr(my_d, "vector_boundary_tolerance", None)
         try:
@@ -228,7 +230,6 @@ class VectorizedCarrierSystem:
             logger.info("使用用户配置的边界容差: %.2f um", custom_tol)
             return custom_tol
 
-        field_res = my_d.resolution
         tolerance = max(tolerance_default, field_res)
         logger.info(
             "自动计算边界容差: %.2f um (field_res=%.2f)",
