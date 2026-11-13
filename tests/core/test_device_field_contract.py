@@ -7,6 +7,8 @@ import pytest
 
 from raser.core.device import load_definition
 from raser.core.device import resolve_device
+from raser.core.device.build_device import Detector
+from raser.core.device.build_device import device_file
 from raser.core.field import FieldConfiguration
 from raser.core.field import FieldData
 from raser.core.field import plan_field
@@ -160,3 +162,12 @@ def test_field_interpolation_and_gradient_use_field_coordinates() -> None:
     assert calculate_gradient(
         lambda x, y: x * x + 3.0 * y, (2.0, 4.0)
     ) == pytest.approx((4.0, 3.0))
+
+
+def test_a_device_built_from_recorded_content_does_not_follow_the_file() -> None:
+    content = json.loads(device_file("HPK-Si-PiN").read_text(encoding="utf-8"))
+    on_file = content["bias"]["voltage"]
+    content["bias"]["voltage"] = on_file - 23.0
+
+    assert Detector("HPK-Si-PiN", content).voltage == on_file - 23.0
+    assert Detector("HPK-Si-PiN").voltage == on_file

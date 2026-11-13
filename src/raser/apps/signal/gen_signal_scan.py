@@ -449,10 +449,8 @@ def batch_loop(
 
 def main(kwargs):
     det_name = kwargs['det_name']
-    my_d = bdv.Detector(det_name)
+    my_d = bdv.Detector(det_name, kwargs["_files"]["device"])
     apply_signal_plan(my_d, kwargs)
-    if kwargs['voltage'] is not None:
-        my_d.voltage = float(kwargs['voltage'])
 
     if kwargs['irradiation'] != None:
         my_d.irradiation_flux = float(kwargs['irradiation'])

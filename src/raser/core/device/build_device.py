@@ -48,10 +48,13 @@ class Detector:
     ---------
         2023/12/03
     """ 
-    def __init__(self, device_name):
+    def __init__(self, device_name, device_dict=None):
         device_json = device_file(device_name)
-        with open(device_json) as f:
-            self.device_dict = json.load(f)
+        # A run hands in the content it recorded; otherwise the file is read.
+        if device_dict is None:
+            with open(device_json) as f:
+                device_dict = json.load(f)
+        self.device_dict = device_dict
         self.definition_path = device_json.resolve()
 
         # Every key of the json is an attribute of the same name.
