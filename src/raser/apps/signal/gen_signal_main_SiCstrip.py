@@ -86,9 +86,9 @@ def main(kwargs):
             
             # my_f = devfield.DevsimField(my_d.device, my_d.dimension, voltage, my_d.read_out_contact, my_d.irradiation_flux)
             if "strip" in det_name:
-                my_f = devfield.DevsimField(my_d.device, my_d.dimension, voltage, my_d.read_ele_num, my_d.l_z)
+                my_f = devfield.DevsimField(my_d.device, voltage, my_d.read_ele_num)
             else: 
-                my_f = devfield.DevsimField(my_d.device, my_d.dimension, voltage, 1, my_d.l_z)
+                my_f = devfield.DevsimField(my_d.device, voltage, 1)
 
             
             my_current = ccrt.CalCurrentG4P(my_d, my_f, my_g4, -1)
@@ -133,7 +133,7 @@ def main(kwargs):
                 # voltage = int(i)
                 voltage = float(i)
             
-            my_f = devfield.DevsimField(my_d.device, my_d.dimension, voltage, my_d.read_out_contact, is_plugin=my_d.is_plugin(), irradiation_flux=my_d.irradiation_flux, bounds=my_d.bound)
+            my_f = devfield.DevsimField(my_d.device, voltage, my_d.read_out_contact, irradiation_flux=my_d.irradiation_flux, bounds=my_d.bound)
             
             my_current = ccrt.CalCurrentG4P(my_d, my_f, my_g4, -1)
             # if "strip" in det_name:

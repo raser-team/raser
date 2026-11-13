@@ -37,45 +37,14 @@ resolution_default_plugin_2d = {'x': 0.1, 'y': 0.1, 'z': 10000.0}
 resolution_default_3d = {'z': 0.5, 'x': 1, 'y': 1}
 
 class DevsimField:
-    def __init__(self, device_name, dimension, voltage, read_out_contact, mesher, is_plugin=False, irradiation_flux=0, 
+    def __init__(self, device_name, voltage, read_out_contact, irradiation_flux=0,
                  bounds=None, resolution=None, field_set="default", field_directory=None,
                  interpolation_bins=None):
         self.name = device_name
         self.voltage = voltage
-        self.dimension = dimension
         self.read_out_contact = read_out_contact
-        self.is_plugin = is_plugin  # 保存插件标志
-        self.mesher = mesher  # 保存mesher标志
         self.interpolation_bins = interpolation_bins
 
-        # 初始化缓存相关属性
-        if self.dimension == 1:
-            resolution_default = resolution_default_1d
-        elif self.dimension == 2:
-            if is_plugin:
-                resolution_default = resolution_default_plugin_2d
-            else:
-                resolution_default = resolution_default_2d
-        elif self.dimension == 3:
-            resolution_default = resolution_default_3d
-
-        try:
-            self.resolution = resolution or resolution_default
-            # 验证字典中的所有分辨率值
-            for key, value in self.resolution.items():
-                try:
-                    float_value = float(value)
-                    if float_value <= 0:
-                        self.resolution[key] = resolution_default[key]
-                    else:
-                        self.resolution[key] = float_value
-                except (TypeError, ValueError):
-                    self.resolution[key] = resolution_default[key]
-        except (TypeError, AttributeError):
-            # 如果resolution不是字典，使用默认值
-            logger.warning("Invalid resolution format, using default resolution: {}".format(resolution_default))
-            self.resolution = resolution_default
-        
         self.bounds = bounds or {}
         
         # 初始化缓存字典
@@ -119,6 +88,33 @@ class DevsimField:
         with open(record) as file:
             self.axes = tuple(json.load(file)["axes"])
 
+        # 初始化缓存相关属性
+        if len(self.axes) == 1:
+            resolution_default = resolution_default_1d
+        elif self.axes == ("x", "y"):
+            resolution_default = resolution_default_plugin_2d
+        elif len(self.axes) == 2:
+            resolution_default = resolution_default_2d
+        else:
+            resolution_default = resolution_default_3d
+
+        try:
+            self.resolution = resolution or resolution_default
+            # 验证字典中的所有分辨率值
+            for key, value in self.resolution.items():
+                try:
+                    float_value = float(value)
+                    if float_value <= 0:
+                        self.resolution[key] = resolution_default[key]
+                    else:
+                        self.resolution[key] = float_value
+                except (TypeError, ValueError):
+                    self.resolution[key] = resolution_default[key]
+        except (TypeError, AttributeError):
+            # 如果resolution不是字典，使用默认值
+            logger.warning("Invalid resolution format, using default resolution: {}".format(resolution_default))
+            self.resolution = resolution_default
+        
         DopingFile = None
         doping_file_pattern = re.compile(r'^NetDoping_(-?\d+\.?\d*)V\.pkl$')
         for filename in os.listdir(path):

@@ -153,10 +153,8 @@ def test_devsim_field_loads_unstructured_3d_assets(tmp_path: Path) -> None:
 
     field = DevsimField(
         "synthetic-3d",
-        3,
         57,
         [{"name": "center"}],
-        "sde",
         bounds={"x": (0.0, 100.0), "y": (0.0, 100.0), "z": (0.0, 100.0)},
         field_directory=tmp_path,
     )
@@ -235,23 +233,16 @@ def _grid_3d():
 
 
 @pytest.mark.parametrize(
-    ("axes", "along", "mesher_of_the_device"),
-    [(("x", "y", "z"), 0, None), (("z", "x", "y"), 1, "sde")],
+    ("axes", "along"),
+    [(("x", "y", "z"), 0), (("z", "x", "y"), 1)],
 )
 def test_a_field_is_read_along_the_axes_its_folder_records(
-    tmp_path: Path, axes, along, mesher_of_the_device
+    tmp_path: Path, axes, along
 ) -> None:
     points = _grid_3d()
     _write_field(tmp_path, points, 100.0 * points[:, along], axes)
 
-    field = DevsimField(
-        "synthetic",
-        3,
-        57,
-        [{"name": "center"}],
-        mesher_of_the_device,
-        field_directory=tmp_path,
-    )
+    field = DevsimField("synthetic", 57, [{"name": "center"}], field_directory=tmp_path)
 
     assert field._get_potential(100.0, 50.0, 50.0) == pytest.approx(1.0)
     assert field._get_potential(0.0, 50.0, 50.0) == pytest.approx(0.0)
@@ -263,4 +254,4 @@ def test_a_field_folder_without_its_record_is_refused(tmp_path: Path) -> None:
     _write_field(tmp_path, points, points[:, 0], axes=None)
 
     with pytest.raises(FileNotFoundError, match="run.json is missing"):
-        DevsimField("synthetic", 3, 57, [{"name": "center"}], "sde", field_directory=tmp_path)
+        DevsimField("synthetic", 57, [{"name": "center"}], field_directory=tmp_path)

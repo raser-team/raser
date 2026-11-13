@@ -30,7 +30,7 @@ def main(output_path):
     print(my_d.device)
     print(voltage)
 
-    my_f = devfield.DevsimField(my_d.device, my_d.dimension, voltage, det_dic['read_out_contact'], 0)
+    my_f = devfield.DevsimField(my_d.device, voltage, det_dic['read_out_contact'])
     
     def worker_function(queue, lock, i, j, l, output_path):
        

@@ -64,11 +64,8 @@ def main(kwargs):
         )
     my_f = devfield.DevsimField(
         my_d.device,
-        my_d.dimension,
         my_d.voltage,
         my_d.read_out_contact,
-        my_d.mesher,
-        is_plugin=my_d.is_plugin(),
         irradiation_flux=my_d.irradiation_flux,
         bounds=my_d.bound,
         field_set=kwargs["_field_set"],
