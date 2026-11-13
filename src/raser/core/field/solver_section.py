@@ -94,6 +94,10 @@ def main (kwargs):
 
     # Everything the solve takes from the device goes through this, and is noted.
     MyDetector = Reading(Detector(simname))
+    # What the device file says about the solve is read here, so that it is noted.
+    if "frequency" in MyDetector.device_dict:
+        paras["frequency"] = float(MyDetector.device_dict["frequency"])
+    paras["area_factor"] = float(MyDetector.device_dict.get("area_factor", 1.0))
     # HEMT_TRANSPORT_V1_DISPATCH
     if MyDetector.device_dict.get("hemt_physics", {}).get("transport_model") == "drift_diffusion_v1":
         from .hemt_solver_2d_transport_v1 import run_hemt_transport
