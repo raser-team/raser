@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
-from raser.core.device import ResolvedDevice
+from .resolved_device import ResolvedDevice
 
 
 DEFAULT_SOLVER_SETTINGS: dict[str, Any] = {

@@ -8,7 +8,7 @@ Description:  signal/__init__.py
 import json
 from pathlib import Path
 
-from raser.core.device import resolve_device
+from raser.core.field.resolved_device import resolve_device
 from raser.core.field import FieldConfiguration
 from raser.lifecycle.workflow import Workflow
 

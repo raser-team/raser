@@ -7,7 +7,7 @@ import logging
 import subprocess
 import sys
 
-from raser.core.device import resolve_device
+from .resolved_device import resolve_device
 
 from .configuration import FieldPlan
 from .configuration import plan_field

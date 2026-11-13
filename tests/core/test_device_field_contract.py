@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from raser.core.device import load_definition
-from raser.core.device import resolve_device
+from raser.core.field.resolved_device import load_definition
+from raser.core.field.resolved_device import resolve_device
 from raser.core.device.build_device import Detector
 from raser.core.device.build_device import device_file
 from raser.core.field import FieldConfiguration
