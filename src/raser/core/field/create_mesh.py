@@ -16,16 +16,6 @@ from raser.supports.output import output
 from . import model_create
 
 
-def _resolve_mesh_file(mesh_file, definition_path):
-    path = Path(mesh_file).expanduser()
-    if not path.is_absolute():
-        path = Path(definition_path).parent / path
-    path = path.resolve()
-    if not path.is_file():
-        raise FileNotFoundError(f"Cannot find Device mesh: {path}")
-    return path
-
-
 def mesh_axes(my_d):
     """The device axis that each coordinate of the device's mesh runs along."""
     if my_d.dimension == 1:
@@ -44,7 +34,7 @@ class DevsimMesh:
         self.region = my_d.region
         self.solve_paras = devsim_solve_paras
         self.output_directory = output_directory
-        self.definition_path = my_d.definition_path
+        self.file = my_d.file
 
     def mesh_define(self):
         if self.dimension == 1:
@@ -135,7 +125,7 @@ class DevsimMesh:
     def createGmshMesh(self):
         mesh_name = self.device
         mesh = self.device_dict["mesh"]["gmsh_mesh"]
-        mesh_file = _resolve_mesh_file(mesh["file"], self.definition_path)
+        mesh_file = self.file(mesh["file"])
         devsim.create_gmsh_mesh (mesh=mesh_name, file=str(mesh_file))
         if self.solve_paras["weightfield"] == True :
             for region in mesh["region"]:

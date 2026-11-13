@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import copy
 import json
+from pathlib import Path
+
+import pytest
 
 from raser.core.device.build_device import Detector
 from raser.core.device.build_device import device_file
@@ -72,3 +75,35 @@ def test_what_the_solve_writes_into_the_json_stays_out_of_the_device() -> None:
 
     assert json_of_device["doping"]["Acceptors"] == "0"
     assert content == before
+
+
+def test_a_file_the_device_names_is_noted_by_its_content(tmp_path: Path) -> None:
+    (tmp_path / "device.json").write_text(json.dumps(_content()), encoding="utf-8")
+    (tmp_path / "strip.msh").write_text("mesh", encoding="utf-8")
+    device = Reading(Detector(tmp_path))
+
+    assert device.file("strip.msh") == (tmp_path / "strip.msh").resolve()
+    read = json.loads(json.dumps(device.read))
+    assert changed(read, Detector(tmp_path)) == []
+
+    (tmp_path / "strip.msh").write_text("another mesh", encoding="utf-8")
+    assert changed(read, Detector(tmp_path)) == ["strip.msh"]
+    (tmp_path / "strip.msh").unlink()
+    assert changed(read, Detector(tmp_path)) == ["strip.msh"]
+
+
+SOLVE = ("solver_section", "create_mesh", "create_parameter", "initial", "loop_section",
+         "model_create", "physics_drift_diffusion", "physics_irradiation",
+         "physics_avalanche", "hemt_solver_2d_transport_v1")
+
+
+@pytest.mark.parametrize("module", SOLVE)
+def test_the_solve_takes_its_device_only_through_the_reading(module: str) -> None:
+    import raser.core.field
+
+    source = (Path(raser.core.field.__file__).parent / f"{module}.py").read_text(encoding="utf-8")
+    source = source.replace("MyDetector = Reading(Detector(simname))", "")
+
+    for way_around in ("Detector(", "device_file(", "load_definition(", "resolve_device(",
+                       "definition_path", "json.load("):
+        assert way_around not in source

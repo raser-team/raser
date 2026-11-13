@@ -158,6 +158,16 @@ class Detector:
         )
         return capacitance_f * 1e12
 
+    def file(self, name):
+        """A file the device json names, beside the json unless its path is absolute."""
+        path = Path(name).expanduser()
+        if not path.is_absolute():
+            path = Path(self.definition_path).parent / path
+        path = path.resolve()
+        if not path.is_file():
+            raise FileNotFoundError(f"Cannot find {path}, named by {self.definition_path}")
+        return path
+
     def is_plugin(self):
         if ( "plugin" in self.det_model or "3d" in self.det_model or "3D" in self.det_model
         ):

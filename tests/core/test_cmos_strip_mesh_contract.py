@@ -5,8 +5,6 @@ from pathlib import Path
 import pytest
 
 
-from raser.core.field.create_mesh import _resolve_mesh_file
-
 
 pytest.importorskip("gmsh")
 generate_mesh = pytest.importorskip("raser.components.device.CMOS_strip").generate_mesh
@@ -54,12 +52,3 @@ def test_cmos_strip_mesh_uses_one_triangular_orientation(tmp_path: Path) -> None
         assert axis_aligned == 2
     assert triangle_count > 0
     assert len(orientations) == 1
-
-
-def test_device_mesh_path_is_relative_to_its_definition(tmp_path: Path) -> None:
-    definition_path = tmp_path / "device.json"
-    definition_path.write_text("{}", encoding="utf-8")
-    mesh_path = tmp_path / "CMOS_strip.msh"
-    mesh_path.write_text("mesh", encoding="utf-8")
-
-    assert _resolve_mesh_file("CMOS_strip.msh", definition_path) == mesh_path

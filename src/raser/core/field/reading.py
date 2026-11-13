@@ -16,8 +16,11 @@ def noted(value):
     nothing, and a hash of its json otherwise."""
     if value is None or isinstance(value, (bool, int, float, str)):
         return value
-    text = json.dumps(value, sort_keys=True, default=str)
-    return "sha256:" + hashlib.sha256(text.encode()).hexdigest()
+    return _hash(json.dumps(value, sort_keys=True, default=str).encode())
+
+
+def _hash(content):
+    return "sha256:" + hashlib.sha256(content).hexdigest()
 
 
 class Keys(dict):
@@ -72,11 +75,16 @@ class Keys(dict):
 
 class Reading:
     """A detector that notes what is read from it, in `read`:
-    {"attributes": {name: value}, "keys": {json path: value}}."""
+    {"attributes": {name: value}, "keys": {json path: value}, "files": {name: hash}}."""
 
     def __init__(self, my_d):
         self.__dict__["_d"] = my_d
-        self.__dict__["read"] = {"attributes": {}, "keys": {}}
+        self.__dict__["read"] = {"attributes": {}, "keys": {}, "files": {}}
+
+    def file(self, name):
+        path = self._d.file(name)
+        self.read["files"][str(name)] = _hash(path.read_bytes())
+        return path
 
     def __getattr__(self, name):
         value = getattr(self._d, name)
@@ -102,4 +110,11 @@ def changed(read, my_d):
             place = place.get(step) if isinstance(place, dict) else None
         if noted(place) != value:
             differing.append(path)
+    for name, value in read["files"].items():
+        try:
+            same = _hash(my_d.file(name).read_bytes()) == value
+        except FileNotFoundError:
+            same = False
+        if not same:
+            differing.append(name)
     return differing
