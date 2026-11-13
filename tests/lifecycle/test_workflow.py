@@ -590,3 +590,17 @@ def test_a_workflow_says_what_makes_an_old_run_out_of_date(
     execute(workflow, _plain(x=5))
     assert len(received) == 2
     assert "the old run is replaced: x changed" in capsys.readouterr().out
+
+
+def test_without_seeds_a_point_whose_folder_begins_with_seed_counts_as_finished(
+    started: list[Any], tmp_path: Path
+) -> None:
+    workflow = Workflow(
+        name="toy", job=lambda options: None, keys=("seed_layer",),
+        defaults={"seed_layer": 1}, device=False, seeds=False,
+    )
+
+    execute(workflow, _plain(scan=["seed_layer=1,2"]))
+
+    points = workflow_module.finished(workflow, _plain(), tmp_path / "toy")
+    assert [(name, len(done)) for name, _, done in points] == [("", 1), ("seed_layer_2", 1)]

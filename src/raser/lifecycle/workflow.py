@@ -148,7 +148,8 @@ def finished(workflow, kwargs, root) -> list[tuple[str, dict, list[tuple[Path, i
         done = []
         for path in sorted((root / name).glob("*/run.json" if workflow.seeds else "run.json")):
             old, label = _read(path), path.parent.name
-            kept = label.startswith("seed_") and label != f"seed_{old.get('seed')}"
+            # A seed folder kept aside by a rerun is named seed_<n>_<time>.
+            kept = workflow.seeds and label.startswith("seed_") and label != f"seed_{old['seed']}"
             any_code = {**old, "commit": ""}  # a finished run counts whatever its commit
             if not kept and _outdated(workflow, any_code, {**any_code, **now}) is None:
                 marks = sorted((path.parent / "batch").glob("job_*.done"))
