@@ -101,6 +101,7 @@ def import_field(kwargs):
 
     from .create_mesh import mesh_axes
     from .save_milestone import save_milestone
+    from .save_milestone import save_record
     from .tdr_import import import_tdr
 
     if plan.input_path is None:
@@ -116,9 +117,12 @@ def import_field(kwargs):
             plan.configuration.values["dimension"],
             None,
             False,
-            mesh_axes(Detector(str(plan.device.definition.source_path))),
             is_tcad=True,
             is_flip=kwargs.get("flip", False),
+        )
+        save_record(
+            str(plan.directory),
+            axes=mesh_axes(Detector(str(plan.device.definition.source_path))),
         )
     finally:
         devsim.reset_devsim()
