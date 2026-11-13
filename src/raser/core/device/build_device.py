@@ -10,6 +10,7 @@ Description:  Define physical models for different materials
 
 import json
 import math
+from functools import cached_property
 from pathlib import Path
 
 import numpy as np
@@ -123,9 +124,6 @@ class Detector:
             self.p_x = self.device_dict["p_x"]
             self.p_y = self.device_dict["p_y"]
 
-        self.depletion_depth = float(self.device_dict.get("depletion_depth", self.l_z))
-        self.capacitance = self._resolve_capacitance()
-
     def _readout_area_um2(self):
         det_model = self.det_model.lower()
         if "strip" in det_model:
@@ -145,16 +143,18 @@ class Detector:
             return 1.0e12
         return donors - acceptors
 
-    def _resolve_capacitance(self):
+    @cached_property
+    def capacitance(self):
+        """Detector capacitance in pF: capacitance_pF of the json, otherwise
+        the parallel-plate value of the readout area over the depletion depth."""
         if "capacitance_pF" in self.device_dict:
             return float(self.device_dict["capacitance_pF"])
-        if "capacitance" in self.device_dict:
-            return float(self.device_dict["capacitance"])
 
         if "3d" in self.det_model.lower():
             return None
 
-        if self.depletion_depth <= 0:
+        depletion_depth = float(self.device_dict.get("depletion_depth", self.l_z))
+        if depletion_depth <= 0:
             raise ValueError("depletion_depth must be positive")
 
         material = Material(self.material)
@@ -164,7 +164,7 @@ class Detector:
             * material.permittivity
             * area_um2
             * 1e-12
-            / (self.depletion_depth * 1e-6)
+            / (depletion_depth * 1e-6)
         )
         return capacitance_f * 1e12
 
