@@ -226,12 +226,12 @@ def disk(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     def load_component(kind: str, selector: str) -> tuple[Path, dict[str, Any]]:
         return Path(f"{selector}.json"), {"kind": kind, "selector": selector, **content}
 
-    def load_definition(selector: str) -> SimpleNamespace:
+    def device_json(selector: str) -> dict[str, Any]:
         bias = {"electrode": "top", "voltage": 200.0}
-        return SimpleNamespace(raw={"det_name": selector, "bias": bias, **content})
+        return {"det_name": selector, "bias": bias, **content}
 
     monkeypatch.setattr(workflow_module, "load_component", load_component)
-    monkeypatch.setattr(workflow_module, "load_definition", load_definition)
+    monkeypatch.setattr(workflow_module, "device_json", device_json)
     return content
 
 

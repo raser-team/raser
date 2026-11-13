@@ -33,6 +33,12 @@ def device_file(device_name):
     return component_file_path("device", str(device_name))
 
 
+def device_json(device_name):
+    """The content of the json of a device."""
+    with open(device_file(device_name)) as f:
+        return json.load(f)
+
+
 class Detector:
     """
     Description:
@@ -49,13 +55,12 @@ class Detector:
         2023/12/03
     """ 
     def __init__(self, device_name, device_dict=None):
-        device_json = device_file(device_name)
+        path = device_file(device_name)
         # A run hands in the content it recorded; otherwise the file is read.
         if device_dict is None:
-            with open(device_json) as f:
-                device_dict = json.load(f)
+            device_dict = device_json(device_name)
         self.device_dict = device_dict
-        self.definition_path = device_json.resolve()
+        self.definition_path = path.resolve()
 
         # Every key of the json is an attribute of the same name.
         self.__dict__.update(self.device_dict)
@@ -71,7 +76,7 @@ class Detector:
         self.mesher = self.device_dict.get('mesh', {}).get('mesher')
 
         # What follows from several keys.
-        self.det_name = self.device_dict.get('det_name', device_json.stem)
+        self.det_name = self.device_dict.get('det_name', path.stem)
         self.device = self.det_name
         self.region = self.det_name
         self.dimension = self.device_dict.get(

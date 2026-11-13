@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Callable, Mapping
 
 from raser.components import load_component
-from raser.core.device import load_definition
+from raser.core.device.build_device import device_json
 from raser.lifecycle import jobs
 from raser.supports.paths import REPO_ROOT
 from raser.supports.paths import project_path
@@ -197,7 +197,7 @@ def _point(workflow, kwargs, options) -> tuple[dict, dict]:
     # The json files the run uses: the device, and the files its options name.
     files = {}
     if workflow.device:
-        files["device"] = dict(load_definition(kwargs["det_name"]).raw)
+        files["device"] = device_json(kwargs["det_name"])
     for kind, key in workflow.components.items():
         files[kind] = load_component(kind, options[key])[1]
 
