@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import pickle
 from pathlib import Path
 from types import SimpleNamespace
@@ -148,6 +149,8 @@ def test_devsim_field_loads_unstructured_3d_assets(tmp_path: Path) -> None:
         voltage=1,
     )
 
+    (tmp_path / "run.json").write_text(json.dumps({"axes": ["x", "y", "z"]}))
+
     field = DevsimField(
         "synthetic-3d",
         3,
@@ -210,3 +213,54 @@ def test_gain_follows_drift_paths_in_3d_and_the_planar_integral_elsewhere() -> N
     )
     with pytest.raises(ValueError, match="gain_algorithm"):
         gain_algorithm(SimpleNamespace(dimension=1, gain_algorithm="planar"))
+
+
+def _write_field(directory: Path, points, potential, axes) -> None:
+    flat = np.zeros(len(points))
+    for name, values, voltage in (
+        ("Potential_57V.pkl", potential, 57),
+        ("NetDoping_0V.pkl", flat, 0),
+        ("TrappingRate_p_57V.pkl", flat, 57),
+        ("TrappingRate_n_57V.pkl", flat, 57),
+        ("weightingfield/center/Potential_1V.pkl", flat, 1),
+    ):
+        _write_field_pickle(directory / name, points, values, voltage=voltage)
+    if axes:
+        (directory / "run.json").write_text(json.dumps({"axes": list(axes)}))
+
+
+def _grid_3d():
+    grid = np.linspace(0.0, 0.01, 3)
+    return np.array([(a, b, c) for a in grid for b in grid for c in grid])
+
+
+@pytest.mark.parametrize(
+    ("axes", "along", "mesher_of_the_device"),
+    [(("x", "y", "z"), 0, None), (("z", "x", "y"), 1, "sde")],
+)
+def test_a_field_is_read_along_the_axes_its_folder_records(
+    tmp_path: Path, axes, along, mesher_of_the_device
+) -> None:
+    points = _grid_3d()
+    _write_field(tmp_path, points, 100.0 * points[:, along], axes)
+
+    field = DevsimField(
+        "synthetic",
+        3,
+        57,
+        [{"name": "center"}],
+        mesher_of_the_device,
+        field_directory=tmp_path,
+    )
+
+    assert field._get_potential(100.0, 50.0, 50.0) == pytest.approx(1.0)
+    assert field._get_potential(0.0, 50.0, 50.0) == pytest.approx(0.0)
+    assert field._get_e_field(50.0, 50.0, 50.0) == pytest.approx((-100.0, 0.0, 0.0))
+
+
+def test_a_field_folder_without_its_record_is_refused(tmp_path: Path) -> None:
+    points = _grid_3d()
+    _write_field(tmp_path, points, points[:, 0], axes=None)
+
+    with pytest.raises(FileNotFoundError, match="run.json is missing"):
+        DevsimField("synthetic", 3, 57, [{"name": "center"}], "sde", field_directory=tmp_path)

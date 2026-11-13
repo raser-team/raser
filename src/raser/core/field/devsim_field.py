@@ -7,6 +7,7 @@
 @Version :   3.0
 '''
 
+import json
 import pickle
 import os
 import logging
@@ -108,6 +109,16 @@ class DevsimField:
         if irradiation_flux != 0 and field_set == "default" and not explicit_directory:
             path = str(project_path("field", str(irradiation_flux))) + os.sep
 
+        # The device axis along each coordinate of the stored points.
+        record = os.path.join(path, "run.json")
+        if not os.path.exists(record):
+            raise FileNotFoundError(
+                "{} is missing: solve the field again, or write the axes of its "
+                'files there, for example {{"axes": ["z"]}}'.format(record)
+            )
+        with open(record) as file:
+            self.axes = tuple(json.load(file)["axes"])
+
         DopingFile = None
         doping_file_pattern = re.compile(r'^NetDoping_(-?\d+\.?\d*)V\.pkl$')
         for filename in os.listdir(path):
@@ -133,7 +144,7 @@ class DevsimField:
             with open(DopingFile,'rb') as file:
                 DopingNotUniform=pickle.load(file)
                 print("Doping file loaded for {}".format(self.name))
-                if DopingNotUniform['metadata']['dimension'] < self.dimension:
+                if DopingNotUniform['metadata']['dimension'] < len(self.axes):
                     print("Doping dimension not match")
                     return
         except (FileNotFoundError, TypeError):
@@ -157,7 +168,7 @@ class DevsimField:
             with open(PotentialFile,'rb') as file:
                 PotentialNotUniform=pickle.load(file)
                 print("Potential file loaded for {}".format(self.name))
-                if PotentialNotUniform['metadata']['dimension'] < self.dimension:
+                if PotentialNotUniform['metadata']['dimension'] < len(self.axes):
                     print("Potential dimension not match")
                     return
         except FileNotFoundError:
@@ -186,7 +197,7 @@ class DevsimField:
                 with open(WeightingPotentialFile,'rb') as file:
                     WeightingPotentialNotUniform=pickle.load(file)
                     print("Weighting Potential file loaded for {} at electrode {}".format(self.name, i+1))
-                    if ( WeightingPotentialNotUniform['metadata']['dimension'] < self.dimension
+                    if ( WeightingPotentialNotUniform['metadata']['dimension'] < len(self.axes)
                     ):
                         print("Weighting Potential dimension not match")
                         return
@@ -211,7 +222,7 @@ class DevsimField:
             with open(TrappingRate_pFile,'rb') as file:
                 TrappingRate_pNotUniform=pickle.load(file)
                 print("TrappingRate_p file loaded for {}".format(self.name))
-                if TrappingRate_pNotUniform['metadata']['dimension'] < self.dimension:
+                if TrappingRate_pNotUniform['metadata']['dimension'] < len(self.axes):
                     print("TrappingRate_p dimension not match")
                     return
         except FileNotFoundError:
@@ -235,7 +246,7 @@ class DevsimField:
             with open(TrappingRate_nFile,'rb') as file:
                 TrappingRate_nNotUniform=pickle.load(file)
                 print("TrappingRate_n file loaded for {}".format(self.name))
-                if TrappingRate_nNotUniform['metadata']['dimension'] != self.dimension:
+                if TrappingRate_nNotUniform['metadata']['dimension'] != len(self.axes):
                     print("TrappingRate_n dimension not match")
                     return
         except FileNotFoundError:
@@ -254,8 +265,11 @@ class DevsimField:
 
         self.TrappingRate_n = TrappingRate_nUniform
         
-    # 3D pickle points are stored in detector order (x, y, z).
-    # 2D planar fields keep the legacy (z, x) convention.
+
+    def _along_axes(self, x, y, z):
+        """A position, as the coordinates the field files are stored in."""
+        position = {"x": x, "y": y, "z": z}
+        return [position[axis] for axis in self.axes]
 
     def _get_doping(self, x, y, z):
         """
@@ -263,18 +277,7 @@ class DevsimField:
         output: doping in cm^-3
         """
         x, y, z = x/1e4, y/1e4, z/1e4 # um to cm
-        if self.dimension == 1:
-            return self.Doping(z)
-        elif self.dimension == 2:
-            if self.is_plugin:
-                return self.Doping(x, y)  # 2D插件使用x,y
-            else:
-                return self.Doping(z, x)
-        elif self.dimension == 3:
-            if self.mesher == "sde": # SDE使用x,y,z坐标
-                return self.Doping(x, y, z)
-            else :
-                return self.Doping(z, x, y)
+        return self.Doping(*self._along_axes(x, y, z))
     
     def _get_potential(self, x, y, z):
         """
@@ -282,18 +285,7 @@ class DevsimField:
         output: potential in V
         """
         x, y, z = x/1e4, y/1e4, z/1e4 # um to cm
-        if self.dimension == 1:
-            return self.Potential(z)
-        elif self.dimension == 2:
-            if self.is_plugin:
-                return self.Potential(x, y)  # 2D插件使用x,y
-            else:
-                return self.Potential(z, x)
-        elif self.dimension == 3:
-            if self.mesher == "sde": # SDE使用x,y,z坐标
-                return self.Potential(x, y, z)
-            else:
-                return self.Potential(z, x, y)
+        return self.Potential(*self._along_axes(x, y, z))
     
     def _get_e_field(self, x, y, z):
         """
@@ -302,52 +294,13 @@ class DevsimField:
         """ 
         x, y, z = x / 1e4, y / 1e4, z / 1e4  # um to cm
 
-        if self.dimension == 1:
-            nabla_U = calculate_gradient(self.Potential, [z])
-            E_z = -1 * nabla_U[0]
-            return (0, 0, E_z)
-
-        elif self.dimension == 2:
-            if self.is_plugin:
-                # 2D插件使用x,y坐标
-                nabla_U = calculate_gradient(self.Potential, [x, y])
-                E_x = -1 * nabla_U[0]
-                E_y = -1 * nabla_U[1]
-                return (E_x, E_y, 0)
-            else:
-                nabla_U = calculate_gradient(self.Potential, [z, x])
-                E_z = -1 * nabla_U[0]
-                E_x = -1 * nabla_U[1]
-                return (E_x, 0, E_z)
-
-        elif self.dimension == 3:
-            if self.mesher == "sde": # SDE使用x,y,z坐标
-                nabla_U = calculate_gradient(self.Potential, [x, y, z])
-                E_x = -1 * nabla_U[0]
-                E_y = -1 * nabla_U[1]
-                E_z = -1 * nabla_U[2]
-                return (E_x, E_y, E_z)
-            else:
-                nabla_U = calculate_gradient(self.Potential, [z, x, y])
-                E_z = -1 * nabla_U[0]
-                E_x = -1 * nabla_U[1]
-                E_y = -1 * nabla_U[2]
-                return (E_x, E_y, E_z)
+        nabla_U = calculate_gradient(self.Potential, self._along_axes(x, y, z))
+        E = {axis: -1 * component for axis, component in zip(self.axes, nabla_U)}
+        return (E.get("x", 0), E.get("y", 0), E.get("z", 0))
 
     def _get_w_p(self, x, y, z, i): # used in cal current
         x, y, z = x/1e4, y/1e4, z/1e4 # um to cm
-        if self.dimension == 1:
-            U_w = self.WeightingPotential[i](z)
-        elif self.dimension == 2:
-            if self.is_plugin:
-                U_w = self.WeightingPotential[i](x, y)  # 2D插件使用x,y
-            else:
-                U_w = self.WeightingPotential[i](z, x)
-        elif self.dimension == 3:
-            if self.mesher == "sde": # SDE使用x,y,z坐标
-                U_w = self.WeightingPotential[i](x, y, z)
-            else:
-                U_w = self.WeightingPotential[i](z, x, y)
+        U_w = self.WeightingPotential[i](*self._along_axes(x, y, z))
 
         # exclude non-physical values
         if U_w < 0:
@@ -372,20 +325,7 @@ class DevsimField:
         output: electron trapping rate in s^-1
         """
         x, y, z = x/1e4, y/1e4, z/1e4 # um to cm
-        if self.dimension == 1:
-            return self.TrappingRate_n(z)
-        
-        elif self.dimension == 2:
-            if self.is_plugin:
-                return self.TrappingRate_n(x, y)  # 2D插件使用x,y
-            else:
-                return self.TrappingRate_n(z, x)
-        
-        elif self.dimension == 3:
-            if self.mesher == "sde": # SDE使用x,y,z坐标
-                return self.TrappingRate_n(x, y, z)
-            else:
-                return self.TrappingRate_n(z, x, y)
+        return self.TrappingRate_n(*self._along_axes(x, y, z))
 
     def _get_trap_h(self, x, y, z):
         """
@@ -393,18 +333,7 @@ class DevsimField:
         output: hole trapping rate in s^-1
         """
         x, y, z = x/1e4, y/1e4, z/1e4 # um to cm
-        if self.dimension == 1:
-            return self.TrappingRate_p(z)
-        elif self.dimension == 2:
-            if self.is_plugin:
-                return self.TrappingRate_p(x, y)  # 2D插件使用x,y
-            else:
-                return self.TrappingRate_p(z, x)
-        elif self.dimension == 3:
-            if self.mesher == "sde": # SDE使用x,y,z坐标
-                return self.TrappingRate_p(x, y, z)
-            else:
-                return self.TrappingRate_p(z, x, y)
+        return self.TrappingRate_p(*self._along_axes(x, y, z))
 
     # 缓存方法
     _planar_gain = None
