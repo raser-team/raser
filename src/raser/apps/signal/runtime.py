@@ -23,7 +23,8 @@ def component_name(kwargs, kind, option):
 
 
 def apply_signal_plan(detector, kwargs):
-    """Configure the detector from the component files recorded for the run."""
+    """Hang the component names of the run on the detector and return the
+    Geant4 configuration built from its component files."""
     state = kwargs["_files"]
     g4_config = deepcopy(state.get("g4setup", DEVICE_G4_CONFIG))
     g4_config.update(state["source"])
@@ -35,23 +36,23 @@ def apply_signal_plan(detector, kwargs):
     detector.g4experiment = "device"
     if "g4setup" in state:
         detector.g4experiment = component_name(kwargs, "g4setup", "g4setup")
-    detector.g4_config = g4_config
     detector.amplifier = component_name(kwargs, "afe", "amplifier")
     if "adc" in state:
         detector.daq = component_name(kwargs, "adc", "adc")
     detector.signal_source = component_name(kwargs, "source", "source")
     detector.signal_output_label = kwargs["_signal_label"]
+    return g4_config
 
 
-def build_interaction(detector, seed, g4_vis, **options):
-    if detector.g4_config.get("source_kind") == "toy_mip":
-        return ToyMIPInteraction(detector, detector.g4_config)
+def build_interaction(detector, g4_config, seed, g4_vis, **options):
+    if g4_config.get("source_kind") == "toy_mip":
+        return ToyMIPInteraction(detector, g4_config)
 
     from raser.core.interaction.interaction import GeneralG4Interaction
 
     return GeneralG4Interaction(
         detector,
-        detector.g4_config,
+        g4_config,
         seed,
         g4_vis,
         **options,

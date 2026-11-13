@@ -47,18 +47,18 @@ def main(kwargs):
 
     det_name = kwargs['det_name']
     my_d = bdv.Detector(det_name, kwargs["_files"]["device"])
-    apply_signal_plan(my_d, kwargs)
+    g4_config = apply_signal_plan(my_d, kwargs)
 
     if kwargs['irradiation'] != None:
         my_d.irradiation_flux = float(kwargs['irradiation'])
     if kwargs.get("events_per_job") is not None:
-        my_d.g4_config["total_events"] = int(kwargs["events_per_job"])
+        g4_config["total_events"] = int(kwargs["events_per_job"])
     if kwargs.get("g4_vis_driver"):
-        my_d.g4_config["g4_vis_driver"] = kwargs["g4_vis_driver"]
+        g4_config["g4_vis_driver"] = kwargs["g4_vis_driver"]
 
     g4_vis = kwargs['g4_vis']
     if g4_vis:
-        my_d.g4_config["g4_vis_output"] = os.path.join(
+        g4_config["g4_vis_output"] = os.path.join(
             kwargs["_run_path"],
             "g4_geometry",
         )
@@ -84,6 +84,7 @@ def main(kwargs):
         ]
     my_g4 = build_interaction(
         my_d,
+        g4_config,
         g4_seed,
         g4_vis,
         **interaction_options,

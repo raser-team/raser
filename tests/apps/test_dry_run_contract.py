@@ -96,11 +96,11 @@ def test_signal_runtime_configures_the_detector_from_the_components_of_the_app(
     kwargs.update(options, _files=files, _signal_label="cce")
     detector = SimpleNamespace(daq=None)
 
-    apply_signal_plan(detector, kwargs)
+    g4_config = apply_signal_plan(detector, kwargs)
 
     assert detector.g4experiment == "charge_collection"
-    assert detector.g4_config["geant4_model"] == "charge_collection"
-    assert detector.g4_config["source_kind"] == "decay_source"
+    assert g4_config["geant4_model"] == "charge_collection"
+    assert g4_config["source_kind"] == "decay_source"
     assert detector.amplifier == "Broad_Band_UCSC"
     assert detector.daq == "Alibava"
     assert detector.signal_source == "Sr90"

@@ -450,17 +450,17 @@ def batch_loop(
 def main(kwargs):
     det_name = kwargs['det_name']
     my_d = bdv.Detector(det_name, kwargs["_files"]["device"])
-    apply_signal_plan(my_d, kwargs)
+    g4_config = apply_signal_plan(my_d, kwargs)
 
     if kwargs['irradiation'] != None:
         my_d.irradiation_flux = float(kwargs['irradiation'])
     if kwargs.get("events_per_job") is not None:
-        my_d.g4_config["total_events"] = int(kwargs["events_per_job"])
+        g4_config["total_events"] = int(kwargs["events_per_job"])
     if kwargs.get("g4_vis_driver"):
-        my_d.g4_config["g4_vis_driver"] = kwargs["g4_vis_driver"]
+        g4_config["g4_vis_driver"] = kwargs["g4_vis_driver"]
 
     if kwargs.get("g4_vis"):
-        my_d.g4_config["g4_vis_output"] = os.path.join(
+        g4_config["g4_vis_output"] = os.path.join(
             kwargs["_run_path"],
             "g4_geometry",
         )
@@ -478,7 +478,7 @@ def main(kwargs):
         interpolation_bins=my_d.device_dict.get("field_interpolation_bins"),
     )
 
-    g4_dic = my_d.g4_config
+    g4_dic = g4_config
     total_events = int(g4_dic['total_events'])
 
     job_number = kwargs['job_index']
@@ -492,6 +492,7 @@ def main(kwargs):
         ]
     my_g4 = build_interaction(
         my_d,
+        g4_config,
         g4_seed,
         kwargs.get("g4_vis", False),
         **interaction_options,
