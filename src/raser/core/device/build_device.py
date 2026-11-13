@@ -9,11 +9,8 @@ Description:  Define physical models for different materials
 """
 
 import json
-import math
 from functools import cached_property
 from pathlib import Path
-
-import numpy as np
 
 from ..current.model import Material
 from raser.supports.paths import component_file_path
@@ -90,7 +87,6 @@ class Detector:
             self.y_ele_num = 1
             self.read_ele_num = 1
 
-        self.gain_rate = 0.0
         self.avalanche_model = self.device_dict.get('avalanche_model')
         self.avalanche_bond = self.device_dict.get('avalanche_bond')
         enable_gain = bool(
@@ -174,69 +170,6 @@ class Detector:
             return True
         else:
             return False
-
-    def gain_rate_cal(self, my_f):
-        # gain = exp[K(d_gain)] / {1-int[alpha_minor * K(x) dx]}
-        # K(x) = exp{int[(alpha_major - alpha_minor) dx]}
-
-        # TODO: support non-uniform field in gain layer
-        self.gain_rate = 0
-        if not self.has_avalanche:
-            self.gain_rate = 0
-            return
-        if self.gain_algorithm != "planar_integral":
-            return
-        if self.avalanche_bond is None:
-            raise ValueError("planar_integral gain algorithm requires `avalanche_bond` in detector settings")
-        
-        cal_coefficient = Material(self.material, avalanche_model=self.avalanche_model).cal_coefficient
-
-        n = 1001
-        if "ilgad" in self.det_model:
-            z_list = np.linspace(self.avalanche_bond * 1e-4, self.l_z, n) # in cm
-        else:
-            z_list = np.linspace(0, self.avalanche_bond * 1e-4, n) # in cm
-        alpha_n_list = np.zeros(n)
-        alpha_p_list = np.zeros(n)
-        for i in range(n):
-            Ex,Ey,Ez = my_f._get_e_field(0.5*self.l_x,0.5*self.l_y,z_list[i] * 1e4) # in V/cm, get original field to improve accuracy
-            E_field = math.sqrt(Ex * Ex + Ey * Ey + Ez * Ez)
-            alpha_n = cal_coefficient(E_field, -1, self.temperature)
-            alpha_p = cal_coefficient(E_field, +1, self.temperature)
-            alpha_n_list[i] = alpha_n
-            alpha_p_list[i] = alpha_p
-
-        if my_f._get_e_field(0, 0, self.avalanche_bond)[2] > 0:
-            alpha_major_list = alpha_n_list # multiplication contributed mainly by electrons in conventional Si LGAD
-            alpha_minor_list = alpha_p_list
-        else:
-            alpha_major_list = alpha_p_list # multiplication contributed mainly by holes in conventional SiC LGAD
-            alpha_minor_list = alpha_n_list
-
-        # the integral supports iLGAD as well
-        
-        diff_list = alpha_major_list - alpha_minor_list
-        int_alpha_list = np.zeros(n-1)
-
-        for i in range(1,n):
-            int_alpha = 0
-            for j in range(i):
-                int_alpha += (
-                    (diff_list[j] + diff_list[j+1]) * (z_list[j+1] - z_list[j]) /2
-                )
-            int_alpha_list[i-1] = int_alpha
-        exp_list = np.exp(int_alpha_list)
-
-        det = 0 # determinant of breakdown
-        for i in range(0,n-1):
-            average_alpha_minor = (alpha_minor_list[i] + alpha_minor_list[i+1])/2
-            det_derivative = average_alpha_minor * exp_list[i]
-            det += det_derivative*(z_list[i+1]-z_list[i])        
-        if det>1:
-            print("determinant=%s, larger than 1, detector break down", det)
-            raise(ValueError)
-        
-        self.gain_rate = exp_list[n-2]/(1-det) -1
 
 if __name__ == "__main__":
     import sys

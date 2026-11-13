@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from raser.core.current.model import Material
 from raser.core.field.interpolation import interpolate_3d
 from raser.core.field.devsim_field import DevsimField
 from raser.core.field.physics_avalanche import CreateImpactModel_vanOvenstraeten
@@ -160,3 +161,40 @@ def test_devsim_field_loads_unstructured_3d_assets(tmp_path: Path) -> None:
     assert field._get_potential(100.0, 100.0, 100.0) == pytest.approx(0.03)
     assert field._get_w_p(100.0, 100.0, 100.0, 0) == pytest.approx(1.0)
     assert np.all(np.isfinite(field._get_e_field(50.0, 50.0, 50.0)))
+
+
+def test_planar_gain_of_a_uniform_gain_layer_matches_the_closed_form() -> None:
+    field_v_per_cm = 3.0e5
+    layer_um = 1.0
+    device = SimpleNamespace(
+        material="Si",
+        avalanche_model="vanOverstraeten",
+        avalanche_bond=layer_um,
+        det_model="lgad",
+        temperature=300.0,
+        l_x=100.0,
+        l_y=100.0,
+        l_z=50.0,
+    )
+    field = object.__new__(DevsimField)
+    calls = []
+
+    def uniform(x, y, z):
+        calls.append(z)
+        return (0.0, 0.0, field_v_per_cm)
+
+    field._get_e_field = uniform
+
+    coefficient = Material("Si", avalanche_model="vanOverstraeten").cal_coefficient
+    electrons = coefficient(field_v_per_cm, -1, 300.0)
+    holes = coefficient(field_v_per_cm, +1, 300.0)
+    growth = np.exp((electrons - holes) * layer_um * 1e-4)
+    feedback = holes / (electrons - holes) * (growth - 1)
+    expected = growth / (1 - feedback) - 1
+
+    assert expected > 0.1
+    assert field.planar_gain(device) == pytest.approx(expected, rel=1e-3)
+
+    asked = len(calls)
+    assert field.planar_gain(device) == pytest.approx(expected, rel=1e-3)
+    assert len(calls) == asked

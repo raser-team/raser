@@ -694,10 +694,8 @@ class CalCurrentGain(CalCurrent):
                 gain_positions, gain_electron_charges, gain_hole_charges, gain_times, gain_signals,
             )
         else:
-            gain_rate = getattr(my_d, "gain_rate", 0.0)
-            logger.info("gain_rate=%s", gain_rate)
             self._build_planar_gain_carriers(
-                my_d, my_current, gain_rate,
+                my_d, my_f, my_current,
                 gain_positions, gain_electron_charges, gain_hole_charges, gain_times, gain_signals,
             )
 
@@ -734,11 +732,13 @@ class CalCurrentGain(CalCurrent):
         # 计算电流
         self.get_current(my_d.x_ele_num, my_d.y_ele_num, self.read_out_contact)
 
-    def _build_planar_gain_carriers(self, my_d, my_current, gain_rate, gain_positions,
+    def _build_planar_gain_carriers(self, my_d, my_f, my_current, gain_positions,
                                     gain_electron_charges, gain_hole_charges,
                                     gain_times, gain_signals):
         if my_d.avalanche_bond is None:
             raise ValueError("planar_integral gain algorithm requires `avalanche_bond` in detector settings")
+        gain_rate = my_f.planar_gain(my_d)
+        logger.info("gain_rate=%s", gain_rate)
 
         if my_d.voltage < 0:  # p层在d=0，空穴倍增为电子
             source_system = my_current.hole_system
