@@ -503,3 +503,57 @@ def test_same_seeds_in_the_config_holds_without_the_option(
     root, seven = _point_seeds(seeded, experiment)
 
     assert root == seven
+
+
+def _plain(**given: Any) -> dict[str, Any]:
+    """The options of a command of a workflow without seeds."""
+    kwargs: dict[str, Any] = {"batch": False, "mem": 1, "dry_run": False, "scan": []}
+    return {**kwargs, "_entry_command_prefix": ("toy",), **given}
+
+
+def test_without_seeds_a_point_folder_holds_its_one_run_and_is_not_run_twice(
+    started: list[Any], tmp_path: Path
+) -> None:
+    received: list[dict[str, Any]] = []
+    workflow = Workflow(
+        name="toy", job=received.append, keys=("x",), defaults={"x": 1},
+        device=False, seeds=False,
+    )
+
+    execute(workflow, _plain(scan=["x=1,2"]))
+    execute(workflow, _plain(scan=["x=1,2"]))
+
+    experiment = tmp_path / "toy"
+    assert [options["_run_path"] for options in received] == [
+        str(experiment),
+        str(experiment / "x_2"),
+    ]
+    assert "seed" not in received[0]
+    assert _record(experiment / "x_2") == {
+        "point": "x_2", "commit": "abc", "options": {"x": 2}, "files": {},
+    }
+    assert "same_seeds" not in json.loads((experiment / "config.json").read_text())
+    assert [(name, len(done)) for name, _, done in
+            workflow_module.finished(workflow, _plain(), experiment)] == [("", 1), ("x_2", 1)]
+
+
+def test_without_seeds_a_point_run_with_another_record_is_run_again_in_its_place(
+    started: list[Any], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def job(options: dict[str, Any]) -> None:
+        if options["x"] == 5:
+            raise RuntimeError("the second run fails")
+
+    workflow = Workflow(
+        name="toy", job=job, keys=("x",), defaults={"x": 1}, device=False, seeds=False
+    )
+    execute(workflow, _plain())
+
+    with pytest.raises(RuntimeError):
+        execute(workflow, _plain(x=5))
+
+    experiment = tmp_path / "toy"
+    assert "the old run is replaced" in capsys.readouterr().out
+    assert _record(experiment)["options"] == {"x": 5}
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["toy"]
+    assert not (experiment / "batch" / "job_0.done").exists()

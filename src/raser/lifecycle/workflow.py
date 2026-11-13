@@ -32,6 +32,7 @@ class Workflow:
     components: Mapping = field(default_factory=dict)  # kind of json file -> the option naming it
     in_file: Mapping = field(default_factory=dict)  # option -> where its value sits in a file
     device: bool = True  # the command names a device
+    seeds: bool = True  # False: nothing is drawn; a point holds one run, in its own folder
     command: Callable | None = None  # extra words of the job command
     extract: Callable | None = None  # (point folder, [(seed folder, job)]) -> a summary row
     # TODO(ana): nothing calls extract yet. A separate `raser ana` command is to
@@ -44,11 +45,12 @@ class Workflow:
         return self.name.split()
 
     def attach(self, parser):
-        parser.add_argument("-s", "--jobs", type=int)
+        if self.seeds:
+            parser.add_argument("-s", "--jobs", type=int)
+            parser.add_argument("--seed", type=int)
+            parser.add_argument("--same-seeds", action="store_true")
         parser.add_argument("-b", "--batch", action="store_true")
         parser.add_argument("-mem", type=int, default=1)
-        parser.add_argument("--seed", type=int)
-        parser.add_argument("--same-seeds", action="store_true")
         parser.add_argument("--dry-run", action="store_true")
         parser.add_argument("--scan", action="append", default=[])
         parser.add_argument("--job-dir", help=argparse.SUPPRESS)
@@ -74,28 +76,34 @@ def execute(workflow, kwargs):
     scan, points = _points(workflow, kwargs, config, given)
 
     # The seed folder of this command in every point, and the jobs left in it.
-    if kwargs["seed"] is None:
+    # Without seeds the point folder itself holds the run, and its one job.
+    if not workflow.seeds:
+        label, seed = "", None
+    elif kwargs["seed"] is None:
         label, seed = time.strftime("%Y_%m%d_%H%M%S"), secrets.randbits(31)
     else:
         label, seed = f"seed_{kwargs['seed']}", kwargs["seed"]
     # A seed folder that was run with another record is run again from the start,
     # and so is any when the code has uncommitted changes; the old one is kept.
     commit = _commit()
-    same_seeds = kwargs["same_seeds"] or config.get("same_seeds", False)
+    same_seeds = kwargs.get("same_seeds") or config.get("same_seeds", False)
     todo = []
     for name, (options, files) in points.items():
         folder = root / name / label
         record = {"seed": seed, "point": name, "same_seeds": same_seeds}
+        if not workflow.seeds:
+            record = {"point": name}
         record.update(commit=commit, options=options, files=files)
         record = json.loads(json.dumps(record))
         old = _read(folder / "run.json")
         stale = bool(old) and (old != record or commit.endswith("+dirty"))
         left = [
             i
-            for i in range(kwargs["jobs"] or 1)
+            for i in range(kwargs.get("jobs") or 1)
             if stale or not _done(folder, i).exists()
         ]
-        print(f"{folder}: jobs {left}" + (", the old run is kept aside" if stale else ""))
+        aside = "kept aside" if workflow.seeds else "replaced"
+        print(f"{folder}: jobs {left}" + (f", the old run is {aside}" if stale else ""))
         todo.append((folder, left, stale, record))
     if kwargs["dry_run"]:
         return None
@@ -104,11 +112,16 @@ def execute(workflow, kwargs):
 
     if not config:
         root.mkdir(parents=True, exist_ok=True)
-        new = {**identity, "set": given, "scan": scan, "same_seeds": same_seeds}
+        new = {**identity, "set": given, "scan": scan}
+        if workflow.seeds:
+            new["same_seeds"] = same_seeds
         _write(root / "config.json", new)
     for folder, left, stale, record in todo:
-        if stale:
+        if stale and workflow.seeds:
             folder.rename(folder.with_name(f"{label}_{time.strftime('%Y_%m%d_%H%M%S')}"))
+        elif stale:  # a point without seeds has no folder of its own to set aside
+            for i in left:
+                _done(folder, i).unlink(missing_ok=True)
         if left:
             (folder / "batch").mkdir(parents=True, exist_ok=True)
             _write(folder / "run.json", record)
@@ -128,9 +141,9 @@ def finished(workflow, kwargs, root) -> list[tuple[str, dict, list[tuple[Path, i
     for name, (options, files) in points.items():
         now = json.loads(json.dumps({"options": options, "files": files}))
         done = []
-        for path in sorted((root / name).glob("*/run.json")):
+        for path in sorted((root / name).glob("*/run.json" if workflow.seeds else "run.json")):
             old, label = _read(path), path.parent.name
-            kept = label.startswith("seed_") and label != f"seed_{old['seed']}"
+            kept = label.startswith("seed_") and label != f"seed_{old.get('seed')}"
             if not kept and {key: old[key] for key in now} == now:
                 marks = sorted((path.parent / "batch").glob("job_*.done"))
                 done += [(path.parent, int(mark.stem.split("_")[1])) for mark in marks]
@@ -186,7 +199,7 @@ def _point(workflow, kwargs, options) -> tuple[dict, dict]:
 
 def _start(workflow, kwargs, folder, left) -> None:
     """Start the jobs `left` of a seed folder."""
-    if kwargs["jobs"] is None and not kwargs["batch"]:
+    if kwargs.get("jobs") is None and not kwargs["batch"]:
         _run_job(workflow, {**kwargs, "job_dir": str(folder)})  # in this process
         return
     tail = workflow.words[1:]
@@ -211,20 +224,21 @@ def _run_job(workflow, kwargs):
     The job's seed is a hash of the run's seed, the point and the job index, so
     points draw different random numbers; with same_seeds the point is left out
     and the jobs with one index draw the same numbers in every point."""
-    from raser.core.seeding import seed_generators  # loads ROOT
-
     folder, index = Path(kwargs["job_dir"]), kwargs.get("job_index") or 0
     record = _read(folder / "run.json")
-    source = f"{record['seed']}/{index}"
-    if not record["same_seeds"]:
-        source = f"{record['seed']}/{record['point']}/{index}"
-    digest = hashlib.sha256(source.encode()).digest()
     options = {**kwargs, **record["options"]}
-    options["seed"] = 1 + int.from_bytes(digest[:8], "big") % (2**31 - 1)
     options["_run_path"] = str(folder)
     options["_run_batch_path"] = str(folder / "batch")
     options["_files"] = record["files"]
-    seed_generators(options["seed"])
+    if workflow.seeds:
+        from raser.core.seeding import seed_generators  # loads ROOT
+
+        source = f"{record['seed']}/{index}"
+        if not record["same_seeds"]:
+            source = f"{record['seed']}/{record['point']}/{index}"
+        digest = hashlib.sha256(source.encode()).digest()
+        options["seed"] = 1 + int.from_bytes(digest[:8], "big") % (2**31 - 1)
+        seed_generators(options["seed"])
     workflow.job(options)
     _done(folder, index).touch()
 
