@@ -72,6 +72,19 @@ class StageTimings(dict):
         return {name: round(seconds, 6) for name, seconds in self.items()}
 
 
+def gain_algorithm(my_d):
+    """How the gain of a device is calculated.
+
+    The device file may name it; otherwise carriers multiply along their
+    drift paths in three dimensions and by the planar integral elsewhere.
+    """
+    default = "local_path" if my_d.dimension == 3 else "planar_integral"
+    algorithm = getattr(my_d, "gain_algorithm", default)
+    if algorithm not in ("planar_integral", "local_path"):
+        raise ValueError("Unsupported gain_algorithm: {}".format(algorithm))
+    return algorithm
+
+
 class CalCurrent:
     """
     Description:
@@ -92,7 +105,7 @@ class CalCurrent:
     def __init__(self, my_d, my_f, ionized_pairs, track_position, keep_drift_paths=True):
         self.timings = StageTimings()
         self.keep_drift_paths = bool(keep_drift_paths)
-        if getattr(my_d, "has_avalanche", False) and getattr(my_d, "gain_algorithm", None) == "local_path":
+        if my_d.has_avalanche and gain_algorithm(my_d) == "local_path":
             self.keep_drift_paths = True
         with self.timings.record("total"):
             self._run_current_calculation(my_d, my_f, ionized_pairs, track_position)
@@ -208,7 +221,7 @@ class CalCurrent:
                 self._apply_smoothing()
 
         self.det_model = my_d.det_model
-        if getattr(my_d, "has_avalanche", False):
+        if my_d.has_avalanche:
             self.gain_current = CalCurrentGain(my_d, my_f, self)
             for i in range(self.read_ele_num):
                 self.sum_cu[i].Add(self.gain_current.negative_cu[i])
@@ -688,7 +701,7 @@ class CalCurrentGain(CalCurrent):
         gain_times = []
         gain_signals = []
 
-        if getattr(my_d, "gain_algorithm", "planar_integral") == "local_path":
+        if gain_algorithm(my_d) == "local_path":
             self._build_local_gain_carriers(
                 my_d, my_f, my_current,
                 gain_positions, gain_electron_charges, gain_hole_charges, gain_times, gain_signals,

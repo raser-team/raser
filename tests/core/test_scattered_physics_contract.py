@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from raser.core.current.cal_current import gain_algorithm
 from raser.core.current.model import Material
 from raser.core.field.interpolation import interpolate_3d
 from raser.core.field.devsim_field import DevsimField
@@ -198,3 +199,14 @@ def test_planar_gain_of_a_uniform_gain_layer_matches_the_closed_form() -> None:
     asked = len(calls)
     assert field.planar_gain(device) == pytest.approx(expected, rel=1e-3)
     assert len(calls) == asked
+
+
+def test_gain_follows_drift_paths_in_3d_and_the_planar_integral_elsewhere() -> None:
+    assert gain_algorithm(SimpleNamespace(dimension=3)) == "local_path"
+    assert gain_algorithm(SimpleNamespace(dimension=1)) == "planar_integral"
+    assert (
+        gain_algorithm(SimpleNamespace(dimension=1, gain_algorithm="local_path"))
+        == "local_path"
+    )
+    with pytest.raises(ValueError, match="gain_algorithm"):
+        gain_algorithm(SimpleNamespace(dimension=1, gain_algorithm="planar"))
