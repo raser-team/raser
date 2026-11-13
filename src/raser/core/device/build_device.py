@@ -8,6 +8,7 @@ Description:  Define physical models for different materials
 @version    : 3.0
 """
 
+import copy
 import json
 from functools import cached_property
 from pathlib import Path
@@ -57,9 +58,10 @@ class Detector:
     def __init__(self, device_name, device_dict=None):
         path = device_file(device_name)
         # A run hands in the content it recorded; otherwise the file is read.
+        # The device keeps a copy of its own: what it was handed stays apart.
         if device_dict is None:
             device_dict = device_json(device_name)
-        self.device_dict = device_dict
+        self.device_dict = copy.deepcopy(device_dict)
         self.definition_path = path.resolve()
 
         # Every key of the json is an attribute of the same name.
