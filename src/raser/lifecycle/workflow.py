@@ -33,6 +33,10 @@ class Workflow:
     in_file: Mapping = field(default_factory=dict)  # option -> where its value sits in a file
     device: bool = True  # the command names a device
     seeds: bool = True  # False: nothing is drawn; a point holds one run, in its own folder
+    # (the run.json of an old run, the record of this one) -> what makes the old
+    # run out of date, or None. Not given: any difference between the two does,
+    # and so do uncommitted changes of the code.
+    outdated: Callable | None = None
     command: Callable | None = None  # extra words of the job command
     extract: Callable | None = None  # (point folder, [(seed folder, job)]) -> a summary row
     # TODO(ana): nothing calls extract yet. A separate `raser ana` command is to
@@ -96,14 +100,15 @@ def execute(workflow, kwargs):
         record.update(commit=commit, options=options, files=files)
         record = json.loads(json.dumps(record))
         old = _read(folder / "run.json")
-        stale = bool(old) and (old != record or commit.endswith("+dirty"))
+        why = _outdated(workflow, old, record) if old else None
+        stale = why is not None
         left = [
             i
             for i in range(kwargs.get("jobs") or 1)
             if stale or not _done(folder, i).exists()
         ]
         aside = "kept aside" if workflow.seeds else "replaced"
-        print(f"{folder}: jobs {left}" + (f", the old run is {aside}" if stale else ""))
+        print(f"{folder}: jobs {left}" + (f", the old run is {aside}: {why}" if stale else ""))
         todo.append((folder, left, stale, record))
     if kwargs["dry_run"]:
         return None
@@ -144,11 +149,24 @@ def finished(workflow, kwargs, root) -> list[tuple[str, dict, list[tuple[Path, i
         for path in sorted((root / name).glob("*/run.json" if workflow.seeds else "run.json")):
             old, label = _read(path), path.parent.name
             kept = label.startswith("seed_") and label != f"seed_{old.get('seed')}"
-            if not kept and {key: old[key] for key in now} == now:
+            any_code = {**old, "commit": ""}  # a finished run counts whatever its commit
+            if not kept and _outdated(workflow, any_code, {**any_code, **now}) is None:
                 marks = sorted((path.parent / "batch").glob("job_*.done"))
                 done += [(path.parent, int(mark.stem.split("_")[1])) for mark in marks]
         result.append((name, options, done))
     return result
+
+
+def _outdated(workflow, old, record) -> str | None:
+    """What makes the run that wrote `old` out of date for `record`, or None."""
+    if workflow.outdated:
+        return workflow.outdated(old, record)
+    if record["commit"].endswith("+dirty"):
+        return "the code has uncommitted changes"
+    if old == record:
+        return None
+    changed = [key for key in record if old.get(key) != record[key]]
+    return "other " + ", ".join(changed or ["entries"])
 
 
 def _points(workflow, kwargs, config, given) -> tuple[dict, dict]:

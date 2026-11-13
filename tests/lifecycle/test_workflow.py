@@ -557,3 +557,36 @@ def test_without_seeds_a_point_run_with_another_record_is_run_again_in_its_place
     assert _record(experiment)["options"] == {"x": 5}
     assert sorted(path.name for path in tmp_path.iterdir()) == ["toy"]
     assert not (experiment / "batch" / "job_0.done").exists()
+
+
+def _other_options(old: dict[str, Any], record: dict[str, Any]) -> str | None:
+    """Only the options make a run out of date; the old record may hold more."""
+    return None if old["options"] == record["options"] else "x changed"
+
+
+def test_a_workflow_says_what_makes_an_old_run_out_of_date(
+    started: list[Any],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    received: list[dict[str, Any]] = []
+    workflow = Workflow(
+        name="toy", job=received.append, keys=("x",), defaults={"x": 1},
+        device=False, seeds=False, outdated=_other_options,
+    )
+    experiment = tmp_path / "toy"
+    execute(workflow, _plain())
+    (experiment / "run.json").write_text(
+        json.dumps({**_record(experiment), "written by the job": True})
+    )
+
+    monkeypatch.setattr(workflow_module, "_commit", lambda: "def+dirty")
+    execute(workflow, _plain())
+    assert len(received) == 1
+    assert [len(done) for _, _, done in
+            workflow_module.finished(workflow, _plain(), experiment)] == [1]
+
+    execute(workflow, _plain(x=5))
+    assert len(received) == 2
+    assert "the old run is replaced: x changed" in capsys.readouterr().out
