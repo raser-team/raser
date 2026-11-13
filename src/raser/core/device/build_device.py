@@ -85,7 +85,6 @@ class Detector:
             'field_dimension', self.device_dict['default_dimension']
         )
         self.bound = {'x':(0, self.l_x), 'y':(0, self.l_y), 'z':(0, self.l_z)}
-        self.input_doping = self._net_doping_cm3(self.doping, self.device_dict)
 
         if "strip" in self.det_model:
             self.x_ele_num = self.read_ele_num
@@ -128,17 +127,6 @@ class Detector:
         if "pixel" in det_model:
             return float(self.p_x) * float(self.p_y)
         return float(self.l_x) * float(self.l_y)
-
-    @staticmethod
-    def _net_doping_cm3(doping, device_dict):
-        if "input_doping" in device_dict:
-            return float(device_dict["input_doping"])
-        try:
-            donors = float(doping.get("Donors", 0.0))
-            acceptors = float(doping.get("Acceptors", 0.0))
-        except (TypeError, ValueError):
-            return 1.0e12
-        return donors - acceptors
 
     @cached_property
     def capacitance(self):
