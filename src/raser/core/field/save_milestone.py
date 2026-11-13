@@ -498,9 +498,15 @@ def milestone_save_wf_3D(device, v, path, contact_name, is_tcad):
         pickle.dump(data, file)
 
 def save_record(path, **entries):
-    """Write what a solve records about its field into the run.json of the field folder."""
+    """Write what a solve records about its field into the run.json of the
+    field folder, beside what is recorded there already."""
+    record = {}
+    if os.path.exists(os.path.join(path, "run.json")):
+        with open(os.path.join(path, "run.json")) as file:
+            record = json.load(file)
+    record.update(entries)
     with open(os.path.join(path, "run.json"), "w") as file:
-        json.dump(entries, file, indent=2)
+        json.dump(record, file, indent=2)
 
 
 def save_milestone(device, v, path, dimension, contact_name, is_wf, is_tcad = False, is_flip=False):

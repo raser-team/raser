@@ -19,6 +19,7 @@ if __name__ == "__main__":
 from ..device.build_device import Detector
 from .create_mesh import DevsimMesh
 from .create_mesh import mesh_axes
+from .reading import Reading
 from .create_parameter import create_parameter
 from . import save_milestone
 from . import loop_section
@@ -91,7 +92,8 @@ def main (kwargs):
         raise ValueError("Field execution requires a resolved configuration")
     paras = _legacy_solver_parameters(configuration, weightfield=is_wf)
 
-    MyDetector = Detector(simname)
+    # Everything the solve takes from the device goes through this, and is noted.
+    MyDetector = Reading(Detector(simname))
     # HEMT_TRANSPORT_V1_DISPATCH
     if MyDetector.device_dict.get("hemt_physics", {}).get("transport_model") == "drift_diffusion_v1":
         from .hemt_solver_2d_transport_v1 import run_hemt_transport
@@ -257,7 +259,8 @@ def main (kwargs):
             print("Loop completed successfully.")
 
     if is_wf != True:
-    
+        save_milestone.save_record(path, read=MyDetector.read)
+
         draw_iv(device, V=loop.get_voltage_values(), I=loop.get_current_values(),path=path)
         if is_cv == True:
             draw_cv(device, V=loop.get_voltage_values(), C=loop.get_cap_values(),path=path)
