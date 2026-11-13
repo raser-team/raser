@@ -16,7 +16,7 @@ from . import devsim_draw
 from .create_parameter import create_parameter, delete_init
 from raser.supports.output import create_path
 
-def milestone_save_1D(device, v, path, is_tcad):
+def milestone_save_1D(device, v, path, is_tcad, axes):
     if is_tcad:
         U = "ElectrostaticPotential"
         # TODO: replace E with (ElectricField_0**2 + ElectricField_1**2)**0.5
@@ -101,6 +101,7 @@ def milestone_save_1D(device, v, path, is_tcad):
     metadata = {}
     metadata['voltage'] = v
     metadata['dimension'] = 1
+    metadata['axes'] = list(axes)
 
     names = ['Potential', 'TrappingRate_p', 'TrappingRate_n']
     if v == 0 or is_tcad:
@@ -114,7 +115,7 @@ def milestone_save_1D(device, v, path, is_tcad):
             data['metadata'] = metadata
             pickle.dump(data, file)
 
-def milestone_save_wf_1D(device, v, path, contact_name, is_tcad):
+def milestone_save_wf_1D(device, v, path, contact_name, is_tcad, axes):
     save_wf_path = os.path.join(path, contact_name)
     create_path(save_wf_path)
 
@@ -144,6 +145,7 @@ def milestone_save_wf_1D(device, v, path, contact_name, is_tcad):
     metadata = {}
     metadata['voltage'] = v
     metadata['dimension'] = 1
+    metadata['axes'] = list(axes)
     
     for name in ['Potential']: # scalar field on mesh point (instead of on edge)
         with open(field_pickle_path(save_wf_path, name, v),'wb') as file:
@@ -153,7 +155,7 @@ def milestone_save_wf_1D(device, v, path, contact_name, is_tcad):
             data['metadata'] = metadata
             pickle.dump(data, file)
 
-def milestone_save_2D(device, v, path, is_tcad, is_flip=False):
+def milestone_save_2D(device, v, path, is_tcad, axes, is_flip=False):
     if is_tcad:
         U = "ElectrostaticPotential"
         # TODO: replace E with (ElectricField_0**2 + ElectricField_1**2)**0.5
@@ -253,6 +255,7 @@ def milestone_save_2D(device, v, path, is_tcad, is_flip=False):
     metadata = {}
     metadata['voltage'] = v
     metadata['dimension'] = 2
+    metadata['axes'] = list(axes)
 
     names = ['Potential', 'TrappingRate_p', 'TrappingRate_n']
     if v == 0 or is_tcad:
@@ -269,7 +272,7 @@ def milestone_save_2D(device, v, path, is_tcad, is_flip=False):
             pickle.dump(data, file)
 
 
-def milestone_save_wf_2D(device, v, path, contact_name, is_tcad, is_flip=False):
+def milestone_save_wf_2D(device, v, path, contact_name, is_tcad, axes, is_flip=False):
     save_wf_path = os.path.join(path,contact_name)
     create_path(save_wf_path)
 
@@ -312,6 +315,7 @@ def milestone_save_wf_2D(device, v, path, contact_name, is_tcad, is_flip=False):
     metadata = {}
     metadata['voltage'] = v
     metadata['dimension'] = 2
+    metadata['axes'] = list(axes)
 
     for name in ['Potential']: # scalar field on mesh point (instead of on edge)
         with open(field_pickle_path(save_wf_path, name, v),'wb') as file:
@@ -323,7 +327,7 @@ def milestone_save_wf_2D(device, v, path, contact_name, is_tcad, is_flip=False):
             data['metadata'] = metadata
             pickle.dump(data, file)
 
-def milestone_save_3D(device, v, path, is_tcad):
+def milestone_save_3D(device, v, path, is_tcad, axes):
     if is_tcad:
         U = "ElectrostaticPotential"       
         E = "ElectricField"           
@@ -423,7 +427,8 @@ def milestone_save_3D(device, v, path, is_tcad):
 
     metadata = {
         "voltage": v,        
-        "dimension": 3       
+        "dimension": 3,
+        "axes": list(axes),
     }
 
     names = ["Potential", "TrappingRate_p", "TrappingRate_n"]
@@ -440,7 +445,7 @@ def milestone_save_3D(device, v, path, is_tcad):
             }
             pickle.dump(data, file)
 
-def milestone_save_wf_3D(device, v, path, contact_name, is_tcad):
+def milestone_save_wf_3D(device, v, path, contact_name, is_tcad, axes):
     save_wf_path = os.path.join(path, contact_name)
     create_path(save_wf_path)
 
@@ -485,6 +490,7 @@ def milestone_save_wf_3D(device, v, path, contact_name, is_tcad):
     metadata = {}
     metadata['voltage'] = v
     metadata['dimension'] = 3
+    metadata['axes'] = list(axes)
     metadata['contact_name'] = contact_name
 
     with open(field_pickle_path(save_wf_path, "Potential", v), 'wb') as file:
@@ -496,25 +502,25 @@ def milestone_save_wf_3D(device, v, path, contact_name, is_tcad):
         data['metadata'] = metadata
         pickle.dump(data, file)
 
-def save_milestone(device, v, path, dimension, contact_name, is_wf, is_tcad = False, is_flip=False):
+def save_milestone(device, v, path, dimension, contact_name, is_wf, axes, is_tcad = False, is_flip=False):
     if dimension == 1:
         if is_wf == True:
-            milestone_save_wf_1D(device, v, path, contact_name, is_tcad)
+            milestone_save_wf_1D(device, v, path, contact_name, is_tcad, axes)
         elif is_wf == False:
-            milestone_save_1D(device, v, path, is_tcad)
+            milestone_save_1D(device, v, path, is_tcad, axes)
         else:
             print("==========RASER info ==========\nis_wf only has 2 values, True or False\n==========Error=========")
     if dimension == 2:
         if is_wf == True:
-            milestone_save_wf_2D(device, v, path, contact_name, is_tcad, is_flip)
+            milestone_save_wf_2D(device, v, path, contact_name, is_tcad, axes, is_flip)
         elif is_wf == False:
-            milestone_save_2D(device, v, path, is_tcad, is_flip)
+            milestone_save_2D(device, v, path, is_tcad, axes, is_flip)
         else:
             print("==========RASER info ==========\nis_wf only has 2 values, True or False\n==========Error=========")
     if dimension == 3:
         if is_wf == True:
-            milestone_save_wf_3D(device, v, path, contact_name, is_tcad)
+            milestone_save_wf_3D(device, v, path, contact_name, is_tcad, axes)
         elif is_wf == False:
-            milestone_save_3D(device, v, path, is_tcad)
+            milestone_save_3D(device, v, path, is_tcad, axes)
         else:
             print("==========RASER info ==========\nis_wf only has 2 values, True or False\n==========Error=========")

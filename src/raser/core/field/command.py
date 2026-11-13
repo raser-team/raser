@@ -97,6 +97,9 @@ def import_field(kwargs):
     _prepare_execution(plan, kwargs)
     import devsim
 
+    from raser.core.device.build_device import Detector
+
+    from .create_mesh import mesh_axes
     from .save_milestone import save_milestone
     from .tdr_import import import_tdr
 
@@ -113,6 +116,7 @@ def import_field(kwargs):
             plan.configuration.values["dimension"],
             None,
             False,
+            mesh_axes(Detector(str(plan.device.definition.source_path))),
             is_tcad=True,
             is_flip=kwargs.get("flip", False),
         )

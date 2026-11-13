@@ -18,6 +18,7 @@ if __name__ == "__main__":
 
 from ..device.build_device import Detector
 from .create_mesh import DevsimMesh
+from .create_mesh import mesh_axes
 from .create_parameter import create_parameter
 from . import save_milestone
 from . import loop_section
@@ -178,14 +179,14 @@ def main (kwargs):
             loop.initial_solver(contact=contact,set_contact_type=None,impact_model=impact_model,irradiation_model=irradiation_model,irradiation_flux=irradiation_flux,)
             loop.loop_solver(circuit_contact=contact,v_trial=v_trial,area_factor=paras["area_factor"],)
 
-            save_milestone.save_milestone(device=device, v=v_trial, path=folder_path,dimension=default_dimension,contact_name=contact,is_wf=is_wf,)
+            save_milestone.save_milestone(device=device, v=v_trial, path=folder_path,dimension=default_dimension,contact_name=contact,is_wf=is_wf, axes=mesh_axes(MyDetector),)
             devsim.write_devices(file=os.path.join(folder_path,"weightingfield.dat"), type="tecplot")
             
     elif is_wf == False:
         loop.initial_solver(contact=bias_contact, set_contact_type=None, impact_model=impact_model, irradiation_model=irradiation_model, irradiation_flux=irradiation_flux,)
         v_current = 0
         loop.loop_solver(circuit_contact=bias_contact, v_trial=0, area_factor=paras["area_factor"])
-        save_milestone.save_milestone(device=device, v=0, path=path, dimension=default_dimension, contact_name=bias_contact, is_wf=is_wf,)
+        save_milestone.save_milestone(device=device, v=0, path=path, dimension=default_dimension, contact_name=bias_contact, is_wf=is_wf, axes=mesh_axes(MyDetector),)
         dd = os.path.join(path, '0V.dd')
         devsim_device = os.path.join(path, '0V.devsim')
         devsim.write_devices(file=dd, type="tecplot")
@@ -221,7 +222,7 @@ def main (kwargs):
                     pass
                 print("=========RASER info===========\nConvergence success, voltage = {}, increased voltage step = {}\n================".format(v_trial, voltage_step))
                 if (paras['milestone_mode']) and (milestone_flag or goal_flag):
-                    save_milestone.save_milestone(device=device, v=v_trial, path=path, dimension=default_dimension, contact_name=bias_contact, is_wf=is_wf,)
+                    save_milestone.save_milestone(device=device, v=v_trial, path=path, dimension=default_dimension, contact_name=bias_contact, is_wf=is_wf, axes=mesh_axes(MyDetector),)
                     dd = os.path.join(path, str(v_trial) + 'V.dd')
                     devsim_device = os.path.join(path, str(v_trial) + 'V.devsim')
                     devsim.write_devices(file=dd, type="tecplot")

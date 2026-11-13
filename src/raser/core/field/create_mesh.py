@@ -26,6 +26,15 @@ def _resolve_mesh_file(mesh_file, definition_path):
     return path
 
 
+def mesh_axes(my_d):
+    """The device axis that each coordinate of the device's mesh runs along."""
+    if my_d.dimension == 1:
+        return ("z",)
+    if my_d.dimension == 2:
+        return ("x", "y") if my_d.is_plugin() else ("z", "x")
+    return ("x", "y", "z") if my_d.mesher == "sde" else ("z", "x", "y")
+
+
 class DevsimMesh:
     def __init__(self, my_d: Detector, devsim_solve_paras, output_directory=None):
         self.device_dict = my_d.device_dict
