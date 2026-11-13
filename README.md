@@ -23,8 +23,7 @@ Common workflows include:
 
 | Goal | Command |
 | --- | --- |
-| Solve an electric field | `raser field -cv HPK-Si-PiN` |
-| Solve a weighting field | `raser field -wf HPK-Si-PiN` |
+| Solve the electric and weighting fields | `raser field HPK-Si-PiN` |
 | Generate a signal | `raser signal HPK-Si-PiN` |
 | Run a CCE study | `raser cce NJU-PiN` |
 | Run a time-resolution study | `raser timeres NJU-PiN` |
