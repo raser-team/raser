@@ -217,13 +217,8 @@ def root_tex_position_resolution(sigma,error):
 
 def job_main(kwargs):
     det_name = kwargs['det_name']
-    my_d = bdv.Detector(det_name)
+    my_d = bdv.Detector(det_name, kwargs["_files"]["device"])
     
-    if kwargs['voltage'] != None:
-        voltage = kwargs['voltage']
-    else:
-        voltage = my_d.voltage
-
     if kwargs['laser'] != None:
         laser = kwargs['laser']
         laser_json = component_path("laser", laser + ".json")
@@ -247,7 +242,7 @@ def job_main(kwargs):
                     my_f = devfield.DevsimField(
                         my_d.device,
                         my_d.dimension,
-                        voltage,
+                        my_d.voltage,
                         my_d.read_out_contact,
                         my_d.mesher,
                         is_plugin=my_d.is_plugin(),

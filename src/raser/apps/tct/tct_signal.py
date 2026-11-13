@@ -47,20 +47,15 @@ def main(kwargs):
     start = time.time()
 
     det_name = kwargs['det_name']
-    my_d = bdv.Detector(det_name)
+    my_d = bdv.Detector(det_name, kwargs["_files"]["device"])
     files = kwargs["_files"]
     laser_dic = dict(files["laser"])
     amplifier = str(files["afe"].get("name") or Path(str(kwargs["amplifier"])).stem)
     
-    if kwargs['voltage'] != None:
-        voltage = kwargs['voltage']
-    else:
-        voltage = my_d.voltage
-
     my_f = devfield.DevsimField(
         my_d.device,
         my_d.dimension,
-        voltage,
+        my_d.voltage,
         my_d.read_out_contact,
         my_d.mesher,
         is_plugin=my_d.is_plugin(),
