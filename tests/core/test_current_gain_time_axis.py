@@ -12,13 +12,18 @@ GAIN = 3.0
 class _UniformField:
     """10 kV/cm along z; weighting potential falls linearly from z = 0."""
 
+    axes = ("z",)
+
     def get_e_field_cached(self, x, y, z):
         return (0.0, 0.0, 1.0e4)
 
     def get_doping_cached(self, x, y, z):
         return 0.0
 
-    def get_w_p_cached(self, x, y, z, electrode):
+    def get_conductive(self, x, y, z):
+        return False
+
+    def get_w_p(self, x, y, z, electrode):
         return 1.0 - z / 50.0
 
     def get_cache_stats(self):
