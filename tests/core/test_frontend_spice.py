@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from raser.core.frontend.spice import SensorCircuit
+from raser.core.frontend.spice import short_circuit_currents
 from raser.core.frontend.spice import solve
 
 pytestmark = pytest.mark.ngspice
@@ -93,30 +94,27 @@ def test_stages_follow_one_another_from_the_sensor_to_the_load(tmp_path, load):
     assert voltage[0] == pytest.approx(expected, abs=7.5e-8)
 
 
-def test_current_source_sits_between_two_sensor_nodes(tmp_path, wire):
-    # sensor that is not fully depleted: the depleted layer C1 from the
-    # electrode to an inner node, the undepleted layer R2 parallel C2 from
-    # there to ground, the current source across C1. Into a short the
-    # electrode current after a step I is I (1 - C1 / (C1 + C2) exp(-t / tau)),
+def test_short_circuit_current_of_a_sensor_that_is_not_fully_depleted():
+    # the depleted layer C1 from the electrode to an inner node, the
+    # undepleted layer R2 parallel C2 from there to ground, the current source
+    # across C1, drawing the current I out of the electrode after t = 0. The
+    # short then feeds I (1 - C1 / (C1 + C2) exp(-t / tau)) into the electrode,
     # tau = R2 (C1 + C2).
     sensor = SensorCircuit(
         lines=("C1 pad inner 10p", "R2 inner 0 100", "C2 inner 0 20p"),
         sources=(("pad", "inner"),),
         outputs=("pad",),
     )
-    short_ohm = 0.1
-    short = tmp_path / "short.cir"
-    short.write_text(f".subckt short in\nR1 in 0 {short_ohm}\n.ends short\n")
     times = -1e-9 + (np.arange(2000) + 0.5) * 5e-12
-    step = np.where(times > 0, 1e-3, 0.0)
+    step = np.where(times > 0, 1e-6, 0.0)
 
-    voltage = solve([wire], times, [step], sensor, short)
+    into_short = short_circuit_currents(times, [step], sensor)
 
     after = np.clip(times, 0, None)
-    expected = np.where(times > 0, 1 - 10 / 30 * np.exp(-after / 3e-9), 0.0)
+    expected = -1e-6 * np.where(times > 0, 1 - 10 / 30 * np.exp(-after / 3e-9), 0.0)
     # the current jumps within the first bin after zero: compare off that bin
     off_the_jump = (times < 0) | (times > 5e-12)
-    electrode_current = voltage[0] / (-1e-3 * short_ohm)
-    assert electrode_current[off_the_jump] == pytest.approx(
-        expected[off_the_jump], abs=1e-3
+    assert into_short.shape == (1, times.size)
+    assert into_short[0][off_the_jump] == pytest.approx(
+        expected[off_the_jump], abs=1e-9
     )
