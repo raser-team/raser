@@ -1,6 +1,7 @@
 {
     "det_name" : "ITk-Si-strip",
     "det_model" : "strip",
+    "electrodes" : "strip",
     "material" : "Si",
 
     "l_x" : 175,

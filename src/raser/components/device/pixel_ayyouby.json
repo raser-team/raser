@@ -1,6 +1,7 @@
 {
     "det_name": "pixel_ayyouby",
     "det_model": "lgadpixel",
+    "electrodes": "pixel",
     "material": "Si",
     "l_x": 58,
     "l_y": 58,
