@@ -6,7 +6,7 @@ import pytest
 import ROOT
 
 from raser.core import seeding
-from raser.core.frontend.legacy_readout import Amplifier
+from raser.core.frontend.toy_readout import Amplifier
 
 
 def _pulse() -> ROOT.TH1F:

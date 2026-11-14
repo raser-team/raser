@@ -18,7 +18,7 @@ ROOT.gROOT.SetBatch(True)
 from raser.core.device import build_device as bdv
 from raser.core.field import devsim_field as devfield
 from raser.core.current import cal_current as ccrt
-from raser.core.frontend.legacy_readout import Amplifier
+from raser.core.frontend.toy_readout import Amplifier
 from ..signal import draw_save
 from raser.supports.output import output
 from raser.supports.paths import component_path

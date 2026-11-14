@@ -21,7 +21,7 @@ ELECTRON_CHARGE_C = 1.60217733e-19
 from raser.core.device import build_device as bdv
 from raser.core.field import devsim_field as devfield
 from raser.core.current import cal_current as ccrt
-from raser.core.frontend.legacy_readout import Amplifier
+from raser.core.frontend.toy_readout import Amplifier
 from raser.core.metrics import waveform_stats
 from raser.supports.output import create_path
 from raser.supports.paths import component_path

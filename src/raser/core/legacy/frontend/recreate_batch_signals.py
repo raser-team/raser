@@ -14,7 +14,7 @@ from array import array
 import ROOT
 
 from raser.core.device.build_device import Detector
-from raser.core.frontend.legacy_readout import Amplifier
+from raser.core.frontend.toy_readout import Amplifier
 
 from .cross_talk import cross_talk
 
