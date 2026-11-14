@@ -147,13 +147,6 @@ class CalCurrent:
         self.hole_system = None
         
         self.smoothing_window = max(0, int(getattr(my_d, "current_smoothing_window", 0)))
-        self.savgol_window = max(0, int(getattr(my_d, "current_savgol_window", 0)))
-        self.savgol_poly = max(0, int(getattr(my_d, "current_savgol_poly", 0)))
-        if self.savgol_window and self.savgol_window % 2 == 0:
-            self.savgol_window += 1  # Savitzky-Golay 需要奇数窗口
-        if self.savgol_window and self.savgol_poly >= self.savgol_window:
-            self.savgol_poly = max(0, self.savgol_window - 1)
-        self._savgol_kernel = None
 
         # 准备载流子数据
         electron_positions = []
@@ -397,22 +390,13 @@ class CalCurrent:
                     )
 
     def _apply_smoothing(self, currents):
-        """对各电极的电流 (电极数, n_bin) 原地做多阶段平滑，减少高频噪声"""
+        """对各电极的电流 (电极数, n_bin) 原地做滑动平均，减少高频噪声"""
         def _moving_average(data, kernel, window):
             if len(data) == 0 or len(data) < window:
                 return
             pad_left = window // 2
             pad_right = window - 1 - pad_left
             padded = np.pad(data, (pad_left, pad_right), mode='edge')
-            data[:] = np.convolve(padded, kernel, mode='valid')
-
-        def _savgol(data):
-            window = self.savgol_window
-            if len(data) == 0 or window <= 1 or len(data) < window:
-                return
-            kernel = self._get_savgol_kernel()
-            pad = window // 2
-            padded = np.pad(data, (pad, pad), mode='edge')
             data[:] = np.convolve(padded, kernel, mode='valid')
 
         if self.smoothing_window > 1:
@@ -423,34 +407,6 @@ class CalCurrent:
             logger.info("应用滑动窗口平滑 (窗口=%d)", ma_window)
             for data in currents:
                 _moving_average(data, kernel, ma_window)
-
-        if self.savgol_window > 1:
-            logger.info(
-                "应用 Savitzky-Golay 平滑 (窗口=%d, 多项式阶=%d)",
-                self.savgol_window,
-                self.savgol_poly,
-            )
-            for data in currents:
-                _savgol(data)
-
-    def _get_savgol_kernel(self):
-        if self._savgol_kernel is not None:
-            return self._savgol_kernel
-        window = self.savgol_window
-        if window <= 1:
-            self._savgol_kernel = np.array([1.0], dtype=np.float64)
-            return self._savgol_kernel
-        poly = min(self.savgol_poly, window - 1)
-        half = window // 2
-        x = np.arange(-half, half + 1, dtype=np.float64)
-        A = np.vander(x, poly + 1, increasing=True)
-        ATA = A.T @ A
-        ATA_inv = np.linalg.pinv(ATA)
-        coeffs = ATA_inv @ A.T
-        kernel = coeffs[0]
-        kernel /= np.sum(kernel)
-        self._savgol_kernel = kernel
-        return self._savgol_kernel
 
     def draw_currents(self, path, tag=""):
         """
