@@ -17,12 +17,12 @@ import numpy as np
 from . import initial
 from . import physics_drift_diffusion
 from .create_parameter import delete_init
-from raser.supports.output import output
 from raser.supports.memory_decorator import memory_decorator
 
 class loop_section:
-    def __init__(self, paras, device, region, solve_model, irradiation, with_noise=False):
+    def __init__(self, paras, device, region, solve_model, irradiation, path, with_noise=False):
         self.paras = paras
+        self.path = path
         self.with_noise = with_noise
         self.step_model  = False
         self.solve_model = solve_model
@@ -66,8 +66,7 @@ class loop_section:
             devsim.solve(type="dc", absolute_error=self.paras['absolute_error_VoltageSteps'], relative_error=self.paras['relative_error_VoltageSteps'], maximum_iterations=self.paras['maximum_iterations_VoltageSteps'],)
             self.voltage.append(v_trial)
         except devsim.error as msg:
-            path = output(__file__, "default")
-            devsim.write_devices(file=os.path.join(path, "last_solvable.dd"), type="tecplot")
+            devsim.write_devices(file=os.path.join(self.path, "last_solvable.dd"), type="tecplot")
             raise
         
         if self.solve_model !="wf":     
