@@ -669,11 +669,11 @@ class CalCurrentGain(CalCurrent):
     '''Calculation of gain carriers and gain current, simplified version'''
     def __init__(self, my_d, my_f, my_current):
         self.keep_drift_paths = getattr(my_current, "keep_drift_paths", True)
-        self.t_bin = t_bin[my_d.dimension]
-        self.t_end = t_end[my_d.dimension]
-        self.t_start = t_start[my_d.dimension]
-        self.delta_t = getattr(my_d, "vector_delta_t", delta_t[my_d.dimension])
-        self.n_bin = int((self.t_end+t_tol-self.t_start)/self.t_bin)
+        self.t_bin = my_current.t_bin
+        self.t_end = my_current.t_end
+        self.t_start = my_current.t_start
+        self.delta_t = my_current.delta_t
+        self.n_bin = my_current.n_bin
 
         self.read_ele_num = my_current.read_ele_num
         self.read_out_contact = my_current.read_out_contact
