@@ -63,20 +63,24 @@ class DevsimMesh:
 
         devsim.write_devices(file=os.path.join(path, self.det_name+".dat"),type="tecplot")
 
+    def _regions(self, mesh, keep_air=True):
+        """The regions of a mesh block as devsim is given them. For a weighting
+        field the material of each is replaced by "gas", a dielectric; "air",
+        the space left for an electrode, stays unless `keep_air` is False."""
+        if self.solve_paras["weightfield"] != True:
+            return mesh["region"]
+        return [
+            region if keep_air and region["material"] == "air" else {**region, "material": "gas"}
+            for region in mesh["region"]
+        ]
+
     def create1DMesh(self):
         mesh_name = self.device
         devsim.create_1d_mesh(mesh=mesh_name)
         mesh = self.device_dict["mesh"]["1D_mesh"]
         for mesh_line in mesh["mesh_line"]:
             devsim.add_1d_mesh_line(mesh=mesh_name, **mesh_line)
-        if self.solve_paras["weightfield"] == True :
-            for region in mesh["region"]:
-                if region["material"] != "air":
-                    # air for space for electrode, gas for relpacement of semiconductor
-                    region["material"] = "gas"
-        else:
-            pass
-        for region in mesh["region"]:
+        for region in self._regions(mesh):
             devsim.add_1d_region   (mesh=mesh_name, **region)
         for contact in mesh["contact"]:
             devsim.add_1d_contact  (mesh=mesh_name, **contact)
@@ -89,14 +93,7 @@ class DevsimMesh:
         mesh = self.device_dict["mesh"]["2D_mesh"]
         for mesh_line in mesh["mesh_line"]:
             devsim.add_2d_mesh_line(mesh=mesh_name, **mesh_line)
-        if self.solve_paras["weightfield"] == True :
-            for region in mesh["region"]:
-                if region["material"] != "air":
-                    # air for space for electrode, gas for relpacement of semiconductor
-                    region["material"] = "gas"
-        else:
-            pass
-        for region in mesh["region"]:
+        for region in self._regions(mesh):
             # Must define material regions before air regions when material borders not clarified!
             devsim.add_2d_region   (mesh=mesh_name, **region)
         
@@ -128,12 +125,7 @@ class DevsimMesh:
         mesh = self.device_dict["mesh"]["gmsh_mesh"]
         mesh_file = self.file(mesh["file"])
         devsim.create_gmsh_mesh (mesh=mesh_name, file=str(mesh_file))
-        if self.solve_paras["weightfield"] == True :
-            for region in mesh["region"]:
-                region["material"] = "gas"
-        else:
-            pass
-        for region in mesh["region"]:
+        for region in self._regions(mesh, keep_air=False):
             devsim.add_gmsh_region   (mesh=mesh_name ,**region)
         for contact in mesh["contact"]:
             devsim.add_gmsh_contact  (mesh=mesh_name, **contact)
@@ -144,21 +136,19 @@ class DevsimMesh:
         '''
         Doping
         '''
+        doping = self.device_dict["doping"]
         if ( self.solve_paras["weightfield"] == True or self.solve_paras["ac-weightfield"] == True
         ):
-            self.device_dict["doping"]["Acceptors"] = "0"
-            self.device_dict["doping"]["Donors"] = "1"
-            self.device_dict.update({"doping": self.device_dict["doping"]})
+            # The weighting field is solved without the doping of the device.
+            doping = {**doping, "Acceptors": "0", "Donors": "1"}
+        if 'Acceptors_ir' in doping:
+            model_create.CreateNodeModel(self.device, self.region, "Acceptors", doping['Acceptors']+"+"+doping['Acceptors_ir'],)
         else:
-            pass
-        if 'Acceptors_ir' in self.device_dict['doping']:
-            model_create.CreateNodeModel(self.device, self.region, "Acceptors", self.device_dict['doping']['Acceptors']+"+"+self.device_dict['doping']['Acceptors_ir'],)
+            model_create.CreateNodeModel(self.device, self.region, "Acceptors", doping['Acceptors'],)
+        if 'Donors_ir' in doping:
+            model_create.CreateNodeModel(self.device, self.region, "Donors",    doping['Donors']+"+"+doping['Donors_ir'],)
         else:
-            model_create.CreateNodeModel(self.device, self.region, "Acceptors", self.device_dict['doping']['Acceptors'],)
-        if 'Donors_ir' in self.device_dict['doping']:
-            model_create.CreateNodeModel(self.device, self.region, "Donors",    self.device_dict['doping']['Donors']+"+"+self.device_dict['doping']['Donors_ir'],)
-        else:
-            model_create.CreateNodeModel(self.device, self.region, "Donors",    self.device_dict['doping']['Donors'])
+            model_create.CreateNodeModel(self.device, self.region, "Donors",    doping['Donors'])
         model_create.CreateNodeModel(self.device, self.region, "NetDoping", "Donors-Acceptors")
         devsim.edge_from_node_model(device=self.device, region=self.region, node_model="Acceptors")
         devsim.edge_from_node_model(device=self.device, region=self.region, node_model="NetDoping")
