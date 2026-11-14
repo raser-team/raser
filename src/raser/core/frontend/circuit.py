@@ -40,8 +40,8 @@ def read_subcircuit(path):
 
     The stage is the subcircuit named like the file, with the nodes in, or in
     and out. Its elements may be resistors, capacitors, inductors, DC voltage
-    sources and instances of other subcircuits; the SPICE name of an element
-    is its designator. Everything else in the file, the other subcircuits and
+    sources, voltage-controlled voltage sources and instances of other
+    subcircuits; the SPICE name of an element is its designator. Everything else in the file, the other subcircuits and
     their models, goes into "models" as it is written.
     """
     path = Path(path)
@@ -68,6 +68,12 @@ def read_subcircuit(path):
         letter = words[0][0].upper()
         if letter == "X":
             elements[words[0]] = {"model": words[-1], "nodes": words[1:-1]}
+        elif letter == "E" and len(words) == 6:
+            elements[words[0]] = {
+                "between": words[1:3],
+                "follows": words[3:5],
+                "gain": spice_number(words[5]),
+            }
         elif letter in QUANTITIES and len(words) >= 4:
             # a voltage source may say "dc" before its value
             elements[words[0]] = {
@@ -99,6 +105,9 @@ def subcircuit(name, stage):
         {"between": [node, node], "farad": C}     capacitor [F]
         {"between": [node, node], "henry": L}     inductor [H]
         {"between": [plus, minus], "volt": V}     DC voltage source [V]
+        {"between": [plus, minus], "follows": [plus, minus], "gain": G}
+                                                  source of G times the voltage
+                                                  between the nodes it follows
         {"model": subcircuit, "nodes": [...]}     an instance of a subcircuit
                                                   that stage["models"] holds
 
@@ -106,6 +115,12 @@ def subcircuit(name, stage):
     of the text: it stands once in the netlist, outside every subcircuit.
     """
     ports = stage["ports"]
+    if ports.get("out") == ports["in"]:
+        # ngspice takes such a subcircuit without a word and gives zero behind it
+        raise ValueError(
+            f"The stage {name} has the node {ports['in']} as input and as output; "
+            "give the output a node of its own"
+        )
     lines = [
         f".subckt {name} "
         + " ".join(ports[port] for port in ("in", "out") if port in ports)
@@ -115,11 +130,15 @@ def subcircuit(name, stage):
             nodes = " ".join(element["nodes"])
             lines.append(f"X_{designator} {nodes} {element['model']}")
             continue
+        if "gain" in element:
+            nodes = " ".join(element["between"] + element["follows"])
+            lines.append(f"E_{designator} {nodes} {element['gain']:.9g}")
+            continue
         quantities = [quantity for quantity in KINDS if quantity in element]
         if len(quantities) != 1:
             raise ValueError(
                 f"Element {designator} of {name} has to carry one of "
-                f"{list(KINDS)} or a model, not {sorted(element)}"
+                f"{list(KINDS)}, a gain or a model, not {sorted(element)}"
             )
         (quantity,) = quantities
         first, second = element["between"]

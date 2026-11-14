@@ -97,6 +97,35 @@ def _run(netlist_text, raw, dt, bins):
     )
 
 
+def _chain(chain, electrodes, sensor):
+    """Lines of the stages and the load behind each output of the sensor, with
+    the sensor itself, and the node ``out<k>`` of each electrode."""
+    stages = chain["stages"]
+    if "load" in stages:
+        raise ValueError('A stage cannot be named "load"')
+    lines = [" > ".join(["sensor", *stages, "load"])]
+    models: list[list[str]] = []
+    for part in (*stages.values(), chain["load"]):
+        if "models" in part and part["models"] not in models:
+            models.append(part["models"])
+    for block in models:
+        lines.extend(block)
+    lines.extend(subcircuit(name, stage).rstrip() for name, stage in stages.items())
+    lines.append(subcircuit("load", chain["load"]).rstrip())
+    outputs = []
+    for k, electrode in enumerate(electrodes, start=1):
+        # the output of a stage is the input of the next one
+        nodes = [sensor.outputs[electrode]]
+        nodes.extend(f"in{k}_{j}" for j in range(2, len(stages) + 1))
+        nodes.append(f"out{k}")
+        for j, name in enumerate(stages):
+            lines.append(f"X{k}_{j + 1} {nodes[j]} {nodes[j + 1]} {name}")
+        lines.append(f"Xload{k} out{k} load")
+        outputs.append(f"out{k}")
+    lines.extend(sensor.lines)
+    return lines, outputs
+
+
 def write_netlist(chain, electrodes, dt, currents, sensor, raw):
     """Netlist of one transient run.
 
@@ -126,31 +155,11 @@ def write_netlist(chain, electrodes, dt, currents, sensor, raw):
     currents = np.atleast_2d(np.asarray(currents, dtype=np.float64))
     sources = _current_sources(electrodes, dt, currents, sensor)
 
-    stages = chain["stages"]
-    if "load" in stages:
-        raise ValueError('A stage cannot be named "load"')
-    lines = [" > ".join(["sensor", *stages, "load"])]
-    models: list[list[str]] = []
-    for part in (*stages.values(), chain["load"]):
-        if "models" in part and part["models"] not in models:
-            models.append(part["models"])
-    for block in models:
-        lines.extend(block)
-    lines.extend(subcircuit(name, stage).rstrip() for name, stage in stages.items())
-    lines.append(subcircuit("load", chain["load"]).rstrip())
+    lines, outputs = _chain(chain, electrodes, sensor)
     lines.extend(sources)
-    outputs = []
-    for k, electrode in enumerate(electrodes, start=1):
-        # the output of a stage is the input of the next one
-        nodes = [sensor.outputs[electrode]]
-        nodes.extend(f"in{k}_{j}" for j in range(2, len(stages) + 1))
-        nodes.append(f"out{k}")
-        for j, name in enumerate(stages):
-            lines.append(f"X{k}_{j + 1} {nodes[j]} {nodes[j + 1]} {name}")
-        lines.append(f"Xload{k} out{k} load")
-        outputs.append(f"v(out{k})")
-    lines.extend(sensor.lines)
-    lines.extend(_transient(dt, currents.shape[1], raw, outputs))
+    lines.extend(
+        _transient(dt, currents.shape[1], raw, [f"v({node})" for node in outputs])
+    )
     return "\n".join(lines) + "\n"
 
 
@@ -192,3 +201,52 @@ def short_circuit_currents(electrodes, dt, currents, sensor):
         raw = Path(folder) / "out.raw"
         netlist = write_short_circuit_netlist(electrodes, dt, currents, sensor, raw)
         return _run(netlist, raw, dt, currents.shape[1])
+
+
+# frequencies per decade the output noise is calculated at
+PER_DECADE = 50
+
+
+def write_noise_netlist(chain, electrodes, sensor, lowest_hz, highest_hz, raws):
+    """Netlist of the noise analysis of each output. chain, electrodes and
+    sensor are those of write_netlist; raws are the files, one per electrode,
+    ngspice writes the spectra to."""
+    lines, outputs = _chain(chain, electrodes, sensor)
+    control = [".control"]
+    for k, (electrode, node, raw) in enumerate(zip(electrodes, outputs, raws), 1):
+        # the analysis asks for a source: the place of the induced current
+        source_from, source_to = sensor.sources[electrode]
+        lines.append(f"I{k} {source_from} {source_to} dc 0 ac 1")
+        control.append(
+            f"noise v({node}) I{k} dec {PER_DECADE} {lowest_hz:.9g} {highest_hz:.9g}"
+        )
+        # every analysis leaves two plots: the spectra, then their integrals
+        control.append(f"setplot noise{2 * k - 1}")
+        control.append(f"wrdata {raw} onoise_spectrum")
+    lines.extend([*control, ".endc", ".end"])
+    return "\n".join(lines) + "\n"
+
+
+def output_noise_spectrum(chain, electrodes, sensor, lowest_hz, highest_hz):
+    """Noise of the circuit at each output, as ngspice calculates it from the
+    thermal noise of the resistors and the noise of the device models, at
+    27 degrees Celsius: the frequencies [Hz], from lowest_hz to highest_hz, and
+    the amplitude spectral density at them [V / sqrt(Hz)], shape (electrodes,
+    frequencies). chain, electrodes and sensor are those of write_netlist; the
+    sensor and the load are part of the circuit.
+
+    The noise of one output is taken by itself: what the outputs of several
+    electrodes have in common is not given.
+    """
+    with tempfile.TemporaryDirectory() as folder:
+        raws = [Path(folder) / f"noise{k}.raw" for k in range(len(electrodes))]
+        netlist = Path(folder) / "noise.cir"
+        netlist.write_text(
+            write_noise_netlist(chain, electrodes, sensor, lowest_hz, highest_hz, raws),
+            encoding="utf-8",
+        )
+        subprocess.run(
+            ["ngspice", "-b", str(netlist)], check=True, capture_output=True, text=True
+        )
+        spectra = [np.loadtxt(raw, dtype=np.float64, ndmin=2) for raw in raws]
+    return spectra[0][:, 0], np.array([spectrum[:, 1] for spectrum in spectra])
