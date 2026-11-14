@@ -27,7 +27,11 @@ def started(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> list[Any]:
         for index in indices:
             (Path(tail[-1]) / "batch" / f"job_{index}.done").touch()
 
+    def own_process(workflow, kwargs, words):
+        workflow_module._run_job(workflow, {**kwargs, "job_dir": words[-1]})
+
     monkeypatch.setattr(jobs, "run_indexed_jobs", run_indexed_jobs)
+    monkeypatch.setattr(workflow_module, "_own_process", own_process)
     monkeypatch.setattr(workflow_module, "_commit", lambda: "abc")
     return calls
 
@@ -615,3 +619,47 @@ def test_without_seeds_a_point_whose_folder_begins_with_seed_counts_as_finished(
 
     points = workflow_module.finished(workflow, _plain(), tmp_path / "toy")
     assert [(name, len(done)) for name, _, done in points] == [("", 1), ("seed_layer_2", 1)]
+
+
+def test_each_of_several_points_runs_in_a_process_of_its_own_and_one_failing_leaves_the_rest(
+    started: list[Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ran: list[int] = []
+    commands: list[list[str]] = []
+
+    def job(options: dict[str, Any]) -> None:
+        ran.append(options["x"])
+        if options["x"] == 2:
+            raise RuntimeError("no field at this bias")
+
+    workflow = Workflow(
+        name="toy", job=job, keys=("x",), defaults={"x": 1}, device=False, seeds=False
+    )
+
+    def own_process(workflow, kwargs, words: list[str]) -> None:
+        """What the command `words` does in its process, and how it ends there."""
+        commands.append(words)
+        try:
+            execute(workflow, _plain(job_dir=words[-1]))
+        except RuntimeError as error:
+            raise workflow_module.subprocess.CalledProcessError(1, words) from error
+
+    monkeypatch.setattr(workflow_module, "_own_process", own_process)
+    experiment = tmp_path / "toy"
+
+    with pytest.raises(SystemExit) as stopped:
+        execute(workflow, _plain(scan=["x=1,2,3"]))
+
+    assert ran == [1, 2, 3]
+    assert commands == [
+        ["toy", "--job-dir", str(experiment / name)] for name in ("", "x_2", "x_3")
+    ]
+    assert "1 of 3 points failed" in str(stopped.value)
+    assert str(experiment / "x_2") in str(stopped.value)
+    assert [len(done) for _, _, done in
+            workflow_module.finished(workflow, _plain(), experiment)] == [1, 0, 1]
+
+    commands.clear()
+    with pytest.raises(RuntimeError, match="no field at this bias"):
+        execute(workflow, _plain(x=2))
+    assert commands == []

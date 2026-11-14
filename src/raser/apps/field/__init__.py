@@ -145,9 +145,20 @@ def outdated(old, record):
     return "the device has another " + ", ".join(differing) if differing else None
 
 
+def job_command(kwargs):
+    """The options of a field command that its run does not record."""
+    words = [f"-{part}" for part in ("iv", "wf", "noise", "umf") if kwargs[part]]
+    if kwargs["cv"] is not None:
+        words.append("-cv" if kwargs["cv"] is True else f"-cv={kwargs['cv']}")
+    if kwargs["bias"] is not None:
+        words.append(f"-bias={kwargs['bias']}")
+    return words
+
+
 WORKFLOW = Workflow(
     name="field",
     job=solve,
+    command=job_command,
     keys=("irradiation_flux",),
     defaults={"irradiation_flux": None},
     seeds=False,

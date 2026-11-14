@@ -8,7 +8,9 @@ import itertools
 import json
 import secrets
 import subprocess
+import sys
 import time
+import traceback
 from dataclasses import dataclass
 from dataclasses import field
 from pathlib import Path
@@ -126,6 +128,7 @@ def execute(workflow, kwargs):
         if workflow.seeds:
             new["same_seeds"] = same_seeds
         _write(root / "config.json", new)
+    failed = []
     for folder, left, stale, record in todo:
         if stale and workflow.seeds:
             folder.rename(folder.with_name(f"{label}_{time.strftime('%Y_%m%d_%H%M%S')}"))
@@ -135,7 +138,16 @@ def execute(workflow, kwargs):
         if left:
             (folder / "batch").mkdir(parents=True, exist_ok=True)
             _write(folder / "run.json", record)
-            _start(workflow, kwargs, folder, left)
+            try:
+                _start(workflow, kwargs, folder, left, alone=len(todo) == 1)
+            except Exception as error:
+                if len(todo) == 1:
+                    raise
+                # The points do not depend on each other: the rest still run.
+                traceback.print_exc()
+                failed.append(f"  {folder}: {error!r}")
+    if failed:
+        raise SystemExit("\n".join([f"{len(failed)} of {len(todo)} points failed:", *failed]))
     return None
 
 
@@ -219,9 +231,10 @@ def _point(workflow, kwargs, options) -> tuple[dict, dict]:
     return options, files
 
 
-def _start(workflow, kwargs, folder, left) -> None:
-    """Start the jobs `left` of a seed folder."""
-    if kwargs.get("jobs") is None and not kwargs["batch"]:
+def _start(workflow, kwargs, folder, left, alone) -> None:
+    """Start the jobs `left` of a seed folder; `alone` when the command has no other point."""
+    single = kwargs.get("jobs") is None and not kwargs["batch"]
+    if single and alone:
         _run_job(workflow, {**kwargs, "job_dir": str(folder)})  # in this process
         return
     tail = workflow.words[1:]
@@ -229,6 +242,9 @@ def _start(workflow, kwargs, folder, left) -> None:
         tail.append(kwargs["det_name"])
     if workflow.command:
         tail += workflow.command(kwargs)
+    if single:  # one point among several: a process of its own, as on the cluster
+        _own_process(workflow, kwargs, [*kwargs["_entry_command_prefix"], *tail, "--job-dir", str(folder)])
+        return
     jobs.run_indexed_jobs(
         kwargs["_entry_command_prefix"],
         [*tail, "--job-dir", str(folder)],
@@ -238,6 +254,11 @@ def _start(workflow, kwargs, folder, left) -> None:
         destination=workflow.words[0],
         indices=left,
     )
+
+
+def _own_process(workflow, kwargs, words) -> None:
+    """Run the command `words`, the single job of one point, in another process."""
+    subprocess.run([sys.executable, "-m", "raser.cli.raser", *words], check=True)
 
 
 def _run_job(workflow, kwargs):
