@@ -19,6 +19,13 @@ from raser.supports.paths import work_root
 
 EPSILON_0_F_PER_M = 8.8541878128e-12
 
+# The keys of the json that describe each layout of the readout electrodes.
+LAYOUT_KEYS = {
+    'pad': (),
+    'strip': ('read_ele_num', 'p_x'),
+    'pixel': ('x_ele_num', 'y_ele_num', 'p_x', 'p_y'),
+}
+
 
 def device_file(device_name):
     """The json of a device: a file, a folder holding device.json, or a name
@@ -93,6 +100,20 @@ class Detector:
         if self.electrodes not in ('pad', 'strip', 'pixel'):
             raise ValueError(
                 "`electrodes` must be pad, strip or pixel, not {!r}".format(self.electrodes)
+            )
+        # Each layout has its own keys in the json, and none of the others.
+        own = LAYOUT_KEYS[self.electrodes]
+        missing = [key for key in own if key not in self.device_dict]
+        foreign = [
+            key for key in ('read_ele_num', 'x_ele_num', 'y_ele_num', 'p_x', 'p_y')
+            if key in self.device_dict and key not in own
+        ]
+        if missing or foreign:
+            raise ValueError(
+                "{}: `electrodes` is {!r}, which takes the keys {}; missing {}, "
+                "keys of another layout {}".format(
+                    path, self.electrodes, list(own), missing, foreign
+                )
             )
 
         if self.is_strip:
