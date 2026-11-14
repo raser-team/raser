@@ -45,9 +45,6 @@ class VectorizedCarrierSystem:
         self.my_d = my_d
         self.keep_drift_paths = bool(keep_drift_paths)
         
-        # Material 对象
-        self.material = self._create_material(material)
-        
         # 初始化
         self._params = self._initialize_params(my_d)
         self._initialize_other_attributes(all_positions)
@@ -189,21 +186,6 @@ class VectorizedCarrierSystem:
             if math.isnan(x) or math.isnan(y) or math.isnan(z):
                 raise ValueError(f"位置数据 {i} 包含 NaN 值")
     
-    def _create_material(self, material):
-        """安全的 Material 对象创建"""
-        try:
-            return Material(material)
-        except Exception as e:
-            logger.warning(f"Material对象创建失败 {material}，使用默认硅材料: {e}")
-            try:
-                return Material("si")
-            except:
-                # 最终备用方案
-                class FallbackMaterial:
-                    def __init__(self):
-                        self.name = "fallback_si"
-                return FallbackMaterial()
-
     def _resolve_field_resolution(self, my_d):
         """获取用于缓存和容差的电场分辨率"""
         resolution = getattr(my_d, "vector_field_resolution", None)
@@ -567,13 +549,10 @@ class VectorizedCarrierSystem:
 
     def _calculate_diffusion(self, diffusion_constant):
         """计算扩散位移"""
-        try:
-            generator = stream("drift")
-            return (generator.Gaus(0.0, diffusion_constant),
-                   generator.Gaus(0.0, diffusion_constant), 
-                   generator.Gaus(0.0, diffusion_constant))
-        except:
-            return 0.0, 0.0, 0.0
+        generator = stream("drift")
+        return (generator.Gaus(0.0, diffusion_constant),
+               generator.Gaus(0.0, diffusion_constant), 
+               generator.Gaus(0.0, diffusion_constant))
 
     def _update_carrier_position(self, idx, delta_x, delta_y, delta_z, dif_x, dif_y, dif_z):
         """更新载流子位置"""
@@ -993,14 +972,11 @@ class VectorizedCarrierSystem:
         # 批量获取陷阱率
         trapping_rates = []
         for i in range(n_points):
-            try:
-                if initial_charge >= 0:  # 空穴
-                    trapping_rate = my_f.get_trap_h_cached(x_coords[i], y_coords[i], z_coords[i])
-                else:  # 电子
-                    trapping_rate = my_f.get_trap_e_cached(x_coords[i], y_coords[i], z_coords[i])
-                trapping_rates.append(trapping_rate)
-            except Exception as e:
-                trapping_rates.append(0.0)
+            if initial_charge >= 0:  # 空穴
+                trapping_rate = my_f.get_trap_h_cached(x_coords[i], y_coords[i], z_coords[i])
+            else:  # 电子
+                trapping_rate = my_f.get_trap_e_cached(x_coords[i], y_coords[i], z_coords[i])
+            trapping_rates.append(trapping_rate)
         
         # 计算累积衰减因子
         decay_factors = []
