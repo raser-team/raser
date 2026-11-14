@@ -193,10 +193,13 @@ def test_gain_follows_the_voltage_at_its_input(tmp_path):
     assert voltage[0][off_the_jump] == pytest.approx(expected[off_the_jump], abs=7.5e-8)
 
 
-def test_gali52_gives_20_8_db_on_50_ohm_and_3_db_less_at_2_ghz():
-    # behind a source of 50 Ohm: a step of 1 uA in the 25 Ohm of source and
-    # input is 25 uV, and comes out on the 50 Ohm load 10^(20.8/20) times
-    # larger, with the time constant of a 2.0 GHz pole
+@pytest.mark.parametrize(
+    ("frequency_hz", "gain_db"),
+    [(100e6, 22.84), (1e9, 20.76), (2e9, 17.95)],
+)
+def test_gali52_has_the_gain_its_maker_gives(frequency_hz, gain_db):
+    # behind a source of 50 Ohm, on a 50 Ohm load: a sine of current I in the
+    # 25 Ohm of source and input is the input voltage 25 Ohm I
     source = {
         "ports": {"in": "a", "out": "b"},
         "elements": {
@@ -215,14 +218,15 @@ def test_gali52_gives_20_8_db_on_50_ohm_and_3_db_less_at_2_ghz():
         },
         "load": load,
     }
-    dt = 2e-12
-    times = -0.2e-9 + (np.arange(1000) + 0.5) * dt
-    step = np.where(times > 0, 1e-6, 0.0)
+    dt = 1 / frequency_hz / 100
+    times = (np.arange(3000) + 0.5) * dt
+    sine = np.sin(2 * np.pi * frequency_hz * times)
 
-    voltage = solve(chain, ["top"], dt, [step], planar_sensor("top", 1e-15))
+    voltage = solve(chain, ["top"], dt, [1e-6 * sine], planar_sensor("top", 1e-15))
 
-    after = np.clip(times, 0, None)
-    gain = 10 ** (20.8 / 20)
-    expected = gain * 25e-6 * (1 - np.exp(-after * 2 * np.pi * 2.0e9))
-    off_the_jump = (times < 0) | (times > 2 * dt)
-    assert voltage[0][off_the_jump] == pytest.approx(expected[off_the_jump], abs=3e-6)
+    settled = voltage[0][2000:]
+    amplitude = (settled.max() - settled.min()) / 2
+    assert 20 * np.log10(amplitude / 25e-6) == pytest.approx(gain_db, abs=0.25)
+    if frequency_hz == 100e6:
+        # at low frequency the output is the opposite of the input
+        assert np.mean(settled * sine[2000:]) < -0.45 * amplitude
