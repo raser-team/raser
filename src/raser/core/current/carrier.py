@@ -158,19 +158,6 @@ class VectorizedCarrierSystem:
             n_electrodes = len(read_out_contact) if read_out_contact else 1
             return [[] for _ in range(n_carriers)]
 
-    def _initialize_signal_storage(self, read_out_contact):
-        """初始化信号存储结构"""
-        if read_out_contact and len(read_out_contact) == 1:
-            try:
-                x_span = read_out_contact[0].get('x_span', 0)
-                y_span = read_out_contact[0].get('y_span', 0)
-                signal_length = max(1, (2*x_span+1)*(2*y_span+1))
-                return [[] for _ in range(signal_length)]
-            except:
-                return [[]]
-        else:
-            return [[] for _ in range(len(read_out_contact) if read_out_contact else 1)]
-    
     def _validate_inputs(self, positions, charges, times):
         """输入数据验证"""
         if len(positions) == 0:
@@ -250,27 +237,8 @@ class VectorizedCarrierSystem:
     
     def _calculate_reduced_coords(self, x, y, my_d):
         """计算简化坐标"""
-        #use_reduced = (self.read_out_contact and 
-                      #len(self.read_out_contact) == 1)
-        use_reduced = False  # 先不使用简化坐标，直接用全局坐标进行电场计算和边界检查
-
-        if not use_reduced:
-            return x, y
-        
-        try:
-            my_d.field_shift_x = float(my_d.field_shift_x)
-        except:
-            my_d.field_shift_x = 0.0
-
-        try:
-            my_d.field_shift_y = float(my_d.field_shift_y)
-        except:
-            my_d.field_shift_y = 0.0
-        
-        x_reduced = (x - my_d.l_x/2 + (my_d.x_ele_num%2)*my_d.p_x/2.0) % my_d.p_x + my_d.field_shift_x
-        y_reduced = (y - my_d.l_y/2 + (my_d.y_ele_num%2)*my_d.p_y/2.0) % my_d.p_y + my_d.field_shift_y
-        
-        return x_reduced, y_reduced
+        # 先不使用简化坐标，直接用全局坐标进行电场计算和边界检查
+        return x, y
 
     def _should_terminate_at_contact(self, my_f, x_reduced, y_reduced, z):
         if not self.read_out_contact or len(self.read_out_contact) != 1:
@@ -630,22 +598,6 @@ class VectorizedCarrierSystem:
         """获取性能统计"""
         return self.performance_stats.copy()
     
-    def _reinitialize_signal_list(self, carrier):
-        """重新初始化信号列表"""
-        try:
-            if hasattr(carrier, 'read_out_contact') and carrier.read_out_contact:
-                if len(carrier.read_out_contact) == 1:
-                    x_span = carrier.read_out_contact[0].get('x_span', 0)
-                    y_span = carrier.read_out_contact[0].get('y_span', 0)
-                    signal_length = max(1, (2*x_span+1)*(2*y_span+1))
-                    carrier.signal = [[] for _ in range(signal_length)]
-                else:
-                    carrier.signal = [[] for _ in range(len(carrier.read_out_contact))]
-            else:
-                carrier.signal = [[]]
-        except Exception as e:
-            carrier.signal = [[]]
-
     def get_signal_batch(self, my_d, my_f, delta_t):
         """批量计算载流子信号 - 重新设计版本"""
         start_time = time.time()
@@ -987,40 +939,6 @@ class VectorizedCarrierSystem:
         
         return [initial_charge * factor for factor in decay_factors]
     
-    def verify_signal_transfer(self, original_carriers):
-        """验证信号是否正确传递到原始载流子"""
-        logger.info("=== 信号传递验证 ===")
-        
-        valid_carriers = 0
-        total_electrodes_with_signals = 0
-        total_signal_points = 0
-        
-        for i, carrier in enumerate(original_carriers):
-            if hasattr(carrier, 'signal') and carrier.signal:
-                carrier_electrodes_with_signals = 0
-                carrier_signal_points = 0
-                
-                for electrode_idx, sig_list in enumerate(carrier.signal):
-                    if sig_list:  # 检查信号列表是否非空
-                        carrier_electrodes_with_signals += 1
-                        carrier_signal_points += len(sig_list)
-                
-                if carrier_electrodes_with_signals > 0:
-                    valid_carriers += 1
-                    total_electrodes_with_signals += carrier_electrodes_with_signals
-                    total_signal_points += carrier_signal_points
-                    
-                    if i < 3:  # 只打印前3个载流子的详细信息
-                        logger.info(f"载流子{i}: {carrier_electrodes_with_signals}个电极有信号, {carrier_signal_points}个信号点")
-        
-        logger.info(f"信号传递验证结果: {valid_carriers}个载流子有信号, 共{total_electrodes_with_signals}个电极, {total_signal_points}个信号点")
-        
-        if valid_carriers == 0:
-            logger.error("错误: 没有信号传递到原始载流子!")
-            return False
-        else:
-            return True
-
     def _log_progress_signal(self, carrier_idx, len_all_indices):
         """记录进度"""
         progress = carrier_idx / len_all_indices * 100
