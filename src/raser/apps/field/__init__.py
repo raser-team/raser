@@ -1,26 +1,73 @@
 """Field application."""
 
+import json
 import subprocess
 import sys
+from pathlib import Path
 
 from raser.core.field import command
 
 
+def _capacitance(kwargs):
+    """The capacitance at one bias the field was saved at, the bias of the
+    field itself when none is given, into the folder of that field as
+    <bias>V.cv.json."""
+    # devsim and ROOT stay out of the command line until a solve needs them.
+    from raser.core.device.build_device import Detector
+    from raser.core.field import saved_point
+
+    plan = command.build_plan({**kwargs, "wf": False})
+    at = plan.configuration.values["bias_voltage"] if kwargs["cv"] is True else kwargs["cv"]
+    voltage = float(at)
+    value, frequency = saved_point.capacitance(
+        Detector(kwargs["target"]),
+        plan.directory,
+        voltage,
+        plan.configuration.values["solver"],
+    )
+    point = {"voltage_V": voltage, "capacitance_pF": value, "frequency_Hz": frequency}
+    (Path(plan.directory) / f"{voltage}V.cv.json").write_text(json.dumps(point, indent=2))
+    print(point)
+
+
+def _alone(kwargs, part):
+    """The command that solves one part of this one and nothing else."""
+    words = ["field", kwargs["target"], f"-{part}"]
+    if part == "cv" and kwargs["cv"] is not True:
+        words[-1] += f"={kwargs['cv']}"
+    if kwargs["bias"] is not None:
+        words.append(f"-bias={kwargs['bias']}")
+    if kwargs["irradiation_flux"] is not None:
+        words.append(f"-irr={kwargs['irradiation_flux']}")
+    return words
+
+
 def solve(kwargs):
-    """The field of a device up to its bias with its IV, its CV, and the
-    weighting field of its read-out electrodes, all into one folder; with
-    -iv, -cv or -wf only the parts that are named. The CV is taken along the
-    bias ramp, so -cv ramps as -iv does."""
+    """The parts that are named, in this order: -iv the field up to its bias
+    with its IV, -cv the capacitance at one bias the field was saved at, -wf
+    the weighting field of the read-out electrodes. With none named, the field
+    with its IV and its CV along the ramp, then the weighting field."""
     if kwargs.get("input") is not None or kwargs.get("dry_run"):
         return command.main(kwargs)
-    parts = [part for part in ("iv", "cv", "wf") if kwargs[part]] or ["iv", "cv", "wf"]
-    if parts == ["wf"]:
-        return command.main({**kwargs, "cv": False, "wf": True})
-    command.main({**kwargs, "cv": "cv" in parts, "wf": False})
-    if "wf" in parts:
-        # devsim holds one device in a process: the weighting field gets its own.
-        words = [word for word in kwargs["_argv"] if word not in ("-iv", "-cv", "-wf")]
-        subprocess.run([sys.executable, "-m", "raser.cli.raser", *words, "-wf"], check=True)
+    named = [
+        part
+        for part, asked in (
+            ("iv", kwargs["iv"]),
+            ("cv", kwargs["cv"] is not None),
+            ("wf", kwargs["wf"]),
+        )
+        if asked
+    ]
+    here, *after = named or ["iv", "wf"]
+    if here == "cv":
+        _capacitance(kwargs)
+    else:
+        command.main({**kwargs, "cv": not named, "wf": here == "wf"})
+    # devsim holds one device in a process: every further part gets its own.
+    for part in after:
+        subprocess.run(
+            [sys.executable, "-m", "raser.cli.raser", *_alone(kwargs, part)], check=True
+        )
     return None
 
 
@@ -32,9 +79,16 @@ def register(subparsers):
     parser.add_argument(
         "-v", "--verbose", help="VERBOSE level", action="count", default=0
     )
-    parser.add_argument("-iv", help="only the field and its IV", action="store_true")
-    parser.add_argument("-cv", help="only the field, its IV and its CV", action="store_true")
-    parser.add_argument("-wf", help="only the weighting field", action="store_true")
+    parser.add_argument("-iv", help="the field and its IV", action="store_true")
+    parser.add_argument(
+        "-cv",
+        metavar="V",
+        type=float,
+        nargs="?",
+        const=True,
+        help="the capacitance at one saved bias, the bias of the field by default",
+    )
+    parser.add_argument("-wf", help="the weighting field", action="store_true")
     parser.add_argument(
         "-irr", "--irradiation_flux", help="irradiationm flux", type=float
     )
