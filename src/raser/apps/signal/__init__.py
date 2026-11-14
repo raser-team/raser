@@ -20,7 +20,6 @@ KEYS = (
     "voltage",
     "irradiation",
     "amplifier",
-    "adc",
 )
 COMPONENTS = {"source": "source", "afe": "amplifier"}  # kind of file -> option
 IN_FILE = {"voltage": "device.bias.voltage"}  # option -> where it sits in a file
@@ -48,7 +47,6 @@ def add_arguments(parser):
     )
     parser.add_argument("--g4-vis-driver", help="Geant4 visualization driver")
     parser.add_argument("-amp", "--amplifier", type=str, help="amplifier")
-    parser.add_argument("--adc", help="ADC component")
 
 
 def job_command(kwargs):
