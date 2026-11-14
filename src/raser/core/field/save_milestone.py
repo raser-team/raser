@@ -509,6 +509,19 @@ def save_record(path, **entries):
         json.dump(record, file, indent=2)
 
 
+def save_solved(path, asset, at):
+    """Add to the "solved" entry of run.json that the folder now holds `asset`
+    at `at`: {"potential": [0, 100.0, 200.0], "weighting": ["any"], ...}."""
+    record = {}
+    if os.path.exists(os.path.join(path, "run.json")):
+        with open(os.path.join(path, "run.json")) as file:
+            record = json.load(file)
+    solved = record.get("solved", {})
+    if at not in solved.setdefault(asset, []):
+        solved[asset].append(at)
+    save_record(path, solved=solved)
+
+
 def save_milestone(device, v, path, dimension, contact_name, is_wf, is_tcad = False, is_flip=False):
     if dimension == 1:
         if is_wf == True:

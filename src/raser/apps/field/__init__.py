@@ -32,6 +32,20 @@ def _solver(kwargs):
     return over(copy.deepcopy(SOLVER), kwargs["_files"]["device"].get("field", {}).get("solver", {}))
 
 
+def _bias(kwargs):
+    """The bias the command asks for: its option, else the bias of the device."""
+    if kwargs["bias"] is not None:
+        return float(kwargs["bias"])
+    return Detector(kwargs["det_name"], kwargs["_files"]["device"]).voltage
+
+
+def _solved(kwargs, asset, at):
+    """Whether run.json of the folder lists `asset` at `at` among what is solved."""
+    record = Path(kwargs["_run_path"]) / "run.json"
+    listed = json.loads(record.read_text()).get("solved", {}) if record.is_file() else {}
+    return at in listed.get(asset, [])
+
+
 def _ramp_or_weighting(kwargs, cv, wf):
     """One solve into the folder of the run: the bias ramp, or the weighting field."""
     from raser.core.field import solver_section
@@ -40,6 +54,7 @@ def _ramp_or_weighting(kwargs, cv, wf):
         {
             **kwargs,
             "target": kwargs["det_name"],
+            "bias": _bias(kwargs),
             "cv": cv,
             "wf": wf,
             "solver": _solver(kwargs),
@@ -55,13 +70,15 @@ def _capacitance(kwargs):
     # devsim stays out of the command line until a solve needs it.
     from raser.core.field import saved_point
 
+    from raser.core.field.save_milestone import save_solved
+
     my_d = Detector(kwargs["det_name"], kwargs["_files"]["device"])
-    bias = my_d.voltage if kwargs["bias"] is None else kwargs["bias"]
-    voltage = float(bias if kwargs["cv"] is True else kwargs["cv"])
+    voltage = _bias(kwargs) if kwargs["cv"] is True else float(kwargs["cv"])
     folder = Path(kwargs["_run_path"])
     value, frequency = saved_point.capacitance(my_d, folder, voltage, _solver(kwargs))
     point = {"voltage_V": voltage, "capacitance_pF": value, "frequency_Hz": frequency}
     (folder / f"{voltage}V.cv.json").write_text(json.dumps(point, indent=2))
+    save_solved(str(folder), "capacitance", voltage)
     print(point)
 
 
@@ -83,7 +100,8 @@ def solve(kwargs):
     """The parts that are named, in this order: -iv the field up to its bias
     with its IV, -cv the capacitance at one bias the field was saved at, -wf
     the weighting field of the read-out electrodes. With none named, the field
-    with its IV and its CV along the ramp, then the weighting field."""
+    with its IV and its CV along the ramp, then the weighting field. A part
+    that run.json lists as solved is left as it is."""
     named = [
         part
         for part, asked in (
@@ -93,13 +111,22 @@ def solve(kwargs):
         )
         if asked
     ]
-    for done, part in enumerate(named or ["iv", "wf"]):
+    cv_at = _bias(kwargs) if kwargs["cv"] is True else kwargs["cv"]
+    have = {
+        "iv": _solved(kwargs, "potential", _bias(kwargs)),
+        "cv": _solved(kwargs, "capacitance", cv_at),
+        "wf": _solved(kwargs, "weighting", "any"),
+    }
+    left = [part for part in named or ["iv", "wf"] if not have[part]]
+    for done, part in enumerate(left):
         if done:
             _empty_devsim()
         if part == "cv":
             _capacitance(kwargs)
         else:
             _ramp_or_weighting(kwargs, cv=not named, wf=part == "wf")
+    if not left:
+        print(f"{kwargs['_run_path']}: already solved")
     return None
 
 

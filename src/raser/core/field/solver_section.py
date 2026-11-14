@@ -202,6 +202,8 @@ def main (kwargs):
             loop.loop_solver(circuit_contact=contact,v_trial=v_trial,area_factor=paras["area_factor"],)
 
             save_milestone.save_milestone(device=device, v=v_trial, path=folder_path,dimension=default_dimension,contact_name=contact,is_wf=is_wf,)
+            # The weighting field does not depend on the bias yet.
+            save_milestone.save_solved(path, "weighting", "any")
             devsim.write_devices(file=os.path.join(folder_path,"weightingfield.dat"), type="tecplot")
             
     elif is_wf == False:
@@ -209,6 +211,7 @@ def main (kwargs):
         v_current = 0
         loop.loop_solver(circuit_contact=bias_contact, v_trial=0, area_factor=paras["area_factor"])
         save_milestone.save_milestone(device=device, v=0, path=path, dimension=default_dimension, contact_name=bias_contact, is_wf=is_wf,)
+        save_milestone.save_solved(path, "potential", 0.0)
         dd = os.path.join(path, '0V.dd')
         devsim_device = os.path.join(path, '0V.devsim')
         devsim.write_devices(file=dd, type="tecplot")
@@ -245,6 +248,7 @@ def main (kwargs):
                 print("=========RASER info===========\nConvergence success, voltage = {}, increased voltage step = {}\n================".format(v_trial, voltage_step))
                 if (paras['milestone_mode']) and (milestone_flag or goal_flag):
                     save_milestone.save_milestone(device=device, v=v_trial, path=path, dimension=default_dimension, contact_name=bias_contact, is_wf=is_wf,)
+                    save_milestone.save_solved(path, "potential", float(v_trial))
                     dd = os.path.join(path, str(v_trial) + 'V.dd')
                     devsim_device = os.path.join(path, str(v_trial) + 'V.devsim')
                     devsim.write_devices(file=dd, type="tecplot")

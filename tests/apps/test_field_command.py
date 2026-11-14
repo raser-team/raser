@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -13,9 +14,11 @@ from raser.core.field import saved_point
 from raser.core.field.reading import Reading
 
 
-def _parsed(*words: str) -> dict[str, Any]:
+def _parsed(*words: str, folder: Path | str = "/no such folder") -> dict[str, Any]:
+    """The options a job of the field command receives."""
     argv = ["field", "HPK-Si-PiN", *words]
-    return {**vars(build_parser().parse_args(argv)), "_argv": argv}
+    run = {"_run_path": str(folder), "_files": {"device": device_json("HPK-Si-PiN")}}
+    return {**vars(build_parser().parse_args(argv)), "_argv": argv, **run}
 
 
 @pytest.fixture
@@ -86,3 +89,25 @@ def test_a_field_is_out_of_date_for_what_its_solve_read_its_flux_and_its_setting
         old, _record(lambda device: device.update(field={"solver": {"ac": {"frequency": 1.0}}}))
     )
     assert field.outdated(_record(), _record(lambda device: device["doping"].clear())) is None
+
+
+@pytest.mark.parametrize(
+    ("options", "solved"),
+    [
+        ((), []),
+        (("-bias", "100"), []),
+        (("-bias", "300"), ["iv+cv"]),
+        (("-cv",), ["cv at True"]),
+        (("-cv", "100"), []),
+        (("-iv", "-cv", "0", "-wf"), ["cv at 0.0"]),
+    ],
+)
+def test_a_part_that_run_json_lists_as_solved_is_left_as_it_is(
+    solves: list[str], tmp_path: Path, options: tuple[str, ...], solved: list[str]
+) -> None:
+    listed = {"potential": [0.0, 100.0, 200.0], "capacitance": [100.0], "weighting": ["any"]}
+    (tmp_path / "run.json").write_text(json.dumps({"solved": listed}))
+
+    field.solve(_parsed(*options, folder=tmp_path))
+
+    assert solves == solved
