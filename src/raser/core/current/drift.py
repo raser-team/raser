@@ -4,17 +4,23 @@ import math
 
 import numpy as np
 
+from raser.core.seeding import stream
+
+kboltz = 8.617385e-5  # eV/K
 min_intensity = 1  # V/cm, a carrier in a field not above this stops
 max_drift_time = 100e-9  # s, a carrier still drifting after this stops
 
 
-def drift(x, y, z, t, charge, my_d, my_f, mobility, delta_t):
+def drift(x, y, z, t, charge, my_d, my_f, mobility, delta_t, diffusion=True):
     """Path of one cluster of carriers and why it stopped.
 
     The cluster starts at x, y, z [um] and time t [s]; the sign of `charge`
     tells holes from electrons. Each step of `delta_t` [s] moves it along
     the field of `my_f` [V/cm] with `mobility(temperature, doping, charge,
-    field)` [cm^2/V/s].
+    field)` [cm^2/V/s]. With `diffusion` each step also moves it at random,
+    by a Gaussian of variance 2 D delta_t on each axis, D = mobility kT/e,
+    drawn from the random stream "drift"; the cluster diffuses as one
+    carrier. Without it the stream is not asked.
 
     Returns the path, an array (points, 4) of x, y, z [um] and t [s], and
     one of
@@ -45,6 +51,10 @@ def drift(x, y, z, t, charge, my_d, my_f, mobility, delta_t):
         doping = float(my_f.get_doping_cached(*position))
         mu = mobility(my_d.temperature, doping, charge, intensity)
         step = [sign * component * mu * delta_t * 1e4 for component in field]  # um
+        if diffusion:
+            sigma = math.sqrt(2.0 * kboltz * my_d.temperature * mu * delta_t) * 1e4  # um
+            generator = stream("drift")
+            step = [move + generator.Gaus(0.0, sigma) for move in step]
 
         # the share of the step that lies inside the device
         inside = 1.0
