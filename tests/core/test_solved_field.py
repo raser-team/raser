@@ -24,7 +24,7 @@ def _field(folder: Path, flux=None, solved=None, read=True) -> None:
     record = {"options": {"irradiation_flux": flux}, "files": {"device": device_json("HPK-Si-PiN")}}
     if read:
         record["read"] = reading.read
-    record["solved"] = {"potential": [0.0, 100.0], "weighting": ["any"]} if solved is None else solved
+    record["solved"] = {"potential": [0.0, 100.0], "weighting": [0.0, 100.0]} if solved is None else solved
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "run.json").write_text(json.dumps(record))
 
@@ -60,8 +60,8 @@ def test_a_field_that_does_not_serve_the_run_is_refused_with_what_is_missing(
     with pytest.raises(ValueError, match="another device .doping.Donors."):
         solved_field(other, 100.0, 0)
 
-    _field(fields, solved={"potential": [100.0]})
-    with pytest.raises(FileNotFoundError, match="no weighting field"):
+    _field(fields, solved={"potential": [0.0, 100.0], "weighting": [0.0]})
+    with pytest.raises(FileNotFoundError, match=r"no weighting field at 100.0 V.*\[0.0\]"):
         solved_field(_device(), 100.0, 0)
     _field(fields, read=False)
     with pytest.raises(ValueError, match="nothing solved yet"):

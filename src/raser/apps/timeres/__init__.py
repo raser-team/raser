@@ -16,12 +16,6 @@ def _job(kwargs):
     signal.run_job(kwargs, "timeres")
 
 
-def _extract(point_root, done):
-    from raser.apps.timeres import summary
-
-    return summary.collect_point(point_root, done)
-
-
 WORKFLOW = Workflow(
     name="timeres",
     keys=signal.KEYS + ("g4setup",),
@@ -35,7 +29,6 @@ WORKFLOW = Workflow(
     components={**signal.COMPONENTS, "g4setup": "g4setup", "adc": "adc"},
     in_file=signal.IN_FILE,
     job=_job,
-    extract=_extract,
     command=signal.job_command,
 )
 

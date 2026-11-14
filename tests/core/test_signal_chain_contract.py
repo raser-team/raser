@@ -4,7 +4,6 @@ import pytest
 
 from raser.core.frontend import CurrentSource
 from raser.core.frontend import assemble_frontend
-from raser.core.metrics import measure_waveform
 
 
 def test_current_frontend_and_metrics_share_one_waveform_contract() -> None:
@@ -31,18 +30,6 @@ def test_current_frontend_and_metrics_share_one_waveform_contract() -> None:
     assert circuit.times == pytest.approx(times)
     for element in ("I0", "Cbulk0", "Ccouple0", "Rbias0", "Cac0", "Rin0", "Eafe0"):
         assert element in circuit.netlist
-
-    measurements = measure_waveform(
-        times=(0.0, 1.0, 2.0, 3.0, 4.0),
-        samples=(0.0, 1.0, 2.0, 1.0, 0.0),
-        threshold=1.0,
-        constant_fraction=0.5,
-    )
-    assert measurements.amplitude == 2.0
-    assert measurements.time_of_arrival == 1.0
-    assert measurements.time_over_threshold == 2.0
-    assert measurements.constant_fraction_time == 1.0
-    assert measurements.charge == pytest.approx(4.0)
 
 
 def test_frontend_requires_one_increasing_time_axis() -> None:

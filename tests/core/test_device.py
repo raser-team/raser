@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from raser.core.device.build_device import Detector
 from raser.core.device.build_device import device_file
 
@@ -25,12 +27,10 @@ def test_a_device_and_the_content_it_was_built_from_do_not_change_each_other() -
 
 def test_the_electrodes_key_lays_out_the_readout_and_the_name_does_not() -> None:
     def device(**keys: object) -> Detector:
-        content = {**_content(), "read_ele_num": 3, "p_x": 10.0}
-        content.update(x_ele_num=2, y_ele_num=2, p_y=20.0, **keys)
-        return Detector("HPK-Si-PiN", content)
+        return Detector("HPK-Si-PiN", {**_content(), **keys})
 
-    strip = device(electrodes="strip")
-    pixel = device(electrodes="pixel")
+    strip = device(electrodes="strip", read_ele_num=3, p_x=10.0)
+    pixel = device(electrodes="pixel", x_ele_num=2, y_ele_num=2, p_x=10.0, p_y=20.0)
     pad = device(det_model="strip")
 
     assert (strip.read_ele_num, strip.x_ele_num, strip.y_ele_num) == (3, 3, 1)
@@ -41,3 +41,17 @@ def test_the_electrodes_key_lays_out_the_readout_and_the_name_does_not() -> None
     assert (pad.read_ele_num, pad.x_ele_num, pad.y_ele_num) == (1, 1, 1)
     assert (pad.p_x, pad.p_y) == (pad.l_x, pad.l_y)
     assert pad._readout_area_um2() == pad.l_x * pad.l_y
+
+
+def test_a_layout_with_keys_missing_or_keys_of_another_layout_is_refused() -> None:
+    def device(**keys: object) -> Detector:
+        return Detector("HPK-Si-PiN", {**_content(), **keys})
+
+    with pytest.raises(ValueError, match=r"missing \[\], keys of another layout \['read_ele_num', 'p_x'\]"):
+        device(det_model="strip", read_ele_num=3, p_x=10.0)
+    with pytest.raises(ValueError, match=r"missing \['p_x'\], keys of another layout \[\]"):
+        device(electrodes="strip", read_ele_num=3)
+    with pytest.raises(ValueError, match=r"missing \[\], keys of another layout \['x_ele_num', 'y_ele_num', 'p_y'\]"):
+        device(electrodes="strip", read_ele_num=3, p_x=10.0, x_ele_num=2, y_ele_num=2, p_y=20.0)
+    with pytest.raises(ValueError, match=r"missing \['y_ele_num'\], keys of another layout \['read_ele_num'\]"):
+        device(electrodes="pixel", read_ele_num=3, x_ele_num=2, p_x=10.0, p_y=20.0)

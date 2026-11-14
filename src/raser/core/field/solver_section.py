@@ -24,6 +24,8 @@ from .create_parameter import create_parameter
 from . import save_milestone
 from . import loop_section
 from . import physics_drift_diffusion
+from .assets import field_pickle_path
+from .weighting import take_conductors_into_electrodes
 from raser.supports.output import create_path
 from .devsim_draw import *
 
@@ -186,11 +188,17 @@ def main (kwargs):
     path = str(create_path(field_directory))
     save_milestone.save_record(path, axes=mesh_axes(MyDetector))
 
-    loop=loop_section.loop_section(paras=paras,device=device,region=region,solve_model=solve_model,irradiation=irradiation,with_noise=is_noise,)
+    loop=loop_section.loop_section(paras=paras,device=device,region=region,solve_model=solve_model,irradiation=irradiation,path=path,with_noise=is_noise,)
    
     if is_wf == True:
         v_trial=1
         print("=======RASER info========\nBegin simulation WeightingField\n======================")
+        conductive_file = field_pickle_path(path, "Conductive", v_goal)
+        if not conductive_file.exists():
+            raise FileNotFoundError(
+                f"the weighting field at {v_goal} V needs the field solved at that bias: "
+                f"{conductive_file} is missing; solve it with `raser field {simname} -bias {v_goal}`"
+            )
         for contact in readout_contacts:
             print(path)
             folder_path = os.path.join(path, "weightingfield")
@@ -199,11 +207,12 @@ def main (kwargs):
                 os.makedirs(folder_path)
             
             loop.initial_solver(contact=contact,set_contact_type=None,impact_model=impact_model,irradiation_model=irradiation_model,irradiation_flux=irradiation_flux,)
+            take_conductors_into_electrodes(device, region, conductive_file)
             loop.loop_solver(circuit_contact=contact,v_trial=v_trial,area_factor=paras["area_factor"],)
 
-            save_milestone.save_milestone(device=device, v=v_trial, path=folder_path,dimension=default_dimension,contact_name=contact,is_wf=is_wf,)
-            # The weighting field does not depend on the bias yet.
-            save_milestone.save_solved(path, "weighting", "any")
+            # Stored as the weighting field of the bias, as Potential_<bias>V.pkl.
+            save_milestone.save_milestone(device=device, v=float(v_goal), path=folder_path,dimension=default_dimension,contact_name=contact,is_wf=is_wf,)
+            save_milestone.save_solved(path, "weighting", float(v_goal))
             devsim.write_devices(file=os.path.join(folder_path,"weightingfield.dat"), type="tecplot")
             
     elif is_wf == False:

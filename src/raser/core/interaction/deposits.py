@@ -1,36 +1,29 @@
 """Energy deposits of a batch of events, and their file.
 
-The file is a ROOT file with a TTree ``deposits``, one entry per recorded
-event, and a TNamed ``generation`` whose title is JSON.
+The file is HDF5. The deposits of all recorded events lie one after
+another; ``count`` cuts them into events.
 
-Branches of ``deposits``, the vectors aligned deposit by deposit:
+Datasets, one value per recorded event:
     event     Geant4 event number
+    count     number of deposits of the event
+Datasets, one value per deposit:
     detector  name of the detector the deposit lies in
     x, y, z   position in the coordinates of that detector [um]
     t         time since the primary was generated [s]
     e         deposited energy [MeV]
 
-``generation``: generated_events, edep_min [MeV], edep_max [MeV].
+Attributes of the file: generated_events, and edep_min, edep_max [MeV]
+where the window has that bound.
 """
 
 from __future__ import annotations
 
-import json
-from array import array
 from dataclasses import dataclass
 
-import ROOT
+import h5py
+import numpy as np
 
-ROOT.gROOT.SetBatch(True)
-
-_VECTORS = {
-    "detector": "string",
-    "x": "double",
-    "y": "double",
-    "z": "double",
-    "t": "double",
-    "e": "double",
-}
+_NUMBERS = ("x", "y", "z", "t", "e")
 
 
 @dataclass
@@ -91,49 +84,47 @@ def deposits_of_steps(
 
 
 def write_deposits(path: str, deposits: Deposits) -> None:
-    file = ROOT.TFile(str(path), "RECREATE")
-    tree = ROOT.TTree("deposits", "energy deposits of each recorded event")
-    event = array("q", [0])
-    tree.Branch("event", event, "event/L")
-    vectors = {name: ROOT.std.vector(kind)() for name, kind in _VECTORS.items()}
-    for name, vector in vectors.items():
-        tree.Branch(name, vector)
-    for record in deposits.events:
-        event[0] = record.event
-        for name, vector in vectors.items():
-            vector.clear()
-            for value in getattr(record, name):
-                vector.push_back(value)
-        tree.Fill()
-    tree.Write()
-    generation = {
-        "generated_events": deposits.generated_events,
-        "edep_min": deposits.edep_min,
-        "edep_max": deposits.edep_max,
-    }
-    ROOT.TNamed("generation", json.dumps(generation)).Write()
-    file.Close()
+    events = deposits.events
+    with h5py.File(str(path), "w") as file:
+        file.attrs["generated_events"] = deposits.generated_events
+        for bound in ("edep_min", "edep_max"):
+            if getattr(deposits, bound) is not None:
+                file.attrs[bound] = getattr(deposits, bound)
+        file["event"] = np.array([record.event for record in events], dtype="int64")
+        file["count"] = np.array([len(record.e) for record in events], dtype="int64")
+        file.create_dataset(
+            "detector",
+            data=[name for record in events for name in record.detector],
+            dtype=h5py.string_dtype(),
+        )
+        for name in _NUMBERS:
+            file[name] = np.array(
+                [value for record in events for value in getattr(record, name)],
+                dtype="float64",
+            )
 
 
 def read_deposits(path: str) -> Deposits:
-    file = ROOT.TFile(str(path), "READ")
-    generation = json.loads(file.Get("generation").GetTitle())
-    events = [
-        EventDeposits(
-            int(entry.event),
-            [str(name) for name in entry.detector],
-            list(entry.x),
-            list(entry.y),
-            list(entry.z),
-            list(entry.t),
-            list(entry.e),
+    with h5py.File(str(path), "r") as file:
+        generated_events = int(file.attrs["generated_events"])
+        edep_min, edep_max = (
+            float(file.attrs[bound]) if bound in file.attrs else None
+            for bound in ("edep_min", "edep_max")
         )
-        for entry in file.Get("deposits")
-    ]
-    file.Close()
-    return Deposits(
-        generation["generated_events"],
-        generation["edep_min"],
-        generation["edep_max"],
-        events,
-    )
+        numbers = file["event"][()]
+        counts = file["count"][()]
+        detector = file["detector"].asstr()[()]
+        columns = {name: file[name][()] for name in _NUMBERS}
+    events = []
+    first = 0
+    for number, count in zip(numbers, counts, strict=True):
+        last = first + int(count)
+        events.append(
+            EventDeposits(
+                int(number),
+                detector[first:last].tolist(),
+                *(columns[name][first:last].tolist() for name in _NUMBERS),
+            )
+        )
+        first = last
+    return Deposits(generated_events, edep_min, edep_max, events)
