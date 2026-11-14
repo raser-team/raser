@@ -62,7 +62,13 @@ def run_events(my_d, my_f, deposits, amplifier, batch_path, job, plots, plot_pat
             currents_path,
             my_current.electrodes,
             my_current.t_bin,
-            EventCurrents(record.event, my_current.t_start, my_current.current, my_current.charge),
+            EventCurrents(
+                record.event,
+                my_current.t_start,
+                my_current.current,
+                my_current.charge,
+                my_current.pairs,
+            ),
         )
         ele_current = Amplifier(my_current.sum_cu, amplifier, CDet=my_d.capacitance)
 
