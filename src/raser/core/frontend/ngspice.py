@@ -81,50 +81,17 @@ def circuit_has_noise_spectrum(circuit_path):
 
 
 def set_ngspice_input(currents: list[ROOT.TH1F]):
+    """PWL points "t0,i0,t1,i1,..." of each induced current, one point per
+    bin: time in s counted from the start of the histogram, current in A."""
     values = []
     for histogram in currents:
-        bin_count = histogram.GetNbinsX()
         bin_width = histogram.GetBinWidth(1)
-        samples = [histogram.GetBinContent(index) for index in range(1, bin_count + 1)]
-        times = [(index - 1) * bin_width for index in range(1, bin_count + 1)]
-        if not samples:
-            values.append("0,0")
-            continue
-        minimum = min(samples)
-        maximum = max(samples)
-        if minimum == 0.0 and maximum == 0.0:
-            values.append(f"0,0,{times[-1]},0")
-            continue
-
-        if abs(minimum) > maximum:
-            threshold = minimum * 0.01
-            start = _first_index(samples, threshold, below=True)
-            end_below = False
-        else:
-            threshold = maximum * 0.01
-            start = _first_index(samples, threshold, below=False)
-            end_below = True
-        if start is None:
-            values.append(f"0,0,{times[-1]},0")
-            continue
-
-        points = ["0", "0", str(times[start]), "0"]
-        end = len(samples) - 1
-        for index in range(start, len(samples)):
-            points.extend((str(times[index]), str(samples[index])))
-            if (samples[index] < threshold) == end_below:
-                end = index
-                break
-        points.extend((str(times[end]), "0", str(times[-1]), "0"))
+        points = []
+        for index in range(1, histogram.GetNbinsX() + 1):
+            points.append(str((index - 1) * bin_width))
+            points.append(str(histogram.GetBinContent(index)))
         values.append(",".join(points))
     return values
-
-
-def _first_index(values, threshold, *, below):
-    for index, value in enumerate(values):
-        if (value < threshold) == below:
-            return index
-    return None
 
 
 def set_tmp_cir(
