@@ -11,6 +11,7 @@ import pytest
 
 from raser.lifecycle import jobs
 from raser.lifecycle import workflow as workflow_module
+from raser.lifecycle.slices import Slice
 from raser.lifecycle.workflow import Workflow
 from raser.lifecycle.workflow import execute
 
@@ -780,3 +781,158 @@ def test_each_of_several_points_runs_in_a_process_of_its_own_and_one_failing_lea
     with pytest.raises(RuntimeError, match="no field at this bias"):
         execute(workflow, _plain(x=2))
     assert commands == []
+
+
+@pytest.fixture
+def ran() -> list[tuple[str, Any]]:
+    """What the slices of CHAIN ran: (slice, the value of its own option)."""
+    return []
+
+
+def _chain(ran: list[tuple[str, Any]], fail: str | None = None) -> Workflow:
+    """A job of three slices: the source, then the bias written into the device, then the amplifier."""
+
+    def piece(name: str, key: str) -> Slice:
+        def run(options: dict[str, Any]) -> None:
+            if name == fail:
+                raise RuntimeError(name)
+            ran.append((name, options[key]))
+
+        return Slice(name, run, keys=(key,), kinds=("afe",) if key == "amplifier" else ())
+
+    return Workflow(
+        name="toy",
+        slices=(piece("deposits", "source"), piece("currents", "voltage"), piece("waveforms", "amplifier")),
+        keys=("source", "voltage", "amplifier"),
+        defaults={"source": "beta", "amplifier": "standard"},
+        components={"afe": "amplifier"},
+        in_file={"voltage": "device.bias.voltage"},
+    )
+
+
+def _chain_kwargs(**given: Any) -> dict[str, Any]:
+    options = {"det_name": "dev", "source": None, "voltage": None, "amplifier": None, "until": None}
+    return _kwargs(**{**options, **given})
+
+
+def test_a_job_runs_its_slices_in_order_and_a_second_command_runs_none_again(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], ran: list[tuple[str, Any]]
+) -> None:
+    execute(_chain(ran), _chain_kwargs())
+    execute(_chain(ran), _chain_kwargs())
+
+    assert ran == [("deposits", "beta"), ("currents", 200.0), ("waveforms", "standard")]
+
+
+@pytest.mark.parametrize(
+    ("changed", "again"),
+    [
+        ({"amplifier": "fast"}, [("waveforms", "fast")]),
+        ({"voltage": 300.0}, [("currents", 300.0), ("waveforms", "standard")]),
+    ],
+)
+def test_an_option_of_a_later_slice_runs_that_slice_and_the_ones_after_it_again_in_place(
+    started: list[Any],
+    seeded: list[int],
+    disk: dict[str, Any],
+    ran: list[tuple[str, Any]],
+    tmp_path: Path,
+    changed: dict[str, Any],
+    again: list[tuple[str, Any]],
+) -> None:
+    execute(_chain(ran), _chain_kwargs())
+    del ran[:]
+
+    execute(_chain(ran), _chain_kwargs(**changed))
+
+    assert ran == again
+    assert _kept(tmp_path / "toy") == []
+    (key, value), = changed.items()
+    assert _record(tmp_path / "toy" / "seed_42")["options"][key] == value
+
+
+def test_an_option_of_the_first_slice_runs_the_whole_job_again_and_keeps_the_old_run(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], ran: list[tuple[str, Any]], tmp_path: Path
+) -> None:
+    execute(_chain(ran), _chain_kwargs())
+    del ran[:]
+
+    execute(_chain(ran), _chain_kwargs(source="alpha"))
+
+    assert ran == [("deposits", "alpha"), ("currents", 200.0), ("waveforms", "standard")]
+    assert len(_kept(tmp_path / "toy")) == 1
+
+
+def test_a_file_only_a_later_slice_reads_does_not_run_the_earlier_slices_again(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], ran: list[tuple[str, Any]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    execute(_chain(ran), _chain_kwargs())
+    del ran[:]
+    loaded = workflow_module.load_component
+    monkeypatch.setattr(
+        workflow_module, "load_component", lambda kind, name: (loaded(kind, name)[0], {"edited": kind})
+    )
+
+    execute(_chain(ran), _chain_kwargs())
+
+    assert ran == [("waveforms", "standard")]
+
+
+def test_until_stops_after_a_slice_and_the_next_command_goes_on_from_there(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], ran: list[tuple[str, Any]], tmp_path: Path
+) -> None:
+    execute(_chain(ran), _chain_kwargs(until="currents"))
+
+    assert ran == [("deposits", "beta"), ("currents", 200.0)]
+    assert not (tmp_path / "toy" / "seed_42" / "batch" / "job_0.done").exists()
+
+    execute(_chain(ran), _chain_kwargs())
+
+    assert ran[2:] == [("waveforms", "standard")]
+    assert (tmp_path / "toy" / "seed_42" / "batch" / "job_0.done").exists()
+
+
+def test_a_slice_that_fails_leaves_the_ones_before_it_done(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], ran: list[tuple[str, Any]]
+) -> None:
+    with pytest.raises(RuntimeError, match="currents"):
+        execute(_chain(ran, fail="currents"), _chain_kwargs())
+
+    execute(_chain(ran), _chain_kwargs())
+
+    assert ran == [("deposits", "beta"), ("currents", 200.0), ("waveforms", "standard")]
+
+
+def test_until_twice_leaves_no_job_to_start_and_does_not_list_the_later_slices(
+    started: list[Any],
+    seeded: list[int],
+    disk: dict[str, Any],
+    ran: list[tuple[str, Any]],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    execute(_chain(ran), _chain_kwargs(until="currents"))
+    capsys.readouterr()
+
+    execute(_chain(ran), _chain_kwargs(until="currents"))
+
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0].endswith("seed_42: jobs []")
+    assert [line.split() for line in lines[1:]] == [["deposits", "reused"], ["currents", "reused"]]
+
+
+def test_under_another_commit_every_slice_runs_again_and_the_old_run_is_kept(
+    started: list[Any],
+    seeded: list[int],
+    disk: dict[str, Any],
+    ran: list[tuple[str, Any]],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    execute(_chain(ran), _chain_kwargs())
+    del ran[:]
+    monkeypatch.setattr(workflow_module, "_commit", lambda: "def")
+
+    execute(_chain(ran), _chain_kwargs())
+
+    assert ran == [("deposits", "beta"), ("currents", 200.0), ("waveforms", "standard")]
+    assert len(_kept(tmp_path / "toy")) == 1
