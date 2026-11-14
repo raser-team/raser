@@ -12,10 +12,6 @@ e0 = 1.60217733e-19  # C
 min_intensity = 1  # V/cm, a carrier in a field not above this stops
 max_drift_time = 100e-9  # s, a carrier still drifting after this stops
 
-# where resistivity and field are both low is taken as metal: a carrier there is collected
-metal_resistivity = 10  # ohm cm, below it the resistivity is low
-thermal_length = 1e-4  # cm, the field is low when its drop over this length is below kT/e
-
 
 @dataclass
 class Drifted:
@@ -41,9 +37,7 @@ def drift(x, y, z, t, charge, my_d, my_f, mobility, delta_t, diffusion=True):
     one of
         left_device  the path ends where it crosses the surface of `my_d`,
                      at the time of the crossing
-        collected    the cluster is where the resistivity, 1 / (e |net
-                     doping| majority mobility), is below metal_resistivity
-                     and the field below kT/e over thermal_length
+        collected    the cluster is where `my_f` says the device conducts
         low_field    the field is not above min_intensity
         no_field     the field has no value at the position
         time_out     max_drift_time has passed
@@ -57,6 +51,9 @@ def drift(x, y, z, t, charge, my_d, my_f, mobility, delta_t, diffusion=True):
         if t - start >= max_drift_time:
             reason = "time_out"
             break
+        if my_f.get_conductive(*position):
+            reason = "collected"
+            break
         try:
             field = my_f.get_e_field_cached(*position)
         except ValueError:
@@ -68,12 +65,6 @@ def drift(x, y, z, t, charge, my_d, my_f, mobility, delta_t, diffusion=True):
             break
         doping = float(my_f.get_doping_cached(*position))
         mu = mobility(my_d.temperature, doping, charge, intensity)
-        if intensity < kboltz * my_d.temperature / thermal_length and doping != 0:
-            # positive doping is n type: electrons are the majority carriers
-            majority = mobility(my_d.temperature, doping, -1 if doping > 0 else 1, intensity)
-            if 1.0 / (e0 * abs(doping) * majority) < metal_resistivity:
-                reason = "collected"
-                break
         step = [sign * component * mu * delta_t * 1e4 for component in field]  # um
         if diffusion:
             sigma = math.sqrt(2.0 * kboltz * my_d.temperature * mu * delta_t) * 1e4  # um

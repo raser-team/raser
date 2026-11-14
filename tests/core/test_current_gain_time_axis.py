@@ -20,6 +20,9 @@ class _UniformField:
     def get_doping_cached(self, x, y, z):
         return 0.0
 
+    def get_conductive(self, x, y, z):
+        return False
+
     def get_w_p(self, x, y, z, electrode):
         return 1.0 - z / 50.0
 

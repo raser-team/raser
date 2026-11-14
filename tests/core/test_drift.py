@@ -22,6 +22,9 @@ class _Field:
     def get_doping_cached(self, x, y, z):
         return 0.0
 
+    def get_conductive(self, x, y, z):
+        return False
+
     def get_w_p(self, x, y, z, electrode):
         # two electrodes facing each other at z = 0 and z = 50 um
         return 1.0 - z / 50.0 if electrode == 0 else z / 50.0
@@ -91,24 +94,22 @@ def test_drift_without_diffusion_does_not_ask_the_random_stream(monkeypatch) -> 
     assert set(path[:, 0]) == {50.0}
 
 
-class _Junction(_Field):
-    """Below z = 10 um the field is low_field and the doping is doping."""
+class _Layer(_Field):
+    """Below z = 10 um the field is 100 V/cm, and the device conducts there or not."""
 
-    def __init__(self, doping, low_field=100.0):
-        self.doping = doping
-        self.low_field = low_field
+    def __init__(self, conducts):
+        self.conducts = conducts
 
     def get_e_field_cached(self, x, y, z):
-        return (0.0, 0.0, FIELD if z >= 10.0 else self.low_field)
+        return (0.0, 0.0, FIELD if z >= 10.0 else 100.0)
 
-    def get_doping_cached(self, x, y, z):
-        return self.doping if z < 10.0 else 0.0
+    def get_conductive(self, x, y, z):
+        return self.conducts and z < 10.0
 
 
-def test_electron_is_collected_where_resistivity_and_field_are_low() -> None:
-    # 1e19 cm^-3 at 1000 cm^2/V/s is 6.2e-4 ohm cm
+def test_electron_is_collected_where_the_device_conducts() -> None:
     path, reason = drift(
-        50.0, 50.0, 25.0, 0.0, -100.0, _device(), _Junction(1.0e19), _mobility, 3.0e-11,
+        50.0, 50.0, 25.0, 0.0, -100.0, _device(), _Layer(True), _mobility, 3.0e-11,
         diffusion=False,
     )
 
@@ -116,26 +117,15 @@ def test_electron_is_collected_where_resistivity_and_field_are_low() -> None:
     assert _um_ps(path[-1]) == pytest.approx([50.0, 50.0, 7.0, 180.0])
 
 
-def test_electron_drifts_on_through_a_low_field_of_high_resistivity() -> None:
-    # 1e12 cm^-3 at 1000 cm^2/V/s is 6.2e3 ohm cm; 100 V/cm moves it 1 um/ns
+def test_electron_drifts_on_through_a_low_field_where_the_device_does_not_conduct() -> None:
+    # 100 V/cm moves it 1 um/ns
     path, reason = drift(
-        50.0, 50.0, 25.0, 0.0, -100.0, _device(), _Junction(1.0e12), _mobility, 3.0e-11,
+        50.0, 50.0, 25.0, 0.0, -100.0, _device(), _Layer(False), _mobility, 3.0e-11,
         diffusion=False,
     )
 
     assert reason == "left_device"
     assert _um_ps(path[-1]) == pytest.approx([50.0, 50.0, 0.0, 7180.0])
-
-
-def test_electron_drifts_on_through_a_high_field_of_low_resistivity() -> None:
-    # a gain layer: doped to low resistivity but depleted, the field stays high
-    path, reason = drift(
-        50.0, 50.0, 25.0, 0.0, -100.0, _device(), _Junction(1.0e19, FIELD), _mobility, 3.0e-11,
-        diffusion=False,
-    )
-
-    assert reason == "left_device"
-    assert _um_ps(path[-1]) == pytest.approx([50.0, 50.0, 0.0, 250.0])
 
 
 def test_a_pair_collected_between_two_electrodes_induces_its_charge_on_each() -> None:
