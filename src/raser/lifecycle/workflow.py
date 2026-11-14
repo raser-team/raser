@@ -23,6 +23,9 @@ from raser.supports.paths import REPO_ROOT
 from raser.supports.paths import project_path
 
 
+WORKFLOWS: dict = {}  # the workflows that have a command, by name
+
+
 @dataclass(frozen=True)
 class Workflow:
     """What an application hands in."""
@@ -64,6 +67,7 @@ class Workflow:
         parser.add_argument("--job-dir", help=argparse.SUPPRESS)
         parser.add_argument("--job-index", type=int, help=argparse.SUPPRESS)
         parser.set_defaults(_run=lambda kwargs: execute(self, kwargs))
+        WORKFLOWS[self.name] = self
 
 
 def execute(workflow, kwargs):
@@ -173,6 +177,18 @@ def finished(workflow, kwargs, root) -> list[tuple[str, dict, list[tuple[Path, i
                 done += [(path.parent, int(mark.stem.split("_")[1])) for mark in marks]
         result.append((name, options, done))
     return result
+
+
+def finished_in(root) -> list[tuple[str, dict, list[tuple[Path, int]]]]:
+    """`finished` for the experiment in the folder `root`, whichever command
+    ran it: its config.json names the workflow and the device."""
+    config = _read(Path(root) / "config.json")
+    if "workflow" not in config:
+        raise ValueError(f"{root}: not an experiment folder, no config.json that names a workflow")
+    if config["workflow"] not in WORKFLOWS:
+        raise ValueError(f"{root}: no command runs its workflow {config['workflow']!r}")
+    kwargs = {"det_name": config.get("device"), "scan": []}
+    return finished(WORKFLOWS[config["workflow"]], kwargs, Path(root))
 
 
 def _outdated(workflow, old, record) -> str | None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -462,6 +463,39 @@ def test_a_fixed_seed_runs_again_under_another_commit_or_uncommitted_changes(
 
     assert [indices for _, _, indices, _ in started] == [[0, 1], [0, 1]]
     assert len(_kept(tmp_path / "toy")) == 1
+
+
+def test_the_finished_jobs_of_a_folder_come_from_the_workflow_and_device_its_config_names(
+    started: list[Any], disk: dict[str, Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    other = Workflow(name="other", job=lambda options: None, keys=("gain",), defaults={"gain": 5})
+    monkeypatch.setattr(workflow_module, "WORKFLOWS", {})
+    for workflow in (BIASED, other):
+        workflow.attach(argparse.ArgumentParser())
+    execute(BIASED, _kwargs(det_name="dev", voltage=None, scan=["voltage=200,300"], jobs=2))
+    execute(other, _kwargs(det_name="dev", gain=None, jobs=1))
+
+    points = workflow_module.finished_in(tmp_path / "toy")
+
+    assert [(name, options["voltage"], [index for _, index in done]) for name, options, done in points] == [
+        ("", 200, [0, 1]),
+        ("voltage_300", 300, [0, 1]),
+    ]
+    assert [(name, options, len(done)) for name, options, done in workflow_module.finished_in(tmp_path / "other")] == [
+        ("", {"gain": 5}, 1)
+    ]
+
+
+def test_a_folder_that_is_no_experiment_or_whose_workflow_has_no_command_is_refused(
+    started: list[Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(workflow_module, "WORKFLOWS", {})
+    execute(GAIN, _kwargs(gain=None, width=None, jobs=2))
+
+    with pytest.raises(ValueError, match="not an experiment folder"):
+        workflow_module.finished_in(tmp_path / "toy" / "seed_42")
+    with pytest.raises(ValueError, match="no command runs its workflow 'toy'"):
+        workflow_module.finished_in(tmp_path / "toy")
 
 
 def _finished(experiment: Path) -> list[tuple[str, int, list[str]]]:
