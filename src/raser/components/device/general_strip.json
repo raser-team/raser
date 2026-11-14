@@ -1,6 +1,7 @@
 {
     "det_name" : "general_strip",
     "det_model" : "strip",
+    "electrodes" : "strip",
     "material" : "Si",
 
     "l_x" : 1000,

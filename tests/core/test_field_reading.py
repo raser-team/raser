@@ -35,13 +35,14 @@ def test_a_reading_notes_what_is_read_and_nothing_else() -> None:
 
     _solve(device)
 
-    assert device.read["attributes"] == {"dimension": 1, "det_model": "planar"}
+    assert device.read["attributes"] == {"dimension": 1}
     keys = device.read["keys"]
     assert sorted(keys) == ["bias", "doping", "hemt_physics", "irradiation", "mesh"]
     assert keys["bias"] == {"electrode": "top"}
     assert list(keys["doping"]) == ["Donors"]
     assert keys["irradiation"] == ABSENT
     assert keys["mesh"]["1D_mesh"].startswith("sha256:")
+    assert keys["mesh"]["plugin"] == ABSENT
 
 
 def test_a_field_is_out_of_date_only_for_what_its_solve_read() -> None:

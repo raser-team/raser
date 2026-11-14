@@ -1,6 +1,7 @@
 {
     "det_name": "3D-LGAD",
     "det_model": "lgad_pixel",
+    "electrodes": "pixel",
     "material": "Si",
 
     "l_x": 35.0,

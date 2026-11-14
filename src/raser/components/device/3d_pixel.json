@@ -1,6 +1,7 @@
 {
     "det_name" : "3D_pixel",
     "det_model" : "3D_pixel",
+    "electrodes" : "pixel",
     "material" : "Si",
 
     "l_x" : 1000,
@@ -32,6 +33,7 @@
     "field_shift_y" : 0,
 
     "mesh" : {
+        "plugin" : true,
         "tcad_mesh" : {
             "file" : "./work/3d_pixel/field/default/-500.0V.tdr"
         }

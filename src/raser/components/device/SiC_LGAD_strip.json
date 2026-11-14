@@ -1,6 +1,7 @@
 {
     "det_name" : "SiC_LGAD_strip",
     "det_model" : "lgadstrip",
+    "electrodes" : "strip",
     "material" : "SiC",
 
     "l_x" : 420,

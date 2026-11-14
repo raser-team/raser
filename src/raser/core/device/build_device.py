@@ -88,10 +88,17 @@ class Detector:
         )
         self.bound = {'x':(0, self.l_x), 'y':(0, self.l_y), 'z':(0, self.l_z)}
 
-        if "strip" in self.det_model:
+        # How the readout electrodes are laid out: one pad unless the json says.
+        self.electrodes = self.device_dict.get('electrodes', 'pad')
+        if self.electrodes not in ('pad', 'strip', 'pixel'):
+            raise ValueError(
+                "`electrodes` must be pad, strip or pixel, not {!r}".format(self.electrodes)
+            )
+
+        if self.is_strip:
             self.x_ele_num = self.read_ele_num
             self.y_ele_num = 1
-        elif "pixel" in self.det_model:
+        elif self.is_pixel:
             self.read_ele_num = self.x_ele_num * self.y_ele_num
         else:
             self.x_ele_num = 1
@@ -100,33 +107,34 @@ class Detector:
 
         self.avalanche_model = self.device_dict.get('avalanche_model')
         self.avalanche_bond = self.device_dict.get('avalanche_bond')
-        enable_gain = bool(
-            self.device_dict.get(
-                'enable_gain',
-                "lgad" in self.det_model.lower() or 'gain_algorithm' in self.device_dict,
-            )
-        )
+        # The gain layer is on only when the json says so.
+        enable_gain = bool(self.device_dict.get('enable_gain', False))
         if enable_gain and self.avalanche_model is None:
             raise ValueError("gain is enabled but `avalanche_model` is missing in detector settings")
         self.has_avalanche = self.avalanche_model is not None and enable_gain
 
-        if "planar" in self.det_model or "lgad" == self.det_model:
+        if self.electrodes == 'pad':
             self.p_x = self.device_dict['l_x']
             self.p_y = self.device_dict['l_y']
 
-        if "strip" in self.det_model:
+        if self.is_strip:
             self.p_x = self.device_dict['p_x']
             self.p_y = self.device_dict['l_y']
 
-        if "pixel" in self.det_model:
+        if self.is_pixel:
             self.p_x = self.device_dict["p_x"]
             self.p_y = self.device_dict["p_y"]
 
+    @property
+    def is_strip(self):
+        return self.electrodes == 'strip'
+
+    @property
+    def is_pixel(self):
+        return self.electrodes == 'pixel'
+
     def _readout_area_um2(self):
-        det_model = self.det_model.lower()
-        if "strip" in det_model:
-            return float(self.p_x) * float(self.p_y)
-        if "pixel" in det_model:
+        if self.is_strip or self.is_pixel:
             return float(self.p_x) * float(self.p_y)
         return float(self.l_x) * float(self.l_y)
 
@@ -166,8 +174,5 @@ class Detector:
         return path
 
     def is_plugin(self):
-        if ( "plugin" in self.det_model or "3d" in self.det_model or "3D" in self.det_model
-        ):
-            return True
-        else:
-            return False
+        """Whether the mesh lies in the lateral x-y plane, as the json's mesh block says."""
+        return bool(self.device_dict.get('mesh', {}).get('plugin', False))
