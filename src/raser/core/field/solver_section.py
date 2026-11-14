@@ -24,6 +24,8 @@ from .create_parameter import create_parameter
 from . import save_milestone
 from . import loop_section
 from . import physics_drift_diffusion
+from .assets import field_pickle_path
+from .weighting import take_conductors_into_electrodes
 from raser.supports.output import create_path
 from .devsim_draw import *
 
@@ -191,6 +193,12 @@ def main (kwargs):
     if is_wf == True:
         v_trial=1
         print("=======RASER info========\nBegin simulation WeightingField\n======================")
+        conductive_file = field_pickle_path(path, "Conductive", v_goal)
+        if not conductive_file.exists():
+            raise FileNotFoundError(
+                f"the weighting field at {v_goal} V needs the field solved at that bias: "
+                f"{conductive_file} is missing; solve it with `raser field {simname} -bias {v_goal}`"
+            )
         for contact in readout_contacts:
             print(path)
             folder_path = os.path.join(path, "weightingfield")
@@ -199,6 +207,7 @@ def main (kwargs):
                 os.makedirs(folder_path)
             
             loop.initial_solver(contact=contact,set_contact_type=None,impact_model=impact_model,irradiation_model=irradiation_model,irradiation_flux=irradiation_flux,)
+            take_conductors_into_electrodes(device, region, conductive_file)
             loop.loop_solver(circuit_contact=contact,v_trial=v_trial,area_factor=paras["area_factor"],)
 
             # Stored as the weighting field of the bias, as Potential_<bias>V.pkl.
