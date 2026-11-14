@@ -82,19 +82,22 @@ class loop_section:
             self.solved = self.solved[-1:] + [(v_trial, state)]
 
     @memory_decorator
-    def loop_solver(self, circuit_contact, v_trial, area_factor):
+    def loop_solver(self, circuit_contact, v_trial, area_factor, on_curve=True):
         if self.solve_model != "wf":
             self.start_from_solved(v_trial)
         devsim.set_parameter(device=self.device, name=physics_drift_diffusion.GetContactBiasName(circuit_contact), value=v_trial,)
         try:
             devsim.solve(type="dc", absolute_error=self.paras['absolute_error_VoltageSteps'], relative_error=self.paras['relative_error_VoltageSteps'], maximum_iterations=self.paras['maximum_iterations_VoltageSteps'],)
-            self.voltage.append(v_trial)
+            if on_curve:
+                self.voltage.append(v_trial)
         except devsim.error as msg:
             devsim.write_devices(file=os.path.join(self.path, "last_solvable.dd"), type="tecplot")
             raise
         
         if self.solve_model !="wf":     
             self.keep_solved(v_trial)
+            if not on_curve:  # a step between two points of the IV and CV curves
+                return
             physics_drift_diffusion.PrintCurrents(device=self.device, contact=circuit_contact)
             electron_current = devsim.get_contact_current(device=self.device, contact=circuit_contact, equation="ElectronContinuityEquation",)
             hole_current     = devsim.get_contact_current(device=self.device, contact=circuit_contact, equation="HoleContinuityEquation",)
