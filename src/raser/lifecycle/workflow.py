@@ -196,7 +196,8 @@ def _points(workflow, kwargs, config, given) -> tuple[dict, dict]:
         key, _, values = item.partition("=")
         scan[key] = [_parse(value) for value in values.split(",")]
     scan = {key: values for key, values in scan.items() if key not in given}
-    base, _ = _point(workflow, kwargs, fixed)
+    # A scanned address is not given in the unscanned run: there it takes the file's value.
+    base, _ = _point(workflow, kwargs, {**dict.fromkeys(key for key in scan if "." in key), **fixed})
     points = {}  # folder inside the experiment -> (options, files)
     for combination in itertools.product(*scan.values()):
         options, files = _point(workflow, kwargs, {**fixed, **dict(zip(scan, combination))})
@@ -219,11 +220,18 @@ def _point(workflow, kwargs, options) -> tuple[dict, dict]:
 
     # An option that is a value inside a file, such as the bias in the device:
     # given, it is written into the file; not given, it takes the file's value.
-    for key, address in workflow.in_file.items():
-        kind, *steps, last = address.split(".")
-        place = files[kind]
+    # An option may also be named by its address, "afe.stages.first.R1.ohm":
+    # the kind of file, then the keys down to a value the file has.
+    addresses = {key: key for key in options if "." in key}
+    for key, address in {**addresses, **workflow.in_file}.items():
+        *steps, last = address.split(".")
+        place, walked = files, "the files of this run"
         for step in steps:
-            place = place[step]
+            if not isinstance(place, dict) or step not in place:
+                raise ValueError(f"{address}: no {step!r} in {walked}")
+            place, walked = place[step], step if place is files else f"{walked}.{step}"
+        if key in addresses and (not isinstance(place, dict) or last not in place):
+            raise ValueError(f"{address}: no {last!r} in {walked}")
         if options.get(key) is None:
             options[key] = place[last]
         else:

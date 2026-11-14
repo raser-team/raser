@@ -286,6 +286,8 @@ def test_a_job_reads_its_files_from_run_json_and_not_from_disk(
     }
 
 
+TOY_DEVICE = Workflow(name="toy", job=lambda options: None)
+
 BIASED = Workflow(
     name="toy",
     job=lambda options: None,
@@ -333,6 +335,42 @@ def test_a_scan_runs_every_value_and_only_values_that_differ_get_a_folder(
     assert _folders(started, experiment) == ["seed_42", "voltage_300/seed_42"]
     assert _record(experiment / "seed_42")["options"]["voltage"] == 200
     assert _record(experiment / "voltage_300" / "seed_42")["options"]["voltage"] == 300
+
+
+def test_a_scanned_address_is_written_into_the_file_of_each_point_that_differs(
+    started: list[Any], disk: dict[str, Any], tmp_path: Path
+) -> None:
+    scan = ["device.bias.voltage=200,300"]
+
+    execute(TOY_DEVICE, _kwargs(det_name="dev", scan=scan, jobs=2))
+
+    experiment = tmp_path / "toy"
+    assert _folders(started, experiment) == ["seed_42", "device.bias.voltage_300/seed_42"]
+    unscanned = _record(experiment / "seed_42")
+    scanned = _record(experiment / "device.bias.voltage_300" / "seed_42")
+    assert unscanned["files"]["device"]["bias"] == {"electrode": "top", "voltage": 200.0}
+    assert scanned["files"]["device"]["bias"] == {"electrode": "top", "voltage": 300}
+    assert scanned["options"]["device.bias.voltage"] == 300
+
+
+@pytest.mark.parametrize(
+    ("address", "broken"),
+    [
+        ("afe.gain", "no 'afe' in the files of this run"),
+        ("device.bais.voltage", "no 'bais' in device"),
+        ("device.bias.volt", "no 'volt' in device.bias"),
+        ("device.bias.voltage.unit", "no 'unit' in device.bias.voltage"),
+        ("device.bias.voltage.unit.name", "no 'unit' in device.bias.voltage"),
+    ],
+)
+def test_an_address_that_leads_nowhere_stops_the_command_and_says_where(
+    started: list[Any], disk: dict[str, Any], tmp_path: Path, address: str, broken: str
+) -> None:
+    with pytest.raises(ValueError, match=broken):
+        execute(TOY_DEVICE, _kwargs(det_name="dev", scan=[f"{address}=1,2"], jobs=2))
+
+    assert started == []
+    assert not (tmp_path / "toy").exists()
 
 
 def test_two_scanned_options_give_every_combination_named_by_what_differs(
