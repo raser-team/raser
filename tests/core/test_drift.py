@@ -34,6 +34,11 @@ def _mobility(temperature, doping, charge, field):
     return MOBILITY
 
 
+def _um_ps(point):
+    """x, y, z [um] and t [ps] of a point of a path, so that t is not below the tolerance."""
+    return [point[0], point[1], point[2], point[3] * 1.0e12]
+
+
 def test_hole_drifts_along_the_field_and_stops_on_the_surface() -> None:
     # 100 um/ns from z = 25 um: the surface at 50 um is reached after 250 ps
     path, reason = drift(
@@ -41,8 +46,8 @@ def test_hole_drifts_along_the_field_and_stops_on_the_surface() -> None:
     )
 
     assert reason == "left_device"
-    assert path[1] == pytest.approx([50.0, 50.0, 28.0, 1.03e-9])
-    assert path[-1] == pytest.approx([50.0, 50.0, 50.0, 1.25e-9])
+    assert _um_ps(path[1]) == pytest.approx([50.0, 50.0, 28.0, 1030.0])
+    assert _um_ps(path[-1]) == pytest.approx([50.0, 50.0, 50.0, 1250.0])
     assert len(path) == 10
 
 
@@ -53,8 +58,8 @@ def test_electron_drifts_against_the_field_and_stops_where_it_is_low() -> None:
     )
 
     assert reason == "low_field"
-    assert path[1] == pytest.approx([50.0, 50.0, 22.0, 3.0e-11])
-    assert path[-1] == pytest.approx([50.0, 50.0, 7.0, 1.8e-10])
+    assert _um_ps(path[1]) == pytest.approx([50.0, 50.0, 22.0, 30.0])
+    assert _um_ps(path[-1]) == pytest.approx([50.0, 50.0, 7.0, 180.0])
 
 
 def test_diffusion_spreads_a_carrier_by_2_d_t_on_each_axis() -> None:
@@ -67,7 +72,7 @@ def test_diffusion_spreads_a_carrier_by_2_d_t_on_each_axis() -> None:
         ends.append(path[100])
 
     x = np.array(ends)[:, 0]
-    assert np.array(ends)[:, 3] == pytest.approx(1.0e-10)
+    assert np.array(ends)[:, 3] * 1.0e12 == pytest.approx(100.0)
     assert x.mean() == pytest.approx(50.0, abs=0.1)
     assert x.var() == pytest.approx(0.51704, rel=0.15)
 
@@ -107,7 +112,7 @@ def test_electron_is_collected_where_resistivity_and_field_are_low() -> None:
     )
 
     assert reason == "collected"
-    assert path[-1] == pytest.approx([50.0, 50.0, 7.0, 1.8e-10])
+    assert _um_ps(path[-1]) == pytest.approx([50.0, 50.0, 7.0, 180.0])
 
 
 def test_electron_drifts_on_through_a_low_field_of_high_resistivity() -> None:
@@ -118,7 +123,7 @@ def test_electron_drifts_on_through_a_low_field_of_high_resistivity() -> None:
     )
 
     assert reason == "left_device"
-    assert path[-1] == pytest.approx([50.0, 50.0, 0.0, 1.8e-10 + 7.0e-9])
+    assert _um_ps(path[-1]) == pytest.approx([50.0, 50.0, 0.0, 7180.0])
 
 
 def test_electron_drifts_on_through_a_high_field_of_low_resistivity() -> None:
@@ -129,7 +134,7 @@ def test_electron_drifts_on_through_a_high_field_of_low_resistivity() -> None:
     )
 
     assert reason == "left_device"
-    assert path[-1] == pytest.approx([50.0, 50.0, 0.0, 2.5e-10])
+    assert _um_ps(path[-1]) == pytest.approx([50.0, 50.0, 0.0, 250.0])
 
 
 def test_a_pair_collected_between_two_electrodes_induces_its_charge_on_each() -> None:
