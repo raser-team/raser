@@ -144,3 +144,40 @@ def test_santa_cruz_inverts_with_a_transimpedance_below_its_feedback_resistor():
 
     transimpedance = -voltage[0].sum() * dt / charge
     assert 0.8 * 475 < transimpedance < 475
+
+
+BUFFER = """* 50 Ohm at the input, three times its voltage behind 50 Ohm at the output
+.subckt buffer in out
+Rin in 0 50
+E1 inner 0 in 0 3
+Rout inner out 50
+.ends buffer
+"""
+
+
+def test_gain_follows_the_voltage_at_its_input(tmp_path):
+    # the 10 pF sensor sees the 50 Ohm of the input alone; the 50 Ohm load
+    # gets half of three times that voltage
+    path = tmp_path / "buffer.cir"
+    path.write_text(BUFFER)
+    load = {
+        "ports": {"in": "a"},
+        "elements": {"R1": {"between": ["a", "0"], "ohm": 50.0}},
+    }
+    times = -1e-9 + (np.arange(1000) + 0.5) * DT_S
+    step = np.where(times > 0, 1e-6, 0.0)
+
+    stage = read_subcircuit(path)
+    voltage = solve(
+        {"stages": {"buffer": stage}, "load": load},
+        ["top"],
+        DT_S,
+        [step],
+        planar_sensor("top", 10e-12),
+    )
+
+    assert stage["elements"]["E1"]["gain"] == 3.0
+    after = np.clip(times, 0, None)
+    expected = 1.5 * 1e-6 * 50.0 * (1 - np.exp(-after / (50.0 * 10e-12)))
+    off_the_jump = (times < 0) | (times > DT_S)
+    assert voltage[0][off_the_jump] == pytest.approx(expected[off_the_jump], abs=7.5e-8)
