@@ -47,6 +47,16 @@ def test_stage_and_load_written_from_their_description():
     assert voltage[0][off_the_jump] == pytest.approx(expected[off_the_jump], abs=3e-8)
 
 
+def test_stage_with_one_node_as_input_and_output_is_refused():
+    stage = {
+        "ports": {"in": "a", "out": "a"},
+        "elements": {"R1": {"between": ["a", "0"], "ohm": 50.0}},
+    }
+
+    with pytest.raises(ValueError, match="stage shunt has the node a as input"):
+        subcircuit("shunt", stage)
+
+
 def test_element_without_a_quantity_is_refused():
     stage = {"ports": {"in": "a"}, "elements": {"R1": {"between": ["a", "0"]}}}
 

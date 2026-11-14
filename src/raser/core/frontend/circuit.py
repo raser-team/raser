@@ -115,6 +115,12 @@ def subcircuit(name, stage):
     of the text: it stands once in the netlist, outside every subcircuit.
     """
     ports = stage["ports"]
+    if ports.get("out") == ports["in"]:
+        # ngspice takes such a subcircuit without a word and gives zero behind it
+        raise ValueError(
+            f"The stage {name} has the node {ports['in']} as input and as output; "
+            "give the output a node of its own"
+        )
     lines = [
         f".subckt {name} "
         + " ".join(ports[port] for port in ("in", "out") if port in ports)
