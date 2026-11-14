@@ -12,8 +12,6 @@ import math
 import os
 from array import array
 import csv
-from contextlib import contextmanager
-import time
 import logging
 import numpy as np
 import ROOT
@@ -56,19 +54,6 @@ logger = logging.getLogger(__name__)
 if not logging.getLogger().handlers:
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger.setLevel(logging.INFO)
-
-
-class StageTimings(dict):
-    @contextmanager
-    def record(self, name):
-        start = time.perf_counter()
-        try:
-            yield
-        finally:
-            self[name] = time.perf_counter() - start
-
-    def summary(self):
-        return {name: round(seconds, 6) for name, seconds in self.items()}
 
 
 def spread_over_bins(bins, value, t_from, t_to, t_first, bin_width):
@@ -118,12 +103,10 @@ class CalCurrent:
         2024/11/09
     """
     def __init__(self, my_d, my_f, ionized_pairs, track_position, keep_drift_paths=True):
-        self.timings = StageTimings()
         self.keep_drift_paths = bool(keep_drift_paths)
         if my_d.has_avalanche and gain_algorithm(my_d) == "local_path":
             self.keep_drift_paths = True
-        with self.timings.record("total"):
-            self._run_current_calculation(my_d, my_f, ionized_pairs, track_position)
+        self._run_current_calculation(my_d, my_f, ionized_pairs, track_position)
 
     def _run_current_calculation(self, my_d, my_f, ionized_pairs, track_position):
         logger.info("current calculation start...")
@@ -173,43 +156,41 @@ class CalCurrent:
         hole_times = []
         hole_signals = []
 
-        with self.timings.record("carrier_filter"):
-            for i in range(len(track_position)):
-                x, y, z, t = track_position[i]
-                t_num = int(t / self.delta_t + t_tol)
-                charge = ionized_pairs[i]
+        for i in range(len(track_position)):
+            x, y, z, t = track_position[i]
+            t_num = int(t / self.delta_t + t_tol)
+            charge = ionized_pairs[i]
                 
-                # 过滤在探测器边界外的载流子
-                if self._is_in_sensor(x, y, z, my_d) and self._is_in_field_range(x, y, my_d, my_d.x_ele_num, my_d.y_ele_num):
-                    # 电子
-                    electron_positions.append([x, y, z])
-                    electron_charges.append(-charge)  # 电子带负电
-                    electron_times.append(t_num)
-                    electron_signals.append([])  # 空信号列表
+            # 过滤在探测器边界外的载流子
+            if self._is_in_sensor(x, y, z, my_d) and self._is_in_field_range(x, y, my_d, my_d.x_ele_num, my_d.y_ele_num):
+                # 电子
+                electron_positions.append([x, y, z])
+                electron_charges.append(-charge)  # 电子带负电
+                electron_times.append(t_num)
+                electron_signals.append([])  # 空信号列表
                     
-                    # 空穴
-                    hole_positions.append([x, y, z])
-                    hole_charges.append(charge)  # 空穴带正电
-                    hole_times.append(t_num)
-                    hole_signals.append([])
+                # 空穴
+                hole_positions.append([x, y, z])
+                hole_charges.append(charge)  # 空穴带正电
+                hole_times.append(t_num)
+                hole_signals.append([])
 
         logger.info(f"载流子过滤完成: {len(electron_positions)}个电子, {len(hole_positions)}个空穴")
 
         # 创建向量化系统
-        with self.timings.record("carrier_system_init"):
-            if electron_positions:
-                self.electron_system = VectorizedCarrierSystem(
-                    electron_positions, electron_charges, electron_times, electron_signals,
-                    my_d.material, "electron", self.read_out_contact, my_d,
-                    keep_drift_paths=self.keep_drift_paths,
-                )
+        if electron_positions:
+            self.electron_system = VectorizedCarrierSystem(
+                electron_positions, electron_charges, electron_times, electron_signals,
+                my_d.material, "electron", self.read_out_contact, my_d,
+                keep_drift_paths=self.keep_drift_paths,
+            )
             
-            if hole_positions:
-                self.hole_system = VectorizedCarrierSystem(
-                    hole_positions, hole_charges, hole_times, hole_signals,
-                    my_d.material, "hole", self.read_out_contact, my_d,
-                    keep_drift_paths=self.keep_drift_paths,
-                )
+        if hole_positions:
+            self.hole_system = VectorizedCarrierSystem(
+                hole_positions, hole_charges, hole_times, hole_signals,
+                my_d.material, "hole", self.read_out_contact, my_d,
+                keep_drift_paths=self.keep_drift_paths,
+            )
 
         logger.info("向量化系统初始化完成")
         
@@ -217,23 +198,22 @@ class CalCurrent:
         self.drifting_loop(my_d, my_f)
 
         # 初始化电流直方图
-        with self.timings.record("current_histogram"):
-            self.current_define(self.read_ele_num)
-            for i in range(self.read_ele_num):
-                self.sum_cu[i].Reset()
-                self.positive_cu[i].Reset()
-                self.negative_cu[i].Reset()
+        self.current_define(self.read_ele_num)
+        for i in range(self.read_ele_num):
+            self.sum_cu[i].Reset()
+            self.positive_cu[i].Reset()
+            self.negative_cu[i].Reset()
             
-            # 计算电流
-            self.get_current(my_d.x_ele_num, my_d.y_ele_num, self.read_out_contact)
+        # 计算电流
+        self.get_current(my_d.x_ele_num, my_d.y_ele_num, self.read_out_contact)
             
-            # 合并电流
-            for i in range(self.read_ele_num):
-                self.sum_cu[i].Add(self.positive_cu[i])
-                self.sum_cu[i].Add(self.negative_cu[i])
+        # 合并电流
+        for i in range(self.read_ele_num):
+            self.sum_cu[i].Add(self.positive_cu[i])
+            self.sum_cu[i].Add(self.negative_cu[i])
             
-            if self.smoothing_window > 1:
-                self._apply_smoothing()
+        if self.smoothing_window > 1:
+            self._apply_smoothing()
 
         self.det_model = my_d.det_model
         if my_d.has_avalanche:
@@ -267,20 +247,16 @@ class CalCurrent:
             # 批量处理电子
             if self.electron_system:
                 logger.info(f"电子数量: {len(self.electron_system.positions)}")
-                with self.timings.record("electron_drift"):
-                    self.electron_system.drift_batch(my_d, my_f, delta_t=delta_t_sim)
+                self.electron_system.drift_batch(my_d, my_f, delta_t=delta_t_sim)
                 logger.info("电子漂移结束，开始信号计算...")
-                with self.timings.record("electron_signal"):
-                    self.electron_system.get_signal_batch(my_d, my_f, delta_t=delta_t_sim)
+                self.electron_system.get_signal_batch(my_d, my_f, delta_t=delta_t_sim)
             
             # 批量处理空穴
             if self.hole_system:
                 logger.info(f"空穴数量: {len(self.hole_system.positions)}")
-                with self.timings.record("hole_drift"):
-                    self.hole_system.drift_batch(my_d, my_f, delta_t=delta_t_sim)
+                self.hole_system.drift_batch(my_d, my_f, delta_t=delta_t_sim)
                 logger.info("空穴漂移结束，开始信号计算...")
-                with self.timings.record("hole_signal"):
-                    self.hole_system.get_signal_batch(my_d, my_f, delta_t=delta_t_sim)
+                self.hole_system.get_signal_batch(my_d, my_f, delta_t=delta_t_sim)
                             
             cache_stats = my_f.get_cache_stats()
             logger.info(
@@ -692,7 +668,6 @@ class CalCurrent:
 class CalCurrentGain(CalCurrent):
     '''Calculation of gain carriers and gain current, simplified version'''
     def __init__(self, my_d, my_f, my_current):
-        self.timings = StageTimings()
         self.keep_drift_paths = getattr(my_current, "keep_drift_paths", True)
         self.t_bin = t_bin[my_d.dimension]
         self.t_end = t_end[my_d.dimension]
