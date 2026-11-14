@@ -10,9 +10,6 @@ DEFAULTS = json.loads((Path(__file__).parent / "time_resolution.json").read_text
 
 
 def _job(kwargs):
-    from .g4_interaction import TimeresActionInitialization
-
-    kwargs["_g4_action_initialization"] = TimeresActionInitialization
     signal.run_job(kwargs)
 
 

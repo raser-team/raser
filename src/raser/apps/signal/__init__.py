@@ -54,7 +54,12 @@ def run_job(kwargs):
 WORKFLOW = Workflow(
     name="signal",
     keys=KEYS,
-    defaults={"source": DEFAULTS["source"], "amplifier": DEFAULTS["afe"], "plots": 100},
+    defaults={
+        "source": DEFAULTS["source"],
+        "amplifier": DEFAULTS["afe"],
+        "events_per_job": 1,
+        "plots": 100,
+    },
     components=COMPONENTS,
     in_file=IN_FILE,
     job=run_job,
