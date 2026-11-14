@@ -7,70 +7,9 @@
 @version    : 1.0
 '''
 from array import array
-import time
 
 import ROOT
 ROOT.gROOT.SetBatch(True)
-
-from raser.supports.output import output
-
-def energy_deposition(my_g4v):
-    """
-    @description:
-        Energy_deposition for multi events of Geant4 simulation
-    @param:
-        None     
-    @Returns:
-        None
-    @Modify:
-        2021/08/31
-    """
-    c1=ROOT.TCanvas("c1","canvas1",1000,1000)
-    h1 = ROOT.TH1F("Edep_device", "Energy deposition in SiC", 100, 0., 0.1)
-    for i in range (len(my_g4v.edep_devices)):
-        h1.Fill(my_g4v.edep_devices[i])
-    g1 = ROOT.TF1("m1","landau",0,0.1)
-    h1.Fit(g1,"S")
-    print("MPV:%s"%g1.GetParameter(1))
-    h1.Draw()
-    now = time.strftime("%Y_%m%d_%H%M")
-    path = output(__file__, "particle")
-    c1.SaveAs(path + "/dep_SiC" + "_" + now + "_energy.pdf")
-    c1.SaveAs(path + "/dep_SiC" + "_" + now + "_energy.root")
-
-def draw_scat_angle(evnets_angle,angle,model):
-    """Draw scatting angle of events"""
-    c1=ROOT.TCanvas("c1","canvas1",1000,1000)
-    c1.Divide(1,2)
-    c1.cd(1)
-    n=len(evnets_angle)
-    ROOT.gStyle.SetOptStat(0)
-    h1 = ROOT.TH1F("event angle", "Source Angle = "+str(angle), n, 0., n)
-    for i in range(n):
-        if evnets_angle[i] != None:
-            h1.SetBinContent(i,evnets_angle[i])
-    h1.GetXaxis().SetTitle(" Event number ")
-    h1.GetYaxis().SetTitle(" Scattering Angle ")
-    h1.GetXaxis().CenterTitle()
-    h1.GetYaxis().CenterTitle() 
-    h1.SetLineWidth(2)
-    h1.SetLineColor(2)
-    h1.Draw("HIST")
-    c1.cd(2)
-    events = [ evnets_angle[i] for i in range(n) if evnets_angle[i] != None ]
-    h2 = ROOT.TH1F("angle distribution", "Source Angle = "+str(angle), 
-                   100, 0., max(events))
-    for i in range(n):
-        if evnets_angle[i] != None:
-            h2.Fill(evnets_angle[i])
-    h2.GetXaxis().SetTitle(" Scattering Angle ")
-    h2.GetYaxis().SetTitle(" number ")
-    h2.GetXaxis().CenterTitle()
-    h2.GetYaxis().CenterTitle() 
-    h2.SetLineWidth(2)
-    h2.SetLineColor(2)
-    h2.Draw("HIST")    
-    c1.SaveAs("scat_angle"+model+".pdf")
 
 def draw_drift_path(my_d, particle_track, my_f, my_current, path):
     ROOT.gStyle.SetOptStat(0)
