@@ -10,6 +10,7 @@ Datasets, one row per event:
     event       Geant4 event number
     t0          left edge of the first time bin of the event [s]
     count       number of time bins of the event
+    pairs       electron-hole pairs the event gave to the current, before gain
     charge      signed net charge of each electrode [C]
 Dataset, one row per time bin:
     current     mean current of each electrode in the bin [A]
@@ -30,6 +31,7 @@ class EventCurrents:
     t0: float
     current: np.ndarray  # (electrodes, bins) [A]
     charge: np.ndarray  # (electrodes,) [C]
+    pairs: float  # electron-hole pairs before gain
 
 
 @dataclass
@@ -55,7 +57,9 @@ def append_currents(path, electrodes: list[str], dt: float, record: EventCurrent
         if new:
             file.attrs.create("electrodes", list(electrodes), dtype=h5py.string_dtype())
             file.attrs["dt"] = float(dt)
-            for name, kind in (("event", "int64"), ("t0", "float64"), ("count", "int64")):
+            for name, kind in (
+                ("event", "int64"), ("t0", "float64"), ("count", "int64"), ("pairs", "float64")
+            ):
                 file.create_dataset(name, shape=(0,), maxshape=(None,), dtype=kind)
             for name in ("charge", "current"):
                 file.create_dataset(
@@ -76,6 +80,7 @@ def append_currents(path, electrodes: list[str], dt: float, record: EventCurrent
             "event": [int(record.event)],
             "t0": [float(record.t0)],
             "count": [current.shape[1]],
+            "pairs": [float(record.pairs)],
             "charge": charge[None, :],
             "current": current.T,
         }
@@ -93,12 +98,17 @@ def read_currents(path) -> Currents:
         numbers = file["event"][()]
         starts = file["t0"][()]
         counts = file["count"][()]
+        pairs = file["pairs"][()]
         charges = file["charge"][()]
         current = file["current"][()]
     events = []
     first = 0
-    for number, start, count, charge in zip(numbers, starts, counts, charges, strict=True):
+    for number, start, count, charge, n_pairs in zip(
+        numbers, starts, counts, charges, pairs, strict=True
+    ):
         last = first + int(count)
-        events.append(EventCurrents(int(number), float(start), current[first:last].T, charge))
+        events.append(
+            EventCurrents(int(number), float(start), current[first:last].T, charge, float(n_pairs))
+        )
         first = last
     return Currents(electrodes, dt, events)

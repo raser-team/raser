@@ -16,9 +16,6 @@ import ROOT
 
 from raser.core.device import build_device as bdv
 from raser.supports.output import output
-from .fitting import fit_data_landau
-from .fitting import fit_data_normal
-from .fitting import is_number
 from raser.supports.paths import component_path
 from raser.supports.paths import project_path
 
@@ -258,6 +255,42 @@ def remove_none(list):
             continue
         new_list.append(i)
     return new_list
+
+def fit_data_normal(histo,x_min,x_max):
+    """ Fit data distribution """
+    fit_func_1 = ROOT.TF1('fit_func_1','gaus',x_min,x_max)
+    histo.Fit("fit_func_1","ROQ+","",x_min,x_max)
+
+    print("constant:%s"%fit_func_1.GetParameter(0))
+    print("constant_error:%s"%fit_func_1.GetParError(0))
+    print("mean:%s"%fit_func_1.GetParameter(1))
+    print("mean_error:%s"%fit_func_1.GetParError(1))
+    print("sigma:%s"%fit_func_1.GetParameter(2))
+    print("sigma_error:%s"%fit_func_1.GetParError(2))
+    mean=fit_func_1.GetParameter(1)
+    mean_error=fit_func_1.GetParError(1)
+    sigma=fit_func_1.GetParameter(2)
+    sigma_error=fit_func_1.GetParError(2)
+    fit_func_1.SetLineWidth(2)
+    return fit_func_1,mean,mean_error,sigma,sigma_error
+
+def fit_data_landau(histo,x_min,x_max):
+    """ Fit data distribution """
+    fit_func_1 = ROOT.TF1('fit_func_1','landau',x_min,x_max)
+    histo.Fit("fit_func_1","ROQ+","",x_min,x_max)
+
+    print("constant:%s"%fit_func_1.GetParameter(0))
+    print("constant_error:%s"%fit_func_1.GetParError(0))
+    print("mpv:%s"%fit_func_1.GetParameter(1))
+    print("mpv_error:%s"%fit_func_1.GetParError(1))
+    print("sigma:%s"%fit_func_1.GetParameter(2))
+    print("sigma_error:%s"%fit_func_1.GetParError(2))
+    mean=fit_func_1.GetParameter(1)
+    mean_error=fit_func_1.GetParError(1)
+    sigma=fit_func_1.GetParameter(2)
+    sigma_error=fit_func_1.GetParError(2)
+    fit_func_1.SetLineWidth(2)
+    return fit_func_1,mean,mean_error,sigma,sigma_error
 
 class WaveformStatistics:
     def __init__(

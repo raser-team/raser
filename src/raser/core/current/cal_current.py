@@ -134,6 +134,7 @@ class CalCurrent:
     def __init__(self, my_d, my_f, ionized_pairs, track_position, keep_drift_paths=True, diffusion=True):
         self.keep_drift_paths = bool(keep_drift_paths)
         self.diffusion = bool(diffusion)
+        self.pairs = float(sum(ionized_pairs))  # electron-hole pairs given, before gain
         if my_d.has_avalanche and gain_algorithm(my_d) == "local_path":
             self.keep_drift_paths = True
         self._run_current_calculation(my_d, my_f, ionized_pairs, track_position)

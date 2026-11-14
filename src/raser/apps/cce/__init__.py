@@ -10,7 +10,7 @@ DEFAULTS = json.loads((Path(__file__).parent / "charge_collection.json").read_te
 
 
 def _job(kwargs):
-    signal.run_job(kwargs, "cce")
+    signal.run_job(kwargs)
 
 
 WORKFLOW = Workflow(
@@ -19,6 +19,7 @@ WORKFLOW = Workflow(
     defaults={
         "source": DEFAULTS["source"],
         "events_per_job": 10000,
+        "plots": 0,
         "amplifier": DEFAULTS["afe"],
         "adc": DEFAULTS["adc"],
         "g4setup": DEFAULTS["g4setup"],

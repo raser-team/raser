@@ -10,10 +10,7 @@ DEFAULTS = json.loads((Path(__file__).parent / "time_resolution.json").read_text
 
 
 def _job(kwargs):
-    from .g4_interaction import TimeresActionInitialization
-
-    kwargs["_g4_action_initialization"] = TimeresActionInitialization
-    signal.run_job(kwargs, "timeres")
+    signal.run_job(kwargs)
 
 
 WORKFLOW = Workflow(
@@ -22,6 +19,7 @@ WORKFLOW = Workflow(
     defaults={
         "source": DEFAULTS["source"],
         "events_per_job": 10000,
+        "plots": 0,
         "amplifier": DEFAULTS["afe"],
         "adc": DEFAULTS["adc"],
         "g4setup": DEFAULTS["g4setup"],
