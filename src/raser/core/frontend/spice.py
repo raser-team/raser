@@ -25,23 +25,23 @@ class SensorCircuit:
     outputs: tuple[str, ...]
 
 
-def write_netlist(stage_files, times, currents, sensor, load_ohm, raw):
+def write_netlist(stage_files, times, currents, sensor, load_file, raw):
     """Netlist of one transient run.
 
     The sensor, the amplifier stages and the load follow one another. Each
     stage is the subcircuit ``.subckt <stem of its file> in out``; stage_files
-    lists them from the sensor to the load, and every electrode gets its own
-    copy of each.
+    lists them from the sensor to the load. The load is the subcircuit
+    ``.subckt <stem of load_file> in``. Every electrode gets its own copy of
+    each stage and of the load.
     The first stage of electrode k (from 1) reads the output node the sensor
-    gives for it; ``out<k>`` is the output of its last stage. Ground is
-    node 0.
+    gives for it; ``out<k>`` is the output of its last stage and the input of
+    its load. Ground is node 0.
 
     times : bin centres of the induced currents [s], uniform.
     currents : induced currents [A], shape (electrodes, bins). A positive
         current flows through the source from the first to the second node
         the sensor gives for the electrode.
     sensor : SensorCircuit with as many electrodes as there are currents.
-    load_ohm : resistance from each ``out<k>`` to ground [Ohm].
     raw : file ngspice writes the ``v(out<k>)`` to.
 
     The run starts one bin before the first bin, with the circuit at rest and
@@ -65,8 +65,10 @@ def write_netlist(stage_files, times, currents, sensor, load_ohm, raw):
         )
 
     stage_files = [Path(stage_file).resolve() for stage_file in stage_files]
-    lines = [" > ".join(["sensor", *(f.stem for f in stage_files), "load"])]
-    lines.extend(f'.include "{stage_file}"' for stage_file in stage_files)
+    load_file = Path(load_file).resolve()
+    chain = [*stage_files, load_file]
+    lines = [" > ".join(["sensor", *(f.stem for f in chain)])]
+    lines.extend(f'.include "{file}"' for file in chain)
     outputs = []
     for k, current in enumerate(currents, start=1):
         # the bin added in front carries no current: ngspice takes the first
@@ -82,7 +84,7 @@ def write_netlist(stage_files, times, currents, sensor, load_ohm, raw):
         nodes.append(f"out{k}")
         for j, stage_file in enumerate(stage_files):
             lines.append(f"X{k}_{j + 1} {nodes[j]} {nodes[j + 1]} {stage_file.stem}")
-        lines.append(f"Rload{k} out{k} 0 {load_ohm:.9g}")
+        lines.append(f"Xload{k} out{k} {load_file.stem}")
         outputs.append(f"v(out{k})")
     lines.extend(sensor.lines)
     lines.extend(
@@ -97,7 +99,7 @@ def write_netlist(stage_files, times, currents, sensor, load_ohm, raw):
     return "\n".join(lines) + "\n"
 
 
-def solve(stage_files, times, currents, sensor, load_ohm):
+def solve(stage_files, times, currents, sensor, load_file):
     """Output voltages [V] on the bins of the induced currents, shape
     (electrodes, bins). The arguments are those of write_netlist."""
     times = np.asarray(times, dtype=np.float64)
@@ -105,7 +107,7 @@ def solve(stage_files, times, currents, sensor, load_ohm):
         raw = Path(folder) / "out.raw"
         netlist = Path(folder) / "run.cir"
         netlist.write_text(
-            write_netlist(stage_files, times, currents, sensor, load_ohm, raw),
+            write_netlist(stage_files, times, currents, sensor, load_file, raw),
             encoding="utf-8",
         )
         subprocess.run(

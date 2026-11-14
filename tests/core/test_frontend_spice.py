@@ -22,6 +22,13 @@ def wire(tmp_path):
     return circuit
 
 
+@pytest.fixture
+def load(tmp_path):
+    circuit = tmp_path / "resistor.cir"
+    circuit.write_text(f".subckt resistor in\nR1 in 0 {LOAD_OHM}\n.ends resistor\n")
+    return circuit
+
+
 def _times():
     # starts before zero, as the current of a 2D device does
     return -1e-9 + (np.arange(1000) + 0.5) * 5e-12
@@ -32,17 +39,17 @@ def _rc_step_response(times, current_a):
     return -current_a * LOAD_OHM * (1 - np.exp(-np.clip(times, 0, None) / TAU_S))
 
 
-def test_rc_step_response_on_the_time_axis_of_the_current(wire):
+def test_rc_step_response_on_the_time_axis_of_the_current(wire, load):
     times = _times()
     step = np.where(times > 0, 1e-6, 0.0)
 
-    voltage = solve([wire], times, [step], FULLY_DEPLETED, LOAD_OHM)
+    voltage = solve([wire], times, [step], FULLY_DEPLETED, load)
 
     assert voltage.shape == (1, times.size)
     assert voltage[0] == pytest.approx(_rc_step_response(times, 1e-6), abs=5e-8)
 
 
-def test_each_electrode_answers_its_own_current(wire):
+def test_each_electrode_answers_its_own_current(wire, load):
     times = _times()
     step = np.where(times > 0, 1e-6, 0.0)
     sensor = SensorCircuit(
@@ -51,24 +58,24 @@ def test_each_electrode_answers_its_own_current(wire):
         outputs=("left", "right"),
     )
 
-    voltage = solve([wire], times, [step, -2 * step], sensor, LOAD_OHM)
+    voltage = solve([wire], times, [step, -2 * step], sensor, load)
 
     assert voltage[0] == pytest.approx(_rc_step_response(times, 1e-6), abs=5e-8)
     assert voltage[1] == pytest.approx(_rc_step_response(times, -2e-6), abs=1e-7)
 
 
-def test_circuit_is_at_rest_before_a_current_that_fills_the_first_bin(wire):
+def test_circuit_is_at_rest_before_a_current_that_fills_the_first_bin(wire, load):
     step = 5e-12
     times = (np.arange(1000) + 0.5) * step
     constant = np.full(times.size, 1e-6)
 
-    voltage = solve([wire], times, [constant], FULLY_DEPLETED, LOAD_OHM)
+    voltage = solve([wire], times, [constant], FULLY_DEPLETED, load)
 
     # the current starts at the left edge of the first bin, t = 0
     assert voltage[0] == pytest.approx(_rc_step_response(times, 1e-6), abs=5e-8)
 
 
-def test_stages_follow_one_another_from_the_sensor_to_the_load(tmp_path):
+def test_stages_follow_one_another_from_the_sensor_to_the_load(tmp_path, load):
     # a buffer with 50 Ohm input and gain 3, then 50 Ohm in series: the sensor
     # sees the 50 Ohm of the buffer, the load halves the buffered voltage
     buffer = tmp_path / "buffer.cir"
@@ -80,13 +87,13 @@ def test_stages_follow_one_another_from_the_sensor_to_the_load(tmp_path):
     times = _times()
     step = np.where(times > 0, 1e-6, 0.0)
 
-    voltage = solve([buffer, series], times, [step], FULLY_DEPLETED, LOAD_OHM)
+    voltage = solve([buffer, series], times, [step], FULLY_DEPLETED, load)
 
     expected = 1.5 * _rc_step_response(times, 1e-6)
     assert voltage[0] == pytest.approx(expected, abs=7.5e-8)
 
 
-def test_current_source_sits_between_two_sensor_nodes(wire):
+def test_current_source_sits_between_two_sensor_nodes(tmp_path, wire):
     # sensor that is not fully depleted: the depleted layer C1 from the
     # electrode to an inner node, the undepleted layer R2 parallel C2 from
     # there to ground, the current source across C1. Into a short the
@@ -98,10 +105,12 @@ def test_current_source_sits_between_two_sensor_nodes(wire):
         outputs=("pad",),
     )
     short_ohm = 0.1
+    short = tmp_path / "short.cir"
+    short.write_text(f".subckt short in\nR1 in 0 {short_ohm}\n.ends short\n")
     times = -1e-9 + (np.arange(2000) + 0.5) * 5e-12
     step = np.where(times > 0, 1e-3, 0.0)
 
-    voltage = solve([wire], times, [step], sensor, short_ohm)
+    voltage = solve([wire], times, [step], sensor, short)
 
     after = np.clip(times, 0, None)
     expected = np.where(times > 0, 1 - 10 / 30 * np.exp(-after / 3e-9), 0.0)
