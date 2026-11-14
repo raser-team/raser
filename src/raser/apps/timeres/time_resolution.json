@@ -1,6 +1,6 @@
 {
   "source": "decay/Sr90",
   "afe": "Broad_Band_UCSC",
-  "adc": "Alibava",
+  "adc": "scope",
   "g4setup": "time_resolution"
 }

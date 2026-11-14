@@ -85,7 +85,7 @@ def test_signal_runtime_configures_the_detector_from_the_components_of_the_app(
     assert g4_config["geant4_model"] == "charge_collection"
     assert g4_config["source_kind"] == "decay_source"
     assert detector.amplifier == "Broad_Band_UCSC"
-    assert detector.daq == "Alibava"
+    assert detector.daq == "scope"
     assert detector.signal_source == "Sr90"
     assert detector.signal_output_label == "cce"
 
