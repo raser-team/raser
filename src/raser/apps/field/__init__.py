@@ -49,6 +49,11 @@ def solve(kwargs):
     with its IV and its CV along the ramp, then the weighting field."""
     if kwargs.get("input") is not None or kwargs.get("dry_run"):
         return command.main(kwargs)
+    if kwargs["umf"]:
+        # Loading it makes UMFPACK the linear solver of devsim in this process,
+        # where devsim would have taken MKL; without MKL devsim loads it itself.
+        import devsim.umfpack.umfshim  # noqa: F401
+    kwargs = {**kwargs, "umf": False}
     named = [
         part
         for part, asked in (
