@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 
 from raser.core.interaction.simulate_deposits import simulate_deposits
@@ -39,6 +41,17 @@ def test_experiment_overrides_source_overrides_g4setup() -> None:
     assert "name" not in configuration and "kind" not in configuration
 
 
-def test_source_that_geant4_does_not_simulate_is_refused() -> None:
-    with pytest.raises(ValueError, match="toy_mip"):
-        simulate_deposits(None, {"kind": "toy_mip"}, None, 1, 0)
+def test_source_of_an_unknown_kind_is_refused() -> None:
+    with pytest.raises(ValueError, match="laser"):
+        simulate_deposits(None, {"kind": "laser"}, None, 1, 0)
+
+
+def test_toy_mip_takes_the_step_limit_of_the_g4setup() -> None:
+    device = SimpleNamespace(l_x=100.0, l_y=100.0, l_z=300.0, material="Si")
+    source = {"kind": "toy_mip", "landau_sampling": False}
+
+    alone = simulate_deposits(device, source, None, 1, 0)
+    coarse = simulate_deposits(device, source, {"maxstep": 50}, 1, 0)
+
+    assert len(alone.events[0].e) == 150
+    assert len(coarse.events[0].e) == 6
