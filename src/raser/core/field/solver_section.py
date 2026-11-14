@@ -161,8 +161,6 @@ def main (kwargs):
         solve_model = "wf"
     elif is_cv == True:
         solve_model = "cv"
-    elif is_noise == True:
-        solve_model = "noise"
     else:
         solve_model = None
 
@@ -171,7 +169,7 @@ def main (kwargs):
     path = str(create_path(field_directory))
     save_milestone.save_record(path, axes=mesh_axes(MyDetector))
 
-    loop=loop_section.loop_section(paras=paras,device=device,region=region,solve_model=solve_model,irradiation=irradiation,)
+    loop=loop_section.loop_section(paras=paras,device=device,region=region,solve_model=solve_model,irradiation=irradiation,with_noise=is_noise,)
    
     if is_wf == True:
         v_trial=1
@@ -242,6 +240,7 @@ def main (kwargs):
 
             except devsim.error as msg:
                 milestone_flag = False
+                goal_flag = False
                 if str(msg).find("Convergence failure") == -1:
                     raise
                 voltage_step *= paras['decrease_factor'] 

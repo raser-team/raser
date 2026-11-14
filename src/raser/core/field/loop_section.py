@@ -21,8 +21,9 @@ from raser.supports.output import output
 from raser.supports.memory_decorator import memory_decorator
 
 class loop_section:
-    def __init__(self, paras, device, region, solve_model, irradiation):
+    def __init__(self, paras, device, region, solve_model, irradiation, with_noise=False):
         self.paras = paras
+        self.with_noise = with_noise
         self.step_model  = False
         self.solve_model = solve_model
         self.device = device
@@ -80,7 +81,7 @@ class loop_section:
                 devsim.solve(type="ac", frequency=self.paras["frequency"])
                 cap= (1e12*devsim.get_circuit_node_value(node="V1.I", solution="ssac_imag")/ (-2*np.pi*self.paras["frequency"])) # pF/cm^dim
                 self.capacitance.append(cap*area_factor)
-            if self.solve_model == "noise":
+            if self.with_noise:
                 devsim.solve(type="noise", frequency=self.paras["frequency"],output_node="V1.I")
                 noise=devsim.get_circuit_node_value(node="V1.I")
                 self.noise.append(noise)

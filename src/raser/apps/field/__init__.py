@@ -1,8 +1,6 @@
 """Field application."""
 
 import json
-import subprocess
-import sys
 from pathlib import Path
 
 from raser.core.field import command
@@ -30,16 +28,18 @@ def _capacitance(kwargs):
     print(point)
 
 
-def _alone(kwargs, part):
-    """The command that solves one part of this one and nothing else."""
-    words = ["field", kwargs["target"], f"-{part}"]
-    if part == "cv" and kwargs["cv"] is not True:
-        words[-1] += f"={kwargs['cv']}"
-    if kwargs["bias"] is not None:
-        words.append(f"-bias={kwargs['bias']}")
-    if kwargs["irradiation_flux"] is not None:
-        words.append(f"-irr={kwargs['irradiation_flux']}")
-    return words
+def _empty_devsim():
+    """devsim holds one device: emptied for the next part, with the linear
+    solver it chose when it was loaded, which emptying forgets."""
+    import devsim
+
+    kept = {
+        name: devsim.get_parameter(name=name)
+        for name in ("direct_solver", "solver_callback")
+    }
+    devsim.reset_devsim()
+    for name, value in kept.items():
+        devsim.set_parameter(name=name, value=value)
 
 
 def solve(kwargs):
@@ -58,16 +58,13 @@ def solve(kwargs):
         )
         if asked
     ]
-    here, *after = named or ["iv", "wf"]
-    if here == "cv":
-        _capacitance(kwargs)
-    else:
-        command.main({**kwargs, "cv": not named, "wf": here == "wf"})
-    # devsim holds one device in a process: every further part gets its own.
-    for part in after:
-        subprocess.run(
-            [sys.executable, "-m", "raser.cli.raser", *_alone(kwargs, part)], check=True
-        )
+    for done, part in enumerate(named or ["iv", "wf"]):
+        if done:
+            _empty_devsim()
+        if part == "cv":
+            _capacitance(kwargs)
+        else:
+            command.main({**kwargs, "cv": not named, "wf": part == "wf"})
     return None
 
 
