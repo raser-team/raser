@@ -72,7 +72,7 @@ def draw_scat_angle(evnets_angle,angle,model):
     h2.Draw("HIST")    
     c1.SaveAs("scat_angle"+model+".pdf")
 
-def draw_drift_path(my_d, my_g4, my_f, my_current, path):
+def draw_drift_path(my_d, particle_track, my_f, my_current, path):
     ROOT.gStyle.SetOptStat(0)
     c1 = ROOT.TCanvas("c", "canvas1", 200, 10, 1500, 2000)
     c1.Divide(1,2)
@@ -199,7 +199,6 @@ def draw_drift_path(my_d, my_g4, my_f, my_current, path):
                     del z_array[:]
     
     # 绘制粒子径迹
-    particle_track = my_g4.p_steps_current[my_g4.selected_batch_number]
     n = len(particle_track)
     if n > 0:
         x_array.extend([step[0] for step in particle_track])
