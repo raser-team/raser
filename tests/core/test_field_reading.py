@@ -8,6 +8,7 @@ import pytest
 
 from raser.core.device.build_device import Detector
 from raser.core.device.build_device import device_file
+from raser.core.field.reading import ABSENT
 from raser.core.field.reading import Reading
 from raser.core.field.reading import changed
 
@@ -36,12 +37,11 @@ def test_a_reading_notes_what_is_read_and_nothing_else() -> None:
 
     assert device.read["attributes"] == {"dimension": 1, "det_model": "planar"}
     keys = device.read["keys"]
-    assert sorted(keys) == [
-        "bias.electrode", "doping.Donors", "hemt_physics", "irradiation", "mesh.1D_mesh",
-    ]
-    assert keys["bias.electrode"] == "top"
-    assert keys["irradiation"] is None
-    assert keys["mesh.1D_mesh"].startswith("sha256:")
+    assert sorted(keys) == ["bias", "doping", "hemt_physics", "irradiation", "mesh"]
+    assert keys["bias"] == {"electrode": "top"}
+    assert list(keys["doping"]) == ["Donors"]
+    assert keys["irradiation"] == ABSENT
+    assert keys["mesh"]["1D_mesh"].startswith("sha256:")
 
 
 def test_a_field_is_out_of_date_only_for_what_its_solve_read() -> None:
@@ -107,3 +107,25 @@ def test_the_solve_takes_its_device_only_through_the_reading(module: str) -> Non
     for way_around in ("Detector(", "device_file(", "load_definition(", "resolve_device(",
                        "definition_path", "json.load("):
         assert way_around not in source
+
+
+def test_a_key_or_attribute_that_was_absent_or_null_is_told_from_one_that_is_gone() -> None:
+    content = {**_content(), "U_const": None, "a.b": 1}
+    device = Reading(Detector("HPK-Si-PiN", content))
+    json_of_device = device.device_dict
+    json_of_device.get("U_const")
+    json_of_device.get("parameter")
+    json_of_device["a.b"]
+    getattr(device, "no_such_attribute", None)
+    read = json.loads(json.dumps(device.read))
+
+    def now(change) -> list[str]:
+        other = {**_content(), "U_const": None, "a.b": 1}
+        change(other)
+        return changed(read, Detector("HPK-Si-PiN", other))
+
+    assert now(lambda other: None) == []
+    assert now(lambda other: other.pop("U_const")) == ["U_const"]
+    assert now(lambda other: other.update(parameter=None)) == ["parameter"]
+    assert now(lambda other: other.update({"a.b": 2})) == ["a.b"]
+    assert now(lambda other: other.update(no_such_attribute=None)) == ["no_such_attribute"]
