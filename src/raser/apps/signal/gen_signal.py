@@ -92,9 +92,7 @@ def main(kwargs):
 
     if kwargs.get("g4_vis"):
         # Only the Geant4 geometry and the tracks are drawn; no signal is run.
-        driver = kwargs.get("g4_vis_driver")
-        if not driver:
-            raise ValueError("-g4_vis needs --g4-vis-driver, a Geant4 visualization driver")
+        driver = kwargs["g4_vis_driver"]
         picture = None
         if driver.upper().startswith(("TSG", "OGL")):  # the drivers that write a picture
             picture = os.path.join(kwargs["_run_path"], "g4_geometry")

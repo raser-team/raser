@@ -45,17 +45,18 @@ def add_arguments(parser):
     parser.add_argument(
         "-g4_vis", help="visualization of Geant4 experiment", action="store_true"
     )
-    parser.add_argument("--g4-vis-driver", help="Geant4 visualization driver")
+    parser.add_argument(
+        "--g4-vis-driver",
+        default="OGL",
+        help="Geant4 visualization driver of -g4_vis (default: OGL)",
+    )
     parser.add_argument("-amp", "--amplifier", type=str, help="amplifier")
 
 
 def job_command(kwargs):
-    command = []
     if kwargs.get("g4_vis"):
-        command.append("-g4_vis")
-    if kwargs.get("g4_vis_driver"):
-        command.extend(["--g4-vis-driver", kwargs["g4_vis_driver"]])
-    return command
+        return ["-g4_vis", "--g4-vis-driver", kwargs["g4_vis_driver"]]
+    return []
 
 
 def run_job(kwargs):
