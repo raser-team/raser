@@ -22,7 +22,6 @@ from .carrier import VectorizedCarrierSystem
 
 from ..interaction.carrier_list import CarrierListFromG4P
 from ..interaction.toy_mip import ToyMIPLineSource
-from .convolution import signal_convolution
 from raser.supports.output import output
 
 t_bin = {
@@ -766,36 +765,19 @@ class CalCurrentLaser(CalCurrent):
             diffusion=diffusion,
         )
         
-        for i in range(self.read_ele_num):
-            
-            # convolute the signal with the laser pulse shape in time
-            convolved_positive_cu = ROOT.TH1F("convolved_charge+", "Positive Current",
-                                        self.n_bin, self.t_start, self.t_end)
-            convolved_negative_cu = ROOT.TH1F("convolved_charge-", "Negative Current",
-                                        self.n_bin, self.t_start, self.t_end)
-            convolved_sum_cu = ROOT.TH1F("convolved_charge","Total Current",
-                                        self.n_bin, self.t_start, self.t_end)
-            
-            convolved_positive_cu.Reset()
-            convolved_negative_cu.Reset()
-            convolved_sum_cu.Reset()
-
-            signal_convolution(self.positive_cu[i],convolved_positive_cu,[my_l.timePulse])
-            signal_convolution(self.negative_cu[i],convolved_negative_cu,[my_l.timePulse])
-            signal_convolution(self.sum_cu[i],convolved_sum_cu,[my_l.timePulse])
-
-            self.positive_cu[i] = convolved_positive_cu
-            self.negative_cu[i] = convolved_negative_cu
-            self.sum_cu[i] = convolved_sum_cu
-
-            if hasattr(self, "gain_current"):
-                convolved_gain_positive_cu = ROOT.TH1F("convolved_gain_charge+","Gain Positive Current",
-                                        self.n_bin, self.t_start, self.t_end)
-                convolved_gain_negative_cu = ROOT.TH1F("convolved_gain_charge-","Gain Negative Current",
-                                        self.n_bin, self.t_start, self.t_end)
-                convolved_gain_positive_cu.Reset()
-                convolved_gain_negative_cu.Reset()
-                signal_convolution(self.gain_current.positive_cu[i],convolved_gain_positive_cu,[my_l.timePulse])
-                signal_convolution(self.gain_current.negative_cu[i],convolved_gain_negative_cu,[my_l.timePulse])
-                self.gain_current.positive_cu[i] = convolved_gain_positive_cu
-                self.gain_current.negative_cu[i] = convolved_gain_negative_cu
+        # convolute the currents with the laser pulse shape in time
+        bin_width = (self.t_end - self.t_start) / self.n_bin
+        bins = np.arange(self.n_bin)
+        pulse = my_l.timePulse((bins[:, None] - bins[None, :]) * bin_width) * bin_width
+        convolved = [
+            (self.hole_current, self.positive_cu),
+            (self.electron_current, self.negative_cu),
+            (self.current, self.sum_cu),
+        ]
+        if hasattr(self, "gain_current"):
+            convolved.append((self.gain_current.hole_bins[:, 1:-1], self.gain_current.positive_cu))
+            convolved.append((self.gain_current.electron_bins[:, 1:-1], self.gain_current.negative_cu))
+        for currents, histograms in convolved:
+            currents[:] = currents @ pulse
+            for i in range(self.read_ele_num):
+                fill_histogram(histograms[i], np.pad(currents[i], 1))
