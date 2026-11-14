@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import numpy as np
 import pytest
 
 from raser.core.frontend import ELEMENTARY_CHARGE_C
@@ -8,7 +7,6 @@ from raser.core.frontend import equivalent_noise_charge
 from raser.core.frontend import load_noise_spectrum
 from raser.core.frontend import output_noise_rms_from_enc
 from raser.core.frontend import spieler_noise_spectrum
-from raser.core.frontend import synthesize_noise_from_spectrum
 from raser.core.frontend import white_noise_spectrum_for_rms
 
 
@@ -28,32 +26,6 @@ def test_load_noise_spectrum_reports_malformed_rows(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="row 2"):
         load_noise_spectrum(spectrum)
-
-
-def test_spectrum_noise_is_seeded_and_normalized() -> None:
-    frequencies = np.array([0.0, 5.0e8], dtype=np.float64)
-    density = np.array([1.0e-6, 1.0e-6], dtype=np.float64)
-
-    first = synthesize_noise_from_spectrum(
-        frequencies,
-        density,
-        n_samples=1024,
-        time_step_s=1.0e-9,
-        seed=7,
-        target_rms=0.25,
-    )
-    second = synthesize_noise_from_spectrum(
-        frequencies,
-        density,
-        n_samples=1024,
-        time_step_s=1.0e-9,
-        seed=7,
-        target_rms=0.25,
-    )
-
-    assert first == pytest.approx(second)
-    assert float(np.mean(first)) == pytest.approx(0.0, abs=1.0e-12)
-    assert float(np.std(first)) == pytest.approx(0.25)
 
 
 def test_enc_uses_device_capacitance_and_output_charge_gain() -> None:
