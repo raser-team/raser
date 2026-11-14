@@ -46,9 +46,9 @@ def job_command(kwargs):
 
 def run_job(kwargs):
     """One signal job inside its seed folder."""
-    from . import signal_events
+    from . import gen_signal
 
-    signal_events.main(kwargs)
+    gen_signal.main(kwargs)
 
 
 WORKFLOW = Workflow(
