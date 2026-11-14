@@ -78,3 +78,51 @@ def test_drift_without_diffusion_does_not_ask_the_random_stream(monkeypatch) -> 
     )
 
     assert set(path[:, 0]) == {50.0}
+
+
+class _Junction(_Field):
+    """Below z = 10 um the field is low_field and the doping is doping."""
+
+    def __init__(self, doping, low_field=100.0):
+        self.doping = doping
+        self.low_field = low_field
+
+    def get_e_field_cached(self, x, y, z):
+        return (0.0, 0.0, FIELD if z >= 10.0 else self.low_field)
+
+    def get_doping_cached(self, x, y, z):
+        return self.doping if z < 10.0 else 0.0
+
+
+def test_electron_is_collected_where_resistivity_and_field_are_low() -> None:
+    # 1e19 cm^-3 at 1000 cm^2/V/s is 6.2e-4 ohm cm
+    path, reason = drift(
+        50.0, 50.0, 25.0, 0.0, -100.0, _device(), _Junction(1.0e19), _mobility, 3.0e-11,
+        diffusion=False,
+    )
+
+    assert reason == "collected"
+    assert path[-1] == pytest.approx([50.0, 50.0, 7.0, 1.8e-10])
+
+
+def test_electron_drifts_on_through_a_low_field_of_high_resistivity() -> None:
+    # 1e12 cm^-3 at 1000 cm^2/V/s is 6.2e3 ohm cm; 100 V/cm moves it 1 um/ns
+    path, reason = drift(
+        50.0, 50.0, 25.0, 0.0, -100.0, _device(), _Junction(1.0e12), _mobility, 3.0e-11,
+        diffusion=False,
+    )
+
+    assert reason == "left_device"
+    assert path[-1] == pytest.approx([50.0, 50.0, 0.0, 1.8e-10 + 7.0e-9])
+
+
+def test_electron_drifts_on_through_a_high_field_of_low_resistivity() -> None:
+    # a gain layer: doped to low resistivity but depleted, the field stays high
+    path, reason = drift(
+        50.0, 50.0, 25.0, 0.0, -100.0, _device(), _Junction(1.0e19, FIELD), _mobility, 3.0e-11,
+        diffusion=False,
+    )
+
+    assert reason == "left_device"
+    assert path[-1] == pytest.approx([50.0, 50.0, 0.0, 2.5e-10])
+
