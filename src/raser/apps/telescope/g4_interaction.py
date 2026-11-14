@@ -81,6 +81,7 @@ class TelescopeG4Interaction(GeneralG4Interaction):
                 edep_devices,
                 p_steps,
                 energy_steps,
+                time_steps,
                 events_angles,
                 geant4_model,
             ):
@@ -95,6 +96,7 @@ class TelescopeG4Interaction(GeneralG4Interaction):
                     edep_devices,
                     p_steps,
                     energy_steps,
+                    time_steps,
                     events_angles,
                     devicenames,
                     localpositions,
@@ -303,6 +305,7 @@ class TelescopeEventAction(GeneralEventAction):
         edep_devices,
         p_steps,
         energy_steps,
+        time_steps,
         events_angles,
         devicenames,
         localpositions,
@@ -315,6 +318,7 @@ class TelescopeEventAction(GeneralEventAction):
             edep_devices,
             p_steps,
             energy_steps,
+            time_steps,
             events_angles,
         )
         # use in pixel_detector
@@ -349,6 +353,7 @@ class TelescopeEventAction(GeneralEventAction):
             [point_in.getX() * 1000, point_in.getY() * 1000, point_in.getZ() * 1000]
         )
         self.energy_step.append(edep)
+        self.time_step.append(point_pre.GetGlobalTime() / g4b.s)
         # save only in RecordPixel
         self.volume_name.append(volume.GetName())
         self.localposition.append(
@@ -396,6 +401,7 @@ class TelescopeActionInitialization(g4b.G4VUserActionInitialization):
         edep_devices,
         p_steps,
         energy_steps,
+        time_steps,
         events_angles,
         devicenames,
         localpositions,
@@ -414,6 +420,7 @@ class TelescopeActionInitialization(g4b.G4VUserActionInitialization):
         self.edep_devices = edep_devices
         self.p_steps = p_steps
         self.energy_steps = energy_steps
+        self.time_steps = time_steps
         self.events_angles = events_angles
         self.devicenames = devicenames
         self.localpositions = localpositions
@@ -441,6 +448,7 @@ class TelescopeActionInitialization(g4b.G4VUserActionInitialization):
             self.edep_devices,
             self.p_steps,
             self.energy_steps,
+            self.time_steps,
             self.events_angles,
             self.devicenames,
             self.localpositions,

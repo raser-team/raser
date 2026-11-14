@@ -18,4 +18,4 @@ class GeneralSteppingAction(g4b.G4UserSteppingAction):
         self.volume_name = volume.GetName()
 
         if self.volume_name == "Device": # important, no if => no signal
-            self.fEventAction.RecordDevice(edep,point_in,point_out)
+            self.fEventAction.RecordDevice(edep,point_in,point_out,point_pre.GetGlobalTime())

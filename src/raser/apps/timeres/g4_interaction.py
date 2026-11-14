@@ -84,6 +84,7 @@ class TimeresActionInitialization(GeneralActionInitialization):
             self.edep_devices,
             self.p_steps,
             self.energy_steps,
+            self.time_steps,
             self.events_angles,
         )
         self.actions.append(event_action)

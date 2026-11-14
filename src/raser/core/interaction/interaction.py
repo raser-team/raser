@@ -150,8 +150,9 @@ class GeneralG4Interaction:
             self.edep_devices,
             self.p_steps,
             self.energy_steps,
+            self.time_steps,
             self.events_angles,
-        ) = [], [], [], [], []
+        ) = [], [], [], [], [], []
 
         # define action
         self.action_initialization = MyActionInitialization(
@@ -165,6 +166,7 @@ class GeneralG4Interaction:
             self.edep_devices,
             self.p_steps,
             self.energy_steps,
+            self.time_steps,
             self.events_angles,
             self.geant4_model,
         )
