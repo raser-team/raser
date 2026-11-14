@@ -47,14 +47,9 @@ def register(subparsers):
 
 
 def _signal_job(kwargs):
-    if kwargs.get("job_index") is not None:
-        from . import tct_signal_scan
+    from . import tct_signal
 
-        tct_signal_scan.job_main(kwargs)
-    else:
-        from . import tct_signal
-
-        tct_signal.main(kwargs)
+    tct_signal.main(kwargs)
 
 
 def _position_signal_job(kwargs):
