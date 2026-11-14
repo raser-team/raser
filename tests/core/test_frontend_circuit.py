@@ -10,7 +10,7 @@ pytestmark = pytest.mark.ngspice
 DT_S = 5e-12
 
 
-def test_stage_and_load_written_from_their_description(tmp_path):
+def test_stage_and_load_written_from_their_description():
     # the stage puts 100 Ohm and 10 pF across its input and reaches its output
     # through 100 Ohm; with the 100 Ohm load and the 10 pF sensor the electrode
     # sees 100 Ohm parallel to 200 Ohm and 20 pF, and the load half its voltage
@@ -26,15 +26,15 @@ def test_stage_and_load_written_from_their_description(tmp_path):
         "ports": {"in": "a"},
         "elements": {"R1": {"between": ["a", "0"], "ohm": 100.0}},
     }
-    stage_file = tmp_path / "shunt.cir"
-    stage_file.write_text(subcircuit("shunt", stage))
-    load_file = tmp_path / "resistor.cir"
-    load_file.write_text(subcircuit("resistor", load))
     times = -1e-9 + (np.arange(1000) + 0.5) * DT_S
     step = np.where(times > 0, 1e-6, 0.0)
 
     voltage = solve(
-        [stage_file], ["top"], DT_S, [step], planar_sensor("top", 10e-12), load_file
+        {"stages": {"shunt": stage}, "load": load},
+        ["top"],
+        DT_S,
+        [step],
+        planar_sensor("top", 10e-12),
     )
 
     after = np.clip(times, 0, None)

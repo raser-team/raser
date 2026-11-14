@@ -80,17 +80,25 @@ def test_coupling_capacitance_shares_the_current_with_the_depleted_layer():
     )
 
 
-def test_bias_resistance_lies_between_the_electrode_and_ground(tmp_path):
+def test_bias_resistance_lies_between_the_electrode_and_ground():
     # read out DC-coupled by a wire on a 50 Ohm load: the electrode sees the
     # 50 Ohm bias resistance parallel to the load, 25 Ohm, with its 10 pF
-    wire = tmp_path / "wire.cir"
-    wire.write_text(".subckt wire in out\nR1 in out 1u\n.ends wire\n")
-    load = tmp_path / "resistor.cir"
-    load.write_text(".subckt resistor in\nR1 in 0 50\n.ends resistor\n")
+    chain = {
+        "stages": {
+            "wire": {
+                "ports": {"in": "a", "out": "b"},
+                "elements": {"R1": {"between": ["a", "b"], "ohm": 1e-6}},
+            }
+        },
+        "load": {
+            "ports": {"in": "a"},
+            "elements": {"R1": {"between": ["a", "0"], "ohm": 50.0}},
+        },
+    }
     sensor = planar_sensor("top", 10e-12, bias_resistance_ohm=50.0)
     times, step = _step()
 
-    voltage = solve([wire], ["top"], DT_S, [step], sensor, load)
+    voltage = solve(chain, ["top"], DT_S, [step], sensor)
 
     after = np.clip(times, 0, None)
     expected = 1e-6 * 25.0 * (1 - np.exp(-after / (25.0 * 10e-12)))
