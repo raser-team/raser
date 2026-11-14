@@ -86,6 +86,7 @@ class TimeresActionInitialization(GeneralActionInitialization):
             self.energy_steps,
             self.time_steps,
             self.events_angles,
+            self.edep_window,
         )
         self.actions.append(event_action)
         self.SetUserAction(event_action)

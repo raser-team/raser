@@ -154,6 +154,9 @@ class GeneralG4Interaction:
             self.events_angles,
         ) = [], [], [], [], [], []
 
+        self.generated_events = int(g4_dic["total_events"])
+        self.edep_window = (g4_dic.get("edep_min"), g4_dic.get("edep_max"))
+
         # define action
         self.action_initialization = MyActionInitialization(
             g4_dic["par_in"],
@@ -168,6 +171,7 @@ class GeneralG4Interaction:
             self.energy_steps,
             self.time_steps,
             self.events_angles,
+            self.edep_window,
             self.geant4_model,
         )
         self.g4RunManager.SetUserInitialization(self.action_initialization)
@@ -215,7 +219,7 @@ class GeneralG4Interaction:
             UImanager.ApplyCommand("/process/had/verbose %d" % (verbose))
             UImanager.ApplyCommand("/run/initialize")
 
-        self.g4RunManager.BeamOn(int(g4_dic["total_events"]))
+        self.g4RunManager.BeamOn(self.generated_events)
         if g4_vis:
             UImanager.ApplyCommand("/vis/viewer/flush")
         if (
