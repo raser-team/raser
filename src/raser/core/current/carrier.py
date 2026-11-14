@@ -20,6 +20,10 @@ tolerance_default = 1e-6
 
 min_intensity = 1 # V/cm
 
+# 低阻且低场的地方当金属：载流子到了这里就算已收集
+metal_resistivity = 10 # Ω·cm，低于它算低阻
+thermal_length = 1e-4 # cm，场在这段长度上给的电势差小于热电压算低场
+
 logger = logging.getLogger(__name__)
 if not logging.getLogger().handlers:
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -424,6 +428,17 @@ class VectorizedCarrierSystem:
                 diffusion_constant = math.sqrt(2.0 * self.kboltz * params['temperature'] * mu * delta_t) * 1e4
             except Exception as e:
                 raise RuntimeError(f"迁移率计算失败: {e}")
+
+            # 低阻且低场：已进入当金属的区域，算已收集
+            if (
+                intensity < self.kboltz * params['temperature'] / thermal_length
+                and self._resistivity(doping, params['temperature'], intensity) < metal_resistivity
+            ):
+                self.active[idx] = False
+                self.end_conditions[idx] = 5
+                n_terminated += 1
+                self.performance_stats['collection_terminations'] += 1
+                continue
             
             # 速度和位移计算
             delta_x, delta_y, delta_z = self._calculate_displacement(charge, e_field, mu, delta_t)
@@ -469,6 +484,14 @@ class VectorizedCarrierSystem:
         
         self.performance_stats['carriers_terminated'] += n_terminated
         return n_terminated
+
+    def _resistivity(self, doping, temperature, intensity):
+        """局部电阻率 [Ω·cm]：1 / (e · |净掺杂| · 多子迁移率)，掺杂 [cm^-3] 为正是 n 型"""
+        if doping == 0:
+            return math.inf
+        majority_charge = -1 if doping > 0 else 1
+        mu = self.mobility(temperature, doping, majority_charge, intensity)
+        return 1.0 / (self.e0 * abs(doping) * mu)
 
     def _clamp_position_to_device(self, idx, my_d):
         x, y, z = self.positions[idx]
