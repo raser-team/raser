@@ -34,10 +34,11 @@ def test_a_reading_notes_what_is_read_and_nothing_else() -> None:
 
     _solve(device)
 
-    assert device.read["attributes"] == {"dimension": 1, "det_model": "planar"}
+    assert device.read["attributes"] == {"dimension": 1}
     keys = device.read["keys"]
     assert sorted(keys) == [
         "bias.electrode", "doping.Donors", "hemt_physics", "irradiation", "mesh.1D_mesh",
+        "mesh.plugin",
     ]
     assert keys["bias.electrode"] == "top"
     assert keys["irradiation"] is None

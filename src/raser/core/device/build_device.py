@@ -174,8 +174,5 @@ class Detector:
         return path
 
     def is_plugin(self):
-        if ( "plugin" in self.det_model or "3d" in self.det_model or "3D" in self.det_model
-        ):
-            return True
-        else:
-            return False
+        """Whether the mesh lies in the lateral x-y plane, as the json's mesh block says."""
+        return bool(self.device_dict.get('mesh', {}).get('plugin', False))

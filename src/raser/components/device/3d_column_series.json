@@ -40,5 +40,9 @@
     "default_dimension" : 3,
     "read_out_contact" : [{"x_span": 0, "y_span": 0, "name": "readout"}],
     "field_shift_x" : 0,
-    "field_shift_y" : 0
+    "field_shift_y" : 0,
+
+    "mesh" : {
+        "plugin" : true
+    }
 }
