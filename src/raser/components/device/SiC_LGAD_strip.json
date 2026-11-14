@@ -54,7 +54,7 @@
             "region" : [
                 {
                     "material" : "SiliconCarbide", 
-                    "region" : "SiC_LGAD_strip_7p2e16"
+                    "region" : "SiC_LGAD_strip"
                 },
                 {
                     "material" : "air",
@@ -70,13 +70,13 @@
                 }
             ],
             "contact" : [
-                {"name" : "top1", "material" : "metal", "region" : "SiC_LGAD_strip_7p2e16",
+                {"name" : "top1", "material" : "metal", "region" : "SiC_LGAD_strip",
                  "xl" : 0,     "xh" : 0,     "yl" : 0.6e-2,       "yh" : 1.2e-2,  "bloat" : 1e-10},
-                {"name" : "top2", "material" : "metal", "region" : "SiC_LGAD_strip_7p2e16",
+                {"name" : "top2", "material" : "metal", "region" : "SiC_LGAD_strip",
                  "xl" : 0,     "xh" : 0,     "yl" : 1.8e-2,       "yh" : 2.4e-2,  "bloat" : 1e-10},
-                {"name" : "top3", "material" : "metal", "region" : "SiC_LGAD_strip_7p2e16",
+                {"name" : "top3", "material" : "metal", "region" : "SiC_LGAD_strip",
                  "xl" : 0,     "xh" : 0,     "yl" : 3.0e-2,       "yh" : 3.6e-2,  "bloat" : 1e-10},
-                {"name" : "bot",  "material" : "metal", "region" : "SiC_LGAD_strip_7p2e16",
+                {"name" : "bot",  "material" : "metal", "region" : "SiC_LGAD_strip",
                  "xl" : 66.3e-4, "xh" : 66.3e-4, "bloat" : 1e-10}
             ]
         }

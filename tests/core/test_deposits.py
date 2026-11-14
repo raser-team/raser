@@ -31,7 +31,7 @@ def test_deposits_file_returns_each_event_with_its_own_deposits(tmp_path) -> Non
             ),
         ],
     )
-    path = tmp_path / "deposits.root"
+    path = tmp_path / "deposits.h5"
 
     write_deposits(path, deposits)
 

@@ -23,7 +23,7 @@ def _flux(record):
 
 def solved_field(my_d, voltage, irradiation_flux):
     """The folder of the field of `my_d` at this flux that holds the potential
-    at this bias and the weighting field. An error says what is missing."""
+    and the weighting field at this bias. An error says what is missing."""
     root = project_path("field")
     again = f"raser field {my_d.det_name} -bias {voltage}"
     records = {
@@ -55,8 +55,9 @@ def solved_field(my_d, voltage, irradiation_flux):
             f"the field in {folder} is not solved at {voltage} V "
             f"(solved at: {solved.get('potential', [])}); solve it with `{again}`"
         )
-    if "any" not in solved.get("weighting", []):
+    if float(voltage) not in solved.get("weighting", []):
         raise FileNotFoundError(
-            f"the field in {folder} has no weighting field; solve it with `{again} -wf`"
+            f"the field in {folder} has no weighting field at {voltage} V "
+            f"(solved at: {solved.get('weighting', [])}); solve it with `{again} -wf`"
         )
     return folder
