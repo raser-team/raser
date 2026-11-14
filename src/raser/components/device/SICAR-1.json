@@ -15,6 +15,7 @@
     "U_const":-5e10,
     "avalanche_bond" : 3.0,
     "avalanche_model" : "Hatakeyama",
+    "enable_gain" : true,
     "parameter":{"name":"F_sat","value":1e5,"unit":"V/cm","description":"saturation electricfield of TAT"},
 
     "bias" : {

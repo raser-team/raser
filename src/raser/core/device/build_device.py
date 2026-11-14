@@ -107,12 +107,8 @@ class Detector:
 
         self.avalanche_model = self.device_dict.get('avalanche_model')
         self.avalanche_bond = self.device_dict.get('avalanche_bond')
-        enable_gain = bool(
-            self.device_dict.get(
-                'enable_gain',
-                "lgad" in self.det_model.lower() or 'gain_algorithm' in self.device_dict,
-            )
-        )
+        # The gain layer is on only when the json says so.
+        enable_gain = bool(self.device_dict.get('enable_gain', False))
         if enable_gain and self.avalanche_model is None:
             raise ValueError("gain is enabled but `avalanche_model` is missing in detector settings")
         self.has_avalanche = self.avalanche_model is not None and enable_gain

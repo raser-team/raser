@@ -14,6 +14,7 @@
 
     "avalanche_bond" : 175.0,
     "avalanche_model" : "vanOverstraeten",
+    "enable_gain" : true,
 
     "bias" : {
         "electrode" : "bot",

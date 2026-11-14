@@ -22,6 +22,7 @@
 
     "avalanche_bond" : 5.5,
     "avalanche_model" : "vanOverstraeten",
+    "enable_gain" : true,
 
     "area_factor" : 1,
     "default_dimension" : 1,
