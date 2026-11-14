@@ -14,7 +14,6 @@ from raser.core.seeding import stream
 import numpy as np
 
 from .model import Material
-from .vector import Vector
 from raser.core.field.simple import AnalyticStripPixelField
 
 tolerance_default = 1e-6

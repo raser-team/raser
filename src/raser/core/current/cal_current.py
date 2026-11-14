@@ -25,7 +25,6 @@ from .carrier import VectorizedCarrierSystem
 from ..interaction.carrier_list import CarrierListFromG4P
 from ..interaction.toy_mip import ToyMIPLineSource
 from .convolution import signal_convolution
-from .vector import Vector
 from raser.supports.output import output
 
 t_bin = {
@@ -829,7 +828,7 @@ class CalCurrentGain(CalCurrent):
                         z = z0 + fraction * (z1 - z0)
                         try:
                             field_vector = my_f.get_e_field_cached(x, y, z)
-                            field = Vector(*field_vector).get_length()
+                            field = math.hypot(*field_vector)
                         except Exception:
                             field_failures += 1
                             continue

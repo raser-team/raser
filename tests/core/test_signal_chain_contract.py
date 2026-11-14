@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pytest
 
-from raser.core.current.vector import Vector
 from raser.core.frontend import CurrentSource
 from raser.core.frontend import assemble_frontend
 from raser.core.interaction import from_energy_deposits
@@ -34,7 +33,6 @@ def test_interaction_creates_weighted_carrier_populations() -> None:
 
 
 def test_current_frontend_and_metrics_share_one_waveform_contract() -> None:
-    assert Vector(3.0, 4.0, 0.0).get_length() == 5.0
     times = (0.5, 2.0)
     values = {"left": (1.0, 0.5), "right": (-1.0, -0.5)}
 
