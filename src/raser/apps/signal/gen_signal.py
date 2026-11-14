@@ -4,20 +4,26 @@ The device, its solved field, the events Geant4 recorded, and for each of
 them the induced current and the amplified waveform of every read-out
 electrode. Everything the job reads comes from the run.json of its seed
 folder (kwargs["_files"]); nothing is written onto the device.
+
+Written into batch/ of the seed folder, one file per job:
+    deposits_<job>.h5   energy deposits of the recorded events
+    currents_<job>.h5   induced current of every electrode, event by event
+The amplified waveforms are not written yet.
 """
 
 import os
-from array import array
 from copy import deepcopy
 from pathlib import Path
 
 import ROOT
 
 from raser.core.current import cal_current as ccrt
+from raser.core.current.currents import EventCurrents, append_currents
 from raser.core.device import build_device as bdv
 from raser.core.field import devsim_field as devfield
 from raser.core.field.solved import solved_field
 from raser.core.frontend.toy_readout import Amplifier
+from raser.core.interaction.deposits import write_deposits
 from raser.core.interaction.interaction import GeneralG4Interaction
 
 from .draw_save import draw_drift_path
@@ -55,44 +61,24 @@ def g4_config(kwargs):
     return config
 
 
-def _same_bins(name, hist):
-    axis = hist.GetXaxis()
-    return ROOT.TH1F(name, name, hist.GetNbinsX(), axis.GetXmin(), axis.GetXmax())
-
-
-def _copy(target, source):
-    """Bin contents of source into target; the two must have the same bins."""
-    bins = [
-        (h.GetNbinsX(), h.GetXaxis().GetXmin(), h.GetXaxis().GetXmax())
-        for h in (target, source)
-    ]
-    if bins[0] != bins[1]:
-        raise ValueError(
-            f"{source.GetName()} has bins {bins[1]}, the tree branch has {bins[0]}"
-        )
-    target.Reset()
-    target.Add(source)
-
-
-def run_events(my_d, my_f, my_g4, amplifier, file_path, plots, plot_path):
-    """Current and waveform of every event Geant4 recorded, one tree entry each.
+def run_events(my_d, my_f, my_g4, amplifier, batch_path, job, plots, plot_path):
+    """Current and waveform of every event Geant4 recorded.
 
     The first `plots` events are also drawn, each in plot_path/event_<number>:
     drift paths, currents, waveform.
-
-    Branches: event (Geant4 event number), e_dep [MeV], par_in and par_out
-    (first and last deposit, [um]), current_<i> [A] and amplified_waveform_<i>
-    of read-out electrode i.
     """
     deposits = my_g4.deposits()
     index = {number: i for i, number in enumerate(my_g4.eventIDs)}
+    write_deposits(os.path.join(batch_path, "deposits_%s.h5" % (job)), deposits)
+    currents_path = os.path.join(batch_path, "currents_%s.h5" % (job))
+    if os.path.exists(currents_path):  # of an earlier start of this job
+        os.remove(currents_path)
     print(
         "detection_efficiency=%s" % (len(deposits.events) / deposits.generated_events),
         flush=True,
     )
     if not deposits.events:
-        print("no event left a deposit in the device; nothing is written", flush=True)
-        return
+        print("no event left a deposit in the device", flush=True)
     if 0 < plots < len(deposits.events):
         print(
             "%s events recorded; only the first %s are drawn (--plots)"
@@ -100,25 +86,17 @@ def run_events(my_d, my_f, my_g4, amplifier, file_path, plots, plot_path):
             flush=True,
         )
 
-    event_array = array("i", [0])
-    e_dep_array = array("d", [0.0])
-    par_in_array = array("d", [0.0, 0.0, 0.0])
-    par_out_array = array("d", [0.0, 0.0, 0.0])
-
-    tree = ROOT.TTree("tree", "Waveform Data")
-    tree.Branch("event", event_array, "event/I")
-    tree.Branch("e_dep", e_dep_array, "e_dep/D")
-    tree.Branch("par_in", par_in_array, "par_in[3]/D")
-    tree.Branch("par_out", par_out_array, "par_out[3]/D")
-    current, amplified_waveform = [], []
-    # Note: TTree.Branch() needs the binded variable (namely the address) to be valid and the same while Fill(),
-    # so don't put the Branch() into other methods/functions!
-
     for count, record in enumerate(deposits.events):
         print("run events number:%s" % (record.event))
         drawn = count < plots
         my_current = ccrt.CalCurrentG4P(
             my_d, my_f, my_g4, index[record.event], keep_drift_paths=drawn
+        )
+        append_currents(
+            currents_path,
+            my_current.electrodes,
+            my_current.t_bin,
+            EventCurrents(record.event, my_current.t_start, my_current.current, my_current.charge),
         )
         ele_current = Amplifier(my_current.sum_cu, amplifier, CDet=my_d.capacitance)
 
@@ -132,30 +110,6 @@ def run_events(my_d, my_f, my_g4, amplifier, file_path, plots, plot_path):
                 my_current.charge_collection_strip(path)
             if my_d.is_pixel:
                 my_current.charge_collection_pixel(path)
-
-        if not current:
-            for i in range(my_d.read_ele_num):
-                current.append(_same_bins("current_%s" % (i), my_current.sum_cu[i]))
-                amplified_waveform.append(
-                    _same_bins(
-                        "amplified_waveform_%s" % (i), ele_current.amplified_currents[i]
-                    )
-                )
-                tree.Branch("current_%s" % (i), current[i])
-                tree.Branch("amplified_waveform_%s" % (i), amplified_waveform[i])
-
-        event_array[0] = record.event
-        e_dep_array[0] = sum(record.e)
-        par_in_array[0], par_in_array[1], par_in_array[2] = record.x[0], record.y[0], record.z[0]
-        par_out_array[0], par_out_array[1], par_out_array[2] = record.x[-1], record.y[-1], record.z[-1]
-        for i in range(my_d.read_ele_num):
-            _copy(current[i], my_current.sum_cu[i])
-            _copy(amplified_waveform[i], ele_current.amplified_currents[i])
-        tree.Fill()
-
-    file = ROOT.TFile(str(file_path), "RECREATE")
-    tree.Write()
-    file.Close()
 
 
 def main(kwargs):
@@ -194,7 +148,8 @@ def main(kwargs):
             my_f,
             my_g4,
             amplifier,
-            Path(kwargs["_run_batch_path"]) / ("signal_%s.root" % (job)),
+            kwargs["_run_batch_path"],
+            job,
             int(kwargs["plots"]),
             os.path.join(kwargs["_run_path"], "plots", "job_%s" % (job)),
         )
