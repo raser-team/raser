@@ -80,6 +80,27 @@ def fill_histogram(histogram, bins):
         histogram.SetBinContent(index, float(value))
 
 
+def electrode_names(read_out_contact, read_ele_num):
+    """Names of the readout electrodes, in the order of the currents.
+
+    A device that lists every electrode gives their names. One that lists a
+    single electrode repeated over strips or pixels gives that name with
+    the number of the electrode, counted from 1 like the listed ones.
+    """
+    if len(read_out_contact) == read_ele_num:
+        return [contact["name"] for contact in read_out_contact]
+    if len(read_out_contact) == 1:
+        return [
+            "{}{}".format(read_out_contact[0]["name"], number + 1)
+            for number in range(read_ele_num)
+        ]
+    raise ValueError(
+        "{} readout contacts cannot name {} electrodes".format(
+            len(read_out_contact), read_ele_num
+        )
+    )
+
+
 def gain_algorithm(my_d):
     """How the gain of a device is calculated.
 
@@ -141,6 +162,7 @@ class CalCurrent:
             self.x_ele_num = my_d.x_ele_num
             self.y_ele_num = my_d.y_ele_num
         self.read_out_contact = my_d.read_out_contact
+        self.electrodes = electrode_names(self.read_out_contact, self.read_ele_num)
         
         self.electron_system = None
         self.hole_system = None

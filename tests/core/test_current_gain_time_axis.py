@@ -42,7 +42,7 @@ def _lgad():
         x_ele_num=1,
         y_ele_num=1,
         read_ele_num=1,
-        read_out_contact=[{"x_span": 0, "y_span": 0}],
+        read_out_contact=[{"x_span": 0, "y_span": 0, "name": "top"}],
         irradiation_model=None,
         det_model="planar",
         voltage=200.0,
