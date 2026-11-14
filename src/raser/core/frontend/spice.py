@@ -7,6 +7,8 @@ from pathlib import Path
 
 import numpy as np
 
+from .circuit import subcircuit
+
 
 @dataclass(frozen=True)
 class SensorCircuit:
@@ -95,14 +97,15 @@ def _run(netlist_text, raw, dt, bins):
     )
 
 
-def write_netlist(stage_files, electrodes, dt, currents, sensor, load_file, raw):
+def write_netlist(chain, electrodes, dt, currents, sensor, raw):
     """Netlist of one transient run.
 
-    The sensor, the amplifier stages and the load follow one another. Each
-    stage is the subcircuit ``.subckt <stem of its file> in out``; stage_files
-    lists them from the sensor to the load. The load is the subcircuit
-    ``.subckt <stem of load_file> in``. Every electrode gets its own copy of
-    each stage and of the load.
+    The sensor, the amplifier stages and the load follow one another.
+    chain["stages"] holds the stages under their names, from the sensor to the
+    load, and chain["load"] the load, each as circuit.subcircuit describes
+    them: a stage with the ports "in" and "out", the load with the port "in".
+    Every electrode gets its own copy of each stage and of the load.
+    The models a stage or the load brings stand once in the netlist.
     The first stage of the k-th electrode (from 1) reads the output node the
     sensor gives for it; ``out<k>`` is the output of its last stage and the
     input of its load. Ground is node 0.
@@ -123,37 +126,42 @@ def write_netlist(stage_files, electrodes, dt, currents, sensor, load_file, raw)
     currents = np.atleast_2d(np.asarray(currents, dtype=np.float64))
     sources = _current_sources(electrodes, dt, currents, sensor)
 
-    stage_files = [Path(stage_file).resolve() for stage_file in stage_files]
-    load_file = Path(load_file).resolve()
-    chain = [*stage_files, load_file]
-    lines = [" > ".join(["sensor", *(f.stem for f in chain)])]
-    lines.extend(f'.include "{file}"' for file in chain)
+    stages = chain["stages"]
+    if "load" in stages:
+        raise ValueError('A stage cannot be named "load"')
+    lines = [" > ".join(["sensor", *stages, "load"])]
+    models: list[list[str]] = []
+    for part in (*stages.values(), chain["load"]):
+        if "models" in part and part["models"] not in models:
+            models.append(part["models"])
+    for block in models:
+        lines.extend(block)
+    lines.extend(subcircuit(name, stage).rstrip() for name, stage in stages.items())
+    lines.append(subcircuit("load", chain["load"]).rstrip())
     lines.extend(sources)
     outputs = []
     for k, electrode in enumerate(electrodes, start=1):
         # the output of a stage is the input of the next one
         nodes = [sensor.outputs[electrode]]
-        nodes.extend(f"in{k}_{j}" for j in range(2, len(stage_files) + 1))
+        nodes.extend(f"in{k}_{j}" for j in range(2, len(stages) + 1))
         nodes.append(f"out{k}")
-        for j, stage_file in enumerate(stage_files):
-            lines.append(f"X{k}_{j + 1} {nodes[j]} {nodes[j + 1]} {stage_file.stem}")
-        lines.append(f"Xload{k} out{k} {load_file.stem}")
+        for j, name in enumerate(stages):
+            lines.append(f"X{k}_{j + 1} {nodes[j]} {nodes[j + 1]} {name}")
+        lines.append(f"Xload{k} out{k} load")
         outputs.append(f"v(out{k})")
     lines.extend(sensor.lines)
     lines.extend(_transient(dt, currents.shape[1], raw, outputs))
     return "\n".join(lines) + "\n"
 
 
-def solve(stage_files, electrodes, dt, currents, sensor, load_file):
+def solve(chain, electrodes, dt, currents, sensor):
     """Output voltages [V] on the bins of the induced currents, shape
     (electrodes, bins), in the order of electrodes. The arguments are those of
     write_netlist."""
     currents = np.atleast_2d(np.asarray(currents, dtype=np.float64))
     with tempfile.TemporaryDirectory() as folder:
         raw = Path(folder) / "out.raw"
-        netlist = write_netlist(
-            stage_files, electrodes, dt, currents, sensor, load_file, raw
-        )
+        netlist = write_netlist(chain, electrodes, dt, currents, sensor, raw)
         return _run(netlist, raw, dt, currents.shape[1])
 
 

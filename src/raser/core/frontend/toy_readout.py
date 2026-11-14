@@ -21,7 +21,10 @@ import ROOT
 
 from .ngspice import set_ngspice_input
 from .ngspice import set_tmp_cir
-from .noise import synthesize_noise_from_config
+from .noise import load_noise_spectrum
+from .noise import spieler_noise_spectrum
+from .spectral_noise import band_power
+from .spectral_noise import noise_from_spectrum
 from raser.core.seeding import stream
 from raser.supports.output import output
 from raser.supports.output import delete_file
@@ -424,24 +427,52 @@ class Amplifier:
                 tau = math.sqrt(tau_rc * tau_rc + tau_bw * tau_bw)
                 config["pole_frequency_hz"] = 1.0 / (2.0 * math.pi * tau)
 
-        rms_values = []
+        if str(config.get("model", "")).lower() == "spieler":
+            frequencies, density = spieler_noise_spectrum(
+                self.detector_capacitance_pF,
+                voltage_noise_V_per_sqrtHz=float(config.get("voltage_noise_V_per_sqrtHz", 0.0))
+                + float(config.get("voltage_noise_nV_per_sqrtHz", 0.0)) * 1.0e-9,
+                current_noise_A_per_sqrtHz=float(config.get("current_noise_A_per_sqrtHz", 0.0))
+                + float(config.get("current_noise_fA_per_sqrtHz", 0.0)) * 1.0e-15,
+                flicker_voltage_noise_V2_Hz=float(config.get("flicker_voltage_noise_V2_Hz", 0.0))
+                + float(config.get("flicker_voltage_noise_nV2_Hz", 0.0)) * 1.0e-18,
+                transimpedance_ohm=float(config["transimpedance_ohm"]),
+                min_frequency_hz=float(config.get("min_frequency_hz", 1.0)),
+                max_frequency_hz=float(config.get("max_frequency_hz", 1.0e9)),
+                points_per_decade=int(config.get("points_per_decade", 100)),
+                pole_frequency_hz=float(config["pole_frequency_hz"]),
+            )
+        else:
+            frequencies, density = load_noise_spectrum(
+                Path(self.electronics_dir) / config["file"]
+            )
+        # the spectrum in the unit of the waveform, as an amplitude density,
+        # between the frequencies the definition keeps
+        if config.get("density_type", "amplitude") == "power":
+            density = np.sqrt(density)
+        density = density * float(config.get("unit_scale", 1.0))
+        kept = (frequencies >= float(config.get("min_frequency_hz", 0.0))) & (
+            frequencies <= float(config.get("max_frequency_hz", np.inf))
+        )
+        frequencies, density = frequencies[kept], density[kept]
+
         generator = stream("amplifier")
         for histogram in self.amplified_currents:
-            noise, frequencies, density = synthesize_noise_from_config(
-                config,
+            noise = noise_from_spectrum(
+                frequencies,
+                density,
                 histogram.GetNbinsX(),
                 histogram.GetBinWidth(1),
-                base_dir=self.electronics_dir,
-                sensor_capacitance_pF=self.detector_capacitance_pF,
-                seed=int(generator.Integer(2**31 - 1)),
-                mean=float(self.amplifier_parameters.get("noise_avg", 0.0)),
+                np.random.default_rng(int(generator.Integer(2**31 - 1))),
             )
+            noise += float(self.amplifier_parameters.get("noise_avg", 0.0))
             _set_hist_contents(histogram, _hist_contents(histogram) + noise)
-            rms_values.append(float(np.std(noise)))
-            self.noise_spectrum_frequencies_hz = frequencies
-            self.noise_spectrum_density = density
-        if rms_values:
-            self.amplifier_parameters["noise_rms"] = max(rms_values)
+        self.noise_spectrum_frequencies_hz = frequencies
+        self.noise_spectrum_density = density
+        # the rms of the spectrum, not of the bins of one event
+        self.amplifier_parameters["noise_rms"] = float(
+            np.sqrt(band_power(frequencies, density)(frequencies[-1]))
+        )
 
     def judge_threshold_CFD(self):
         threshold = self.amplifier_parameters["threshold"]
@@ -570,6 +601,8 @@ class Amplifier:
             c.cd()
             c.SaveAs(fig_name)
             c.SaveAs(root_name)
+            # the next electrode makes a canvas of the same name
+            c.Close()
 
 
 def main(name):
