@@ -69,11 +69,10 @@ class DevsimField:
             else project_path("field", field_set)
         ) + os.sep
 
-        # Weighting Potential is universal for all irradiation flux
-        # TODO: Net Doping should be here too
+        # The weighting potential of each read-out electrode at the bias of the field.
         WeightingPotentialFiles = []
         for contact in read_out_contact:
-            WeightingPotentialFiles.append(path + "weightingfield/{}/Potential_{}V.pkl".format(contact['name'], 1))
+            WeightingPotentialFiles.append(path + "weightingfield/{}/Potential_{}V.pkl".format(contact['name'], voltage))
 
         # TODO: Select assets only through an explicit field set.
         if irradiation_flux != 0 and field_set == "default" and not explicit_directory:
@@ -192,7 +191,7 @@ class DevsimField:
         self.WeightingPotential = []
         for i in range(len(self.read_out_contact)):
             WeightingPotentialFile = resolve_field_pickle(
-                os.path.dirname(WeightingPotentialFiles[i]), "Potential", 1
+                os.path.dirname(WeightingPotentialFiles[i]), "Potential", self.voltage
             )
             WeightingPotentialNotUniform = self._stored(
                 WeightingPotentialFile,

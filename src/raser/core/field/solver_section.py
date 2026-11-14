@@ -201,9 +201,9 @@ def main (kwargs):
             loop.initial_solver(contact=contact,set_contact_type=None,impact_model=impact_model,irradiation_model=irradiation_model,irradiation_flux=irradiation_flux,)
             loop.loop_solver(circuit_contact=contact,v_trial=v_trial,area_factor=paras["area_factor"],)
 
-            save_milestone.save_milestone(device=device, v=v_trial, path=folder_path,dimension=default_dimension,contact_name=contact,is_wf=is_wf,)
-            # The weighting field does not depend on the bias yet.
-            save_milestone.save_solved(path, "weighting", "any")
+            # Stored as the weighting field of the bias, as Potential_<bias>V.pkl.
+            save_milestone.save_milestone(device=device, v=float(v_goal), path=folder_path,dimension=default_dimension,contact_name=contact,is_wf=is_wf,)
+            save_milestone.save_solved(path, "weighting", float(v_goal))
             devsim.write_devices(file=os.path.join(folder_path,"weightingfield.dat"), type="tecplot")
             
     elif is_wf == False:

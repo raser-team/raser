@@ -13,7 +13,7 @@ FILES = {
     "NetDoping_0V.pkl": "net doping",
     "TrappingRate_p_57V.pkl": "hole trapping rate",
     "TrappingRate_n_57V.pkl": "electron trapping rate",
-    "weightingfield/top/Potential_1V.pkl": "weighting potential of top",
+    "weightingfield/top/Potential_57V.pkl": "weighting potential of top",
 }
 
 

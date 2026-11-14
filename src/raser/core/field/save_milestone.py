@@ -542,7 +542,7 @@ def save_record(path, **entries):
 
 def save_solved(path, asset, at):
     """Add to the "solved" entry of run.json that the folder now holds `asset`
-    at `at`: {"potential": [0, 100.0, 200.0], "weighting": ["any"], ...}."""
+    at `at`: {"potential": [0, 100.0, 200.0], "weighting": [200.0], ...}."""
     record = {}
     if os.path.exists(os.path.join(path, "run.json")):
         with open(os.path.join(path, "run.json")) as file:

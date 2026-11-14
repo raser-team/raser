@@ -143,7 +143,7 @@ def test_devsim_field_loads_unstructured_3d_assets(tmp_path: Path) -> None:
         tmp_path / "TrappingRate_n_57V.pkl", points, np.zeros(5), voltage=57
     )
     _write_field_pickle(
-        tmp_path / "weightingfield" / "center" / "Potential_1V.pkl",
+        tmp_path / "weightingfield" / "center" / "Potential_57V.pkl",
         points,
         potential / 0.03,
         voltage=1,
@@ -220,7 +220,7 @@ def _write_field(directory: Path, points, potential, axes) -> None:
         ("NetDoping_0V.pkl", flat, 0),
         ("TrappingRate_p_57V.pkl", flat, 57),
         ("TrappingRate_n_57V.pkl", flat, 57),
-        ("weightingfield/center/Potential_1V.pkl", flat, 1),
+        ("weightingfield/center/Potential_57V.pkl", flat, 1),
     ):
         _write_field_pickle(directory / name, points, values, voltage=voltage)
     if axes:
