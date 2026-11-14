@@ -19,7 +19,7 @@ import numpy as np
 import ROOT
 from ..current.model import Material
 from .assets import resolve_field_pickle
-from .interpolation import calculate_gradient
+from .gradient import gradient
 from .interpolation import interpolate_1d
 from .interpolation import interpolate_2d
 from .interpolation import interpolate_3d
@@ -182,6 +182,11 @@ class DevsimField:
             )
 
         self.Potential = PotentialUniform
+        # The ends of the mesh along each of its axes, in cm.
+        points = np.asarray(PotentialNotUniform['points'], dtype=float).reshape(
+            len(PotentialNotUniform['points']), -1
+        )
+        self.potential_ranges = list(zip(points.min(axis=0).tolist(), points.max(axis=0).tolist()))
 
     def set_w_p(self, WeightingPotentialFiles):
         self.WeightingPotential = []
@@ -290,7 +295,7 @@ class DevsimField:
         """ 
         x, y, z = x / 1e4, y / 1e4, z / 1e4  # um to cm
 
-        nabla_U = calculate_gradient(self.Potential, self._along_axes(x, y, z))
+        nabla_U = gradient(self.Potential, self._along_axes(x, y, z), self.potential_ranges)
         E = {axis: -1 * component for axis, component in zip(self.axes, nabla_U)}
         return (E.get("x", 0), E.get("y", 0), E.get("z", 0))
 
