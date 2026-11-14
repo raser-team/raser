@@ -186,7 +186,7 @@ def main (kwargs):
     path = str(create_path(field_directory))
     save_milestone.save_record(path, axes=mesh_axes(MyDetector))
 
-    loop=loop_section.loop_section(paras=paras,device=device,region=region,solve_model=solve_model,irradiation=irradiation,with_noise=is_noise,)
+    loop=loop_section.loop_section(paras=paras,device=device,region=region,solve_model=solve_model,irradiation=irradiation,path=path,with_noise=is_noise,)
    
     if is_wf == True:
         v_trial=1
