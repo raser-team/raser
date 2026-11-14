@@ -9,6 +9,7 @@ pytestmark = pytest.mark.ngspice
 
 LOAD_OHM = 50.0
 TAU_S = 10e-12 * LOAD_OHM  # 10 pF sensor on the load
+DT_S = 5e-12
 # the current source sits across the 10 pF, between the electrode and ground
 FULLY_DEPLETED = SensorCircuit(
     lines=("C1 pad 0 10p",), sources=(("pad", "0"),), outputs=("pad",)
@@ -32,7 +33,7 @@ def load(tmp_path):
 
 def _times():
     # starts before zero, as the current of a 2D device does
-    return -1e-9 + (np.arange(1000) + 0.5) * 5e-12
+    return -1e-9 + (np.arange(1000) + 0.5) * DT_S
 
 
 def _rc_step_response(times, current_a):
@@ -44,7 +45,7 @@ def test_rc_step_response_on_the_time_axis_of_the_current(wire, load):
     times = _times()
     step = np.where(times > 0, 1e-6, 0.0)
 
-    voltage = solve([wire], times, [step], FULLY_DEPLETED, load)
+    voltage = solve([wire], DT_S, [step], FULLY_DEPLETED, load)
 
     assert voltage.shape == (1, times.size)
     assert voltage[0] == pytest.approx(_rc_step_response(times, 1e-6), abs=5e-8)
@@ -59,7 +60,7 @@ def test_each_electrode_answers_its_own_current(wire, load):
         outputs=("left", "right"),
     )
 
-    voltage = solve([wire], times, [step, -2 * step], sensor, load)
+    voltage = solve([wire], DT_S, [step, -2 * step], sensor, load)
 
     assert voltage[0] == pytest.approx(_rc_step_response(times, 1e-6), abs=5e-8)
     assert voltage[1] == pytest.approx(_rc_step_response(times, -2e-6), abs=1e-7)
@@ -70,7 +71,7 @@ def test_circuit_is_at_rest_before_a_current_that_fills_the_first_bin(wire, load
     times = (np.arange(1000) + 0.5) * step
     constant = np.full(times.size, 1e-6)
 
-    voltage = solve([wire], times, [constant], FULLY_DEPLETED, load)
+    voltage = solve([wire], step, [constant], FULLY_DEPLETED, load)
 
     # the current starts at the left edge of the first bin, t = 0
     assert voltage[0] == pytest.approx(_rc_step_response(times, 1e-6), abs=5e-8)
@@ -88,7 +89,7 @@ def test_stages_follow_one_another_from_the_sensor_to_the_load(tmp_path, load):
     times = _times()
     step = np.where(times > 0, 1e-6, 0.0)
 
-    voltage = solve([buffer, series], times, [step], FULLY_DEPLETED, load)
+    voltage = solve([buffer, series], DT_S, [step], FULLY_DEPLETED, load)
 
     expected = 1.5 * _rc_step_response(times, 1e-6)
     assert voltage[0] == pytest.approx(expected, abs=7.5e-8)
@@ -105,10 +106,10 @@ def test_short_circuit_current_of_a_sensor_that_is_not_fully_depleted():
         sources=(("pad", "inner"),),
         outputs=("pad",),
     )
-    times = -1e-9 + (np.arange(2000) + 0.5) * 5e-12
+    times = -1e-9 + (np.arange(2000) + 0.5) * DT_S
     step = np.where(times > 0, 1e-6, 0.0)
 
-    into_short = short_circuit_currents(times, [step], sensor)
+    into_short = short_circuit_currents(DT_S, [step], sensor)
 
     after = np.clip(times, 0, None)
     expected = -1e-6 * np.where(times > 0, 1 - 10 / 30 * np.exp(-after / 3e-9), 0.0)

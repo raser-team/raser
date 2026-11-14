@@ -25,22 +25,21 @@ class SensorCircuit:
     outputs: tuple[str, ...]
 
 
-def _current_sources(times, currents, sensor):
-    """Bin width [s] and the lines of the induced current sources.
+def _bin_centres(dt, bins):
+    """Centres of the bins [s], counted from the start of the run, which is
+    one bin before the first bin."""
+    return (np.arange(bins) + 1.5) * dt
+
+
+def _current_sources(dt, currents, sensor):
+    """Lines of the induced current sources.
 
     The run they are written for starts one bin before the first bin, with
     the circuit at rest and no current in that bin.
     """
-    times = np.asarray(times, dtype=np.float64)
-    currents = np.atleast_2d(np.asarray(currents, dtype=np.float64))
-    if currents.shape[1] != times.size:
-        raise ValueError(
-            f"{currents.shape[1]} current samples for {times.size} time bins"
-        )
-    step = (times[-1] - times[0]) / (times.size - 1)
-    if not np.allclose(np.diff(times), step, rtol=1e-6, atol=0.0):
-        raise ValueError("The time axis of the induced currents must be uniform")
-    since_start = times - times[0] + 1.5 * step
+    if not dt > 0:
+        raise ValueError(f"The bin width must be positive, not {dt} s")
+    since_start = _bin_centres(dt, currents.shape[1])
     if not len(sensor.sources) == len(sensor.outputs) == len(currents):
         raise ValueError(
             f"{len(currents)} currents for a sensor with {len(sensor.sources)} "
@@ -50,29 +49,28 @@ def _current_sources(times, currents, sensor):
     for k, current in enumerate(currents, start=1):
         # the bin added in front carries no current: ngspice takes the first
         # value of a source as a current that has been flowing forever
-        points = f"{step / 2:.9g} 0 " + " ".join(
+        points = f"{dt / 2:.9g} 0 " + " ".join(
             f"{t:.9g} {i:.9g}" for t, i in zip(since_start, current)
         )
         source_from, source_to = sensor.sources[k - 1]
         lines.append(f"I{k} {source_from} {source_to} PWL({points})")
-    return step, lines
+    return lines
 
 
-def _transient(step, bins, raw, vectors):
-    """Control lines of the run: one bin more than the time axis has."""
+def _transient(dt, bins, raw, vectors):
+    """Control lines of the run: one bin more than the currents have."""
     return [
         ".control",
-        f"tran {step:.9g} {step * (bins + 1):.9g}",
+        f"tran {dt:.9g} {dt * (bins + 1):.9g}",
         f"wrdata {raw} {' '.join(vectors)}",
         ".endc",
         ".end",
     ]
 
 
-def _run(netlist_text, raw, times):
+def _run(netlist_text, raw, dt, bins):
     """Run ngspice on the netlist and return the vectors it wrote to raw on
     the bins of the induced currents, shape (vectors, bins)."""
-    times = np.asarray(times, dtype=np.float64)
     netlist = Path(raw).with_name("run.cir")
     netlist.write_text(netlist_text, encoding="utf-8")
     subprocess.run(
@@ -84,8 +82,7 @@ def _run(netlist_text, raw, times):
     data = np.loadtxt(raw, dtype=np.float64, ndmin=2)
     # wrdata writes a time column before each vector
     solved_times = data[:, 0]
-    step = (times[-1] - times[0]) / (times.size - 1)
-    since_start = times - times[0] + 1.5 * step
+    since_start = _bin_centres(dt, bins)
     return np.array(
         [
             np.interp(since_start, solved_times, data[:, column])
@@ -94,7 +91,7 @@ def _run(netlist_text, raw, times):
     )
 
 
-def write_netlist(stage_files, times, currents, sensor, load_file, raw):
+def write_netlist(stage_files, dt, currents, sensor, load_file, raw):
     """Netlist of one transient run.
 
     The sensor, the amplifier stages and the load follow one another. Each
@@ -106,18 +103,19 @@ def write_netlist(stage_files, times, currents, sensor, load_file, raw):
     gives for it; ``out<k>`` is the output of its last stage and the input of
     its load. Ground is node 0.
 
-    times : bin centres of the induced currents [s], uniform.
-    currents : induced currents [A], shape (electrodes, bins). A positive
-        current flows through the source from the first to the second node
-        the sensor gives for the electrode.
+    dt : width of a time bin of the induced currents [s].
+    currents : induced currents [A], shape (electrodes, bins), each value the
+        mean current in its bin. A positive current flows through the source
+        from the first to the second node the sensor gives for the electrode.
     sensor : SensorCircuit with as many electrodes as there are currents.
     raw : file ngspice writes the ``v(out<k>)`` to.
 
     The run starts one bin before the first bin, with the circuit at rest and
-    no current in that bin, and lasts to the end of the time axis, with the
+    no current in that bin, and lasts to the end of the last bin, with the
     bin width as step.
     """
-    step, sources = _current_sources(times, currents, sensor)
+    currents = np.atleast_2d(np.asarray(currents, dtype=np.float64))
+    sources = _current_sources(dt, currents, sensor)
 
     stage_files = [Path(stage_file).resolve() for stage_file in stage_files]
     load_file = Path(load_file).resolve()
@@ -136,40 +134,43 @@ def write_netlist(stage_files, times, currents, sensor, load_file, raw):
         lines.append(f"Xload{k} out{k} {load_file.stem}")
         outputs.append(f"v(out{k})")
     lines.extend(sensor.lines)
-    lines.extend(_transient(step, len(times), raw, outputs))
+    lines.extend(_transient(dt, currents.shape[1], raw, outputs))
     return "\n".join(lines) + "\n"
 
 
-def solve(stage_files, times, currents, sensor, load_file):
+def solve(stage_files, dt, currents, sensor, load_file):
     """Output voltages [V] on the bins of the induced currents, shape
     (electrodes, bins). The arguments are those of write_netlist."""
+    currents = np.atleast_2d(np.asarray(currents, dtype=np.float64))
     with tempfile.TemporaryDirectory() as folder:
         raw = Path(folder) / "out.raw"
-        netlist = write_netlist(stage_files, times, currents, sensor, load_file, raw)
-        return _run(netlist, raw, times)
+        netlist = write_netlist(stage_files, dt, currents, sensor, load_file, raw)
+        return _run(netlist, raw, dt, currents.shape[1])
 
 
-def write_short_circuit_netlist(times, currents, sensor, raw):
+def write_short_circuit_netlist(dt, currents, sensor, raw):
     """Netlist of one transient run of the sensor alone, with each of its
-    outputs shorted to ground. times, currents and sensor are those of
+    outputs shorted to ground. dt, currents and sensor are those of
     write_netlist; raw is the file ngspice writes the currents in the shorts
     to."""
-    step, sources = _current_sources(times, currents, sensor)
+    currents = np.atleast_2d(np.asarray(currents, dtype=np.float64))
+    sources = _current_sources(dt, currents, sensor)
     lines = ["sensor > short", *sources]
     shorts = []
     for k, output in enumerate(sensor.outputs, start=1):
         lines.append(f"Vshort{k} {output} 0 0")
         shorts.append(f"i(Vshort{k})")
     lines.extend(sensor.lines)
-    lines.extend(_transient(step, len(times), raw, shorts))
+    lines.extend(_transient(dt, currents.shape[1], raw, shorts))
     return "\n".join(lines) + "\n"
 
 
-def short_circuit_currents(times, currents, sensor):
+def short_circuit_currents(dt, currents, sensor):
     """Currents [A] the sensor drives into a short at each of its outputs, on
     the bins of the induced currents, shape (electrodes, bins). A positive
     current flows from the output node into the short."""
+    currents = np.atleast_2d(np.asarray(currents, dtype=np.float64))
     with tempfile.TemporaryDirectory() as folder:
         raw = Path(folder) / "out.raw"
-        netlist = write_short_circuit_netlist(times, currents, sensor, raw)
-        return _run(netlist, raw, times)
+        netlist = write_short_circuit_netlist(dt, currents, sensor, raw)
+        return _run(netlist, raw, dt, currents.shape[1])
