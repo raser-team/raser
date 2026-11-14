@@ -101,17 +101,14 @@ def electrode_names(read_out_contact, read_ele_num):
     )
 
 
-def gain_algorithm(my_d):
-    """How the gain of a device is calculated.
+def gain_algorithm(my_f):
+    """How the gain is calculated in a field.
 
-    The device file may name it; otherwise carriers multiply along their
-    drift paths in three dimensions and by the planar integral elsewhere.
+    A field of one dimension is that of a planar device, whose gain is the
+    planar integral; in fields of more dimensions carriers multiply along
+    their drift paths.
     """
-    default = "local_path" if my_d.dimension == 3 else "planar_integral"
-    algorithm = getattr(my_d, "gain_algorithm", default)
-    if algorithm not in ("planar_integral", "local_path"):
-        raise ValueError("Unsupported gain_algorithm: {}".format(algorithm))
-    return algorithm
+    return "planar_integral" if len(my_f.axes) == 1 else "local_path"
 
 
 class CalCurrent:
@@ -135,7 +132,7 @@ class CalCurrent:
         self.keep_drift_paths = bool(keep_drift_paths)
         self.diffusion = bool(diffusion)
         self.pairs = float(sum(ionized_pairs))  # electron-hole pairs given, before gain
-        if my_d.has_avalanche and gain_algorithm(my_d) == "local_path":
+        if my_d.has_avalanche and gain_algorithm(my_f) == "local_path":
             self.keep_drift_paths = True
         self._run_current_calculation(my_d, my_f, ionized_pairs, track_position)
 
@@ -357,7 +354,7 @@ class CalCurrentGain(CalCurrent):
         # the gain carriers: where and when they start, and how many pairs
         gain_starts = []
         gain_pairs = []
-        if gain_algorithm(my_d) == "local_path":
+        if gain_algorithm(my_f) == "local_path":
             self._build_local_gain_carriers(my_d, my_f, my_current, gain_starts, gain_pairs)
         else:
             self._build_planar_gain_carriers(my_d, my_f, my_current, gain_starts, gain_pairs)

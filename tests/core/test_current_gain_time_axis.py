@@ -12,6 +12,8 @@ GAIN = 3.0
 class _UniformField:
     """10 kV/cm along z; weighting potential falls linearly from z = 0."""
 
+    axes = ("z",)
+
     def get_e_field_cached(self, x, y, z):
         return (0.0, 0.0, 1.0e4)
 

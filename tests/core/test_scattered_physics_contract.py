@@ -202,15 +202,10 @@ def test_planar_gain_of_a_uniform_gain_layer_matches_the_closed_form() -> None:
     assert len(calls) == asked
 
 
-def test_gain_follows_drift_paths_in_3d_and_the_planar_integral_elsewhere() -> None:
-    assert gain_algorithm(SimpleNamespace(dimension=3)) == "local_path"
-    assert gain_algorithm(SimpleNamespace(dimension=1)) == "planar_integral"
-    assert (
-        gain_algorithm(SimpleNamespace(dimension=1, gain_algorithm="local_path"))
-        == "local_path"
-    )
-    with pytest.raises(ValueError, match="gain_algorithm"):
-        gain_algorithm(SimpleNamespace(dimension=1, gain_algorithm="planar"))
+def test_gain_is_the_planar_integral_in_one_dimension_and_follows_drift_paths_elsewhere() -> None:
+    assert gain_algorithm(SimpleNamespace(axes=("z",))) == "planar_integral"
+    assert gain_algorithm(SimpleNamespace(axes=("x", "z"))) == "local_path"
+    assert gain_algorithm(SimpleNamespace(axes=("x", "y", "z"))) == "local_path"
 
 
 def _write_field(directory: Path, points, potential, axes) -> None:
