@@ -155,3 +155,30 @@ def test_a_pair_collected_between_two_electrodes_induces_its_charge_on_each() ->
     assert induced_charges(electron, -100.0, _Field(), 0).sum() / e0 == pytest.approx(
         -100.0 * (0.86 - 0.5)
     )
+
+
+class _Strips(_Field):
+    """Strips 30 um apart along x; the field holds the one centred at x = 50 um.
+
+    Its weighting potential falls linearly in depth under the strip, 20 um
+    wide, and is zero beside it.
+    """
+
+    def get_w_p_cached(self, x, y, z, electrode):
+        return 1.0 - z / 50.0 if abs(x - 50.0) < 10.0 else 0.0
+
+
+def test_a_hole_under_the_next_strip_induces_on_that_strip_not_on_the_one_of_the_field() -> None:
+    hole, _ = drift(
+        80.0, 50.0, 25.0, 0.0, 100.0, _device(), _Strips(), _mobility, 3.0e-11, diffusion=False
+    )
+    e0 = 1.60217733e-19  # the charges are compared in units of it
+
+    assert induced_charges(hole, 100.0, _Strips(), 0).sum() / e0 == pytest.approx(0.0)
+    assert induced_charges(hole, 100.0, _Strips(), 0, offset=(30.0, 0.0)).sum() / e0 == (
+        pytest.approx(100.0 * -0.5)
+    )
+    assert induced_charges(hole, 100.0, _Strips(), 0, offset=(-30.0, 0.0)).sum() / e0 == (
+        pytest.approx(0.0)
+    )
+
