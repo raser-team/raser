@@ -42,6 +42,15 @@ def _empty_devsim():
         devsim.set_parameter(name=name, value=value)
 
 
+def _solves_itself(device_name):
+    """Whether the device names the HEMT transport solver, which sweeps its
+    own biases and takes none of the parts of a field command."""
+    from raser.core.device.build_device import device_json
+
+    physics = device_json(device_name).get("hemt_physics", {})
+    return physics.get("transport_model") == "drift_diffusion_v1"
+
+
 def solve(kwargs):
     """The parts that are named, in this order: -iv the field up to its bias
     with its IV, -cv the capacitance at one bias the field was saved at, -wf
@@ -49,6 +58,24 @@ def solve(kwargs):
     with its IV and its CV along the ramp, then the weighting field."""
     if kwargs.get("input") is not None or kwargs.get("dry_run"):
         return command.main(kwargs)
+    # Temporary: the HEMT solver is outside this command for now and is only
+    # passed through here; this goes when it is taken into the field solve.
+    if _solves_itself(kwargs["target"]):
+        dropped = [
+            option
+            for option, asked in (
+                ("-cv", kwargs["cv"] is not None),
+                ("-wf", kwargs["wf"]),
+                ("-noise", kwargs["noise"]),
+            )
+            if asked
+        ]
+        print(
+            f"{kwargs['target']} is solved by its own transport solver: only its"
+            " DC sweep is run, without CV, weighting field or noise"
+            + (f"; {' '.join(dropped)} dropped" if dropped else "")
+        )
+        return command.main({**kwargs, "cv": False, "wf": False, "noise": False})
     if kwargs["umf"]:
         # Loading it makes UMFPACK the linear solver of devsim in this process,
         # where devsim would have taken MKL; without MKL devsim loads it itself.
