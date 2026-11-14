@@ -4,6 +4,7 @@ import pytest
 from raser.core.frontend.planar_sensor import planar_sensor
 from raser.core.frontend.planar_sensor import undepleted_layer
 from raser.core.frontend.spice import short_circuit_currents
+from raser.core.frontend.spice import solve
 
 pytestmark = pytest.mark.ngspice
 
@@ -58,3 +59,40 @@ def test_short_circuit_current_of_a_fully_depleted_sensor_is_the_induced_current
     )
 
     assert into_short[0] == pytest.approx(step, abs=1e-9)
+
+
+def test_coupling_capacitance_shares_the_current_with_the_depleted_layer():
+    # 10 pF depleted layer, 100 Ohm to the bias, 90 pF to the read-out, which
+    # is shorted: of a step I the read-out gets I 90 / (10 + 90) at first, and
+    # the bias resistance takes it over with tau = 100 Ohm (10 pF + 90 pF)
+    sensor = planar_sensor(
+        "top", 10e-12, bias_resistance_ohm=100.0, coupling_capacitance_f=90e-12
+    )
+    times, step = _step()
+
+    into_short = short_circuit_currents(["top"], DT_S, [step], sensor)
+
+    after = np.clip(times, 0, None)
+    expected = 1e-6 * np.where(times > 0, 0.9 * np.exp(-after / 10e-9), 0.0)
+    off_the_jump = (times < 0) | (times > DT_S)
+    assert into_short[0][off_the_jump] == pytest.approx(
+        expected[off_the_jump], abs=1e-9
+    )
+
+
+def test_bias_resistance_lies_between_the_electrode_and_ground(tmp_path):
+    # read out DC-coupled by a wire on a 50 Ohm load: the electrode sees the
+    # 50 Ohm bias resistance parallel to the load, 25 Ohm, with its 10 pF
+    wire = tmp_path / "wire.cir"
+    wire.write_text(".subckt wire in out\nR1 in out 1u\n.ends wire\n")
+    load = tmp_path / "resistor.cir"
+    load.write_text(".subckt resistor in\nR1 in 0 50\n.ends resistor\n")
+    sensor = planar_sensor("top", 10e-12, bias_resistance_ohm=50.0)
+    times, step = _step()
+
+    voltage = solve([wire], ["top"], DT_S, [step], sensor, load)
+
+    after = np.clip(times, 0, None)
+    expected = 1e-6 * 25.0 * (1 - np.exp(-after / (25.0 * 10e-12)))
+    off_the_jump = (times < 0) | (times > DT_S)
+    assert voltage[0][off_the_jump] == pytest.approx(expected[off_the_jump], abs=2.5e-8)
