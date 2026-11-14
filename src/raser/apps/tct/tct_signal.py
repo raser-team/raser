@@ -48,6 +48,16 @@ def main(kwargs):
     """
     start = time.time()
 
+    # A run without seeds is started by every command. lifecycle marks a
+    # finished job with batch/job_0.done and takes the mark away when the
+    # run is out of date.
+    if os.path.exists(os.path.join(kwargs["_run_batch_path"], "job_0.done")):
+        print("this run is complete: nothing left to do")
+        return
+    currents_path = os.path.join(kwargs["_run_batch_path"], "currents_0.h5")
+    if os.path.exists(currents_path):  # of a run that is out of date
+        os.remove(currents_path)
+
     det_name = kwargs['det_name']
     my_d = bdv.Detector(det_name, kwargs["_files"]["device"])
     files = kwargs["_files"]
@@ -65,21 +75,9 @@ def main(kwargs):
     )
     my_l = LaserInjection(my_d, laser_dic)
 
-    my_current = ccrt.CalCurrentLaser(my_d, my_f, my_l)
-    job = kwargs.get("job_index") or 0
-    currents_path = os.path.join(kwargs["_run_batch_path"], "currents_%s.h5" % (job))
-    if os.path.exists(currents_path):  # of an earlier start of this job
-        os.remove(currents_path)
-    # One laser pulse is the one event of the job.
-    append_currents(
-        currents_path,
-        my_current.electrodes,
-        my_current.t_bin,
-        EventCurrents(
-            0, my_current.t_start, my_current.current, my_current.charge, my_current.pairs
-        ),
-    )
-    path = os.path.join(kwargs["_run_path"], "plots", "job_%s" % (job))
+    # Without diffusion the drift draws no random number.
+    my_current = ccrt.CalCurrentLaser(my_d, my_f, my_l, diffusion=False)
+    path = os.path.join(kwargs["_run_path"], "plots")
     os.makedirs(path, exist_ok=True)
 
     ele_current = Amplifier(
@@ -93,6 +91,15 @@ def main(kwargs):
     my_l.draw_nocarrier3D(path)
     my_l.draw_nocarrier2D(path)
 
+    # One laser pulse is the one event of the run.
+    append_currents(
+        currents_path,
+        my_current.electrodes,
+        my_current.t_bin,
+        EventCurrents(
+            0, my_current.t_start, my_current.current, my_current.charge, my_current.pairs
+        ),
+    )
     print("total time used:%s"%(time.time()-start))
 
 if __name__ == '__main__':

@@ -67,6 +67,7 @@ SIGNAL = Workflow(
     components=COMPONENTS,
     in_file=IN_FILE,
     job=_signal_job,
+    seeds=False,
 )
 POSITION_SIGNAL = Workflow(
     name="tct position_signal",
