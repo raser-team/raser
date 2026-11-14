@@ -23,8 +23,9 @@ def write_netlist(circuit_file, times, currents, sensor, load_ohm, raw):
     load_ohm : resistance from each ``out<k>`` to ground [Ohm].
     raw : file ngspice writes the ``v(out<k>)`` to.
 
-    The run starts at the left edge of the first bin and lasts the length of
-    the time axis, with the bin width as step.
+    The run starts one bin before the first bin, with the circuit at rest and
+    no current in that bin, and lasts to the end of the time axis, with the
+    bin width as step.
     """
     times = np.asarray(times, dtype=np.float64)
     currents = np.atleast_2d(np.asarray(currents, dtype=np.float64))
@@ -35,13 +36,17 @@ def write_netlist(circuit_file, times, currents, sensor, load_ohm, raw):
     step = (times[-1] - times[0]) / (times.size - 1)
     if not np.allclose(np.diff(times), step, rtol=1e-6, atol=0.0):
         raise ValueError("The time axis of the induced currents must be uniform")
-    since_start = times - times[0] + step / 2
+    since_start = times - times[0] + 1.5 * step
 
     circuit_file = Path(circuit_file).resolve()
     lines = [f"{circuit_file.stem} with sensor and load", f'.include "{circuit_file}"']
     outputs = []
     for k, current in enumerate(currents, start=1):
-        points = " ".join(f"{t:.9g} {i:.9g}" for t, i in zip(since_start, current))
+        # the bin added in front carries no current: ngspice takes the first
+        # value of a source as a current that has been flowing forever
+        points = f"{step / 2:.9g} 0 " + " ".join(
+            f"{t:.9g} {i:.9g}" for t, i in zip(since_start, current)
+        )
         lines.append(f"I{k} s{k} 0 PWL({points})")
         lines.append(f"Xafe{k} in{k} out{k} {circuit_file.stem}")
         lines.append(f"Rload{k} out{k} 0 {load_ohm:.9g}")
@@ -50,7 +55,7 @@ def write_netlist(circuit_file, times, currents, sensor, load_ohm, raw):
     lines.extend(
         [
             ".control",
-            f"tran {step:.9g} {step * times.size:.9g}",
+            f"tran {step:.9g} {step * (times.size + 1):.9g}",
             f"wrdata {raw} {' '.join(outputs)}",
             ".endc",
             ".end",
@@ -80,7 +85,7 @@ def solve(circuit_file, times, currents, sensor, load_ohm):
     # wrdata writes a time column before each vector
     solved_times = data[:, 0]
     step = (times[-1] - times[0]) / (times.size - 1)
-    since_start = times - times[0] + step / 2
+    since_start = times - times[0] + 1.5 * step
     return np.array(
         [
             np.interp(since_start, solved_times, data[:, column])

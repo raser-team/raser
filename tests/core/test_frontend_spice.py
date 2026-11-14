@@ -46,3 +46,14 @@ def test_each_electrode_answers_its_own_current(wire):
 
     assert voltage[0] == pytest.approx(_rc_step_response(times, 1e-6), abs=5e-8)
     assert voltage[1] == pytest.approx(_rc_step_response(times, -2e-6), abs=1e-7)
+
+
+def test_circuit_is_at_rest_before_a_current_that_fills_the_first_bin(wire):
+    step = 5e-12
+    times = (np.arange(1000) + 0.5) * step
+    constant = np.full(times.size, 1e-6)
+
+    voltage = solve(wire, times, [constant], ["C1 s1 0 10p", "Rj1 s1 in1 1u"], LOAD_OHM)
+
+    # the current starts at the left edge of the first bin, t = 0
+    assert voltage[0] == pytest.approx(_rc_step_response(times, 1e-6), abs=5e-8)
