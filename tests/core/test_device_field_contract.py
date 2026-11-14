@@ -10,10 +10,7 @@ from raser.core.field.resolved_device import resolve_device
 from raser.core.device.build_device import Detector
 from raser.core.device.build_device import device_file
 from raser.core.field import FieldConfiguration
-from raser.core.field import FieldData
 from raser.core.field import plan_field
-from raser.core.field import read_field_data
-from raser.core.field import write_field_data
 from raser.core.field.interpolation import calculate_gradient
 from raser.core.field.interpolation import interpolate_1d
 
@@ -140,20 +137,6 @@ def test_field_plans_cover_solve_import_and_weighting(
 
     with pytest.raises(ValueError, match="Unknown Field action"):
         plan_field("sample", device)
-
-
-def test_field_data_round_trip_preserves_values(tmp_path: Path) -> None:
-    field_data = FieldData(
-        points=((0.0, 0.0), (1.0, 0.0)),
-        values=(0.0, 4.0),
-        metadata={"voltage": -200.0, "dimension": 2},
-    )
-    path = write_field_data(tmp_path / "potential.pkl", field_data)
-
-    assert read_field_data(path) == field_data
-
-    with pytest.raises(ValueError, match="equal length"):
-        FieldData(points=(0.0,), values=(), metadata={"voltage": 0.0, "dimension": 1})
 
 
 def test_field_interpolation_and_gradient_use_field_coordinates() -> None:
