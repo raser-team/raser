@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from raser.core.frontend.spice import SensorCircuit
 from raser.core.frontend.spice import solve
 
 pytestmark = pytest.mark.ngspice
@@ -8,7 +9,9 @@ pytestmark = pytest.mark.ngspice
 LOAD_OHM = 50.0
 TAU_S = 10e-12 * LOAD_OHM  # 10 pF sensor on the load
 # the current source sits across the 10 pF, between the electrode and ground
-FULLY_DEPLETED = ["C1 s1 0 10p", "Rj1 s1 in1 1u", "Rr1 r1 0 1u"]
+FULLY_DEPLETED = SensorCircuit(
+    lines=("C1 pad 0 10p",), sources=(("pad", "0"),), outputs=("pad",)
+)
 
 
 @pytest.fixture
@@ -42,7 +45,11 @@ def test_rc_step_response_on_the_time_axis_of_the_current(wire):
 def test_each_electrode_answers_its_own_current(wire):
     times = _times()
     step = np.where(times > 0, 1e-6, 0.0)
-    sensor = FULLY_DEPLETED + ["C2 s2 0 10p", "Rj2 s2 in2 1u", "Rr2 r2 0 1u"]
+    sensor = SensorCircuit(
+        lines=("C1 left 0 10p", "C2 right 0 10p"),
+        sources=(("left", "0"), ("right", "0")),
+        outputs=("left", "right"),
+    )
 
     voltage = solve([wire], times, [step, -2 * step], sensor, LOAD_OHM)
 
@@ -85,13 +92,11 @@ def test_current_source_sits_between_two_sensor_nodes(wire):
     # there to ground, the current source across C1. Into a short the
     # electrode current after a step I is I (1 - C1 / (C1 + C2) exp(-t / tau)),
     # tau = R2 (C1 + C2).
-    sensor = [
-        "C1 in1 inner 10p",
-        "R2 inner 0 100",
-        "C2 inner 0 20p",
-        "Rj1 s1 in1 1u",
-        "Rr1 r1 inner 1u",
-    ]
+    sensor = SensorCircuit(
+        lines=("C1 pad inner 10p", "R2 inner 0 100", "C2 inner 0 20p"),
+        sources=(("pad", "inner"),),
+        outputs=("pad",),
+    )
     short_ohm = 0.1
     times = -1e-9 + (np.arange(2000) + 0.5) * 5e-12
     step = np.where(times > 0, 1e-3, 0.0)

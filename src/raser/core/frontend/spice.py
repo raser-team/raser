@@ -2,9 +2,27 @@
 
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+
+
+@dataclass(frozen=True)
+class SensorCircuit:
+    """The sensor as it stands in the netlist: once, for all electrodes.
+
+    lines : SPICE lines of its elements. Ground is node 0.
+    sources : for each electrode the two nodes (from, to) of its induced
+        current source.
+    outputs : for each electrode the node its first amplifier stage reads.
+
+    The node names ``in<k>_<j>`` and ``out<k>`` belong to the stages.
+    """
+
+    lines: tuple[str, ...]
+    sources: tuple[tuple[str, str], ...]
+    outputs: tuple[str, ...]
 
 
 def write_netlist(stage_files, times, currents, sensor, load_ohm, raw):
@@ -14,15 +32,15 @@ def write_netlist(stage_files, times, currents, sensor, load_ohm, raw):
     stage is the subcircuit ``.subckt <stem of its file> in out``; stage_files
     lists them from the sensor to the load, and every electrode gets its own
     copy of each.
-    Electrode k (from 1) has the nodes ``s<k>`` and ``r<k>``, the two ends of
-    its induced current source, ``in<k>``, the input of its first stage, and
-    ``out<k>``, the output of its last stage. Ground is node 0.
+    The first stage of electrode k (from 1) reads the output node the sensor
+    gives for it; ``out<k>`` is the output of its last stage. Ground is
+    node 0.
 
     times : bin centres of the induced currents [s], uniform.
     currents : induced currents [A], shape (electrodes, bins). A positive
-        current flows from ``s<k>`` to ``r<k>`` through the source.
-    sensor : SPICE lines of the sensor between the ``s<k>``, the ``r<k>``, the
-        ``in<k>`` and ground.
+        current flows through the source from the first to the second node
+        the sensor gives for the electrode.
+    sensor : SensorCircuit with as many electrodes as there are currents.
     load_ohm : resistance from each ``out<k>`` to ground [Ohm].
     raw : file ngspice writes the ``v(out<k>)`` to.
 
@@ -40,6 +58,11 @@ def write_netlist(stage_files, times, currents, sensor, load_ohm, raw):
     if not np.allclose(np.diff(times), step, rtol=1e-6, atol=0.0):
         raise ValueError("The time axis of the induced currents must be uniform")
     since_start = times - times[0] + 1.5 * step
+    if not len(sensor.sources) == len(sensor.outputs) == len(currents):
+        raise ValueError(
+            f"{len(currents)} currents for a sensor with {len(sensor.sources)} "
+            f"current sources and {len(sensor.outputs)} outputs"
+        )
 
     stage_files = [Path(stage_file).resolve() for stage_file in stage_files]
     lines = [" > ".join(["sensor", *(f.stem for f in stage_files), "load"])]
@@ -51,16 +74,17 @@ def write_netlist(stage_files, times, currents, sensor, load_ohm, raw):
         points = f"{step / 2:.9g} 0 " + " ".join(
             f"{t:.9g} {i:.9g}" for t, i in zip(since_start, current)
         )
-        lines.append(f"I{k} s{k} r{k} PWL({points})")
+        source_from, source_to = sensor.sources[k - 1]
+        lines.append(f"I{k} {source_from} {source_to} PWL({points})")
         # the output of a stage is the input of the next one
-        nodes = [f"in{k}"]
+        nodes = [sensor.outputs[k - 1]]
         nodes.extend(f"in{k}_{j}" for j in range(2, len(stage_files) + 1))
         nodes.append(f"out{k}")
         for j, stage_file in enumerate(stage_files):
             lines.append(f"X{k}_{j + 1} {nodes[j]} {nodes[j + 1]} {stage_file.stem}")
         lines.append(f"Rload{k} out{k} 0 {load_ohm:.9g}")
         outputs.append(f"v(out{k})")
-    lines.extend(sensor)
+    lines.extend(sensor.lines)
     lines.extend(
         [
             ".control",
