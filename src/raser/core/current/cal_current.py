@@ -10,7 +10,6 @@ Description:
 
 import math
 import os
-from array import array
 import csv
 import logging
 import numpy as np
@@ -19,6 +18,7 @@ ROOT.gROOT.SetBatch(True)
 
 from .model import Material
 from .carrier import VectorizedCarrierSystem
+from . import draw
 
 from ..interaction.carrier_list import CarrierListFromG4P
 from ..interaction.toy_mip import ToyMIPLineSource
@@ -407,128 +407,21 @@ class CalCurrent:
                     )
 
     def draw_currents(self, path, tag=""):
-        """
-        @description:
-            Save current in root file
-        @param:
-            None     
-        @Returns:
-            None
-        @Modify:
-            2021/08/31
-        """
-        for read_ele_num in range(self.read_ele_num):
-            c=ROOT.TCanvas("c","canvas1",1600,1300)
-            c.cd()
-            c.Update()
-            c.SetLeftMargin(0.25)
-            # c.SetTopMargin(0.12)
-            c.SetRightMargin(0.15)
-            c.SetBottomMargin(0.17)
-            ROOT.gStyle.SetOptStat(ROOT.kFALSE)
-            ROOT.gStyle.SetOptStat(0)
-
-            #self.sum_cu.GetXaxis().SetTitleOffset(1.2)
-            #self.sum_cu.GetXaxis().SetTitleSize(0.05)
-            #self.sum_cu.GetXaxis().SetLabelSize(0.04)
-            self.sum_cu[read_ele_num].GetXaxis().SetNdivisions(510)
-            #self.sum_cu.GetYaxis().SetTitleOffset(1.1)
-            #self.sum_cu.GetYaxis().SetTitleSize(0.05)
-            #self.sum_cu.GetYaxis().SetLabelSize(0.04)
-            self.sum_cu[read_ele_num].GetYaxis().SetNdivisions(505)
-            #self.sum_cu.GetXaxis().CenterTitle()
-            #self.sum_cu.GetYaxis().CenterTitle() 
-            self.sum_cu[read_ele_num].GetXaxis().SetTitle("Time [s]")
-            self.sum_cu[read_ele_num].GetYaxis().SetTitle("Current [A]")
-            self.sum_cu[read_ele_num].GetXaxis().SetLabelSize(0.08)
-            self.sum_cu[read_ele_num].GetXaxis().SetTitleSize(0.08)
-            self.sum_cu[read_ele_num].GetYaxis().SetLabelSize(0.08)
-            self.sum_cu[read_ele_num].GetYaxis().SetTitleSize(0.08)
-            self.sum_cu[read_ele_num].GetYaxis().SetTitleOffset(1.2)
-            self.sum_cu[read_ele_num].SetTitle("")
-            self.sum_cu[read_ele_num].SetNdivisions(5)
-            self.sum_cu[read_ele_num].Draw("HIST")
-            self.positive_cu[read_ele_num].Draw("SAME HIST")
-            self.negative_cu[read_ele_num].Draw("SAME HIST")
-            self.sum_cu[read_ele_num].Draw("SAME HIST")
-
-            self.positive_cu[read_ele_num].SetLineColor(877)#kViolet-3
-            self.negative_cu[read_ele_num].SetLineColor(600)#kBlue
-            self.sum_cu[read_ele_num].SetLineColor(418)#kGreen+2
-
-            self.positive_cu[read_ele_num].SetLineWidth(2)
-            self.negative_cu[read_ele_num].SetLineWidth(2)
-            self.sum_cu[read_ele_num].SetLineWidth(2)
-            c.Update()
-
-            if hasattr(self, "gain_current"):
-                self.gain_current.positive_cu[read_ele_num].Draw("SAME HIST")
-                self.gain_current.negative_cu[read_ele_num].Draw("SAME HIST")
-                self.gain_current.positive_cu[read_ele_num].SetLineColor(617)#kMagneta+1
-                self.gain_current.negative_cu[read_ele_num].SetLineColor(867)#kAzure+7
-                self.gain_current.positive_cu[read_ele_num].SetLineWidth(2)
-                self.gain_current.negative_cu[read_ele_num].SetLineWidth(2)
-
-            legend = ROOT.TLegend(0.5, 0.2, 0.8, 0.5)
-            legend.AddEntry(self.negative_cu[read_ele_num], "electron", "l")
-            legend.AddEntry(self.positive_cu[read_ele_num], "hole", "l")
-
-            if hasattr(self, "gain_current"):
-                legend.AddEntry(self.gain_current.negative_cu[read_ele_num], "electron gain", "l")
-                legend.AddEntry(self.gain_current.positive_cu[read_ele_num], "hole gain", "l")
-
-            legend.AddEntry(self.sum_cu[read_ele_num], "total", "l")
-            
-            legend.SetBorderSize(0)
-            #legend.SetTextFont(43)
-            legend.SetTextSize(0.08)
-            legend.Draw("same")
-            c.Update()
-
-            c.SaveAs(path+'/'+tag+"No_"+str(read_ele_num+1)+"electrode"+"_basic_infor.pdf")
-            c.SaveAs(path+'/'+tag+"No_"+str(read_ele_num+1)+"electrode"+"_basic_infor.root")
-            del c
+        gain = getattr(self, "gain_current", None)
+        draw.draw_currents(
+            path, self.t_start, (self.t_end - self.t_start) / self.n_bin,
+            self.current, self.hole_current, self.electron_current,
+            None if gain is None else gain.hole_bins[:, 1:-1],
+            None if gain is None else gain.electron_bins[:, 1:-1],
+            tag=tag,
+        )
 
     def charge_collection_strip(self, path):
-        charge=array('d')
-        x=array('d')
-        for i in range(self.read_ele_num):
-            x.append(i+1)
-            sum_charge=0
-            for j in range(self.n_bin):
-                sum_charge=sum_charge+self.sum_cu[i].GetBinContent(j)*self.t_bin
-            charge.append(sum_charge/1.6e-19)
-        logger.info("Collected charge per electrode (e): %s", list(charge))
-        n=int(len(charge))
-        c1=ROOT.TCanvas("c1","canvas1",1000,1000)
-        cce=ROOT.TGraph(n,x,charge)
-        cce.SetMarkerStyle(3)
-        cce.Draw()
-        cce.SetTitle("Charge Collection Efficiency")
-        cce.GetXaxis().SetTitle("elenumber")
-        cce.GetYaxis().SetTitle("charge[Coulomb]")
-        c1.SaveAs(path+"/cce.pdf")
-        c1.SaveAs(path+"/cce.root")
+        draw.charge_collection_strip(path, self.charge)
 
     def charge_collection_pixel(self, path):
-        charge = []
-        c1=ROOT.TCanvas("c1","canvas1",1000,1000)
-        cce=ROOT.TH2I("cce", "Charge Collection Efficiency", self.x_ele_num, 0, self.x_ele_num, self.y_ele_num, 0, self.y_ele_num)
-        for i in range(self.x_ele_num*self.y_ele_num):
-            sum_charge=0
-            for j in range(self.n_bin):
-                sum_charge=sum_charge+self.sum_cu[i].GetBinContent(j)*self.t_bin
-            cce.Fill(i%self.x_ele_num, i//self.x_ele_num, sum_charge/1.6e-19)
-            charge.append(sum_charge/1.6e-19)
-        logger.info("Collected charge per electrode (e): %s", list(charge))
-        cce.Draw("COLZ")
-        cce.SetTitle("Charge Collection Efficiency")
-        cce.GetXaxis().SetTitle("x_elenumber")
-        cce.GetYaxis().SetTitle("y_elenumber")
-        cce.GetZaxis().SetTitle("charge[Coulomb]")
-        c1.SaveAs(path+"/cce.pdf")
-        c1.SaveAs(path+"/cce.root")
-    
+        draw.charge_collection_pixel(path, self.charge, self.x_ele_num, self.y_ele_num)
+
 class CalCurrentGain(CalCurrent):
     '''Calculation of gain carriers and gain current, simplified version'''
     def __init__(self, my_d, my_f, my_current):
