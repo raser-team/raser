@@ -70,6 +70,16 @@ def _resolve_include_path(line, circuit_path):
     return f'{match.group(1)}"{resolved}"{match.group(5)}{line_ending}'
 
 
+def _set_tran(line, step, duration):
+    """The tran command of the circuit with its step and stop time [s] replaced."""
+    stripped = line.lstrip()
+    indent = line[: len(line) - len(stripped)]
+    tokens = stripped.split()
+    tokens[1] = f"{step:.12g}"
+    tokens[2] = f"{duration:.12g}"
+    return f"{indent}{' '.join(tokens)}\n"
+
+
 def circuit_has_noise_spectrum(circuit_path):
     has_noise = False
     has_output = False
@@ -82,13 +92,14 @@ def circuit_has_noise_spectrum(circuit_path):
 
 def set_ngspice_input(currents: list[ROOT.TH1F]):
     """PWL points "t0,i0,t1,i1,..." of each induced current, one point per
-    bin: time in s counted from the start of the histogram, current in A."""
+    bin: time in s of the bin centre counted from the start of the
+    histogram, current in A."""
     values = []
     for histogram in currents:
         bin_width = histogram.GetBinWidth(1)
         points = []
         for index in range(1, histogram.GetNbinsX() + 1):
-            points.append(str((index - 1) * bin_width))
+            points.append(str((index - 0.5) * bin_width))
             points.append(str(histogram.GetBinContent(index)))
         values.append(",".join(points))
     return values
@@ -102,7 +113,11 @@ def set_tmp_cir(
     label=None,
     disable_trnoise=False,
     detector_capacitance_pF=None,
+    time_axis=None,
 ):
+    """Write one circuit per electrode with its current as the I1 source.
+    time_axis = (step, duration) [s] replaces the step and stop time of the
+    circuit's tran command; None keeps the ones written in the circuit."""
     label = label or ""
     tmp_cirs = []
     raws = []
@@ -134,6 +149,8 @@ def set_tmp_cir(
                 line = _disable_trnoise_source(line)
             if _line_startswith(line, "wrdata"):
                 line = _replace_wrdata_path(line, raw)
+            if time_axis is not None and _line_startswith(line, "tran"):
+                line = _set_tran(line, *time_axis)
             if (
                 _line_startswith(line, "noise")
                 or _line_startswith(line, "setplot")
