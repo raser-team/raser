@@ -570,6 +570,8 @@ class Amplifier:
             c.cd()
             c.SaveAs(fig_name)
             c.SaveAs(root_name)
+            # the next electrode makes a canvas of the same name
+            c.Close()
 
 
 def main(name):
