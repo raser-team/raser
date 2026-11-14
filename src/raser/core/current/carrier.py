@@ -29,7 +29,7 @@ class VectorizedCarrierSystem:
     """完全自包含的向量化载流子系统 - 替代CarrierCluster"""
     
     def __init__(self, all_positions, all_charges, all_times, all_signals, material, carrier_type="electron", 
-                read_out_contact=None, my_d=None, keep_drift_paths=True):
+                read_out_contact=None, my_d=None, keep_drift_paths=True, diffusion=True):
         # 输入数据验证
         self._validate_inputs(all_positions, all_charges, all_times)
             
@@ -44,6 +44,7 @@ class VectorizedCarrierSystem:
         self.read_out_contact = read_out_contact
         self.my_d = my_d
         self.keep_drift_paths = bool(keep_drift_paths)
+        self.diffusion = bool(diffusion)
         
         # 初始化
         self._params = self._initialize_params(my_d)
@@ -428,7 +429,10 @@ class VectorizedCarrierSystem:
             delta_x, delta_y, delta_z = self._calculate_displacement(charge, e_field, mu, delta_t)
             
             # 扩散位移
-            dif_x, dif_y, dif_z = self._calculate_diffusion(diffusion_constant)
+            if self.diffusion:
+                dif_x, dif_y, dif_z = self._calculate_diffusion(diffusion_constant)
+            else:
+                dif_x, dif_y, dif_z = 0.0, 0.0, 0.0
             
             # 更新位置
             self._update_carrier_position(idx, delta_x, delta_y, delta_z, dif_x, dif_y, dif_z)

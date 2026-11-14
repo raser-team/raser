@@ -102,8 +102,9 @@ class CalCurrent:
     Modify:
         2024/11/09
     """
-    def __init__(self, my_d, my_f, ionized_pairs, track_position, keep_drift_paths=True):
+    def __init__(self, my_d, my_f, ionized_pairs, track_position, keep_drift_paths=True, diffusion=True):
         self.keep_drift_paths = bool(keep_drift_paths)
+        self.diffusion = bool(diffusion)
         if my_d.has_avalanche and gain_algorithm(my_d) == "local_path":
             self.keep_drift_paths = True
         self._run_current_calculation(my_d, my_f, ionized_pairs, track_position)
@@ -183,6 +184,7 @@ class CalCurrent:
                 electron_positions, electron_charges, electron_times, electron_signals,
                 my_d.material, "electron", self.read_out_contact, my_d,
                 keep_drift_paths=self.keep_drift_paths,
+                diffusion=self.diffusion,
             )
             
         if hole_positions:
@@ -190,6 +192,7 @@ class CalCurrent:
                 hole_positions, hole_charges, hole_times, hole_signals,
                 my_d.material, "hole", self.read_out_contact, my_d,
                 keep_drift_paths=self.keep_drift_paths,
+                diffusion=self.diffusion,
             )
 
         logger.info("向量化系统初始化完成")
@@ -669,6 +672,7 @@ class CalCurrentGain(CalCurrent):
     '''Calculation of gain carriers and gain current, simplified version'''
     def __init__(self, my_d, my_f, my_current):
         self.keep_drift_paths = getattr(my_current, "keep_drift_paths", True)
+        self.diffusion = my_current.diffusion
         self.t_bin = my_current.t_bin
         self.t_end = my_current.t_end
         self.t_start = my_current.t_start
@@ -708,6 +712,7 @@ class CalCurrentGain(CalCurrent):
                 gain_positions, gain_electron_charges, gain_times, gain_signals,
                 my_d.material, "electron_gain", self.read_out_contact, my_d,
                 keep_drift_paths=getattr(my_current, "keep_drift_paths", True),
+                diffusion=self.diffusion,
             )
         else:
             logger.info("No gain electrons generated.")
@@ -717,6 +722,7 @@ class CalCurrentGain(CalCurrent):
                 gain_positions, gain_hole_charges, gain_times, gain_signals,
                 my_d.material, "hole_gain", self.read_out_contact, my_d,
                 keep_drift_paths=getattr(my_current, "keep_drift_paths", True),
+                diffusion=self.diffusion,
             )
         else:
             logger.info("No gain holes generated.")
@@ -910,13 +916,14 @@ class CalCurrentToyMIP(CalCurrent):
 
 
 class CalCurrentLaser(CalCurrent):
-    def __init__(self, my_d, my_f, my_l, keep_drift_paths=True):
+    def __init__(self, my_d, my_f, my_l, keep_drift_paths=True, diffusion=True):
         super().__init__(
             my_d,
             my_f,
             my_l.ionized_pairs,
             my_l.track_position,
             keep_drift_paths=keep_drift_paths,
+            diffusion=diffusion,
         )
         
         for i in range(self.read_ele_num):
