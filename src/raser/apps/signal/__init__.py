@@ -45,20 +45,14 @@ def job_command(kwargs):
 
 def run_job(kwargs, label="signal"):
     """One signal job inside its seed folder."""
-    kwargs["_signal_label"] = label
-    if kwargs.get("job_index") is not None:
-        from . import gen_signal_scan
+    if kwargs.get("job_index") is not None or kwargs.get("events_per_job"):
+        from . import signal_events
 
-        gen_signal_scan.main(kwargs)
-    elif kwargs.get("events_per_job"):
-        kwargs["job_index"] = 0
-        kwargs["_signal_plot_samples"] = kwargs["events_per_job"]
-        from . import gen_signal_scan
-
-        gen_signal_scan.main(kwargs)
+        signal_events.main(kwargs)
     else:
         from . import gen_signal_main
 
+        kwargs["_signal_label"] = label
         gen_signal_main.main(kwargs)
 
 
