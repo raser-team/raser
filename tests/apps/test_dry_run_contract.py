@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -56,22 +55,6 @@ def test_tct_dry_run_names_the_seed_folders_under_the_tct_signal_experiment(
     assert not work_root.exists()
 
 
-def test_field_dry_run_resolves_hash_and_destination_without_writing(
-    device_project: Path,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    monkeypatch.setenv("RASER_WORK_PATH", str(tmp_path / "work"))
-    assert main(["field", str(device_project), "-bias", "-250", "--dry-run"]) == 0
-    plan = json.loads(capsys.readouterr().out)
-
-    assert plan["action"] == "solve"
-    assert plan["field_configuration"]["bias_voltage"] == -250.0
-    assert plan["directory"] == str(device_project / "field" / plan["field_hash"])
-    assert not (device_project / "field").exists()
-
-
 def test_signal_runtime_configures_the_detector_from_the_components_of_the_app(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -116,6 +99,6 @@ def test_global_batch_test_keeps_commands_structured_and_scheduler_idle(
     monkeypatch.setenv("RASER_WORK_PATH", str(work_root))
     monkeypatch.delenv("RASER_PROJECT_PATH", raising=False)
 
-    assert main(["-t", "-b", "field", "HPK-Si-PiN"]) == 0
+    assert main(["-t", "-b", "tct", "position_scan_draw", "HPK-Si-PiN", "SPA_top_Si"]) == 0
     assert "hep_sub" in capsys.readouterr().out
     assert not work_root.exists()

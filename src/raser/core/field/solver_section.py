@@ -30,6 +30,23 @@ from .devsim_draw import *
 os.environ["OMP_NUM_THREADS"] = "1"
 
 
+# The settings of the solver, unless the run gives others.
+SOLVER = {
+    "initial": {"absolute_error": 1e10, "relative_error": 1e-4, "maximum_iterations": 100},
+    "voltage_step": {
+        "absolute_error": 1e20,
+        "relative_error": 1e-4,
+        "maximum_iterations": 100,
+        "initial": 1.0,
+        "maximum": 8.0,
+        "increase_factor": 2.0,
+        "decrease_factor": 0.5,
+    },
+    "saved_voltage_interval": 100.0,
+    "ac": {"real": 1.0, "imaginary": 0.0, "frequency": 1000.0},
+}
+
+
 def _resolve_impact_model(detector):
     return detector.avalanche_model if detector.has_avalanche else None
 
@@ -88,12 +105,12 @@ def main (kwargs):
     v_goal = kwargs["bias"]
     
     configuration = kwargs.get("_field_configuration")
-    if configuration is None:
-        raise ValueError("Field execution requires a resolved configuration")
+    if configuration is None:  # a run of the lifecycle: its settings and its device content
+        configuration = {"solver": kwargs.get("solver", SOLVER), "area_factor": 1.0}
     paras = _legacy_solver_parameters(configuration, weightfield=is_wf)
 
     # Everything the solve takes from the device goes through this, and is noted.
-    MyDetector = Reading(Detector(simname))
+    MyDetector = Reading(Detector(simname, kwargs.get("_files", {}).get("device")))
     # What the device file says about the solve is read here, so that it is noted.
     if "frequency" in MyDetector.device_dict:
         paras["frequency"] = float(MyDetector.device_dict["frequency"])

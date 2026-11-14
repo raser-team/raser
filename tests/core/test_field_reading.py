@@ -102,7 +102,9 @@ def test_the_solve_takes_its_device_only_through_the_reading(module: str) -> Non
     import raser.core.field
 
     source = (Path(raser.core.field.__file__).parent / f"{module}.py").read_text(encoding="utf-8")
-    source = source.replace("MyDetector = Reading(Detector(simname))", "")
+    source = source.replace(
+        'MyDetector = Reading(Detector(simname, kwargs.get("_files", {}).get("device")))', ""
+    )
 
     for way_around in ("Detector(", "device_file(", "load_definition(", "resolve_device(",
                        "definition_path", "json.load("):

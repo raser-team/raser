@@ -9,7 +9,8 @@ import pytest
 
 from raser.cli import raser
 from raser.cli.raser import main
-from raser.core.field import command as field_command
+from raser.apps import field
+from raser.apps import tct
 from raser.lifecycle import jobs
 from raser.lifecycle import process
 
@@ -53,9 +54,7 @@ def test_application_runs_inside_the_project_named_by_its_device(
 ) -> None:
     seen: list[str | None] = []
     monkeypatch.setattr(
-        field_command,
-        "main",
-        lambda kwargs: seen.append(os.environ.get("RASER_PROJECT_PATH")),
+        field, "run", lambda kwargs: seen.append(os.environ.get("RASER_PROJECT_PATH"))
     )
 
     main(["field", "HPK-Si-PiN", "-iv"])
@@ -73,7 +72,7 @@ def test_failing_application_is_cleaned_up_before_its_error_propagates(
         process.at_process_end(lambda: released.append("runtime"))
         raise RuntimeError("field failed")
 
-    monkeypatch.setattr(field_command, "main", run)
+    monkeypatch.setattr(field, "run", run)
 
     with pytest.raises(RuntimeError, match="field failed"):
         main(["field", "HPK-Si-PiN"])
@@ -84,7 +83,7 @@ def test_failing_application_is_cleaned_up_before_its_error_propagates(
 def test_what_an_application_returns_does_not_become_the_exit_status(
     work_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(field_command, "main", lambda kwargs: {"plan": "field"})
+    monkeypatch.setattr(field, "run", lambda kwargs: {"plan": "field"})
 
     assert main(["field", "HPK-Si-PiN"]) == 0
 
@@ -101,12 +100,12 @@ def test_global_batch_submits_the_command_without_the_global_options(
         ),
     )
     monkeypatch.setattr(
-        field_command, "main", lambda kwargs: pytest.fail("ran in this process")
+        tct, "run_position_scan_draw", lambda kwargs: pytest.fail("ran in this process")
     )
 
-    main(["-t", "-bb", "field", "HPK-Si-PiN", "-bias", "-200"])
+    main(["-t", "-bb", "tct", "position_scan_draw", "HPK-Si-PiN", "SPA_top_Si"])
 
-    assert submitted == [["field", "HPK-Si-PiN", "-bias", "-200"]]
+    assert submitted == [["tct", "position_scan_draw", "HPK-Si-PiN", "SPA_top_Si"]]
 
 
 def test_global_batch_before_a_command_with_jobs_submits_each_job_itself(
