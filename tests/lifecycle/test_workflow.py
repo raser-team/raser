@@ -511,7 +511,7 @@ def _plain(**given: Any) -> dict[str, Any]:
     return {**kwargs, "_entry_command_prefix": ("toy",), **given}
 
 
-def test_without_seeds_a_point_folder_holds_its_one_run_and_is_not_run_twice(
+def test_without_seeds_the_job_of_every_point_runs_in_the_point_folder_at_every_command(
     started: list[Any], tmp_path: Path
 ) -> None:
     received: list[dict[str, Any]] = []
@@ -527,7 +527,7 @@ def test_without_seeds_a_point_folder_holds_its_one_run_and_is_not_run_twice(
     assert [options["_run_path"] for options in received] == [
         str(experiment),
         str(experiment / "x_2"),
-    ]
+    ] * 2
     assert "seed" not in received[0]
     assert _record(experiment / "x_2") == {
         "point": "x_2", "commit": "abc", "options": {"x": 2}, "files": {},
@@ -564,31 +564,42 @@ def _other_options(old: dict[str, Any], record: dict[str, Any]) -> str | None:
     return None if old["options"] == record["options"] else "x changed"
 
 
-def test_a_workflow_says_what_makes_an_old_run_out_of_date(
+def test_what_a_job_wrote_into_run_json_stays_until_the_workflow_says_the_run_is_out_of_date(
     started: list[Any],
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    received: list[dict[str, Any]] = []
+    experiment = tmp_path / "toy"
+    seen: list[Any] = []
+
+    def job(options: dict[str, Any]) -> None:
+        record = _record(experiment)
+        seen.append(record.get("written by the job"))
+        (experiment / "run.json").write_text(
+            json.dumps({**record, "written by the job": options["x"]})
+        )
+
     workflow = Workflow(
-        name="toy", job=received.append, keys=("x",), defaults={"x": 1},
+        name="toy", job=job, keys=("x",), defaults={"x": 1}, device=False, seeds=False
+    )
+    execute(workflow, _plain())
+    execute(workflow, _plain())  # the rule of the lifecycle: what the job wrote does not count
+    assert seen == [None, 1]
+
+    workflow = Workflow(
+        name="toy", job=job, keys=("x",), defaults={"x": 1},
         device=False, seeds=False, outdated=_other_options,
     )
-    experiment = tmp_path / "toy"
-    execute(workflow, _plain())
-    (experiment / "run.json").write_text(
-        json.dumps({**_record(experiment), "written by the job": True})
-    )
-
     monkeypatch.setattr(workflow_module, "_commit", lambda: "def+dirty")
     execute(workflow, _plain())
-    assert len(received) == 1
+    assert seen == [None, 1, 1]
+    assert _record(experiment)["commit"] == "def+dirty"
     assert [len(done) for _, _, done in
             workflow_module.finished(workflow, _plain(), experiment)] == [1]
 
     execute(workflow, _plain(x=5))
-    assert len(received) == 2
+    assert seen == [None, 1, 1, None]
     assert "the old run is replaced: x changed" in capsys.readouterr().out
 
 

@@ -32,7 +32,9 @@ class Workflow:
     components: Mapping = field(default_factory=dict)  # kind of json file -> the option naming it
     in_file: Mapping = field(default_factory=dict)  # option -> where its value sits in a file
     device: bool = True  # the command names a device
-    seeds: bool = True  # False: nothing is drawn; a point holds one run, in its own folder
+    # False: nothing is drawn; a point holds one run, in its own folder, and its
+    # job is started by every command: the job itself sees what is left to do.
+    seeds: bool = True
     # (the run.json of an old run, the record of this one) -> what makes the old
     # run out of date, or None. Not given: any difference between the two does,
     # and so do uncommitted changes of the code.
@@ -105,10 +107,13 @@ def execute(workflow, kwargs):
         left = [
             i
             for i in range(kwargs.get("jobs") or 1)
-            if stale or not _done(folder, i).exists()
+            if stale or not workflow.seeds or not _done(folder, i).exists()
         ]
         aside = "kept aside" if workflow.seeds else "replaced"
         print(f"{folder}: jobs {left}" + (f", the old run is {aside}: {why}" if stale else ""))
+        # What the jobs wrote into run.json themselves stays while the run is not out of date.
+        if not stale:
+            record = {**{key: old[key] for key in old if key not in record}, **record}
         todo.append((folder, left, stale, record))
     if kwargs["dry_run"]:
         return None
@@ -164,10 +169,8 @@ def _outdated(workflow, old, record) -> str | None:
         return workflow.outdated(old, record)
     if record["commit"].endswith("+dirty"):
         return "the code has uncommitted changes"
-    if old == record:
-        return None
     changed = [key for key in record if old.get(key) != record[key]]
-    return "other " + ", ".join(changed or ["entries"])
+    return "other " + ", ".join(changed) if changed else None
 
 
 def _points(workflow, kwargs, config, given) -> tuple[dict, dict]:
