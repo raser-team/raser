@@ -25,6 +25,7 @@ from raser.core.frontend.toy_readout import Amplifier
 from raser.core.interaction.deposits import write_deposits
 from raser.core.interaction.ionization import ionized_pairs
 from raser.core.interaction.simulate_deposits import simulate_deposits
+from raser.core.interaction.view_geometry import view_geometry
 
 from .draw_save import draw_drift_path
 
@@ -89,6 +90,25 @@ def main(kwargs):
     files = kwargs["_files"]
     my_d = bdv.Detector(kwargs["det_name"], files["device"])
 
+    if kwargs.get("g4_vis"):
+        # Only the Geant4 geometry and the tracks are drawn; no signal is run.
+        driver = kwargs.get("g4_vis_driver")
+        if not driver:
+            raise ValueError("-g4_vis needs --g4-vis-driver, a Geant4 visualization driver")
+        picture = None
+        if driver.upper().startswith(("TSG", "OGL")):  # the drivers that write a picture
+            picture = os.path.join(kwargs["_run_path"], "g4_geometry")
+        view_geometry(
+            my_d,
+            files["source"],
+            files.get("g4setup"),
+            int(kwargs["events_per_job"]),
+            kwargs["seed"],
+            driver,
+            picture,
+        )
+        return
+
     # The flux is of the field the run takes, not of the device.
     flux = my_d.irradiation_flux if kwargs["irradiation"] is None else float(kwargs["irradiation"])
     my_f = devfield.DevsimField(
@@ -101,8 +121,6 @@ def main(kwargs):
         interpolation_bins=my_d.device_dict.get("field_interpolation_bins"),
     )
 
-    if kwargs.get("g4_vis"):
-        raise NotImplementedError("-g4_vis is not connected to view_geometry yet")
     deposits = simulate_deposits(
         my_d,
         files["source"],
