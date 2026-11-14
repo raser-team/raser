@@ -145,8 +145,6 @@ class CalCurrent:
         
         self.electron_system = None
         self.hole_system = None
-        
-        self.smoothing_window = max(0, int(getattr(my_d, "current_smoothing_window", 0)))
 
         # 准备载流子数据
         electron_positions = []
@@ -205,10 +203,6 @@ class CalCurrent:
         # 计算电流：数组 (电极数, n_bin + 2)，单位 A，首尾两列是时间窗之前和之后的部分
         hole_bins, electron_bins = self.get_current(my_d.x_ele_num, my_d.y_ele_num, self.read_out_contact)
         sum_bins = hole_bins + electron_bins
-
-        if self.smoothing_window > 1:
-            for bins in (hole_bins, electron_bins, sum_bins):
-                self._apply_smoothing(bins[:, 1:-1])
 
         self.det_model = my_d.det_model
         if my_d.has_avalanche:
@@ -388,25 +382,6 @@ class CalCurrent:
                         self.t_start,
                         bin_width,
                     )
-
-    def _apply_smoothing(self, currents):
-        """对各电极的电流 (电极数, n_bin) 原地做滑动平均，减少高频噪声"""
-        def _moving_average(data, kernel, window):
-            if len(data) == 0 or len(data) < window:
-                return
-            pad_left = window // 2
-            pad_right = window - 1 - pad_left
-            padded = np.pad(data, (pad_left, pad_right), mode='edge')
-            data[:] = np.convolve(padded, kernel, mode='valid')
-
-        if self.smoothing_window > 1:
-            ma_window = self.smoothing_window
-            if ma_window % 2 == 0:
-                ma_window += 1
-            kernel = np.ones(ma_window, dtype=np.float64) / float(ma_window)
-            logger.info("应用滑动窗口平滑 (窗口=%d)", ma_window)
-            for data in currents:
-                _moving_average(data, kernel, ma_window)
 
     def draw_currents(self, path, tag=""):
         """
