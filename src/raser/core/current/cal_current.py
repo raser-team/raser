@@ -72,6 +72,22 @@ class StageTimings(dict):
         return {name: round(seconds, 6) for name, seconds in self.items()}
 
 
+def spread_over_bins(bins, value, t_from, t_to, t_first, bin_width):
+    """Add what one drift step induces to the output bins its time covers.
+
+    `bins` holds the underflow bin, the bins that start at `t_first`, and the
+    overflow bin. Each bin receives the share of `value` that the step, lasting
+    from `t_from` to `t_to`, spends inside it.
+    """
+    first = math.floor((t_from - t_first) / bin_width)
+    last = math.floor((t_to - t_first) / bin_width)
+    for index in range(first, last + 1):
+        start = max(t_from, t_first + index * bin_width)
+        end = min(t_to, t_first + (index + 1) * bin_width)
+        share = max(end - start, 0.0) / (t_to - t_from)
+        bins[min(max(index + 1, 0), len(bins) - 1)] += value * share
+
+
 def gain_algorithm(my_d):
     """How the gain of a device is calculated.
 
@@ -404,14 +420,14 @@ class CalCurrent:
                         if target_electrode < self.read_ele_num:
                             time_point = path_reduced[step_idx][3]
                             current_value = signal_value / self.t_bin
-                            time_value = time_point * self.delta_t + t_tol
-                            if time_value < x_min:
-                                bin_idx = 0
-                            elif time_value >= x_max:
-                                bin_idx = histograms[target_electrode].GetNbinsX() + 1
-                            else:
-                                bin_idx = int((time_value - x_min) / bin_width) + 1
-                            bin_accumulators[target_electrode][bin_idx] += current_value
+                            spread_over_bins(
+                                bin_accumulators[target_electrode],
+                                current_value,
+                                time_point * self.delta_t,
+                                path_reduced[step_idx + 1][3] * self.delta_t,
+                                x_min,
+                                bin_width,
+                            )
                             signals_found += 1
                             
                             # 调试前几个信号
@@ -460,15 +476,13 @@ class CalCurrent:
                 for step_idx, signal_value in enumerate(
                     electrode_signals[: max(0, len(path) - 1)]
                 ):
-                    time_value = path[step_idx][3] * self.delta_t + t_tol
-                    if time_value < x_min:
-                        bin_idx = 0
-                    elif time_value >= x_max:
-                        bin_idx = histograms[electrode_idx].GetNbinsX() + 1
-                    else:
-                        bin_idx = int((time_value - x_min) / bin_width) + 1
-                    bin_accumulators[electrode_idx][bin_idx] += (
-                        signal_value / self.t_bin
+                    spread_over_bins(
+                        bin_accumulators[electrode_idx],
+                        signal_value / self.t_bin,
+                        path[step_idx][3] * self.delta_t,
+                        path[step_idx + 1][3] * self.delta_t,
+                        x_min,
+                        bin_width,
                     )
                     signals_found += 1
 
