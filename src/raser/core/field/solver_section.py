@@ -240,6 +240,7 @@ def main (kwargs):
 
             except devsim.error as msg:
                 milestone_flag = False
+                goal_flag = False
                 if str(msg).find("Convergence failure") == -1:
                     raise
                 voltage_step *= paras['decrease_factor'] 
