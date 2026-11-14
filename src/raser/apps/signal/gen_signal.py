@@ -45,7 +45,7 @@ def run_events(my_d, my_f, deposits, amplifier, batch_path, job, plots, plot_pat
         flush=True,
     )
     if not deposits.events:
-        print("no event left a deposit in the device", flush=True)
+        print("no event was recorded", flush=True)
     if 0 < plots < len(deposits.events):
         print(
             "%s events recorded; only the first %s are drawn (--plots)"
@@ -109,6 +109,8 @@ def main(kwargs):
         files.get("g4setup"),
         int(kwargs["events_per_job"]),
         kwargs["seed"],
+        kwargs.get("edep_min"),
+        kwargs.get("edep_max"),
     )
 
     # The amplifier is still found by the name of its file.

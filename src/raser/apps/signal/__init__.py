@@ -11,7 +11,17 @@ from pathlib import Path
 from raser.lifecycle.workflow import Workflow
 
 DEFAULTS = json.loads((Path(__file__).parent / "signal.json").read_text("utf-8"))
-KEYS = ("source", "events_per_job", "plots", "voltage", "irradiation", "amplifier", "adc")
+KEYS = (
+    "source",
+    "events_per_job",
+    "edep_min",
+    "edep_max",
+    "plots",
+    "voltage",
+    "irradiation",
+    "amplifier",
+    "adc",
+)
 COMPONENTS = {"source": "source", "afe": "amplifier"}  # kind of file -> option
 IN_FILE = {"voltage": "device.bias.voltage"}  # option -> where it sits in a file
 
@@ -24,6 +34,12 @@ def add_arguments(parser):
         help="signal source or beam configuration",
     )
     parser.add_argument("-evt", "--events-per-job", type=int, help="events per job")
+    parser.add_argument(
+        "--edep-min", type=float, help="least energy deposited in the device [MeV]"
+    )
+    parser.add_argument(
+        "--edep-max", type=float, help="most energy deposited in the device [MeV]"
+    )
     parser.add_argument("--plots", type=int, help="draw the first N recorded events of each job")
     parser.add_argument("-vol", "--voltage", type=float, help="bias voltage")
     parser.add_argument("-irr", "--irradiation", type=float, help="irradiation flux")
