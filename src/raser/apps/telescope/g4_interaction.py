@@ -107,7 +107,7 @@ class TelescopeG4Interaction(GeneralG4Interaction):
 
         super().__init__(
             my_d,
-            g4experiment,
+            g4_dic,
             g4_seed,
             g4_vis,
             PixelDetectorConstruction,
