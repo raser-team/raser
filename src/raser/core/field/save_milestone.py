@@ -91,9 +91,9 @@ def milestone_save_1D(device, v, path, is_tcad):
     TrappingRate_n = np.array(TrappingRate_n)
     TrappingRate_p = np.array(TrappingRate_p)
 
-    devsim_draw.draw1D(x,Potential,"Potential","Depth[cm]","Potential[V]", v, path)
-    devsim_draw.draw1D(x,TrappingRate_n,"Electron Trapping Rate","Depth[cm]","Trapping Rate[s]", v, path,)
-    devsim_draw.draw1D(x,TrappingRate_p,"Hole Trapping Rate","Depth[cm]","Trapping Rate[s]", v, path,)
+    devsim_draw.draw1D(x,Potential,"Potential","Depth[um]","Potential[V]", v, path)
+    devsim_draw.draw1D(x,TrappingRate_n,"Electron Trapping Rate","Depth[um]","Trapping Rate[1/s]", v, path,)
+    devsim_draw.draw1D(x,TrappingRate_p,"Hole Trapping Rate","Depth[um]","Trapping Rate[1/s]", v, path,)
 
     if is_tcad:
         ElectricField = []
@@ -103,7 +103,7 @@ def milestone_save_1D(device, v, path, is_tcad):
                 continue
             ElectricField.extend(devsim.get_node_model_values(device=device, region=region, name=E))
         ElectricField = np.array(ElectricField)
-        devsim_draw.draw1D(x,ElectricField,"Electric Field","Depth[cm]","Electric Field[V/cm]", v, path,)
+        devsim_draw.draw1D(x,ElectricField,"Electric Field","Depth[um]","Electric Field[V/cm]", v, path,)
     else:
         x_mid = []
         ElectricField = []
@@ -116,7 +116,7 @@ def milestone_save_1D(device, v, path, is_tcad):
             ElectricField.extend(devsim.get_edge_model_values(device=device, region=region, name=E)) # get y-node values
         x_mid = np.array(x_mid) # get x-node values
         ElectricField = np.array(ElectricField) # get y-node values
-        devsim_draw.draw1D(x_mid,ElectricField,"Electric Field","Depth[cm]","Electric Field[V/cm]", v, path,)
+        devsim_draw.draw1D(x_mid,ElectricField,"Electric Field","Depth[um]","Electric Field[V/cm]", v, path,)
 
     metadata = {}
     metadata['voltage'] = v
