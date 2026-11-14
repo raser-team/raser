@@ -120,7 +120,7 @@ def CreateIrradiationModel_Schwandt(device, region):
 
     defects = []
     defects.append({"name" : "E30K", "type" : "donor", "E_t_ev" : 0.56-0.1,   "g_int" : 0.0497, "sigma_n_irr" : 2.300e-14, "sigma_p_irr" : 2.920e-16,})
-    defects.append({"name" : "V3", "type" : "acceptor",   "E_t_ev" : 0.56-0.458, "g_int" : 0.6447, "sigma_n_irr" : 2.551e-14, "sigma_p_irr" : 1.551e-13,})
+    defects.append({"name" : "V3", "type" : "acceptor",   "E_t_ev" : 0.56-0.458, "g_int" : 0.6447, "sigma_n_irr" : 2.551e-14, "sigma_p_irr" : 1.511e-13,})
     defects.append({"name" : "Ip", "type" : "acceptor",   "E_t_ev" : 0.56-0.545, "g_int" : 0.4335, "sigma_n_irr" : 4.478e-15, "sigma_p_irr" : 6.709e-15,})
     defects.append({"name" : "H220", "type" : "donor", "E_t_ev" : -0.56+0.48, "g_int" : 0.5978, "sigma_n_irr" : 4.166e-15, "sigma_p_irr" : 1.965e-16,})
     defects.append({"name" : "CiOi", "type" : "donor", "E_t_ev" : -0.56+0.36, "g_int" : 0.3780, "sigma_n_irr" : 3.230e-17, "sigma_p_irr" : 2.036e-14,})
