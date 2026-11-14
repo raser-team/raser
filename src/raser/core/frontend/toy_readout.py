@@ -190,14 +190,10 @@ class Amplifier:
     ):
         self.amplified_currents = []
         self.read_ele_num = len(currents)
-        self.time_unit = 10e-12
         self.detector_capacitance_pF = CDet
         self.electronics_dir = Path()
         self.noise_spectrum_frequencies_hz = None
         self.noise_spectrum_density = None
-        # TODO: need to set the time unit corresponding to the oscilloscope or the TDC 
-        # TODO: and consistent with the time unit in gen_signal_batch.py
-
         ele_json = optional_component_path("afe", amplifier_name + ".json")
         ele_cir = optional_component_path("afe", amplifier_name + ".cir")
         use_spice = os.getenv("RASER_USE_SPICE_AMPLIFIER", "").lower()
@@ -229,6 +225,7 @@ class Amplifier:
             }
             noise_config = self._load_sidecar_noise_config(ele_cir)
             input_current_strs = set_ngspice_input(currents)
+            axis = currents[0].GetXaxis()
             time_stamp = time.time_ns()
             pid = os.getpid()
             # stamp and thread name for avoiding file name conflict
@@ -241,6 +238,7 @@ class Amplifier:
                 str(time_stamp)+"_"+str(pid),
                 disable_trnoise=noise_config is not None,
                 detector_capacitance_pF=self.detector_capacitance_pF,
+                time_axis=(axis.GetBinWidth(1), axis.GetXmax() - axis.GetXmin()),
             )
             for i in range(self.read_ele_num):
                 print("Running ngspice for amplifier simulation on electrode No.%d..."%(i+1))
@@ -250,7 +248,7 @@ class Amplifier:
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
-            self.read_raw_file(raws)
+            self.read_raw_file(raws, currents)
             if noise_config is not None:
                 self._add_spectral_noise(noise_config)
             # TODO: delete the files properly
@@ -455,9 +453,12 @@ class Amplifier:
             else:
                 self.amplified_currents[i].Reset()
 
-    def read_raw_file(self, raws):
+    def read_raw_file(self, raws, currents):
+        """Fill the output [mV] on the bins of the input currents. ngspice
+        counts time from the start of the input histogram."""
         for i in range(self.read_ele_num):
             raw = raws[i]
+            cu = currents[i]
             data = np.atleast_2d(np.loadtxt(raw, dtype=np.float64))
             if data.shape[1] < 2 or data.shape[0] < 2:
                 raise ValueError(f"ngspice waveform has insufficient samples: {raw}")
@@ -465,16 +466,14 @@ class Amplifier:
             volts_mV = data[:, -1] * 1.0e3
             if not np.all(np.diff(times) > 0.0):
                 raise ValueError(f"ngspice waveform time axis must increase: {raw}")
-            duration = float(times[-1] - times[0])
-            bin_count = max(1, math.ceil(duration / self.time_unit))
             histogram = _new_histogram(
                 f"electronics {self.name}{i + 1}",
                 f"electronics {self.name}",
-                bin_count,
-                float(times[0]),
-                float(times[0]) + bin_count * self.time_unit,
+                cu.GetNbinsX(),
+                cu.GetXaxis().GetXmin(),
+                cu.GetXaxis().GetXmax(),
             )
-            centers = _hist_bin_centers(histogram)
+            centers = _hist_bin_centers(histogram) - cu.GetXaxis().GetXmin()
             _set_hist_contents(histogram, np.interp(centers, times, volts_mV))
             self.amplified_currents.append(histogram)
 
