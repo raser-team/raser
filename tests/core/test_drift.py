@@ -7,6 +7,7 @@ from raser.core import seeding
 from raser.core.current import drift as drift_module
 from raser.core.current.drift import drift
 from raser.core.current.drift import induced_charges
+from raser.core.current.drift import surviving
 
 MOBILITY = 1000.0  # cm^2/V/s
 FIELD = 1.0e4  # V/cm, so carriers move at 1e7 cm/s = 100 um/ns
@@ -181,4 +182,34 @@ def test_a_hole_under_the_next_strip_induces_on_that_strip_not_on_the_one_of_the
     assert induced_charges(hole, 100.0, _Strips(), 0, offset=(-30.0, 0.0)).sum() / e0 == (
         pytest.approx(0.0)
     )
+
+
+class _Irradiated(_Field):
+    """Holes are trapped at 2e9 /s, electrons at 5e9 /s."""
+
+    def get_trap_h_cached(self, x, y, z):
+        return 2.0e9
+
+    def get_trap_e_cached(self, x, y, z):
+        return 5.0e9
+
+
+def test_trapping_leaves_the_exponential_of_rate_times_time() -> None:
+    # steps of 30 ps: the middles of the first and the sixth are at 15 and 165 ps
+    hole, _ = drift(
+        50.0, 50.0, 25.0, 1.0e-9, 100.0, _device(), _Field(), _mobility, 3.0e-11, diffusion=False
+    )
+    electron, _ = drift(
+        50.0, 50.0, 25.0, 1.0e-9, -100.0, _device(), _Field(), _mobility, 3.0e-11, diffusion=False
+    )
+
+    holes = surviving(hole, 100.0, _Irradiated())
+    electrons = surviving(electron, -100.0, _Irradiated())
+
+    assert len(holes) == len(hole) - 1
+    assert holes[0] == pytest.approx(100.0 * np.exp(-2.0e9 * 15.0e-12))
+    assert holes[5] == pytest.approx(100.0 * np.exp(-2.0e9 * 165.0e-12))
+    assert electrons[5] == pytest.approx(-100.0 * np.exp(-5.0e9 * 165.0e-12))
+    # the last step of the hole ends on the surface after 10 of the 30 ps
+    assert holes[-1] == pytest.approx(100.0 * np.exp(-2.0e9 * 245.0e-12))
 

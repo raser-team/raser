@@ -91,8 +91,9 @@ def induced_charges(path, charge, my_f, electrode, offset=(0.0, 0.0)):
     """Charge that each step of a path induces on one electrode [C].
 
     `path` is what `drift` returns, `charge` the number of carriers of the
-    cluster with their sign, `electrode` the number of the electrode in
-    `my_f`. By the Shockley-Ramo theorem a step from a to b induces
+    cluster with their sign, one number or one for each step as `surviving`
+    gives, `electrode` the number of the electrode in `my_f`. By the
+    Shockley-Ramo theorem a step from a to b induces
     charge e0 (U_w(b) - U_w(a)), U_w the weighting potential of the
     electrode.
 
@@ -105,3 +106,16 @@ def induced_charges(path, charge, my_f, electrode, offset=(0.0, 0.0)):
         my_f.get_w_p_cached(x - offset[0], y - offset[1], z, electrode) for x, y, z, _ in path
     ])
     return charge * e0 * np.diff(potential)
+
+
+def surviving(path, charge, my_f):
+    """Carriers of a cluster not yet trapped, at the middle of each step.
+
+    The trapping rate [1/s] of holes or electrons, by the sign of `charge`,
+    is read from `my_f` at the start of each step and held over the step.
+    """
+    rate = my_f.get_trap_h_cached if charge > 0 else my_f.get_trap_e_cached
+    rates = np.array([rate(x, y, z) for x, y, z, _ in path[:-1]])
+    decay = rates * np.diff(path[:, 3])
+    return charge * np.exp(-(np.cumsum(decay) - decay / 2))
+
