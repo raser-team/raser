@@ -39,4 +39,5 @@ def test_the_electrodes_key_lays_out_the_readout_and_the_name_does_not() -> None
     assert (pixel.read_ele_num, pixel.p_x, pixel.p_y) == (4, 10.0, 20.0)
     assert pixel._readout_area_um2() == 200.0
     assert (pad.read_ele_num, pad.x_ele_num, pad.y_ele_num) == (1, 1, 1)
+    assert (pad.p_x, pad.p_y) == (pad.l_x, pad.l_y)
     assert pad._readout_area_um2() == pad.l_x * pad.l_y

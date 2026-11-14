@@ -113,7 +113,7 @@ class Detector:
             raise ValueError("gain is enabled but `avalanche_model` is missing in detector settings")
         self.has_avalanche = self.avalanche_model is not None and enable_gain
 
-        if "planar" in self.det_model or "lgad" == self.det_model:
+        if self.electrodes == 'pad':
             self.p_x = self.device_dict['l_x']
             self.p_y = self.device_dict['l_y']
 
