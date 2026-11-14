@@ -72,6 +72,15 @@ def spread_over_bins(bins, value, t_from, t_to, t_first, bin_width):
         bins[min(max(index + 1, 0), len(bins) - 1)] += value * share
 
 
+def fill_histogram(histogram, bins):
+    """Copy binned values, underflow and overflow included, into a TH1F.
+
+    Histograms remain for the callers that still read them.
+    """
+    for index, value in enumerate(bins):
+        histogram.SetBinContent(index, float(value))
+
+
 def gain_algorithm(my_d):
     """How the gain of a device is calculated.
 
@@ -200,30 +209,30 @@ class CalCurrent:
         # 执行漂移和信号计算
         self.drifting_loop(my_d, my_f)
 
-        # 初始化电流直方图
-        self.current_define(self.read_ele_num)
-        for i in range(self.read_ele_num):
-            self.sum_cu[i].Reset()
-            self.positive_cu[i].Reset()
-            self.negative_cu[i].Reset()
-            
-        # 计算电流
-        self.get_current(my_d.x_ele_num, my_d.y_ele_num, self.read_out_contact)
-            
-        # 合并电流
-        for i in range(self.read_ele_num):
-            self.sum_cu[i].Add(self.positive_cu[i])
-            self.sum_cu[i].Add(self.negative_cu[i])
-            
+        # 计算电流：数组 (电极数, n_bin + 2)，单位 A，首尾两列是时间窗之前和之后的部分
+        hole_bins, electron_bins = self.get_current(my_d.x_ele_num, my_d.y_ele_num, self.read_out_contact)
+        sum_bins = hole_bins + electron_bins
+
         if self.smoothing_window > 1:
-            self._apply_smoothing()
+            for bins in (hole_bins, electron_bins, sum_bins):
+                self._apply_smoothing(bins[:, 1:-1])
 
         self.det_model = my_d.det_model
         if my_d.has_avalanche:
             self.gain_current = CalCurrentGain(my_d, my_f, self)
-            for i in range(self.read_ele_num):
-                self.sum_cu[i].Add(self.gain_current.negative_cu[i])
-                self.sum_cu[i].Add(self.gain_current.positive_cu[i])
+            sum_bins += self.gain_current.hole_bins + self.gain_current.electron_bins
+
+        # 各电极在时间窗内的电流，(电极数, n_bin)，单位 A
+        self.hole_current = hole_bins[:, 1:-1]
+        self.electron_current = electron_bins[:, 1:-1]
+        self.current = sum_bins[:, 1:-1]
+
+        # 填回直方图，给还在读直方图的调用方
+        self.current_define(self.read_ele_num)
+        for i in range(self.read_ele_num):
+            fill_histogram(self.positive_cu[i], hole_bins[i])
+            fill_histogram(self.negative_cu[i], electron_bins[i])
+            fill_histogram(self.sum_cu[i], sum_bins[i])
 
     def _is_in_sensor(self, x, y, z, my_d):
         """检查位置是否在探测器内"""
@@ -289,78 +298,37 @@ class CalCurrent:
                                     self.n_bin, self.t_start, self.t_end))
             
     def get_current(self, n_x, n_y, read_out_contact):
-        """从向量化系统获取电流"""
+        """Binned currents of the holes and of the electrons.
+
+        Each is an array (read_ele_num, n_bin + 2) in A: per electrode the
+        part before t_start, the n_bin bins of the time window, and the part
+        after t_end.
+        """
         logger.info("开始计算电流...")
-        
-        # 重置电流直方图
+        binned = []
+        for carrier_system in (self.hole_system, self.electron_system):
+            bins = np.zeros((self.read_ele_num, self.n_bin + 2), dtype=np.float64)
+            if carrier_system is not None:
+                if len(read_out_contact) == 1:
+                    self._process_system_current(
+                        carrier_system, bins, n_x, n_y,
+                        read_out_contact[0]['x_span'], read_out_contact[0]['y_span'],
+                    )
+                else:
+                    self._process_system_current_direct(carrier_system, bins)
+            binned.append(bins)
+        hole_bins, electron_bins = binned
+
         for i in range(self.read_ele_num):
-            self.positive_cu[i].Reset()
-            self.negative_cu[i].Reset()
-        
-        hole_signals_found = 0
-        electron_signals_found = 0
-        
-        # 单电极配置
-        if len(read_out_contact) == 1:
-            x_span = read_out_contact[0]['x_span']
-            y_span = read_out_contact[0]['y_span']
-            total_electrodes = (2 * x_span + 1) * (2 * y_span + 1)
-            
-            logger.info(f"电流计算: 单电极配置, x_span={x_span}, y_span={y_span}, 总电极数={total_electrodes}")
-            
-            # 处理空穴电流
-            if self.hole_system:
-                hole_signals_found = self._process_system_current(
-                    self.hole_system, n_x, n_y, 
-                    x_span, y_span, total_electrodes, "hole"
-                )
-            
-            # 处理电子电流
-            if self.electron_system:
-                electron_signals_found = self._process_system_current(
-                    self.electron_system, n_x, n_y,
-                    x_span, y_span, total_electrodes, "electron"
-                )
-        else:
-            total_electrodes = len(read_out_contact)
-            logger.info(f"电流计算: 多电极配置, 总电极数={total_electrodes}")
-            if self.hole_system:
-                hole_signals_found = self._process_system_current_direct(
-                    self.hole_system, total_electrodes, "hole"
-                )
-            if self.electron_system:
-                electron_signals_found = self._process_system_current_direct(
-                    self.electron_system, total_electrodes, "electron"
-                )
-        
-        logger.info(f"电流计算完成: 空穴{hole_signals_found}点, 电子{electron_signals_found}点")
-        
-        # 验证电流结果
-        for i in range(self.read_ele_num):
-            hole_integral = self.positive_cu[i].Integral() * self.t_bin
-            electron_integral = self.negative_cu[i].Integral() * self.t_bin
+            hole_integral = hole_bins[i, 1:-1].sum() * self.t_bin
+            electron_integral = electron_bins[i, 1:-1].sum() * self.t_bin
             logger.info(f"电极{i}: 空穴电荷={hole_integral:.2e}C, 电子电荷={electron_integral:.2e}C")
+        return hole_bins, electron_bins
 
-    def _process_system_current(self, carrier_system, n_x, n_y, 
-                              x_span, y_span, total_electrodes, carrier_type):
-        """处理单个载流子系统的电流计算"""
-        signals_found = 0
-        if carrier_type == "hole":
-            histograms = self.positive_cu
-        elif carrier_type == "electron":
-            histograms = self.negative_cu
-        else:
-            logger.warning(f"未知的载流子类型: {carrier_type}")
-            return signals_found
-
-        bin_accumulators = [
-            np.zeros(hist.GetNbinsX() + 2, dtype=np.float64)
-            for hist in histograms
-        ]
-        axis = histograms[0].GetXaxis()
-        x_min = axis.GetXmin()
-        x_max = axis.GetXmax()
-        bin_width = (x_max - x_min) / histograms[0].GetNbinsX()
+    def _process_system_current(self, carrier_system, bins, n_x, n_y, x_span, y_span):
+        """单电极配置：把一个载流子系统每步感应的电荷加进 bins"""
+        total_electrodes = (2 * x_span + 1) * (2 * y_span + 1)
+        bin_width = (self.t_end - self.t_start) / self.n_bin
 
         for carrier_idx in range(len(carrier_system.positions)):
             # 检查这个载流子是否有信号
@@ -396,115 +364,56 @@ class CalCurrent:
                     if 0 <= x_num < n_x and 0 <= y_num < n_y:
                         target_electrode = x_num * n_y + y_num
                         if target_electrode < self.read_ele_num:
-                            time_point = path_reduced[step_idx][3]
-                            current_value = signal_value / self.t_bin
                             spread_over_bins(
-                                bin_accumulators[target_electrode],
-                                current_value,
-                                time_point * self.delta_t,
+                                bins[target_electrode],
+                                signal_value / self.t_bin,
+                                path_reduced[step_idx][3] * self.delta_t,
                                 path_reduced[step_idx + 1][3] * self.delta_t,
-                                x_min,
+                                self.t_start,
                                 bin_width,
                             )
-                            signals_found += 1
-                            
-                            # 调试前几个信号
-                            if signals_found <= 3:
-                                logger.info(f"{carrier_type}信号: t={time_point*self.delta_t+t_tol:.2e}s, I={current_value:.2e}A, 电极={target_electrode}")
 
-        for electrode_idx, accumulator in enumerate(bin_accumulators):
-            nonzero_bins = np.nonzero(accumulator)[0]
-            hist = histograms[electrode_idx]
-            for bin_idx in nonzero_bins:
-                hist.SetBinContent(
-                    int(bin_idx),
-                    hist.GetBinContent(int(bin_idx)) + float(accumulator[bin_idx])
-                )
-            hist.SetEntries(hist.GetEntries() + float(np.sum(accumulator != 0.0)))
-
-        return signals_found
-
-    def _process_system_current_direct(
-        self, carrier_system, total_electrodes, carrier_type
-    ):
-        if carrier_type == "hole":
-            histograms = self.positive_cu
-        elif carrier_type == "electron":
-            histograms = self.negative_cu
-        else:
-            raise ValueError(f"未知载流子类型: {carrier_type}")
-
-        bin_accumulators = [
-            np.zeros(hist.GetNbinsX() + 2, dtype=np.float64)
-            for hist in histograms
-        ]
-        axis = histograms[0].GetXaxis()
-        x_min = axis.GetXmin()
-        x_max = axis.GetXmax()
-        bin_width = (x_max - x_min) / histograms[0].GetNbinsX()
-        signals_found = 0
+    def _process_system_current_direct(self, carrier_system, bins):
+        """多电极配置：把一个载流子系统每步感应的电荷加进 bins"""
+        bin_width = (self.t_end - self.t_start) / self.n_bin
 
         for carrier_idx, carrier_signals in enumerate(carrier_system.signals):
             if not carrier_signals:
                 continue
             path = carrier_system.paths_reduced[carrier_idx]
             for electrode_idx, electrode_signals in enumerate(
-                carrier_signals[:total_electrodes]
+                carrier_signals[:len(self.read_out_contact)]
             ):
                 for step_idx, signal_value in enumerate(
                     electrode_signals[: max(0, len(path) - 1)]
                 ):
                     spread_over_bins(
-                        bin_accumulators[electrode_idx],
+                        bins[electrode_idx],
                         signal_value / self.t_bin,
                         path[step_idx][3] * self.delta_t,
                         path[step_idx + 1][3] * self.delta_t,
-                        x_min,
+                        self.t_start,
                         bin_width,
                     )
-                    signals_found += 1
 
-        for electrode_idx, accumulator in enumerate(bin_accumulators):
-            hist = histograms[electrode_idx]
-            for bin_idx in np.nonzero(accumulator)[0]:
-                hist.SetBinContent(
-                    int(bin_idx),
-                    hist.GetBinContent(int(bin_idx)) + float(accumulator[bin_idx]),
-                )
-            hist.SetEntries(hist.GetEntries() + float(np.sum(accumulator != 0.0)))
-        return signals_found
-    
-    def _apply_smoothing(self):
-        """对电流直方图进行多阶段平滑，减少高频噪声"""
-        def _moving_average(hist, kernel, window):
-            nbins = hist.GetNbinsX()
-            if nbins == 0 or nbins < window:
+    def _apply_smoothing(self, currents):
+        """对各电极的电流 (电极数, n_bin) 原地做多阶段平滑，减少高频噪声"""
+        def _moving_average(data, kernel, window):
+            if len(data) == 0 or len(data) < window:
                 return
-            data = np.array([hist.GetBinContent(i) for i in range(1, nbins + 1)], dtype=np.float64)
             pad_left = window // 2
             pad_right = window - 1 - pad_left
             padded = np.pad(data, (pad_left, pad_right), mode='edge')
-            smoothed = np.convolve(padded, kernel, mode='valid')
-            for idx, value in enumerate(smoothed, start=1):
-                hist.SetBinContent(idx, float(value))
+            data[:] = np.convolve(padded, kernel, mode='valid')
 
-        def _savgol(hist):
-            nbins = hist.GetNbinsX()
+        def _savgol(data):
             window = self.savgol_window
-            if nbins == 0 or window <= 1 or nbins < window:
+            if len(data) == 0 or window <= 1 or len(data) < window:
                 return
-            data = np.array([hist.GetBinContent(i) for i in range(1, nbins + 1)], dtype=np.float64)
             kernel = self._get_savgol_kernel()
             pad = window // 2
             padded = np.pad(data, (pad, pad), mode='edge')
-            smoothed = np.convolve(padded, kernel, mode='valid')
-            for idx, value in enumerate(smoothed, start=1):
-                hist.SetBinContent(idx, float(value))
-
-        targets = [self.positive_cu, self.negative_cu, self.sum_cu]
-        if hasattr(self, "gain_current"):
-            targets.append(getattr(self.gain_current, "positive_cu", []))
-            targets.append(getattr(self.gain_current, "negative_cu", []))
+            data[:] = np.convolve(padded, kernel, mode='valid')
 
         if self.smoothing_window > 1:
             ma_window = self.smoothing_window
@@ -512,9 +421,8 @@ class CalCurrent:
                 ma_window += 1
             kernel = np.ones(ma_window, dtype=np.float64) / float(ma_window)
             logger.info("应用滑动窗口平滑 (窗口=%d)", ma_window)
-            for hist_list in targets:
-                for hist in hist_list:
-                    _moving_average(hist, kernel, ma_window)
+            for data in currents:
+                _moving_average(data, kernel, ma_window)
 
         if self.savgol_window > 1:
             logger.info(
@@ -522,9 +430,8 @@ class CalCurrent:
                 self.savgol_window,
                 self.savgol_poly,
             )
-            for hist_list in targets:
-                for hist in hist_list:
-                    _savgol(hist)
+            for data in currents:
+                _savgol(data)
 
     def _get_savgol_kernel(self):
         if self._savgol_kernel is not None:
@@ -730,14 +637,16 @@ class CalCurrentGain(CalCurrent):
         # 执行漂移
         self.drifting_loop(my_d, my_f)
 
-        # 初始化电流
+        # 计算电流
+        self.hole_bins, self.electron_bins = self.get_current(
+            my_d.x_ele_num, my_d.y_ele_num, self.read_out_contact
+        )
+
+        # 填回直方图，给还在读直方图的调用方
         self.current_define(self.read_ele_num)
         for i in range(self.read_ele_num):
-            self.positive_cu[i].Reset()
-            self.negative_cu[i].Reset()
-        
-        # 计算电流
-        self.get_current(my_d.x_ele_num, my_d.y_ele_num, self.read_out_contact)
+            fill_histogram(self.positive_cu[i], self.hole_bins[i])
+            fill_histogram(self.negative_cu[i], self.electron_bins[i])
 
     def _build_planar_gain_carriers(self, my_d, my_f, my_current, gain_positions,
                                     gain_electron_charges, gain_hole_charges,
