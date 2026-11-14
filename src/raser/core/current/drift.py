@@ -113,7 +113,7 @@ def induced_charges(path, charge, my_f, electrode, offset=(0.0, 0.0)):
     of `my_f` moved by `offset`.
     """
     potential = np.array([
-        my_f.get_w_p_cached(x - offset[0], y - offset[1], z, electrode) for x, y, z, _ in path
+        my_f.get_w_p(x - offset[0], y - offset[1], z, electrode) for x, y, z, _ in path
     ])
     return charge * e0 * np.diff(potential)
 

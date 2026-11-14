@@ -22,7 +22,7 @@ class _Field:
     def get_doping_cached(self, x, y, z):
         return 0.0
 
-    def get_w_p_cached(self, x, y, z, electrode):
+    def get_w_p(self, x, y, z, electrode):
         # two electrodes facing each other at z = 0 and z = 50 um
         return 1.0 - z / 50.0 if electrode == 0 else z / 50.0
 
@@ -165,7 +165,7 @@ class _Strips(_Field):
     wide, and is zero beside it.
     """
 
-    def get_w_p_cached(self, x, y, z, electrode):
+    def get_w_p(self, x, y, z, electrode):
         return 1.0 - z / 50.0 if abs(x - 50.0) < 10.0 else 0.0
 
 
