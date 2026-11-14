@@ -14,6 +14,7 @@ FILES = {
     "TrappingRate_p_57V.pkl": "hole trapping rate",
     "TrappingRate_n_57V.pkl": "electron trapping rate",
     "weightingfield/top/Potential_57V.pkl": "weighting potential of top",
+    "Conductive_57V.pkl": "conductive part",
 }
 
 
@@ -51,3 +52,22 @@ def test_a_field_stored_in_fewer_dimensions_than_its_axes_is_not_loaded(
 
     with pytest.raises(ValueError, match="has 1 dimensions, the field has 2"):
         _field(tmp_path)
+
+
+def test_a_position_conducts_as_its_nearest_node_does_outside_the_mesh_too(
+    tmp_path: Path,
+) -> None:
+    _solved(tmp_path, ["z"])
+    nodes = {"points": [0.0, 0.001, 0.004, 0.005], "values": [1.0, 1.0, 0.0, 0.0]}
+    (tmp_path / "Conductive_57V.pkl").write_bytes(
+        pickle.dumps({**nodes, "metadata": {"dimension": 1}})
+    )
+    field = _field(tmp_path)
+
+    # nodes at 0, 10, 40 and 50 um: the first two conduct
+    assert field.get_conductive(0.0, 0.0, 12.0)
+    assert field.get_conductive(0.0, 0.0, 24.0)
+    assert not field.get_conductive(0.0, 0.0, 26.0)
+    assert not field.get_conductive(0.0, 0.0, 45.0)
+    assert field.get_conductive(0.0, 0.0, -3.0)
+    assert not field.get_conductive(0.0, 0.0, 58.0)

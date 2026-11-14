@@ -17,6 +17,7 @@ from pathlib import Path
 
 import numpy as np
 import ROOT
+from scipy.spatial import cKDTree
 from ..current.model import Material
 from .assets import resolve_field_pickle
 from .gradient import gradient
@@ -126,12 +127,14 @@ class DevsimField:
         PotentialFile = resolve_field_pickle(path, "Potential", self.voltage)
         TrappingRate_pFile = resolve_field_pickle(path, "TrappingRate_p", self.voltage)
         TrappingRate_nFile = resolve_field_pickle(path, "TrappingRate_n", self.voltage)
+        ConductiveFile = resolve_field_pickle(path, "Conductive", self.voltage)
 
         self.set_doping(DopingFile) #self.Doping
         self.set_potential(PotentialFile) #self.Potential, self.x_efield, self.y_efield, self.z_efield
         self.set_trap_p(TrappingRate_pFile) # self.TrappingRate_p
         self.set_trap_n(TrappingRate_nFile) # self.TrappingRate_n
         self.set_w_p(WeightingPotentialFiles) #self.weighting_potential[]
+        self.set_conductive(ConductiveFile) # self.conductive_nodes, self.conductive_values
         
         logger.info(f"DevsimField initialization complete, resolution: {self.resolution} um")
 
@@ -238,6 +241,12 @@ class DevsimField:
         self.TrappingRate_n = TrappingRate_nUniform
         
 
+    def set_conductive(self, ConductiveFile):
+        stored = self._stored(ConductiveFile, "conductive part")
+        points = np.asarray(stored['points'], dtype=float).reshape(len(stored['points']), -1)
+        self.conductive_nodes = cKDTree(points)
+        self.conductive_values = np.asarray(stored['values']) > 0.5
+
     def _along_axes(self, x, y, z):
         """A position, as the coordinates the field files are stored in."""
         position = {"x": x, "y": y, "z": z}
@@ -291,6 +300,17 @@ class DevsimField:
             return U_w
 
     
+    def get_conductive(self, x, y, z):
+        """
+        input: position in um
+        output: whether the device conducts there at the bias of the field,
+        as its mesh node nearest to the position does; a position outside
+        the mesh is answered by the nearest node too
+        """
+        x, y, z = x/1e4, y/1e4, z/1e4 # um to cm
+        nearest = self.conductive_nodes.query(self._along_axes(x, y, z))[1]
+        return bool(self.conductive_values[nearest])
+
     def get_trap_e(self, x, y, z):
         """
         input: position in um
