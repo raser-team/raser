@@ -346,12 +346,57 @@ def test_a_scanned_address_is_written_into_the_file_of_each_point_that_differs(
     execute(TOY_DEVICE, _kwargs(det_name="dev", scan=scan, jobs=2))
 
     experiment = tmp_path / "toy"
-    assert _folders(started, experiment) == ["seed_42", "device.bias.voltage_300/seed_42"]
+    assert _folders(started, experiment) == ["seed_42", "bias.voltage_300/seed_42"]
     unscanned = _record(experiment / "seed_42")
-    scanned = _record(experiment / "device.bias.voltage_300" / "seed_42")
+    scanned = _record(experiment / "bias.voltage_300" / "seed_42")
     assert unscanned["files"]["device"]["bias"] == {"electrode": "top", "voltage": 200.0}
     assert scanned["files"]["device"]["bias"] == {"electrode": "top", "voltage": 300}
     assert scanned["options"]["device.bias.voltage"] == 300
+
+
+@pytest.mark.parametrize("where", ["command line", "config"])
+def test_a_name_the_config_gives_an_address_names_the_folders_and_may_be_scanned(
+    started: list[Any], disk: dict[str, Any], tmp_path: Path, where: str
+) -> None:
+    experiment = tmp_path / "toy"
+    experiment.mkdir()
+    config: dict[str, Any]
+    config = {"workflow": "toy", "device": "dev", "names": {"device.bias.voltage": "bias"}}
+    if where == "config":
+        config["scan"] = {"bias": [200, 300]}
+    (experiment / "config.json").write_text(json.dumps(config))
+    scan = ["bias=200,300"] if where == "command line" else []
+
+    execute(TOY_DEVICE, _kwargs(det_name="dev", scan=scan, jobs=2))
+
+    assert _folders(started, experiment) == ["seed_42", "bias_300/seed_42"]
+    scanned = _record(experiment / "bias_300" / "seed_42")
+    assert scanned["files"]["device"]["bias"]["voltage"] == 300
+    assert scanned["options"]["device.bias.voltage"] == 300
+
+
+def test_two_scanned_addresses_that_end_alike_stop_the_command_until_one_is_named(
+    started: list[Any], disk: dict[str, Any], tmp_path: Path
+) -> None:
+    disk["spare"] = {"bias": {"voltage": 1.0}}
+    scan = ["device.bias.voltage=200,300", "device.spare.bias.voltage=1,2"]
+
+    with pytest.raises(ValueError, match="would both be 'bias.voltage'"):
+        execute(TOY_DEVICE, _kwargs(det_name="dev", scan=scan, jobs=2))
+    assert started == []
+
+    experiment = tmp_path / "toy"
+    experiment.mkdir()
+    config = {"workflow": "toy", "device": "dev", "names": {"device.spare.bias.voltage": "spare"}}
+    (experiment / "config.json").write_text(json.dumps(config))
+    execute(TOY_DEVICE, _kwargs(det_name="dev", scan=scan, jobs=2))
+
+    assert _folders(started, experiment) == [
+        "seed_42",
+        "spare_2/seed_42",
+        "bias.voltage_300/seed_42",
+        "bias.voltage_300_spare_2/seed_42",
+    ]
 
 
 @pytest.mark.parametrize(

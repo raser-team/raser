@@ -207,18 +207,29 @@ def _points(workflow, kwargs, config, given) -> tuple[dict, dict]:
     One point for every combination of the scanned values. A point's folder is
     named by the scanned options that differ from the unscanned run."""
     fixed = {**workflow.defaults, **config.get("set", {}), **given}
-    scan = dict(config.get("scan", {}))
+    # "names" in the config gives an address a short name: the scan may be
+    # written with it, and the folders are named by it.
+    names = config.get("names", {})
+    address = {name: key for key, name in names.items()}
+    scan = {address.get(key, key): values for key, values in config.get("scan", {}).items()}
     for item in kwargs["scan"]:
         key, _, values = item.partition("=")
-        scan[key] = [_parse(value) for value in values.split(",")]
+        scan[address.get(key, key)] = [_parse(value) for value in values.split(",")]
     scan = {key: values for key, values in scan.items() if key not in given}
+    label = {key: _label(key, names) for key in scan}
+    for key, other in itertools.combinations(scan, 2):
+        if label[key] == label[other]:
+            raise ValueError(
+                f"{key} and {other} would both be {label[key]!r} in the names of folders: "
+                'give one of them a name under "names" in config.json'
+            )
     # A scanned address is not given in the unscanned run: there it takes the file's value.
     base, _ = _point(workflow, kwargs, {**dict.fromkeys(key for key in scan if "." in key), **fixed})
     points = {}  # folder inside the experiment -> (options, files)
     for combination in itertools.product(*scan.values()):
         options, files = _point(workflow, kwargs, {**fixed, **dict(zip(scan, combination))})
         changed = [key for key in scan if options[key] != base[key]]
-        name = "_".join(f"{key}_{_text(options[key])}" for key in changed)
+        name = "_".join(f"{label[key]}_{_text(options[key])}" for key in changed)
         points[name] = (options, files)
     return scan, points
 
@@ -312,6 +323,12 @@ def _run_job(workflow, kwargs):
 
 def _done(folder, index) -> Path:
     return folder / "batch" / f"job_{index}.done"
+
+
+def _label(key, names) -> str:
+    """A scanned option in the name of a folder: the name the config gives it,
+    else the last two steps of an address, else the option itself."""
+    return names.get(key) or ".".join(key.split(".")[-2:])
 
 
 def _text(value) -> str:
