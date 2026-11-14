@@ -102,6 +102,29 @@ def solve(kwargs):
     the weighting field of the read-out electrodes. With none named, the field
     with its IV and its CV along the ramp, then the weighting field. A part
     that run.json lists as solved is left as it is."""
+    # Temporary: the HEMT solver is outside this command for now and is only
+    # passed through here; this goes when it is taken into the field solve.
+    physics = kwargs["_files"]["device"].get("hemt_physics", {})
+    if physics.get("transport_model") == "drift_diffusion_v1":
+        dropped = [
+            option
+            for option, asked in (
+                ("-cv", kwargs["cv"] is not None),
+                ("-wf", kwargs["wf"]),
+                ("-noise", kwargs["noise"]),
+            )
+            if asked
+        ]
+        print(
+            f"{kwargs['det_name']} is solved by its own transport solver: only its"
+            " DC sweep is run, without CV, weighting field or noise"
+            + (f"; {' '.join(dropped)} dropped" if dropped else "")
+        )
+        return _ramp_or_weighting({**kwargs, "noise": False}, cv=False, wf=False)
+    if kwargs["umf"]:
+        # Loading it makes UMFPACK the linear solver of devsim in this process,
+        # where devsim would have taken MKL; without MKL devsim loads it itself.
+        import devsim.umfpack.umfshim  # noqa: F401
     named = [
         part
         for part, asked in (
