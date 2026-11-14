@@ -46,7 +46,7 @@ def test_multielectrode_weighting_signals_remain_grouped_by_carrier() -> None:
 def test_missing_weighting_potential_fails_at_current_boundary() -> None:
     system = _system()
 
-    with pytest.raises(RuntimeError, match="返回 None"):
+    with pytest.raises(RuntimeError, match="returned None"):
         system._get_weighting_potentials_batch(
             _MissingWeightingField(),
             [0.0],
@@ -59,7 +59,7 @@ def test_missing_weighting_potential_fails_at_current_boundary() -> None:
 def test_multielectrode_signal_propagates_missing_weighting_potential() -> None:
     system = _system()
 
-    with pytest.raises(RuntimeError, match="返回 None"):
+    with pytest.raises(RuntimeError, match="returned None"):
         system._process_carrier_signal_multi(
             0,
             _MissingWeightingField(),
