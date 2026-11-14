@@ -20,6 +20,16 @@ tolerance_default = 1e-6
 
 min_intensity = 1 # V/cm
 
+# 载流子停下的原因，键是 end_conditions 里的编号
+END_REASONS = {
+    0: "still_drifting",  # 漂移步数用完时还没停
+    1: "left_device",     # 走出器件
+    2: "no_field",        # 取电场失败
+    3: "low_field",       # 场不高于 min_field_strength
+    4: "step_limit",      # 到了每个载流子的步数上限
+    5: "collected",       # 到达读出电极，或进了当金属的区域
+}
+
 # 低阻且低场的地方当金属：载流子到了这里就算已收集
 metal_resistivity = 10 # Ω·cm，低于它算低阻
 thermal_length = 1e-4 # cm，场在这段长度上给的电势差小于热电压算低场

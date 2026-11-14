@@ -17,7 +17,7 @@ import ROOT
 ROOT.gROOT.SetBatch(True)
 
 from .model import Material
-from .carrier import VectorizedCarrierSystem
+from .carrier import END_REASONS, VectorizedCarrierSystem
 from . import draw
 
 from ..interaction.carrier_list import CarrierListFromG4P
@@ -221,6 +221,9 @@ class CalCurrent:
         # 执行漂移和信号计算
         self.drifting_loop(my_d, my_f)
 
+        # 各种停下原因的载流子个数，增益载流子在加上增益电流时计入
+        self.ends = self.count_ends()
+
         # 计算电流：数组 (电极数, n_bin + 2)，单位 A，首尾两列是时间窗之前和之后的部分
         hole_bins, electron_bins = self.get_current(my_d.x_ele_num, my_d.y_ele_num, self.read_out_contact)
         sum_bins = hole_bins + electron_bins
@@ -229,6 +232,8 @@ class CalCurrent:
         if my_d.has_avalanche:
             self.gain_current = CalCurrentGain(my_d, my_f, self)
             sum_bins += self.gain_current.hole_bins + self.gain_current.electron_bins
+            for reason, count in self.gain_current.count_ends().items():
+                self.ends[reason] += count
 
         # 各电极在时间窗内的电流，(电极数, n_bin)，单位 A
         self.hole_current = hole_bins[:, 1:-1]
@@ -292,6 +297,15 @@ class CalCurrent:
             raise
     
         logger.info("漂移和信号计算完成")
+
+    def count_ends(self):
+        """How many carriers stopped for each of END_REASONS."""
+        ends = dict.fromkeys(END_REASONS.values(), 0)
+        for carrier_system in (self.electron_system, self.hole_system):
+            if carrier_system is not None:
+                for code, reason in END_REASONS.items():
+                    ends[reason] += int(np.sum(carrier_system.end_conditions == code))
+        return ends
 
     def current_define(self, read_ele_num):
         """定义电流直方图"""
