@@ -138,7 +138,7 @@ def solve(kwargs):
     have = {
         "iv": _solved(kwargs, "potential", _bias(kwargs)),
         "cv": _solved(kwargs, "capacitance", cv_at),
-        "wf": _solved(kwargs, "weighting", "any"),
+        "wf": _solved(kwargs, "weighting", _bias(kwargs)),
     }
     left = [part for part in named or ["iv", "wf"] if not have[part]]
     for done, part in enumerate(left):
