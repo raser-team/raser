@@ -36,14 +36,3 @@ __all__ = [
     "build_resistive_sheet_sensor",
 ]
 
-
-def trans(name):
-    from .legacy import trans as legacy_trans
-
-    return legacy_trans(name)
-
-
-def readout(name):
-    from .legacy import readout as legacy_readout
-
-    return legacy_readout(name)
