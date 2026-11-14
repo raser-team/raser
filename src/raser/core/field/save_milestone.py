@@ -103,7 +103,7 @@ def milestone_save_1D(device, v, path, is_tcad):
     metadata['voltage'] = v
     metadata['dimension'] = 1
 
-    names = ['Potential', 'TrappingRate_p', 'TrappingRate_n']
+    names = ['Potential', 'TrappingRate_p', 'TrappingRate_n', 'Electrons', 'Holes']
     if v == 0 or is_tcad:
         names.append('NetDoping')
 
@@ -255,7 +255,7 @@ def milestone_save_2D(device, v, path, is_tcad, is_flip=False):
     metadata['voltage'] = v
     metadata['dimension'] = 2
 
-    names = ['Potential', 'TrappingRate_p', 'TrappingRate_n']
+    names = ['Potential', 'TrappingRate_p', 'TrappingRate_n', 'Electrons', 'Holes']
     if v == 0 or is_tcad:
         names.append('NetDoping')
 
@@ -427,7 +427,7 @@ def milestone_save_3D(device, v, path, is_tcad):
         "dimension": 3       
     }
 
-    names = ["Potential", "TrappingRate_p", "TrappingRate_n"]
+    names = ["Potential", "TrappingRate_p", "TrappingRate_n", "Electrons", "Holes"]
     if v == 0 or is_tcad:
         names.append("NetDoping")
 
