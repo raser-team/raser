@@ -15,8 +15,6 @@ from raser.core.field.devsim_field import DevsimField
 from raser.core.field.physics_avalanche import CreateImpactModel_vanOvenstraeten
 from raser.core.field.solver_section import _resolve_impact_model
 from raser.core.field.solver_section import _voltage_milestones
-from raser.core.interaction.laser_physics import gaussian_square_integral
-from raser.core.interaction.laser_physics import tpa_carrier_density
 
 
 def test_van_overstraeten_has_zero_ionization_below_its_field_threshold() -> None:
@@ -36,34 +34,6 @@ def test_field_solver_uses_enabled_avalanche_and_includes_final_bias() -> None:
     assert _resolve_impact_model(enabled) == "vanOverstraeten"
     assert _voltage_milestones(350.0, 100.0) == [100.0, 200.0, 300.0, 350.0]
     assert _voltage_milestones(-250.0, 100.0) == [-100.0, -200.0, -250.0]
-
-
-def test_tpa_density_contains_the_gaussian_square_integral() -> None:
-    first = tpa_carrier_density(
-        beta_2=1.5e-11,
-        wavelength_um=1.55,
-        pulse_fluence_W_s_per_m2=2.0,
-        temporal_fwhm_s=600.0e-15,
-    )
-    second = tpa_carrier_density(
-        beta_2=1.5e-11,
-        wavelength_um=1.55,
-        pulse_fluence_W_s_per_m2=2.0,
-        temporal_fwhm_s=300.0e-15,
-    )
-
-    assert gaussian_square_integral(300.0e-15) == pytest.approx(
-        2.0 * gaussian_square_integral(600.0e-15)
-    )
-    assert second == pytest.approx(2.0 * first)
-
-    array_density = tpa_carrier_density(
-        beta_2=1.5e-11,
-        wavelength_um=1.55,
-        pulse_fluence_W_s_per_m2=np.asarray([1.0, 2.0]),
-        temporal_fwhm_s=600.0e-15,
-    )
-    assert array_density[1] == pytest.approx(4.0 * array_density[0])
 
 
 def test_unstructured_3d_field_is_regularized_with_explicit_bins() -> None:

@@ -5,55 +5,15 @@ Description:  interaction.py
 @version    : 1.0
 """
 
-import json
-import os
-import copy
-from pathlib import Path
-
 from raser.core.interaction.geant4 import g4b
 
 from .deposits import deposits_of_steps
 from .detector_construction import GeneralDetectorConstruction
 from .action_initialization import GeneralActionInitialization
-from raser.supports.paths import component_path
 
 g4b.include("G4RunManager.hh")
 
 verbose = 0
-world_size = 25000
-
-
-def _get_or_create_vis_manager():
-    existing = g4b.cppyy.gbl.G4VVisManager.GetConcreteInstance()
-    if existing:
-        return existing
-    vis_manager = g4b.G4VisExecutive()
-    vis_manager.Initialize()
-    return vis_manager
-
-
-def _resolve_vis_driver(g4_dic):
-    driver = g4_dic.get("g4_vis_driver") or os.environ.get("G4VIS_DEFAULT_DRIVER")
-    if not driver:
-        raise ValueError(
-            "Geant4 visualization driver must be explicit: use "
-            "--g4-vis-driver or set G4VIS_DEFAULT_DRIVER"
-        )
-    return driver
-
-
-def _vis_driver_needs_ui_session(driver):
-    batch_drivers = {
-        "DAWNFILE",
-        "HEPREPFILE",
-        "K3DJUPYTER",
-        "MPLJUPYTER",
-        "TSG",
-        "TSG_FILE",
-        "TSG_OFFSCREEN",
-        "VRML2FILE",
-    }
-    return driver.upper() not in batch_drivers
 
 
 def _release_cppyy_ownership(value):
@@ -73,7 +33,7 @@ class GeneralG4Interaction:
     def __init__(
         self,
         my_d,
-        g4experiment,
+        g4_dic,
         g4_seed,
         g4_vis=False,
         MyDetectorConstruction=GeneralDetectorConstruction,
@@ -85,6 +45,9 @@ class GeneralG4Interaction:
             Simulate s_num particles through device
             Record the energy depositon in the device
         Parameters:
+            g4_dic : dict
+                Geant4 configuration: source, surroundings, total_events,
+                edep_min and edep_max [MeV]
             energy_steps : list
                 Energy deposition of each step in simulation
             edep_devices : list
@@ -92,22 +55,13 @@ class GeneralG4Interaction:
         @Modify:
             2025/05/15
         """
-        if isinstance(g4experiment, dict):
-            g4_dic = copy.deepcopy(g4experiment)
-        else:
-            geant4_json = Path(g4experiment)
-            if not geant4_json.exists():
-                raise FileNotFoundError(
-                    "Geant4 geometry must be passed as a config dict or JSON path: "
-                    f"{g4experiment}"
-                )
-            with open(geant4_json) as f:
-                g4_dic = json.load(f)
-
-        if "par_randx" not in g4_dic:
-            g4_dic["par_randx"] = 0
-        if "par_randy" not in g4_dic:
-            g4_dic["par_randy"] = 0
+        # g4_vis keeps its place among the arguments until the callers that
+        # pass it by position are gone.
+        if g4_vis:
+            raise ValueError(
+                "GeneralG4Interaction does not draw; use "
+                "raser.core.interaction.view_geometry.view_geometry"
+            )
 
         self.geant4_model = g4_dic["geant4_model"]
         detector_material = my_d.device_dict["material"]
@@ -123,16 +77,6 @@ class GeneralG4Interaction:
         self.my_g4d = MyDetectorConstruction(
             my_d, g4_dic, detector_material, g4_dic["maxstep"]
         )
-
-        g4_vis = g4_vis or g4_dic["g4_vis"]
-        vis_driver = _resolve_vis_driver(g4_dic) if g4_vis else None
-        vis_needs_ui = bool(vis_driver and _vis_driver_needs_ui_session(vis_driver))
-        if g4_vis:
-            ui = None
-            if vis_needs_ui:
-                ui = g4b.G4UIExecutive(
-                    1, [os.getcwd()]
-                )  # make sure the UI is created in the current working directory
 
         self.g4RunManager = g4b.G4RunManager.GetRunManager() or g4b.G4RunManager()
         self.rand_engine = g4b.cppyy.gbl.CLHEP.RanecuEngine()
@@ -162,8 +106,8 @@ class GeneralG4Interaction:
         self.action_initialization = MyActionInitialization(
             g4_dic["par_in"],
             g4_dic["par_out"],
-            g4_dic["par_randx"],
-            g4_dic["par_randy"],
+            g4_dic.get("par_randx", 0),
+            g4_dic.get("par_randy", 0),
             g4_dic["par_type"],
             g4_dic["par_energy"],
             self.eventIDs,
@@ -177,68 +121,7 @@ class GeneralG4Interaction:
         )
         self.g4RunManager.SetUserInitialization(self.action_initialization)
 
-        if g4_vis:
-            self.visManager = _get_or_create_vis_manager()
-            UImanager = g4b.G4UImanager.GetUIpointer()
-            UImanager.ApplyCommand("/vis/open {}".format(vis_driver))
-
-            if self.geant4_model == "gdml_import":
-                UImanager.ApplyCommand(
-                    "/control/execute {}".format(
-                        component_path("g4macro", "vis_pcb.mac")
-                    )
-                )
-            else:
-                UImanager.ApplyCommand(
-                    "/control/execute {}".format(
-                        component_path("g4macro", "init_vis.mac")
-                    )
-                )
-                UImanager.ApplyCommand(
-                    "/control/execute {}".format(component_path("g4macro", "vis.mac"))
-                )
-            if g4_dic.get("g4_vis_output") and vis_driver.upper() in {
-                "TSG",
-                "TSG_FILE",
-                "TSG_OFFSCREEN",
-            }:
-                UImanager.ApplyCommand("/vis/tsg/offscreen/set/format zb_png")
-                UImanager.ApplyCommand(
-                    "/vis/tsg/offscreen/set/file {}.png".format(g4_dic["g4_vis_output"])
-                )
-            elif g4_dic.get("g4_vis_output"):
-                UImanager.ApplyCommand("/vis/viewer/set/background 1 1 1")
-                UImanager.ApplyCommand("/vis/ogl/set/printMode vectored")
-                UImanager.ApplyCommand("/vis/ogl/set/printSize 2000 2000")
-                UImanager.ApplyCommand(
-                    "/vis/ogl/set/printFilename {}".format(g4_dic["g4_vis_output"])
-                )
-        else:
-            UImanager = g4b.G4UImanager.GetUIpointer()
-            # reduce verbose from physics list
-            UImanager.ApplyCommand("/process/em/verbose %d" % (verbose))
-            UImanager.ApplyCommand("/process/had/verbose %d" % (verbose))
-            UImanager.ApplyCommand("/run/initialize")
-
-        self.g4RunManager.BeamOn(self.generated_events)
-        if g4_vis:
-            UImanager.ApplyCommand("/vis/viewer/flush")
-        if (
-            g4_vis
-            and g4_dic.get("g4_vis_output")
-            and vis_driver.upper()
-            in {
-                "TSG",
-                "TSG_FILE",
-                "TSG_OFFSCREEN",
-            }
-        ):
-            UImanager.ApplyCommand("/vis/viewer/rebuild")
-        elif g4_vis and g4_dic.get("g4_vis_output"):
-            UImanager.ApplyCommand("/vis/ogl/export")
-        if g4_vis and vis_needs_ui:
-            ui.SessionStart()
-            del ui
+        self.beam_on()
 
         self.init_tz_device = 0
         self.p_steps_current = [
@@ -255,6 +138,14 @@ class GeneralG4Interaction:
         # change the coordinate system from Geant4 to device
 
         self._closed = False
+
+    def beam_on(self):
+        UImanager = g4b.G4UImanager.GetUIpointer()
+        # reduce verbose from physics list
+        UImanager.ApplyCommand("/process/em/verbose %d" % (verbose))
+        UImanager.ApplyCommand("/process/had/verbose %d" % (verbose))
+        UImanager.ApplyCommand("/run/initialize")
+        self.g4RunManager.BeamOn(self.generated_events)
 
     def deposits(self):
         """The recorded events as Deposits in the coordinates of the device."""
@@ -282,9 +173,6 @@ class GeneralG4Interaction:
             _release_cppyy_ownership(action)
         _release_cppyy_ownership(self.action_initialization)
         _release_cppyy_ownership(self.rand_engine)
-        if hasattr(self, "visManager"):
-            _release_cppyy_ownership(self.visManager)
-            self.visManager = None
 
         self.my_g4d = None
         self.step_limiter_physics = None
