@@ -34,10 +34,6 @@ def register(subparsers):
     _add_arguments(signal)
     SIGNAL.attach(signal)
 
-    position_signal = modes.add_parser("position_signal", help="TCT position signal")
-    _add_arguments(position_signal)
-    POSITION_SIGNAL.attach(position_signal)
-
     position_scan_draw = modes.add_parser(
         "position_scan_draw", help="draw TCT position scan"
     )
@@ -52,14 +48,6 @@ def _signal_job(kwargs):
     tct_signal.main(kwargs)
 
 
-def _position_signal_job(kwargs):
-    from . import tct_signal_position_scan
-
-    if kwargs.get("job_index") is None:
-        kwargs["job_index"] = 0
-    tct_signal_position_scan.job_main(kwargs)
-
-
 SIGNAL = Workflow(
     name="tct signal",
     keys=KEYS,
@@ -68,14 +56,6 @@ SIGNAL = Workflow(
     in_file=IN_FILE,
     job=_signal_job,
     seeds=False,
-)
-POSITION_SIGNAL = Workflow(
-    name="tct position_signal",
-    keys=KEYS,
-    defaults={"amplifier": DEFAULTS["amplifier"]},
-    components=COMPONENTS,
-    in_file=IN_FILE,
-    job=_position_signal_job,
 )
 
 
