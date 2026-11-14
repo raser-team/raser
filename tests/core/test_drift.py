@@ -6,6 +6,7 @@ import pytest
 from raser.core import seeding
 from raser.core.current import drift as drift_module
 from raser.core.current.drift import drift
+from raser.core.current.drift import induced_charges
 
 MOBILITY = 1000.0  # cm^2/V/s
 FIELD = 1.0e4  # V/cm, so carriers move at 1e7 cm/s = 100 um/ns
@@ -19,6 +20,10 @@ class _Field:
 
     def get_doping_cached(self, x, y, z):
         return 0.0
+
+    def get_w_p_cached(self, x, y, z, electrode):
+        # two electrodes facing each other at z = 0 and z = 50 um
+        return 1.0 - z / 50.0 if electrode == 0 else z / 50.0
 
 
 def _device():
@@ -126,3 +131,22 @@ def test_electron_drifts_on_through_a_high_field_of_low_resistivity() -> None:
     assert reason == "left_device"
     assert path[-1] == pytest.approx([50.0, 50.0, 0.0, 2.5e-10])
 
+
+def test_a_pair_collected_between_two_electrodes_induces_its_charge_on_each() -> None:
+    # hole from z = 25 to the electrode at 50 um, electron to the low field below 10 um
+    hole, _ = drift(
+        50.0, 50.0, 25.0, 0.0, 100.0, _device(), _Field(), _mobility, 3.0e-11, diffusion=False
+    )
+    electron, _ = drift(
+        50.0, 50.0, 25.0, 0.0, -100.0, _device(), _Field(), _mobility, 3.0e-11, diffusion=False
+    )
+    e0 = 1.60217733e-19  # the charges are compared in units of it
+
+    on_front = induced_charges(hole, 100.0, _Field(), 0) / e0
+    assert on_front[0] == pytest.approx(100.0 * -3.0 / 50.0)
+    assert on_front.sum() == pytest.approx(100.0 * -0.5)
+    assert induced_charges(hole, 100.0, _Field(), 1).sum() / e0 == pytest.approx(100.0 * 0.5)
+    # the electron stops at z = 7 um, where the weighting potential is 0.86
+    assert induced_charges(electron, -100.0, _Field(), 0).sum() / e0 == pytest.approx(
+        -100.0 * (0.86 - 0.5)
+    )

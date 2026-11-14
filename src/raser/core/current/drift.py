@@ -85,3 +85,17 @@ def drift(x, y, z, t, charge, my_d, my_f, mobility, delta_t, diffusion=True):
             reason = "left_device"
             break
     return np.array(path), reason
+
+
+def induced_charges(path, charge, my_f, electrode):
+    """Charge that each step of a path induces on one electrode [C].
+
+    `path` is what `drift` returns, `charge` the number of carriers of the
+    cluster with their sign, `electrode` the number of the electrode in
+    `my_f`. By the Shockley-Ramo theorem a step from a to b induces
+    charge e0 (U_w(b) - U_w(a)), U_w the weighting potential of the
+    electrode.
+    """
+    potential = np.array([my_f.get_w_p_cached(x, y, z, electrode) for x, y, z, _ in path])
+    return charge * e0 * np.diff(potential)
+
