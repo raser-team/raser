@@ -189,6 +189,7 @@ class DevsimField:
             len(PotentialNotUniform['points']), -1
         )
         self.potential_ranges = list(zip(points.min(axis=0).tolist(), points.max(axis=0).tolist()))
+        self.potential_points = points
 
     def set_w_p(self, WeightingPotentialFiles):
         self.WeightingPotential = []
@@ -331,62 +332,61 @@ class DevsimField:
     _planar_gain = None
 
     def planar_gain(self, my_d):
-        """Gain of a planar LGAD, integrated once through its gain layer."""
-        # gain = exp[K(d_gain)] / {1-int[alpha_minor * K(x) dx]}
-        # K(x) = exp{int[(alpha_major - alpha_minor) dx]}
+        """Gain of a planar device, integrated once through its whole depth
+        along the line through the middle of the device."""
+        # gain = K(d) / {1 - int[alpha_minor * K(z) dz]} - 1
+        # K(z) = exp{int[(alpha_major - alpha_minor) dz]}
         if self._planar_gain is not None:
             return self._planar_gain
-
-        # TODO: support non-uniform field in gain layer
+        if "z" not in self.axes:
+            raise ValueError(
+                "the field of {} is stored along {}, without the depth z: it has no planar gain".format(
+                    self.name, self.axes
+                )
+            )
         cal_coefficient = Material(my_d.material, avalanche_model=my_d.avalanche_model).cal_coefficient
 
-        n = 1001
-        if "ilgad" in my_d.det_model:
-            z_list = np.linspace(my_d.avalanche_bond * 1e-4, my_d.l_z, n) # in cm
+        # One field in every interval of the mesh, as the solve has it: the
+        # potential is linear between two nodes.
+        z = np.unique(self.potential_points[:, self.axes.index("z")])  # cm
+        potential = np.array(
+            [self.get_potential(0.5 * my_d.l_x, 0.5 * my_d.l_y, depth * 1e4) for depth in z], dtype=float
+        )
+        width = np.diff(z)
+        field = -np.diff(potential) / width  # V/cm
+        alpha_n = np.array([cal_coefficient(abs(E), -1, my_d.temperature) for E in field])
+        alpha_p = np.array([cal_coefficient(abs(E), +1, my_d.temperature) for E in field])
+
+        # Where the field is strongest it says which carrier multiplies, and
+        # the multiplied carriers start from the middle of that interval.
+        strongest = int(np.argmax(np.abs(field)))
+        self._planar_gain_depth = 0.5 * (z[strongest] + z[strongest + 1]) * 1e4  # um
+        if field[strongest] > 0:
+            alpha_major, alpha_minor = alpha_n, alpha_p  # electrons, as in a conventional Si LGAD
         else:
-            z_list = np.linspace(0, my_d.avalanche_bond * 1e-4, n) # in cm
-        alpha_n_list = np.zeros(n)
-        alpha_p_list = np.zeros(n)
-        for i in range(n):
-            Ex,Ey,Ez = self.get_e_field(0.5*my_d.l_x,0.5*my_d.l_y,z_list[i] * 1e4) # in V/cm, get original field to improve accuracy
-            E_field = math.sqrt(Ex * Ex + Ey * Ey + Ez * Ez)
-            alpha_n = cal_coefficient(E_field, -1, my_d.temperature)
-            alpha_p = cal_coefficient(E_field, +1, my_d.temperature)
-            alpha_n_list[i] = alpha_n
-            alpha_p_list[i] = alpha_p
+            alpha_major, alpha_minor = alpha_p, alpha_n  # holes, as in a conventional SiC LGAD
 
-        if self.get_e_field(0, 0, my_d.avalanche_bond)[2] > 0:
-            alpha_major_list = alpha_n_list # multiplication contributed mainly by electrons in conventional Si LGAD
-            alpha_minor_list = alpha_p_list
-        else:
-            alpha_major_list = alpha_p_list # multiplication contributed mainly by holes in conventional SiC LGAD
-            alpha_minor_list = alpha_n_list
-
-        # the integral supports iLGAD as well
-
-        diff_list = alpha_major_list - alpha_minor_list
-        int_alpha_list = np.zeros(n-1)
-
-        for i in range(1,n):
-            int_alpha = 0
-            for j in range(i):
-                int_alpha += (
-                    (diff_list[j] + diff_list[j+1]) * (z_list[j+1] - z_list[j]) /2
+        # Both integrals are exact for a field that is constant in each interval.
+        rate = alpha_major - alpha_minor
+        growth = np.exp(np.concatenate([[0.0], np.cumsum(rate * width)]))  # K at the nodes
+        even = rate == 0
+        within = np.where(even, width, np.expm1(rate * width) / np.where(even, 1.0, rate))
+        det = float(np.sum(alpha_minor * growth[:-1] * within))  # determinant of breakdown
+        if det >= 1:
+            raise ValueError(
+                "{} breaks down at {} V: the breakdown integral is {:.4g}, not below 1".format(
+                    self.name, self.voltage, det
                 )
-            int_alpha_list[i-1] = int_alpha
-        exp_list = np.exp(int_alpha_list)
+            )
 
-        det = 0 # determinant of breakdown
-        for i in range(0,n-1):
-            average_alpha_minor = (alpha_minor_list[i] + alpha_minor_list[i+1])/2
-            det_derivative = average_alpha_minor * exp_list[i]
-            det += det_derivative*(z_list[i+1]-z_list[i])
-        if det>1:
-            print("determinant=%s, larger than 1, detector break down", det)
-            raise(ValueError)
-
-        self._planar_gain = exp_list[n-2]/(1-det) -1
+        self._planar_gain = growth[-1] / (1 - det) - 1
         return self._planar_gain
+
+    def planar_gain_depth(self, my_d):
+        """The depth in um that the carriers of the planar gain start from:
+        the middle of the mesh interval where the field is strongest."""
+        self.planar_gain(my_d)
+        return self._planar_gain_depth
 
     def get_e_field_cached(self, x, y, z):
         try:
