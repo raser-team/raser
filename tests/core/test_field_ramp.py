@@ -18,6 +18,8 @@ def solved(monkeypatch: pytest.MonkeyPatch) -> list[str]:
         circuit_alter=lambda **_: None,
         solve=lambda **asked: kinds.append(asked["type"]),
         get_contact_current=lambda **_: 1.0,
+        get_node_model_values=lambda **_: [0.0],
+        set_node_values=lambda **_: None,
         get_circuit_node_value=lambda **_: 1.0,
     )
     monkeypatch.setattr(loop_section, "devsim", devsim)
