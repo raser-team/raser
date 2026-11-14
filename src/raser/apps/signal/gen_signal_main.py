@@ -18,6 +18,7 @@ ROOT.gROOT.SetBatch(True)
 
 from raser.core.device import build_device as bdv
 from raser.core.field import devsim_field as devfield
+from raser.core.field.solved import solved_field
 from raser.core.frontend.legacy_readout import Amplifier
 from .draw_save import energy_deposition, draw_drift_path
 from .runtime import apply_signal_plan
@@ -49,8 +50,8 @@ def main(kwargs):
     my_d = bdv.Detector(det_name, kwargs["_files"]["device"])
     g4_config = apply_signal_plan(my_d, kwargs)
 
-    if kwargs['irradiation'] != None:
-        my_d.irradiation_flux = float(kwargs['irradiation'])
+    # The flux is of the field the run takes, not of the device.
+    flux = my_d.irradiation_flux if kwargs['irradiation'] is None else float(kwargs['irradiation'])
     if kwargs.get("events_per_job") is not None:
         g4_config["total_events"] = int(kwargs["events_per_job"])
     if kwargs.get("g4_vis_driver"):
@@ -66,10 +67,9 @@ def main(kwargs):
         my_d.device,
         my_d.voltage,
         my_d.read_out_contact,
-        irradiation_flux=my_d.irradiation_flux,
+        irradiation_flux=flux,
         bounds=my_d.bound,
-        field_set=kwargs["_field_set"],
-        field_directory=kwargs["_field_directory"],
+        field_directory=solved_field(my_d, my_d.voltage, flux),
         interpolation_bins=my_d.device_dict.get("field_interpolation_bins"),
     )
     

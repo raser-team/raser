@@ -8,8 +8,6 @@ Description:  signal/__init__.py
 import json
 from pathlib import Path
 
-from raser.core.field.resolved_device import resolve_device
-from raser.core.field import FieldConfiguration
 from raser.lifecycle.workflow import Workflow
 
 DEFAULTS = json.loads((Path(__file__).parent / "signal.json").read_text("utf-8"))
@@ -36,23 +34,6 @@ def add_arguments(parser):
     parser.add_argument("--adc", help="ADC component")
 
 
-def _device(kwargs):
-    """The device at the bias and irradiation of the options."""
-    values = {}
-    if kwargs.get("voltage") is not None:
-        values["bias_voltage"] = float(kwargs["voltage"])
-    if kwargs.get("irradiation") is not None:
-        values["irradiation"] = {"fluence": float(kwargs["irradiation"])}
-    return resolve_device(kwargs["det_name"], state=values)
-
-
-def field_of(kwargs):
-    """Hash and folder of the solved field at this bias and irradiation."""
-    device = _device(kwargs)
-    solved = FieldConfiguration.resolve(device)
-    return solved.digest, str(solved.directory(device))
-
-
 def job_command(kwargs):
     command = []
     if kwargs.get("g4_vis"):
@@ -65,7 +46,6 @@ def job_command(kwargs):
 def run_job(kwargs, label="signal"):
     """One signal job inside its seed folder."""
     kwargs["_signal_label"] = label
-    kwargs["_field_set"], kwargs["_field_directory"] = field_of(kwargs)
     if kwargs.get("job_index") is not None:
         from . import gen_signal_scan
 

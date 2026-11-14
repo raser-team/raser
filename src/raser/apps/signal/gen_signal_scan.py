@@ -20,6 +20,7 @@ ELECTRON_CHARGE_C = 1.60217733e-19
 
 from raser.core.device import build_device as bdv
 from raser.core.field import devsim_field as devfield
+from raser.core.field.solved import solved_field
 from raser.core.current import cal_current as ccrt
 from raser.core.frontend.legacy_readout import Amplifier
 from raser.core.metrics import waveform_stats
@@ -227,7 +228,7 @@ def _write_cce_event_stats(
             "par_out_y": par_out[1],
             "par_out_z": par_out[2],
             "voltage": my_d.voltage,
-            "irradiation_flux": my_d.irradiation_flux,
+            "irradiation_flux": my_f.irradiation_flux,
             "generated_pairs": my_current.generated_pairs,
             "generated_charge": my_current.generated_pairs * ELECTRON_CHARGE_C,
         }
@@ -344,7 +345,7 @@ def batch_loop(
     # datas that are constant in each event
 
     voltage_array = array('d', [my_d.voltage])
-    irradiation_array = array('d', [my_d.irradiation_flux])
+    irradiation_array = array('d', [my_f.irradiation_flux])
     g4_str = ROOT.std.string()
     g4_str.assign(my_d.g4experiment)
     amplifier_str = ROOT.std.string()
@@ -437,7 +438,7 @@ def batch_loop(
         "signal_"+
         str(instance_number)+
         str(my_d.voltage)+
-        str(my_d.irradiation_flux)+
+        str(my_f.irradiation_flux)+
         str(my_d.bound)+
         str(my_d.g4experiment)+
         str(my_d.amplifier)+
@@ -452,8 +453,8 @@ def main(kwargs):
     my_d = bdv.Detector(det_name, kwargs["_files"]["device"])
     g4_config = apply_signal_plan(my_d, kwargs)
 
-    if kwargs['irradiation'] != None:
-        my_d.irradiation_flux = float(kwargs['irradiation'])
+    # The flux is of the field the run takes, not of the device.
+    flux = my_d.irradiation_flux if kwargs['irradiation'] is None else float(kwargs['irradiation'])
     if kwargs.get("events_per_job") is not None:
         g4_config["total_events"] = int(kwargs["events_per_job"])
     if kwargs.get("g4_vis_driver"):
@@ -468,10 +469,9 @@ def main(kwargs):
         my_d.device,
         my_d.voltage,
         my_d.read_out_contact,
-        irradiation_flux=my_d.irradiation_flux,
+        irradiation_flux=flux,
         bounds=my_d.bound,
-        field_set=kwargs["_field_set"],
-        field_directory=kwargs["_field_directory"],
+        field_directory=solved_field(my_d, my_d.voltage, flux),
         interpolation_bins=my_d.device_dict.get("field_interpolation_bins"),
     )
 

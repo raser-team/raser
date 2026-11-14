@@ -8,7 +8,6 @@ Description:  tct/__init__.py
 import json
 from pathlib import Path
 
-from raser.apps.signal import field_of
 from raser.lifecycle.workflow import Workflow
 
 DEFAULTS = json.loads(
@@ -48,7 +47,6 @@ def register(subparsers):
 
 
 def _signal_job(kwargs):
-    kwargs["_field_directory"] = field_of(kwargs)[1]
     if kwargs.get("job_index") is not None:
         from . import tct_signal_scan
 
@@ -62,7 +60,6 @@ def _signal_job(kwargs):
 def _position_signal_job(kwargs):
     from . import tct_signal_position_scan
 
-    kwargs["_field_directory"] = field_of(kwargs)[1]
     if kwargs.get("job_index") is None:
         kwargs["job_index"] = 0
     tct_signal_position_scan.job_main(kwargs)

@@ -42,6 +42,7 @@ class DevsimField:
                  interpolation_bins=None):
         self.name = device_name
         self.voltage = voltage
+        self.irradiation_flux = irradiation_flux
         self.read_out_contact = read_out_contact
         self.interpolation_bins = interpolation_bins
 
