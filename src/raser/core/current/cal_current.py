@@ -212,6 +212,8 @@ class CalCurrent:
         self.hole_current = hole_bins[:, 1:-1]
         self.electron_current = electron_bins[:, 1:-1]
         self.current = sum_bins[:, 1:-1]
+        # 各电极有正负号的净电荷，单位 C：全部感应电荷，含落在时间窗之外的部分
+        self.charge = sum_bins.sum(axis=1) * self.t_bin
 
         # 填回直方图，给还在读直方图的调用方
         self.current_define(self.read_ele_num)
