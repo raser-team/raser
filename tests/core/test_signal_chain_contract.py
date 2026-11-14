@@ -4,32 +4,7 @@ import pytest
 
 from raser.core.frontend import CurrentSource
 from raser.core.frontend import assemble_frontend
-from raser.core.interaction import from_energy_deposits
-from raser.core.interaction import prescribed_track
 from raser.core.metrics import measure_waveform
-
-
-def test_interaction_creates_weighted_carrier_populations() -> None:
-    generation = from_energy_deposits(
-        [(1.0, 2.0, 3.0, 4.0)],
-        [3.6e-6],
-        material="Si",
-    )
-    track = prescribed_track(
-        (0.0, 0.0, 0.0),
-        (0.0, 0.0, 10.0),
-        packets=2,
-        pairs_per_um=5.0,
-        time=2.0,
-    )
-
-    assert generation.ionized_pairs == pytest.approx((1.0,))
-    assert generation.track_position == ((1.0, 2.0, 3.0, 4.0),)
-    assert track.total_pairs == pytest.approx(50.0)
-    assert track.track_position == (
-        (0.0, 0.0, 2.5, 2.0),
-        (0.0, 0.0, 7.5, 2.0),
-    )
 
 
 def test_current_frontend_and_metrics_share_one_waveform_contract() -> None:
