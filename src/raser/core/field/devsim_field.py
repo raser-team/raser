@@ -135,18 +135,27 @@ class DevsimField:
         
         logger.info(f"DevsimField initialization complete, resolution: {self.resolution} um")
 
+    def _stored(self, file, what):
+        """What one file of the field holds. A file that is missing, or that
+        has fewer dimensions than the field, is an error that names it."""
+        if file is None or not os.path.exists(file):
+            raise FileNotFoundError(
+                "the {} of {} at {} V is not solved: {} is missing".format(
+                    what, self.name, self.voltage, file or "its file"
+                )
+            )
+        with open(file, 'rb') as stream:
+            stored = pickle.load(stream)
+        if stored['metadata']['dimension'] < len(self.axes):
+            raise ValueError(
+                "the {} in {} has {} dimensions, the field has {}".format(
+                    what, file, stored['metadata']['dimension'], len(self.axes)
+                )
+            )
+        return stored
+
     def set_doping(self, DopingFile):
-        try:
-            with open(DopingFile,'rb') as file:
-                DopingNotUniform=pickle.load(file)
-                print("Doping file loaded for {}".format(self.name))
-                if DopingNotUniform['metadata']['dimension'] < len(self.axes):
-                    print("Doping dimension not match")
-                    return
-        except (FileNotFoundError, TypeError):
-            print("Doping file not found at {}, please run field simulation first".format(DopingFile))
-            print("or manually set the doping file")
-            return
+        DopingNotUniform = self._stored(DopingFile, "net doping")
         
         if DopingNotUniform['metadata']['dimension'] == 1:
             DopingUniform = interpolate_1d(DopingNotUniform)
@@ -160,17 +169,7 @@ class DevsimField:
         self.Doping = DopingUniform
 
     def set_potential(self, PotentialFile):
-        try:
-            with open(PotentialFile,'rb') as file:
-                PotentialNotUniform=pickle.load(file)
-                print("Potential file loaded for {}".format(self.name))
-                if PotentialNotUniform['metadata']['dimension'] < len(self.axes):
-                    print("Potential dimension not match")
-                    return
-        except FileNotFoundError:
-            print("Potential file not found at {}, please run field simulation first".format(PotentialFile))
-            print("or manually set the potential file")
-            return
+        PotentialNotUniform = self._stored(PotentialFile, "potential")
         
         if PotentialNotUniform['metadata']['dimension'] == 1:
             PotentialUniform = interpolate_1d(PotentialNotUniform)
@@ -194,18 +193,10 @@ class DevsimField:
             WeightingPotentialFile = resolve_field_pickle(
                 os.path.dirname(WeightingPotentialFiles[i]), "Potential", 1
             )
-            try:
-                with open(WeightingPotentialFile,'rb') as file:
-                    WeightingPotentialNotUniform=pickle.load(file)
-                    print("Weighting Potential file loaded for {} at electrode {}".format(self.name, i+1))
-                    if ( WeightingPotentialNotUniform['metadata']['dimension'] < len(self.axes)
-                    ):
-                        print("Weighting Potential dimension not match")
-                        return
-            except FileNotFoundError:
-                print("Weighting Potential file not found at {}, please run field simulation first".format(WeightingPotentialFile))
-                print("or manually set the Weighting Potential file")
-                return
+            WeightingPotentialNotUniform = self._stored(
+                WeightingPotentialFile,
+                "weighting potential of {}".format(self.read_out_contact[i]['name']),
+            )
             
             if WeightingPotentialNotUniform['metadata']['dimension'] == 1:
                 WeightingPotentialUniform = interpolate_1d(WeightingPotentialNotUniform)
@@ -219,17 +210,7 @@ class DevsimField:
             self.WeightingPotential.append(WeightingPotentialUniform)
     
     def set_trap_p(self, TrappingRate_pFile):
-        try:
-            with open(TrappingRate_pFile,'rb') as file:
-                TrappingRate_pNotUniform=pickle.load(file)
-                print("TrappingRate_p file loaded for {}".format(self.name))
-                if TrappingRate_pNotUniform['metadata']['dimension'] < len(self.axes):
-                    print("TrappingRate_p dimension not match")
-                    return
-        except FileNotFoundError:
-            print("TrappingRate_p file not found at {}, please run field simulation first".format(TrappingRate_pFile))
-            print("or manually set the hole trapping rate file")
-            return
+        TrappingRate_pNotUniform = self._stored(TrappingRate_pFile, "hole trapping rate")
         
         if TrappingRate_pNotUniform['metadata']['dimension'] == 1:
             TrappingRate_pUniform = interpolate_1d(TrappingRate_pNotUniform)
@@ -243,17 +224,7 @@ class DevsimField:
         self.TrappingRate_p = TrappingRate_pUniform
     
     def set_trap_n(self, TrappingRate_nFile):
-        try:
-            with open(TrappingRate_nFile,'rb') as file:
-                TrappingRate_nNotUniform=pickle.load(file)
-                print("TrappingRate_n file loaded for {}".format(self.name))
-                if TrappingRate_nNotUniform['metadata']['dimension'] != len(self.axes):
-                    print("TrappingRate_n dimension not match")
-                    return
-        except FileNotFoundError:
-            print("TrappingRate_n file not found at {}, please run field simulation first".format(TrappingRate_nFile))
-            print("or manually set the electron trapping rate file")
-            return
+        TrappingRate_nNotUniform = self._stored(TrappingRate_nFile, "electron trapping rate")
         
         if TrappingRate_nNotUniform['metadata']['dimension'] == 1:
             TrappingRate_nUniform = interpolate_1d(TrappingRate_nNotUniform)
