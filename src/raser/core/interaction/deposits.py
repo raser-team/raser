@@ -52,6 +52,44 @@ class Deposits:
     events: list[EventDeposits]
 
 
+def deposits_of_steps(
+    detector: str,
+    event_numbers,
+    positions,
+    energies,
+    times,
+    generated_events: int,
+    edep_min: float | None,
+    edep_max: float | None,
+) -> Deposits:
+    """Deposits of one detector from the steps recorded event by event.
+
+    positions[i][k] is the (x, y, z) [um] of step k of event i in the
+    coordinates of the detector, energies[i][k] its energy [MeV] and
+    times[i][k] its time [s]. Steps that deposit no energy are left out,
+    and so are events left without a deposit.
+    """
+    events = []
+    for number, event_positions, event_energies, event_times in zip(
+        event_numbers, positions, energies, times, strict=True
+    ):
+        kept = [k for k, energy in enumerate(event_energies) if energy > 0]
+        if not kept:
+            continue
+        events.append(
+            EventDeposits(
+                int(number),
+                [detector] * len(kept),
+                [float(event_positions[k][0]) for k in kept],
+                [float(event_positions[k][1]) for k in kept],
+                [float(event_positions[k][2]) for k in kept],
+                [float(event_times[k]) for k in kept],
+                [float(event_energies[k]) for k in kept],
+            )
+        )
+    return Deposits(generated_events, edep_min, edep_max, events)
+
+
 def write_deposits(path: str, deposits: Deposits) -> None:
     file = ROOT.TFile(str(path), "RECREATE")
     tree = ROOT.TTree("deposits", "energy deposits of each recorded event")

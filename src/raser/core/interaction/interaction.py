@@ -12,6 +12,7 @@ from pathlib import Path
 
 from raser.core.interaction.geant4 import g4b
 
+from .deposits import deposits_of_steps
 from .detector_construction import GeneralDetectorConstruction
 from .action_initialization import GeneralActionInitialization
 from raser.supports.paths import component_path
@@ -254,6 +255,18 @@ class GeneralG4Interaction:
         # change the coordinate system from Geant4 to device
 
         self._closed = False
+
+    def deposits(self):
+        """The recorded events as Deposits in the coordinates of the device."""
+        return deposits_of_steps(
+            "Device",
+            self.eventIDs,
+            self.p_steps_current,
+            self.energy_steps,
+            self.time_steps,
+            self.generated_events,
+            *self.edep_window,
+        )
 
     def close(self):
         if self._closed:

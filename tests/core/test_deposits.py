@@ -1,5 +1,6 @@
 from raser.core.interaction.deposits import Deposits
 from raser.core.interaction.deposits import EventDeposits
+from raser.core.interaction.deposits import deposits_of_steps
 from raser.core.interaction.deposits import read_deposits
 from raser.core.interaction.deposits import write_deposits
 
@@ -35,3 +36,46 @@ def test_deposits_file_returns_each_event_with_its_own_deposits(tmp_path) -> Non
     write_deposits(path, deposits)
 
     assert read_deposits(path) == deposits
+
+
+def test_deposits_of_steps_drop_steps_and_events_without_energy() -> None:
+    deposits = deposits_of_steps(
+        "Device",
+        event_numbers=[0, 1, 2],
+        positions=[
+            [[1.0, 2.0, 30.0], [1.5, 2.5, 20.0], [2.0, 3.0, 10.0]],
+            [[0, 0, 0]],
+            [[7.0, 8.0, 9.0], [7.5, 8.5, 4.0]],
+        ],
+        energies=[[0.02, 0.0, 0.03], [0], [0.0, 0.01]],
+        times=[[1.0e-12, 1.1e-12, 1.2e-12], [0], [2.0e-12, 2.1e-12]],
+        generated_events=3,
+        edep_min=None,
+        edep_max=0.1,
+    )
+
+    assert deposits == Deposits(
+        generated_events=3,
+        edep_min=None,
+        edep_max=0.1,
+        events=[
+            EventDeposits(
+                event=0,
+                detector=["Device", "Device"],
+                x=[1.0, 2.0],
+                y=[2.0, 3.0],
+                z=[30.0, 10.0],
+                t=[1.0e-12, 1.2e-12],
+                e=[0.02, 0.03],
+            ),
+            EventDeposits(
+                event=2,
+                detector=["Device"],
+                x=[7.5],
+                y=[8.5],
+                z=[4.0],
+                t=[2.1e-12],
+                e=[0.01],
+            ),
+        ],
+    )
