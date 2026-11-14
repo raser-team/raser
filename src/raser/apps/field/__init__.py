@@ -84,12 +84,14 @@ def _capacitance(kwargs):
 
 def _empty_devsim():
     """devsim holds one device: emptied for the next part, with the linear
-    solver it chose when it was loaded, which emptying forgets."""
+    solver it chose when it was loaded, which emptying forgets. With MKL that
+    is the parameter direct_solver alone; with UMFPACK also solver_callback."""
     import devsim
 
     kept = {
         name: devsim.get_parameter(name=name)
         for name in ("direct_solver", "solver_callback")
+        if name in devsim.get_parameter_list()
     }
     devsim.reset_devsim()
     for name, value in kept.items():
