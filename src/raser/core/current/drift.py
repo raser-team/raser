@@ -1,6 +1,7 @@
 """Drift of a cluster of charge carriers through a detector."""
 
 import math
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -14,6 +15,15 @@ max_drift_time = 100e-9  # s, a carrier still drifting after this stops
 # where resistivity and field are both low is taken as metal: a carrier there is collected
 metal_resistivity = 10  # ohm cm, below it the resistivity is low
 thermal_length = 1e-4  # cm, the field is low when its drop over this length is below kT/e
+
+
+@dataclass
+class Drifted:
+    """Clusters of carriers of one sign after their drift, one entry each."""
+
+    charges: list  # number of carriers with their sign
+    paths: list  # what `drift` returns: arrays (points, 4) of x, y, z [um], t [s]
+    reasons: list  # why each stopped
 
 
 def drift(x, y, z, t, charge, my_d, my_f, mobility, delta_t, diffusion=True):
