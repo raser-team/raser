@@ -10,15 +10,20 @@ import pytest
 import ROOT
 
 from raser.core import seeding
-from raser.core.current.carrier import VectorizedCarrierSystem
+from raser.core.current.drift import drift
 from raser.core.interaction.energy_loss import sample_fano_pairs
 from raser.core.interaction.energy_loss import sample_landau_energy_loss
 from raser.core.interaction.toy_mip import ToyMIPInteraction
 
 
 def _drift() -> object:
-    system = VectorizedCarrierSystem.__new__(VectorizedCarrierSystem)
-    return system._calculate_diffusion(1.0)
+    sensor = SimpleNamespace(l_x=100.0, l_y=100.0, l_z=50.0, temperature=300.0)
+    field = SimpleNamespace(
+        get_e_field_cached=lambda x, y, z: (0.0, 0.0, 1.0e4),
+        get_doping_cached=lambda x, y, z: 0.0,
+    )
+    path, _ = drift(50.0, 50.0, 25.0, 0.0, 1.0, sensor, field, lambda *_: 1000.0, 1.0e-12)
+    return path[1].tolist()
 
 
 def _energy_loss() -> object:
