@@ -181,3 +181,38 @@ def test_gain_follows_the_voltage_at_its_input(tmp_path):
     expected = 1.5 * 1e-6 * 50.0 * (1 - np.exp(-after / (50.0 * 10e-12)))
     off_the_jump = (times < 0) | (times > DT_S)
     assert voltage[0][off_the_jump] == pytest.approx(expected[off_the_jump], abs=7.5e-8)
+
+
+def test_gali52_gives_20_8_db_on_50_ohm_and_3_db_less_at_2_ghz():
+    # behind a source of 50 Ohm: a step of 1 uA in the 25 Ohm of source and
+    # input is 25 uV, and comes out on the 50 Ohm load 10^(20.8/20) times
+    # larger, with the time constant of a 2.0 GHz pole
+    source = {
+        "ports": {"in": "a", "out": "b"},
+        "elements": {
+            "R": {"between": ["a", "0"], "ohm": 50.0},
+            "wire": {"between": ["a", "b"], "ohm": 1e-6},
+        },
+    }
+    load = {
+        "ports": {"in": "a"},
+        "elements": {"R": {"between": ["a", "0"], "ohm": 50.0}},
+    }
+    chain = {
+        "stages": {
+            "source": source,
+            "Gali52": read_subcircuit(component_path("afe", "Gali52.cir")),
+        },
+        "load": load,
+    }
+    dt = 2e-12
+    times = -0.2e-9 + (np.arange(1000) + 0.5) * dt
+    step = np.where(times > 0, 1e-6, 0.0)
+
+    voltage = solve(chain, ["top"], dt, [step], planar_sensor("top", 1e-15))
+
+    after = np.clip(times, 0, None)
+    gain = 10 ** (20.8 / 20)
+    expected = gain * 25e-6 * (1 - np.exp(-after * 2 * np.pi * 2.0e9))
+    off_the_jump = (times < 0) | (times > 2 * dt)
+    assert voltage[0][off_the_jump] == pytest.approx(expected[off_the_jump], abs=3e-6)
