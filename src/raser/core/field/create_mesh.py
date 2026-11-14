@@ -21,7 +21,8 @@ def mesh_axes(my_d):
     if my_d.dimension == 1:
         return ("z",)
     if my_d.dimension == 2:
-        return ("x", "y") if my_d.is_plugin() else ("z", "x")
+        plugin = my_d.device_dict.get("mesh", {}).get("plugin", False)
+        return ("x", "y") if plugin else ("z", "x")
     return ("x", "y", "z") if my_d.mesher == "sde" else ("z", "x", "y")
 
 
