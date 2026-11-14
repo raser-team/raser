@@ -16,9 +16,9 @@ def _parsed(*words: str) -> dict[str, Any]:
 
 
 @pytest.fixture
-def solves(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
-    """What a field command solves in its own process, and the commands it starts."""
-    done: list[Any] = []
+def solves(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """What a field command solves, and where it empties devsim, in order."""
+    done: list[str] = []
 
     def ramp_or_weighting(kwargs: dict[str, Any]) -> None:
         done.append("wf" if kwargs["wf"] else "iv+cv" if kwargs["cv"] else "iv")
@@ -27,54 +27,28 @@ def solves(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
     monkeypatch.setattr(
         field, "_capacitance", lambda kwargs: done.append(f"cv at {kwargs['cv']}")
     )
-    monkeypatch.setattr(
-        field.subprocess, "run", lambda command, check: done.append(command[3:])
-    )
+    monkeypatch.setattr(field, "_empty_devsim", lambda: done.append("emptied"))
     return done
 
 
 @pytest.mark.parametrize(
     ("options", "solved"),
     [
-        ((), ["iv+cv", ["field", "HPK-Si-PiN", "-wf"]]),
+        ((), ["iv+cv", "emptied", "wf"]),
         (("-iv",), ["iv"]),
-        (("-cv", "100"), ["cv at 100.0"]),
+        (("-cv",), ["cv at True"]),
+        (("-cv", "0"), ["cv at 0.0"]),
         (("-wf",), ["wf"]),
-        (("-iv", "-cv"), ["iv", ["field", "HPK-Si-PiN", "-cv"]]),
-        (("-cv", "100", "-wf"), ["cv at 100.0", ["field", "HPK-Si-PiN", "-wf"]]),
-        (("-w", "-c", "100"), ["cv at 100.0", ["field", "HPK-Si-PiN", "-wf"]]),
-        (
-            ("-wf", "-iv", "-cv", "0", "-bias", "-300", "-irr", "1e15"),
-            [
-                "iv",
-                [
-                    "field",
-                    "HPK-Si-PiN",
-                    "-cv=0.0",
-                    "-bias=-300.0",
-                    "-irr=1000000000000000.0",
-                ],
-                [
-                    "field",
-                    "HPK-Si-PiN",
-                    "-wf",
-                    "-bias=-300.0",
-                    "-irr=1000000000000000.0",
-                ],
-            ],
-        ),
+        (("-w", "-c", "100"), ["cv at 100.0", "emptied", "wf"]),
+        (("-wf", "-cv", "-iv"), ["iv", "emptied", "cv at True", "emptied", "wf"]),
     ],
 )
-def test_the_first_part_is_solved_here_and_each_further_one_by_a_command_naming_it_alone(
-    solves: list[Any], options: tuple[str, ...], solved: list[Any]
+def test_the_parts_named_are_solved_in_order_with_devsim_emptied_between_them(
+    solves: list[str], options: tuple[str, ...], solved: list[str]
 ) -> None:
     field.solve(_parsed(*options))
 
     assert solves == solved
-    for started in solved[1:]:
-        solves.clear()
-        field.solve(_parsed(*started[2:]))
-        assert len(solves) == 1 and isinstance(solves[0], str)
 
 
 def test_a_capacitance_is_refused_at_a_bias_the_field_was_not_saved_at(

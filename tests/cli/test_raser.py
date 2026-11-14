@@ -58,7 +58,7 @@ def test_application_runs_inside_the_project_named_by_its_device(
         lambda kwargs: seen.append(os.environ.get("RASER_PROJECT_PATH")),
     )
 
-    main(["field", "HPK-Si-PiN"])
+    main(["field", "HPK-Si-PiN", "-iv"])
 
     assert seen == [str(work_root / "HPK-Si-PiN")]
     assert "RASER_PROJECT_PATH" not in os.environ
