@@ -14,15 +14,15 @@ def write_netlist(stage_files, times, currents, sensor, load_ohm, raw):
     stage is the subcircuit ``.subckt <stem of its file> in out``; stage_files
     lists them from the sensor to the load, and every electrode gets its own
     copy of each.
-    Electrode k (from 1) has the nodes ``s<k>``, where its induced current is
-    injected, ``in<k>``, the input of its first stage, and ``out<k>``, the
-    output of its last stage. Ground is node 0.
+    Electrode k (from 1) has the nodes ``s<k>`` and ``r<k>``, the two ends of
+    its induced current source, ``in<k>``, the input of its first stage, and
+    ``out<k>``, the output of its last stage. Ground is node 0.
 
     times : bin centres of the induced currents [s], uniform.
     currents : induced currents [A], shape (electrodes, bins). A positive
-        current flows from ``s<k>`` to ground.
-    sensor : SPICE lines of the sensor between the ``s<k>``, the ``in<k>``
-        and ground.
+        current flows from ``s<k>`` to ``r<k>`` through the source.
+    sensor : SPICE lines of the sensor between the ``s<k>``, the ``r<k>``, the
+        ``in<k>`` and ground.
     load_ohm : resistance from each ``out<k>`` to ground [Ohm].
     raw : file ngspice writes the ``v(out<k>)`` to.
 
@@ -51,7 +51,7 @@ def write_netlist(stage_files, times, currents, sensor, load_ohm, raw):
         points = f"{step / 2:.9g} 0 " + " ".join(
             f"{t:.9g} {i:.9g}" for t, i in zip(since_start, current)
         )
-        lines.append(f"I{k} s{k} 0 PWL({points})")
+        lines.append(f"I{k} s{k} r{k} PWL({points})")
         # the output of a stage is the input of the next one
         nodes = [f"in{k}"]
         nodes.extend(f"in{k}_{j}" for j in range(2, len(stage_files) + 1))
