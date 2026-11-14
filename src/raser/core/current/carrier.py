@@ -14,7 +14,6 @@ from raser.core.seeding import stream
 import numpy as np
 
 from .model import Material
-from .vector import Vector
 from raser.core.field.simple import AnalyticStripPixelField
 
 tolerance_default = 1e-6
@@ -45,9 +44,6 @@ class VectorizedCarrierSystem:
         self.read_out_contact = read_out_contact
         self.my_d = my_d
         self.keep_drift_paths = bool(keep_drift_paths)
-        
-        # Material 对象
-        self.material = self._create_material(material)
         
         # 初始化
         self._params = self._initialize_params(my_d)
@@ -162,19 +158,6 @@ class VectorizedCarrierSystem:
             n_electrodes = len(read_out_contact) if read_out_contact else 1
             return [[] for _ in range(n_carriers)]
 
-    def _initialize_signal_storage(self, read_out_contact):
-        """初始化信号存储结构"""
-        if read_out_contact and len(read_out_contact) == 1:
-            try:
-                x_span = read_out_contact[0].get('x_span', 0)
-                y_span = read_out_contact[0].get('y_span', 0)
-                signal_length = max(1, (2*x_span+1)*(2*y_span+1))
-                return [[] for _ in range(signal_length)]
-            except:
-                return [[]]
-        else:
-            return [[] for _ in range(len(read_out_contact) if read_out_contact else 1)]
-    
     def _validate_inputs(self, positions, charges, times):
         """输入数据验证"""
         if len(positions) == 0:
@@ -190,21 +173,6 @@ class VectorizedCarrierSystem:
             if math.isnan(x) or math.isnan(y) or math.isnan(z):
                 raise ValueError(f"位置数据 {i} 包含 NaN 值")
     
-    def _create_material(self, material):
-        """安全的 Material 对象创建"""
-        try:
-            return Material(material)
-        except Exception as e:
-            logger.warning(f"Material对象创建失败 {material}，使用默认硅材料: {e}")
-            try:
-                return Material("si")
-            except:
-                # 最终备用方案
-                class FallbackMaterial:
-                    def __init__(self):
-                        self.name = "fallback_si"
-                return FallbackMaterial()
-
     def _resolve_field_resolution(self, my_d):
         """获取用于缓存和容差的电场分辨率"""
         resolution = getattr(my_d, "vector_field_resolution", None)
@@ -269,27 +237,8 @@ class VectorizedCarrierSystem:
     
     def _calculate_reduced_coords(self, x, y, my_d):
         """计算简化坐标"""
-        #use_reduced = (self.read_out_contact and 
-                      #len(self.read_out_contact) == 1)
-        use_reduced = False  # 先不使用简化坐标，直接用全局坐标进行电场计算和边界检查
-
-        if not use_reduced:
-            return x, y
-        
-        try:
-            my_d.field_shift_x = float(my_d.field_shift_x)
-        except:
-            my_d.field_shift_x = 0.0
-
-        try:
-            my_d.field_shift_y = float(my_d.field_shift_y)
-        except:
-            my_d.field_shift_y = 0.0
-        
-        x_reduced = (x - my_d.l_x/2 + (my_d.x_ele_num%2)*my_d.p_x/2.0) % my_d.p_x + my_d.field_shift_x
-        y_reduced = (y - my_d.l_y/2 + (my_d.y_ele_num%2)*my_d.p_y/2.0) % my_d.p_y + my_d.field_shift_y
-        
-        return x_reduced, y_reduced
+        # 先不使用简化坐标，直接用全局坐标进行电场计算和边界检查
+        return x, y
 
     def _should_terminate_at_contact(self, my_f, x_reduced, y_reduced, z):
         if not self.read_out_contact or len(self.read_out_contact) != 1:
@@ -568,13 +517,10 @@ class VectorizedCarrierSystem:
 
     def _calculate_diffusion(self, diffusion_constant):
         """计算扩散位移"""
-        try:
-            generator = stream("drift")
-            return (generator.Gaus(0.0, diffusion_constant),
-                   generator.Gaus(0.0, diffusion_constant), 
-                   generator.Gaus(0.0, diffusion_constant))
-        except:
-            return 0.0, 0.0, 0.0
+        generator = stream("drift")
+        return (generator.Gaus(0.0, diffusion_constant),
+               generator.Gaus(0.0, diffusion_constant), 
+               generator.Gaus(0.0, diffusion_constant))
 
     def _update_carrier_position(self, idx, delta_x, delta_y, delta_z, dif_x, dif_y, dif_z):
         """更新载流子位置"""
@@ -652,22 +598,6 @@ class VectorizedCarrierSystem:
         """获取性能统计"""
         return self.performance_stats.copy()
     
-    def _reinitialize_signal_list(self, carrier):
-        """重新初始化信号列表"""
-        try:
-            if hasattr(carrier, 'read_out_contact') and carrier.read_out_contact:
-                if len(carrier.read_out_contact) == 1:
-                    x_span = carrier.read_out_contact[0].get('x_span', 0)
-                    y_span = carrier.read_out_contact[0].get('y_span', 0)
-                    signal_length = max(1, (2*x_span+1)*(2*y_span+1))
-                    carrier.signal = [[] for _ in range(signal_length)]
-                else:
-                    carrier.signal = [[] for _ in range(len(carrier.read_out_contact))]
-            else:
-                carrier.signal = [[]]
-        except Exception as e:
-            carrier.signal = [[]]
-
     def get_signal_batch(self, my_d, my_f, delta_t):
         """批量计算载流子信号 - 重新设计版本"""
         start_time = time.time()
@@ -994,14 +924,11 @@ class VectorizedCarrierSystem:
         # 批量获取陷阱率
         trapping_rates = []
         for i in range(n_points):
-            try:
-                if initial_charge >= 0:  # 空穴
-                    trapping_rate = my_f.get_trap_h_cached(x_coords[i], y_coords[i], z_coords[i])
-                else:  # 电子
-                    trapping_rate = my_f.get_trap_e_cached(x_coords[i], y_coords[i], z_coords[i])
-                trapping_rates.append(trapping_rate)
-            except Exception as e:
-                trapping_rates.append(0.0)
+            if initial_charge >= 0:  # 空穴
+                trapping_rate = my_f.get_trap_h_cached(x_coords[i], y_coords[i], z_coords[i])
+            else:  # 电子
+                trapping_rate = my_f.get_trap_e_cached(x_coords[i], y_coords[i], z_coords[i])
+            trapping_rates.append(trapping_rate)
         
         # 计算累积衰减因子
         decay_factors = []
@@ -1012,40 +939,6 @@ class VectorizedCarrierSystem:
         
         return [initial_charge * factor for factor in decay_factors]
     
-    def verify_signal_transfer(self, original_carriers):
-        """验证信号是否正确传递到原始载流子"""
-        logger.info("=== 信号传递验证 ===")
-        
-        valid_carriers = 0
-        total_electrodes_with_signals = 0
-        total_signal_points = 0
-        
-        for i, carrier in enumerate(original_carriers):
-            if hasattr(carrier, 'signal') and carrier.signal:
-                carrier_electrodes_with_signals = 0
-                carrier_signal_points = 0
-                
-                for electrode_idx, sig_list in enumerate(carrier.signal):
-                    if sig_list:  # 检查信号列表是否非空
-                        carrier_electrodes_with_signals += 1
-                        carrier_signal_points += len(sig_list)
-                
-                if carrier_electrodes_with_signals > 0:
-                    valid_carriers += 1
-                    total_electrodes_with_signals += carrier_electrodes_with_signals
-                    total_signal_points += carrier_signal_points
-                    
-                    if i < 3:  # 只打印前3个载流子的详细信息
-                        logger.info(f"载流子{i}: {carrier_electrodes_with_signals}个电极有信号, {carrier_signal_points}个信号点")
-        
-        logger.info(f"信号传递验证结果: {valid_carriers}个载流子有信号, 共{total_electrodes_with_signals}个电极, {total_signal_points}个信号点")
-        
-        if valid_carriers == 0:
-            logger.error("错误: 没有信号传递到原始载流子!")
-            return False
-        else:
-            return True
-
     def _log_progress_signal(self, carrier_idx, len_all_indices):
         """记录进度"""
         progress = carrier_idx / len_all_indices * 100

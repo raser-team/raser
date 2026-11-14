@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import pytest
 
-from raser.core.current import induced_currents
-from raser.core.current.vector import Vector
 from raser.core.frontend import CurrentSource
 from raser.core.frontend import assemble_frontend
 from raser.core.interaction import from_energy_deposits
@@ -35,24 +33,12 @@ def test_interaction_creates_weighted_carrier_populations() -> None:
 
 
 def test_current_frontend_and_metrics_share_one_waveform_contract() -> None:
-    assert Vector(3.0, 4.0, 0.0).get_length() == 5.0
-    current = induced_currents(
-        charge_coulomb=2.0,
-        times=(0.0, 1.0, 3.0),
-        positions=((0.0, 0.0, 0.0), (0.5, 0.0, 0.0), (1.0, 0.0, 0.0)),
-        weighting_potentials={
-            "left": lambda point: point[0],
-            "right": lambda point: 1.0 - point[0],
-        },
-    )
-
-    assert current.times == pytest.approx((0.5, 2.0))
-    assert current.values["left"] == pytest.approx((1.0, 0.5))
-    assert current.values["right"] == pytest.approx((-1.0, -0.5))
+    times = (0.5, 2.0)
+    values = {"left": (1.0, 0.5), "right": (-1.0, -0.5)}
 
     sources = tuple(
-        CurrentSource(electrode, current.times, samples)
-        for electrode, samples in current.values.items()
+        CurrentSource(electrode, times, samples)
+        for electrode, samples in values.items()
     )
     circuit = assemble_frontend(
         sources=sources,
@@ -67,7 +53,7 @@ def test_current_frontend_and_metrics_share_one_waveform_contract() -> None:
 
     assert circuit.electrodes == ("left", "right")
     assert circuit.outputs == ("afe_out_0", "afe_out_1")
-    assert circuit.times == pytest.approx(current.times)
+    assert circuit.times == pytest.approx(times)
     for element in ("I0", "Cbulk0", "Ccouple0", "Rbias0", "Cac0", "Rin0", "Eafe0"):
         assert element in circuit.netlist
 

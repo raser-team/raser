@@ -12,8 +12,6 @@ import math
 import os
 from array import array
 import csv
-from contextlib import contextmanager
-import time
 import logging
 import numpy as np
 import ROOT
@@ -25,7 +23,6 @@ from .carrier import VectorizedCarrierSystem
 from ..interaction.carrier_list import CarrierListFromG4P
 from ..interaction.toy_mip import ToyMIPLineSource
 from .convolution import signal_convolution
-from .vector import Vector
 from raser.supports.output import output
 
 t_bin = {
@@ -59,17 +56,20 @@ if not logging.getLogger().handlers:
 logger.setLevel(logging.INFO)
 
 
-class StageTimings(dict):
-    @contextmanager
-    def record(self, name):
-        start = time.perf_counter()
-        try:
-            yield
-        finally:
-            self[name] = time.perf_counter() - start
+def spread_over_bins(bins, value, t_from, t_to, t_first, bin_width):
+    """Add what one drift step induces to the output bins its time covers.
 
-    def summary(self):
-        return {name: round(seconds, 6) for name, seconds in self.items()}
+    `bins` holds the underflow bin, the bins that start at `t_first`, and the
+    overflow bin. Each bin receives the share of `value` that the step, lasting
+    from `t_from` to `t_to`, spends inside it.
+    """
+    first = math.floor((t_from - t_first) / bin_width)
+    last = math.floor((t_to - t_first) / bin_width)
+    for index in range(first, last + 1):
+        start = max(t_from, t_first + index * bin_width)
+        end = min(t_to, t_first + (index + 1) * bin_width)
+        share = max(end - start, 0.0) / (t_to - t_from)
+        bins[min(max(index + 1, 0), len(bins) - 1)] += value * share
 
 
 def gain_algorithm(my_d):
@@ -103,12 +103,10 @@ class CalCurrent:
         2024/11/09
     """
     def __init__(self, my_d, my_f, ionized_pairs, track_position, keep_drift_paths=True):
-        self.timings = StageTimings()
         self.keep_drift_paths = bool(keep_drift_paths)
         if my_d.has_avalanche and gain_algorithm(my_d) == "local_path":
             self.keep_drift_paths = True
-        with self.timings.record("total"):
-            self._run_current_calculation(my_d, my_f, ionized_pairs, track_position)
+        self._run_current_calculation(my_d, my_f, ionized_pairs, track_position)
 
     def _run_current_calculation(self, my_d, my_f, ionized_pairs, track_position):
         logger.info("current calculation start...")
@@ -158,43 +156,41 @@ class CalCurrent:
         hole_times = []
         hole_signals = []
 
-        with self.timings.record("carrier_filter"):
-            for i in range(len(track_position)):
-                x, y, z, t = track_position[i]
-                t_num = int(t / self.delta_t + t_tol)
-                charge = ionized_pairs[i]
+        for i in range(len(track_position)):
+            x, y, z, t = track_position[i]
+            t_num = int(t / self.delta_t + t_tol)
+            charge = ionized_pairs[i]
                 
-                # 过滤在探测器边界外的载流子
-                if self._is_in_sensor(x, y, z, my_d) and self._is_in_field_range(x, y, my_d, my_d.x_ele_num, my_d.y_ele_num):
-                    # 电子
-                    electron_positions.append([x, y, z])
-                    electron_charges.append(-charge)  # 电子带负电
-                    electron_times.append(t_num)
-                    electron_signals.append([])  # 空信号列表
+            # 过滤在探测器边界外的载流子
+            if self._is_in_sensor(x, y, z, my_d) and self._is_in_field_range(x, y, my_d, my_d.x_ele_num, my_d.y_ele_num):
+                # 电子
+                electron_positions.append([x, y, z])
+                electron_charges.append(-charge)  # 电子带负电
+                electron_times.append(t_num)
+                electron_signals.append([])  # 空信号列表
                     
-                    # 空穴
-                    hole_positions.append([x, y, z])
-                    hole_charges.append(charge)  # 空穴带正电
-                    hole_times.append(t_num)
-                    hole_signals.append([])
+                # 空穴
+                hole_positions.append([x, y, z])
+                hole_charges.append(charge)  # 空穴带正电
+                hole_times.append(t_num)
+                hole_signals.append([])
 
         logger.info(f"载流子过滤完成: {len(electron_positions)}个电子, {len(hole_positions)}个空穴")
 
         # 创建向量化系统
-        with self.timings.record("carrier_system_init"):
-            if electron_positions:
-                self.electron_system = VectorizedCarrierSystem(
-                    electron_positions, electron_charges, electron_times, electron_signals,
-                    my_d.material, "electron", self.read_out_contact, my_d,
-                    keep_drift_paths=self.keep_drift_paths,
-                )
+        if electron_positions:
+            self.electron_system = VectorizedCarrierSystem(
+                electron_positions, electron_charges, electron_times, electron_signals,
+                my_d.material, "electron", self.read_out_contact, my_d,
+                keep_drift_paths=self.keep_drift_paths,
+            )
             
-            if hole_positions:
-                self.hole_system = VectorizedCarrierSystem(
-                    hole_positions, hole_charges, hole_times, hole_signals,
-                    my_d.material, "hole", self.read_out_contact, my_d,
-                    keep_drift_paths=self.keep_drift_paths,
-                )
+        if hole_positions:
+            self.hole_system = VectorizedCarrierSystem(
+                hole_positions, hole_charges, hole_times, hole_signals,
+                my_d.material, "hole", self.read_out_contact, my_d,
+                keep_drift_paths=self.keep_drift_paths,
+            )
 
         logger.info("向量化系统初始化完成")
         
@@ -202,23 +198,22 @@ class CalCurrent:
         self.drifting_loop(my_d, my_f)
 
         # 初始化电流直方图
-        with self.timings.record("current_histogram"):
-            self.current_define(self.read_ele_num)
-            for i in range(self.read_ele_num):
-                self.sum_cu[i].Reset()
-                self.positive_cu[i].Reset()
-                self.negative_cu[i].Reset()
+        self.current_define(self.read_ele_num)
+        for i in range(self.read_ele_num):
+            self.sum_cu[i].Reset()
+            self.positive_cu[i].Reset()
+            self.negative_cu[i].Reset()
             
-            # 计算电流
-            self.get_current(my_d.x_ele_num, my_d.y_ele_num, self.read_out_contact)
+        # 计算电流
+        self.get_current(my_d.x_ele_num, my_d.y_ele_num, self.read_out_contact)
             
-            # 合并电流
-            for i in range(self.read_ele_num):
-                self.sum_cu[i].Add(self.positive_cu[i])
-                self.sum_cu[i].Add(self.negative_cu[i])
+        # 合并电流
+        for i in range(self.read_ele_num):
+            self.sum_cu[i].Add(self.positive_cu[i])
+            self.sum_cu[i].Add(self.negative_cu[i])
             
-            if self.smoothing_window > 1:
-                self._apply_smoothing()
+        if self.smoothing_window > 1:
+            self._apply_smoothing()
 
         self.det_model = my_d.det_model
         if my_d.has_avalanche:
@@ -252,20 +247,16 @@ class CalCurrent:
             # 批量处理电子
             if self.electron_system:
                 logger.info(f"电子数量: {len(self.electron_system.positions)}")
-                with self.timings.record("electron_drift"):
-                    self.electron_system.drift_batch(my_d, my_f, delta_t=delta_t_sim)
+                self.electron_system.drift_batch(my_d, my_f, delta_t=delta_t_sim)
                 logger.info("电子漂移结束，开始信号计算...")
-                with self.timings.record("electron_signal"):
-                    self.electron_system.get_signal_batch(my_d, my_f, delta_t=delta_t_sim)
+                self.electron_system.get_signal_batch(my_d, my_f, delta_t=delta_t_sim)
             
             # 批量处理空穴
             if self.hole_system:
                 logger.info(f"空穴数量: {len(self.hole_system.positions)}")
-                with self.timings.record("hole_drift"):
-                    self.hole_system.drift_batch(my_d, my_f, delta_t=delta_t_sim)
+                self.hole_system.drift_batch(my_d, my_f, delta_t=delta_t_sim)
                 logger.info("空穴漂移结束，开始信号计算...")
-                with self.timings.record("hole_signal"):
-                    self.hole_system.get_signal_batch(my_d, my_f, delta_t=delta_t_sim)
+                self.hole_system.get_signal_batch(my_d, my_f, delta_t=delta_t_sim)
                             
             cache_stats = my_f.get_cache_stats()
             logger.info(
@@ -404,14 +395,14 @@ class CalCurrent:
                         if target_electrode < self.read_ele_num:
                             time_point = path_reduced[step_idx][3]
                             current_value = signal_value / self.t_bin
-                            time_value = time_point * self.delta_t + t_tol
-                            if time_value < x_min:
-                                bin_idx = 0
-                            elif time_value >= x_max:
-                                bin_idx = histograms[target_electrode].GetNbinsX() + 1
-                            else:
-                                bin_idx = int((time_value - x_min) / bin_width) + 1
-                            bin_accumulators[target_electrode][bin_idx] += current_value
+                            spread_over_bins(
+                                bin_accumulators[target_electrode],
+                                current_value,
+                                time_point * self.delta_t,
+                                path_reduced[step_idx + 1][3] * self.delta_t,
+                                x_min,
+                                bin_width,
+                            )
                             signals_found += 1
                             
                             # 调试前几个信号
@@ -460,15 +451,13 @@ class CalCurrent:
                 for step_idx, signal_value in enumerate(
                     electrode_signals[: max(0, len(path) - 1)]
                 ):
-                    time_value = path[step_idx][3] * self.delta_t + t_tol
-                    if time_value < x_min:
-                        bin_idx = 0
-                    elif time_value >= x_max:
-                        bin_idx = histograms[electrode_idx].GetNbinsX() + 1
-                    else:
-                        bin_idx = int((time_value - x_min) / bin_width) + 1
-                    bin_accumulators[electrode_idx][bin_idx] += (
-                        signal_value / self.t_bin
+                    spread_over_bins(
+                        bin_accumulators[electrode_idx],
+                        signal_value / self.t_bin,
+                        path[step_idx][3] * self.delta_t,
+                        path[step_idx + 1][3] * self.delta_t,
+                        x_min,
+                        bin_width,
                     )
                     signals_found += 1
 
@@ -679,7 +668,6 @@ class CalCurrent:
 class CalCurrentGain(CalCurrent):
     '''Calculation of gain carriers and gain current, simplified version'''
     def __init__(self, my_d, my_f, my_current):
-        self.timings = StageTimings()
         self.keep_drift_paths = getattr(my_current, "keep_drift_paths", True)
         self.t_bin = t_bin[my_d.dimension]
         self.t_end = t_end[my_d.dimension]
@@ -815,7 +803,7 @@ class CalCurrentGain(CalCurrent):
                         z = z0 + fraction * (z1 - z0)
                         try:
                             field_vector = my_f.get_e_field_cached(x, y, z)
-                            field = Vector(*field_vector).get_length()
+                            field = math.hypot(*field_vector)
                         except Exception:
                             field_failures += 1
                             continue
