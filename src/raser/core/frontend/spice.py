@@ -105,6 +105,7 @@ def write_netlist(chain, electrodes, dt, currents, sensor, raw):
     load, and chain["load"] the load, each as circuit.subcircuit describes
     them: a stage with the ports "in" and "out", the load with the port "in".
     Every electrode gets its own copy of each stage and of the load.
+    The models a stage or the load brings stand once in the netlist.
     The first stage of the k-th electrode (from 1) reads the output node the
     sensor gives for it; ``out<k>`` is the output of its last stage and the
     input of its load. Ground is node 0.
@@ -129,6 +130,12 @@ def write_netlist(chain, electrodes, dt, currents, sensor, raw):
     if "load" in stages:
         raise ValueError('A stage cannot be named "load"')
     lines = [" > ".join(["sensor", *stages, "load"])]
+    models: list[list[str]] = []
+    for part in (*stages.values(), chain["load"]):
+        if "models" in part and part["models"] not in models:
+            models.append(part["models"])
+    for block in models:
+        lines.extend(block)
     lines.extend(subcircuit(name, stage).rstrip() for name, stage in stages.items())
     lines.append(subcircuit("load", chain["load"]).rstrip())
     lines.extend(sources)
