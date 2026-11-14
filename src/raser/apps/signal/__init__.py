@@ -11,7 +11,7 @@ from pathlib import Path
 from raser.lifecycle.workflow import Workflow
 
 DEFAULTS = json.loads((Path(__file__).parent / "signal.json").read_text("utf-8"))
-KEYS = ("source", "events_per_job", "voltage", "irradiation", "amplifier", "adc")
+KEYS = ("source", "events_per_job", "plots", "voltage", "irradiation", "amplifier", "adc")
 COMPONENTS = {"source": "source", "afe": "amplifier"}  # kind of file -> option
 IN_FILE = {"voltage": "device.bias.voltage"}  # option -> where it sits in a file
 
@@ -24,6 +24,7 @@ def add_arguments(parser):
         help="signal source or beam configuration",
     )
     parser.add_argument("-evt", "--events-per-job", type=int, help="events per job")
+    parser.add_argument("--plots", type=int, help="draw the first N recorded events of each job")
     parser.add_argument("-vol", "--voltage", type=float, help="bias voltage")
     parser.add_argument("-irr", "--irradiation", type=float, help="irradiation flux")
     parser.add_argument(
@@ -43,23 +44,17 @@ def job_command(kwargs):
     return command
 
 
-def run_job(kwargs, label="signal"):
+def run_job(kwargs):
     """One signal job inside its seed folder."""
-    if kwargs.get("job_index") is not None or kwargs.get("events_per_job"):
-        from . import signal_events
+    from . import signal_events
 
-        signal_events.main(kwargs)
-    else:
-        from . import gen_signal_main
-
-        kwargs["_signal_label"] = label
-        gen_signal_main.main(kwargs)
+    signal_events.main(kwargs)
 
 
 WORKFLOW = Workflow(
     name="signal",
     keys=KEYS,
-    defaults={"source": DEFAULTS["source"], "amplifier": DEFAULTS["afe"]},
+    defaults={"source": DEFAULTS["source"], "amplifier": DEFAULTS["afe"], "plots": 100},
     components=COMPONENTS,
     in_file=IN_FILE,
     job=run_job,

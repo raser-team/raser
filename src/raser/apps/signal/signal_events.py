@@ -20,6 +20,8 @@ from raser.core.field.solved import solved_field
 from raser.core.frontend.toy_readout import Amplifier
 from raser.core.interaction.interaction import GeneralG4Interaction
 
+from .draw_save import draw_drift_path
+
 ROOT.gROOT.SetBatch(True)
 
 # Geant4 set-up of a run that names none: the device alone in vacuum, one event.
@@ -72,8 +74,11 @@ def _copy(target, source):
     target.Add(source)
 
 
-def run_events(my_d, my_f, my_g4, amplifier, file_path):
+def run_events(my_d, my_f, my_g4, amplifier, file_path, plots, plot_path):
     """Current and waveform of every event Geant4 recorded, one tree entry each.
+
+    The first `plots` events are also drawn, each in plot_path/event_<number>:
+    drift paths, currents, waveform.
 
     Branches: event (Geant4 event number), e_dep [MeV], par_in and par_out
     (first and last deposit, [um]), current_<i> [A] and amplified_waveform_<i>
@@ -88,6 +93,12 @@ def run_events(my_d, my_f, my_g4, amplifier, file_path):
     if not deposits.events:
         print("no event left a deposit in the device; nothing is written", flush=True)
         return
+    if 0 < plots < len(deposits.events):
+        print(
+            "%s events recorded; only the first %s are drawn (--plots)"
+            % (len(deposits.events), plots),
+            flush=True,
+        )
 
     event_array = array("i", [0])
     e_dep_array = array("d", [0.0])
@@ -103,12 +114,24 @@ def run_events(my_d, my_f, my_g4, amplifier, file_path):
     # Note: TTree.Branch() needs the binded variable (namely the address) to be valid and the same while Fill(),
     # so don't put the Branch() into other methods/functions!
 
-    for record in deposits.events:
+    for count, record in enumerate(deposits.events):
         print("run events number:%s" % (record.event))
+        drawn = count < plots
         my_current = ccrt.CalCurrentG4P(
-            my_d, my_f, my_g4, index[record.event], keep_drift_paths=False
+            my_d, my_f, my_g4, index[record.event], keep_drift_paths=drawn
         )
         ele_current = Amplifier(my_current.sum_cu, amplifier, CDet=my_d.capacitance)
+
+        if drawn:
+            path = os.path.join(plot_path, "event_%s" % (record.event))
+            os.makedirs(path, exist_ok=True)
+            draw_drift_path(my_d, my_g4, my_f, my_current, path)
+            my_current.draw_currents(path)
+            ele_current.draw_waveform(my_current.sum_cu, path)
+            if my_d.is_strip:
+                my_current.charge_collection_strip(path)
+            if my_d.is_pixel:
+                my_current.charge_collection_pixel(path)
 
         if not current:
             for i in range(my_d.read_ele_num):
@@ -172,6 +195,8 @@ def main(kwargs):
             my_g4,
             amplifier,
             Path(kwargs["_run_batch_path"]) / ("signal_%s.root" % (job)),
+            int(kwargs["plots"]),
+            os.path.join(kwargs["_run_path"], "plots", "job_%s" % (job)),
         )
     finally:
         my_g4.close()
