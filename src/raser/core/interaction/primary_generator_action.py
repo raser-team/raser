@@ -17,18 +17,22 @@ class GeneralPrimaryGeneratorAction(g4b.G4VUserPrimaryGeneratorAction):
         super().__init__()
         self.geant4_model=geant4_model
         self.par_direction = [ par_out[i] - par_in[i] for i in range(3) ]  
+        # par_type and par_energy [MeV] are one particle, or lists of the same
+        # length: the particles of one event, from the same point in the same
+        # direction.
+        types = par_type if isinstance(par_type, list) else [par_type]
+        energies = par_energy if isinstance(par_energy, list) else [par_energy]
+        if len(types) != len(energies):
+            raise ValueError(
+                f"par_type has {len(types)} particles and par_energy {len(energies)}"
+            )
         particle_table = g4b.G4ParticleTable.GetParticleTable()
-        particle = particle_table.FindParticle(par_type) # define particle
-        beam = g4b.G4ParticleGun(1)
-        beam.SetParticleEnergy(par_energy*g4b.MeV)
-        beam.SetParticleMomentumDirection(g4b.G4ThreeVector(self.par_direction[0],
-                                                            self.par_direction[1],
-                                                            self.par_direction[2]))
-        beam.SetParticleDefinition(particle)
-        beam.SetParticlePosition(g4b.G4ThreeVector(par_in[0]*g4b.um,
-                                                   par_in[1]*g4b.um,
-                                                   par_in[2]*g4b.um))  
-        self.particleGun = beam
+        self.particleGuns = []
+        for one_type, one_energy in zip(types, energies):
+            beam = g4b.G4ParticleGun(1)
+            beam.SetParticleEnergy(one_energy*g4b.MeV)
+            beam.SetParticleDefinition(particle_table.FindParticle(one_type))
+            self.particleGuns.append(beam)
         self.position = par_in
         self.randx = par_randx
         self.randy = par_randy
@@ -40,10 +44,11 @@ class GeneralPrimaryGeneratorAction(g4b.G4VUserPrimaryGeneratorAction):
         rdi_x = generator.Uniform(-self.randx,self.randx)
         rdi_y = generator.Uniform(-self.randy,self.randy)
         direction = g4b.G4ThreeVector(self.par_direction[0]+rdo_x,self.par_direction[1]+rdo_y,self.par_direction[2],)
-        self.particleGun.SetParticleMomentumDirection(direction)
-        self.particleGun.SetParticlePosition(g4b.G4ThreeVector(self.position[0]*g4b.um,
+        for beam in self.particleGuns:
+            beam.SetParticleMomentumDirection(direction)
+            beam.SetParticlePosition(g4b.G4ThreeVector(self.position[0]*g4b.um,
                                                 self.position[1]*g4b.um,
-                                                self.position[2]*g4b.um,))  
-        self.particleGun.GeneratePrimaryVertex(event)
+                                                self.position[2]*g4b.um,))
+            beam.GeneratePrimaryVertex(event)
         #print("direction:",rdo_x-rdi_x,rdo_y-rdi_y,self.par_direction[2])
         #print(rdi_x,rdi_y,self.position[2])
