@@ -1,20 +1,25 @@
 * Gali52: Mini-Circuits GALI-52+ gain block, the second stage behind the
-* SantaCruz board, by its figures only: 50 Ohm input, 20.8 dB into a 50 Ohm
-* load, 2.0 GHz bandwidth taken as one pole, 50 Ohm output. Figures from
-* P. Freeman, UC Santa Cruz master thesis (2017), section 1.4.
+* SantaCruz board, by the S-parameters of its maker (Gali series data sheet,
+* Gali-52 at 50 mA, 4.4 V, in a 50 Ohm system):
+*   100 MHz  22.84 dB  173 degrees
+*   1 GHz    20.76 dB  122 degrees
+*   2 GHz    17.95 dB   82 degrees
+* It inverts. The gain is that of one pole fitted to the data up to 2.2 GHz,
+* 22.66 dB and 1.41 GHz, within 0.2 dB of them.
 * Ports: in, out. Ground is node 0.
 *
-* Its own noise is not in this file beyond the thermal noise of the 50 Ohm
-* at the input. Rp and Cp are no parts of the device: they make the pole,
-* 1 / (2 pi Rp Cp) = 2.0 GHz, with Rp small so that its thermal noise does
+* Not in this file: the delay of about 60 ps the angles show beyond the pole,
+* and the noise of the device beyond the thermal noise of the 50 Ohm at the
+* input. Rp and Cp are no parts of the device: they make the pole,
+* 1 / (2 pi Rp Cp) = 1.41 GHz, with Rp small so that its thermal noise does
 * not count.
 
 .subckt Gali52 in out
 Rin in 0 50
-* twice 10^(20.8/20): the 50 Ohm output and the 50 Ohm load halve it
-E1 a 0 in 0 21.93
+* minus twice 10^(22.66/20): the 50 Ohm output and the 50 Ohm load halve it
+E1 a 0 in 0 -27.17
 Rp a b 1
-Cp b 0 79.58p
+Cp b 0 112.9p
 E2 c 0 b 0 1
 Rout c out 50
 .ends Gali52

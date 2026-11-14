@@ -41,9 +41,9 @@ def test_each_event_of_the_currents_file_gets_its_waveform(tmp_path):
     append_currents(currents_path, ["top"], DT_S, second)
     sensor = planar_sensor("top", 10e-12)
 
-    write_waveforms(currents_path, waveforms_path, CHAIN, sensor)
+    write_waveforms(currents_path, waveforms_path, CHAIN, sensor, None)
     # a second start of the job replaces the file instead of adding to it
-    write_waveforms(currents_path, waveforms_path, CHAIN, sensor)
+    write_waveforms(currents_path, waveforms_path, CHAIN, sensor, None)
     waveforms = read_waveforms(waveforms_path)
 
     assert waveforms.electrodes == ["top"]
@@ -60,3 +60,29 @@ def test_each_event_of_the_currents_file_gets_its_waveform(tmp_path):
         assert record.voltage[0][off_the_jump] == pytest.approx(
             expected[off_the_jump], abs=2e-7
         )
+
+
+def test_noise_of_the_circuit_is_added_to_every_event(tmp_path):
+    # no current at all: what is left is the noise of the 50 Ohm load on the
+    # 10 pF sensor, whose rms is sqrt(k T / C) at 300.15 K
+    currents_path = tmp_path / "currents_0.h5"
+    quiet = EventCurrents(0, 0.0, np.zeros((1, 2000)), np.zeros(1), 0.0)
+    for event in range(10):
+        quiet.event = event
+        append_currents(currents_path, ["top"], DT_S, quiet)
+    sensor = planar_sensor("top", 10e-12)
+
+    def noise(seed):
+        path = tmp_path / f"waveforms_{seed}.h5"
+        write_waveforms(currents_path, path, CHAIN, sensor, seed)
+        return np.array([record.voltage[0] for record in read_waveforms(path).events])
+
+    first = noise(3)
+
+    assert first.std() == pytest.approx(
+        np.sqrt(1.380649e-23 * 300.15 / 10e-12), rel=0.15
+    )
+    # each event has its own noise, the seed fixes all of it
+    assert abs(np.mean(first[0] * first[1])) < 0.2 * first.var()
+    np.testing.assert_array_equal(noise(3), first)
+    assert not np.array_equal(noise(4), first)
