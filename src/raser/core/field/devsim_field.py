@@ -243,7 +243,7 @@ class DevsimField:
         position = {"x": x, "y": y, "z": z}
         return [position[axis] for axis in self.axes]
 
-    def _get_doping(self, x, y, z):
+    def get_doping(self, x, y, z):
         """
         input: position in um
         output: doping in cm^-3
@@ -251,7 +251,7 @@ class DevsimField:
         x, y, z = x/1e4, y/1e4, z/1e4 # um to cm
         return self.Doping(*self._along_axes(x, y, z))
     
-    def _get_potential(self, x, y, z):
+    def get_potential(self, x, y, z):
         """
         input: position in um
         output: potential in V
@@ -259,7 +259,7 @@ class DevsimField:
         x, y, z = x/1e4, y/1e4, z/1e4 # um to cm
         return self.Potential(*self._along_axes(x, y, z))
     
-    def _get_e_field(self, x, y, z):
+    def get_e_field(self, x, y, z):
         """
         input: position in um
         output: intensity in V/cm
@@ -270,7 +270,7 @@ class DevsimField:
         E = {axis: -1 * component for axis, component in zip(self.axes, nabla_U)}
         return (E.get("x", 0), E.get("y", 0), E.get("z", 0))
 
-    def _get_w_p(self, x, y, z, i): # used in cal current
+    def get_w_p(self, x, y, z, i): # used in cal current
         x, y, z = x/1e4, y/1e4, z/1e4 # um to cm
         U_w = self.WeightingPotential[i](*self._along_axes(x, y, z))
 
@@ -291,7 +291,7 @@ class DevsimField:
             return U_w
 
     
-    def _get_trap_e(self, x, y, z):
+    def get_trap_e(self, x, y, z):
         """
         input: position in um
         output: electron trapping rate in s^-1
@@ -299,7 +299,7 @@ class DevsimField:
         x, y, z = x/1e4, y/1e4, z/1e4 # um to cm
         return self.TrappingRate_n(*self._along_axes(x, y, z))
 
-    def _get_trap_h(self, x, y, z):
+    def get_trap_h(self, x, y, z):
         """
         input: position in um
         output: hole trapping rate in s^-1
@@ -328,14 +328,14 @@ class DevsimField:
         alpha_n_list = np.zeros(n)
         alpha_p_list = np.zeros(n)
         for i in range(n):
-            Ex,Ey,Ez = self._get_e_field(0.5*my_d.l_x,0.5*my_d.l_y,z_list[i] * 1e4) # in V/cm, get original field to improve accuracy
+            Ex,Ey,Ez = self.get_e_field(0.5*my_d.l_x,0.5*my_d.l_y,z_list[i] * 1e4) # in V/cm, get original field to improve accuracy
             E_field = math.sqrt(Ex * Ex + Ey * Ey + Ez * Ez)
             alpha_n = cal_coefficient(E_field, -1, my_d.temperature)
             alpha_p = cal_coefficient(E_field, +1, my_d.temperature)
             alpha_n_list[i] = alpha_n
             alpha_p_list[i] = alpha_p
 
-        if self._get_e_field(0, 0, my_d.avalanche_bond)[2] > 0:
+        if self.get_e_field(0, 0, my_d.avalanche_bond)[2] > 0:
             alpha_major_list = alpha_n_list # multiplication contributed mainly by electrons in conventional Si LGAD
             alpha_minor_list = alpha_p_list
         else:
@@ -371,7 +371,7 @@ class DevsimField:
     def get_e_field_cached(self, x, y, z):
         try:
             if not self._is_position_valid(x, y, z):
-                return self._get_e_field(x, y, z) # 不缓存异常位置的电场值，继承报错
+                return self.get_e_field(x, y, z) # 不缓存异常位置的电场值，继承报错
                 
             key_x, key_y, key_z = self._get_index_coords(x, y, z)
             key = (key_x, key_y, key_z)
@@ -381,7 +381,7 @@ class DevsimField:
                 return self.e_field_cache[key]
             else:
                 self._cache_stats['misses'] += 1
-                e_field = self._get_e_field(x, y, z)
+                e_field = self.get_e_field(x, y, z)
                 if e_field is not None:
                     self.e_field_cache[key] = e_field
                 return e_field
@@ -389,13 +389,13 @@ class DevsimField:
         except Exception as e:
             self._cache_stats['errors'] += 1
             logger.warning(f"failed when getting field cache ({x:.1f}, {y:.1f}, {z:.1f}): {e}")
-            return self._get_e_field(x, y, z) # 出错时不使用缓存，直接计算电场值，继承报错
+            return self.get_e_field(x, y, z) # 出错时不使用缓存，直接计算电场值，继承报错
     
     # TODO: Propagate invalid field data instead of returning physical zero values.
     def get_doping_cached(self, x, y, z):
         try:
             if not self._is_position_valid(x, y, z):
-                return self._get_doping(x, y, z)
+                return self.get_doping(x, y, z)
                 
             key_x, key_y, key_z = self._get_index_coords(x, y, z)
             key = (key_x, key_y, key_z)
@@ -403,7 +403,7 @@ class DevsimField:
             if key in self.doping_cache:
                 return self.doping_cache[key]
             else:
-                doping = self._get_doping(x, y, z)
+                doping = self.get_doping(x, y, z)
                 if doping is not None:
                     self.doping_cache[key] = doping
                 return doping
@@ -414,13 +414,13 @@ class DevsimField:
     def get_w_p_cached(self, x, y, z, n):
         try:
             if not self._is_position_valid(x, y, z):
-                return self._get_w_p(x, y, z, n)
+                return self.get_w_p(x, y, z, n)
             key_x, key_y, key_z = self._get_index_coords(x, y, z)
             key = (key_x, key_y, key_z, n)
             if key in self.w_p_cache:
                 return self.w_p_cache[key]
             else:
-                w_p = self._get_w_p(x, y, z, n)
+                w_p = self.get_w_p(x, y, z, n)
                 if w_p is not None:
                     self.w_p_cache[key] = w_p
                 return w_p
@@ -434,7 +434,7 @@ class DevsimField:
         """获取空穴陷阱率 - 带缓存"""
         try:
             if not self._is_position_valid(x, y, z):
-                return self._get_trap_h(x, y, z)
+                return self.get_trap_h(x, y, z)
                 
             key_x, key_y, key_z = self._get_index_coords(x, y, z)
             key = (key_x, key_y, key_z)
@@ -444,7 +444,7 @@ class DevsimField:
                 return self.trap_h_cache[key]
             else:
                 self._cache_stats['trap_h_misses'] += 1
-                trap_rate = self._get_trap_h(x, y, z)
+                trap_rate = self.get_trap_h(x, y, z)
                 if trap_rate is not None:
                     self.trap_h_cache[key] = trap_rate
                 return trap_rate
@@ -457,7 +457,7 @@ class DevsimField:
         """获取电子陷阱率 - 带缓存"""
         try:
             if not self._is_position_valid(x, y, z):
-                return self._get_trap_e(x, y, z)
+                return self.get_trap_e(x, y, z)
                 
             key_x, key_y, key_z = self._get_index_coords(x, y, z)
             key = (key_x, key_y, key_z)
@@ -467,7 +467,7 @@ class DevsimField:
                 return self.trap_e_cache[key]
             else:
                 self._cache_stats['trap_e_misses'] += 1
-                trap_rate = self._get_trap_e(x, y, z)
+                trap_rate = self.get_trap_e(x, y, z)
                 if trap_rate is not None:
                     self.trap_e_cache[key] = trap_rate
                 return trap_rate

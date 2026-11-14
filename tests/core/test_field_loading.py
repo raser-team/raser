@@ -37,7 +37,7 @@ def _field(folder: Path) -> DevsimField:
 @pytest.mark.parametrize("name", FILES)
 def test_a_field_with_a_part_missing_is_not_loaded(tmp_path: Path, name: str) -> None:
     _solved(tmp_path, ["z"])
-    assert _field(tmp_path)._get_potential(0.0, 0.0, 25.0) == pytest.approx(28.5)
+    assert _field(tmp_path).get_potential(0.0, 0.0, 25.0) == pytest.approx(28.5)
 
     (tmp_path / name).unlink()
     with pytest.raises(FileNotFoundError, match=f"the {FILES[name]} of device at 57 V"):
