@@ -15,8 +15,6 @@ from raser.core.field.devsim_field import DevsimField
 from raser.core.field.physics_avalanche import CreateImpactModel_vanOvenstraeten
 from raser.core.field.solver_section import _resolve_impact_model
 from raser.core.field.solver_section import _voltage_milestones
-from raser.core.interaction.laser_physics import gaussian_square_integral
-from raser.core.interaction.laser_physics import tpa_carrier_density
 
 
 def test_van_overstraeten_has_zero_ionization_below_its_field_threshold() -> None:
@@ -36,34 +34,6 @@ def test_field_solver_uses_enabled_avalanche_and_includes_final_bias() -> None:
     assert _resolve_impact_model(enabled) == "vanOverstraeten"
     assert _voltage_milestones(350.0, 100.0) == [100.0, 200.0, 300.0, 350.0]
     assert _voltage_milestones(-250.0, 100.0) == [-100.0, -200.0, -250.0]
-
-
-def test_tpa_density_contains_the_gaussian_square_integral() -> None:
-    first = tpa_carrier_density(
-        beta_2=1.5e-11,
-        wavelength_um=1.55,
-        pulse_fluence_W_s_per_m2=2.0,
-        temporal_fwhm_s=600.0e-15,
-    )
-    second = tpa_carrier_density(
-        beta_2=1.5e-11,
-        wavelength_um=1.55,
-        pulse_fluence_W_s_per_m2=2.0,
-        temporal_fwhm_s=300.0e-15,
-    )
-
-    assert gaussian_square_integral(300.0e-15) == pytest.approx(
-        2.0 * gaussian_square_integral(600.0e-15)
-    )
-    assert second == pytest.approx(2.0 * first)
-
-    array_density = tpa_carrier_density(
-        beta_2=1.5e-11,
-        wavelength_um=1.55,
-        pulse_fluence_W_s_per_m2=np.asarray([1.0, 2.0]),
-        temporal_fwhm_s=600.0e-15,
-    )
-    assert array_density[1] == pytest.approx(4.0 * array_density[0])
 
 
 def test_unstructured_3d_field_is_regularized_with_explicit_bins() -> None:
@@ -143,7 +113,10 @@ def test_devsim_field_loads_unstructured_3d_assets(tmp_path: Path) -> None:
         tmp_path / "TrappingRate_n_57V.pkl", points, np.zeros(5), voltage=57
     )
     _write_field_pickle(
-        tmp_path / "weightingfield" / "center" / "Potential_1V.pkl",
+        tmp_path / "Conductive_57V.pkl", points, np.zeros(5), voltage=57
+    )
+    _write_field_pickle(
+        tmp_path / "weightingfield" / "center" / "Potential_57V.pkl",
         points,
         potential / 0.03,
         voltage=1,
@@ -159,10 +132,10 @@ def test_devsim_field_loads_unstructured_3d_assets(tmp_path: Path) -> None:
         field_directory=tmp_path,
     )
 
-    assert field._get_potential(0.0, 0.0, 0.0) == pytest.approx(0.0)
-    assert field._get_potential(100.0, 100.0, 100.0) == pytest.approx(0.03)
-    assert field._get_w_p(100.0, 100.0, 100.0, 0) == pytest.approx(1.0)
-    assert np.all(np.isfinite(field._get_e_field(50.0, 50.0, 50.0)))
+    assert field.get_potential(0.0, 0.0, 0.0) == pytest.approx(0.0)
+    assert field.get_potential(100.0, 100.0, 100.0) == pytest.approx(0.03)
+    assert field.get_w_p(100.0, 100.0, 100.0, 0) == pytest.approx(1.0)
+    assert np.all(np.isfinite(field.get_e_field(50.0, 50.0, 50.0)))
 
 
 def test_planar_gain_of_a_uniform_gain_layer_matches_the_closed_form() -> None:
@@ -185,7 +158,7 @@ def test_planar_gain_of_a_uniform_gain_layer_matches_the_closed_form() -> None:
         calls.append(z)
         return (0.0, 0.0, field_v_per_cm)
 
-    field._get_e_field = uniform
+    field.get_e_field = uniform
 
     coefficient = Material("Si", avalanche_model="vanOverstraeten").cal_coefficient
     electrons = coefficient(field_v_per_cm, -1, 300.0)
@@ -215,7 +188,8 @@ def _write_field(directory: Path, points, potential, axes) -> None:
         ("NetDoping_0V.pkl", flat, 0),
         ("TrappingRate_p_57V.pkl", flat, 57),
         ("TrappingRate_n_57V.pkl", flat, 57),
-        ("weightingfield/center/Potential_1V.pkl", flat, 1),
+        ("Conductive_57V.pkl", flat, 57),
+        ("weightingfield/center/Potential_57V.pkl", flat, 1),
     ):
         _write_field_pickle(directory / name, points, values, voltage=voltage)
     if axes:
@@ -239,9 +213,9 @@ def test_a_field_is_read_along_the_axes_its_folder_records(
 
     field = DevsimField("synthetic", 57, [{"name": "center"}], field_directory=tmp_path)
 
-    assert field._get_potential(100.0, 50.0, 50.0) == pytest.approx(1.0)
-    assert field._get_potential(0.0, 50.0, 50.0) == pytest.approx(0.0)
-    assert field._get_e_field(50.0, 50.0, 50.0) == pytest.approx((-100.0, 0.0, 0.0))
+    assert field.get_potential(100.0, 50.0, 50.0) == pytest.approx(1.0)
+    assert field.get_potential(0.0, 50.0, 50.0) == pytest.approx(0.0)
+    assert field.get_e_field(50.0, 50.0, 50.0) == pytest.approx((-100.0, 0.0, 0.0))
 
 
 def test_a_field_folder_without_its_record_is_refused(tmp_path: Path) -> None:

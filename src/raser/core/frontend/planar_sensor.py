@@ -1,0 +1,80 @@
+"""Circuit of a planar sensor with one read-out electrode."""
+
+from .spice import SensorCircuit
+
+
+def undepleted_layer(
+    area_m2, thickness_m, depleted_width_m, permittivity_f_per_m, resistivity_ohm_m
+):
+    """Resistance [Ohm] and capacitance [F] of the layer the bias does not
+    deplete: a slab of the bulk between the depleted layer and the back.
+
+    W. Riegler, NIM A 940 (2019) 453, arXiv:1812.07570, eq. 50.
+    """
+    if not 0 < depleted_width_m < thickness_m:
+        raise ValueError(
+            f"A depleted width of {depleted_width_m} m leaves no undepleted "
+            f"layer in a sensor {thickness_m} m thick"
+        )
+    undepleted_m = thickness_m - depleted_width_m
+    resistance_ohm = resistivity_ohm_m * undepleted_m / area_m2
+    capacitance_f = permittivity_f_per_m * area_m2 / undepleted_m
+    return resistance_ohm, capacitance_f
+
+
+def planar_sensor(
+    electrode,
+    depleted_capacitance_f,
+    undepleted=None,
+    bias_resistance_ohm=None,
+    coupling_capacitance_f=None,
+):
+    """SensorCircuit of a planar sensor with one read-out electrode, its back
+    on ground.
+
+    electrode : name of the read-out electrode.
+    depleted_capacitance_f : capacitance of the depleted layer [F].
+    undepleted : None for a fully depleted sensor, otherwise the resistance
+        [Ohm] and the capacitance [F] of the undepleted layer, which lie in
+        parallel between the depleted layer and the back.
+    bias_resistance_ohm : resistance on the sensor from the electrode to its
+        bias, which is ground for the signal [Ohm]. None: there is none.
+    coupling_capacitance_f : capacitance on the sensor between the electrode
+        and the read-out [F]. None: the electrode itself is read out. It
+        needs the bias resistance, or the electrode has no DC potential.
+
+    The induced current is that of the depleted layer alone, with the
+    undepleted layer taken as a conductor, and its source lies across the
+    depleted layer. A positive current flows into the electrode.
+    """
+    if coupling_capacitance_f is not None and bias_resistance_ohm is None:
+        raise ValueError(
+            "A coupling capacitance needs a bias resistance: without it the "
+            "electrode has no DC potential"
+        )
+    pad = f"{electrode}_pad"
+    if undepleted is None:
+        back_of_depleted = "0"
+        lines = [f"C{electrode}_depleted {pad} 0 {depleted_capacitance_f:.9g}"]
+    else:
+        resistance_ohm, capacitance_f = undepleted
+        back_of_depleted = f"{electrode}_inner"
+        lines = [
+            f"C{electrode}_depleted {pad} {back_of_depleted} "
+            f"{depleted_capacitance_f:.9g}",
+            f"R{electrode}_undepleted {back_of_depleted} 0 {resistance_ohm:.9g}",
+            f"C{electrode}_undepleted {back_of_depleted} 0 {capacitance_f:.9g}",
+        ]
+    if bias_resistance_ohm is not None:
+        lines.append(f"R{electrode}_bias {pad} 0 {bias_resistance_ohm:.9g}")
+    output = pad
+    if coupling_capacitance_f is not None:
+        output = f"{electrode}_port"
+        lines.append(
+            f"C{electrode}_coupling {pad} {output} {coupling_capacitance_f:.9g}"
+        )
+    return SensorCircuit(
+        lines=tuple(lines),
+        sources={electrode: (back_of_depleted, pad)},
+        outputs={electrode: output},
+    )

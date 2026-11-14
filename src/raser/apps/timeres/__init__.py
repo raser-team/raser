@@ -10,16 +10,7 @@ DEFAULTS = json.loads((Path(__file__).parent / "time_resolution.json").read_text
 
 
 def _job(kwargs):
-    from .g4_interaction import TimeresActionInitialization
-
-    kwargs["_g4_action_initialization"] = TimeresActionInitialization
-    signal.run_job(kwargs, "timeres")
-
-
-def _extract(point_root, done):
-    from raser.apps.timeres import summary
-
-    return summary.collect_point(point_root, done)
+    signal.run_job(kwargs)
 
 
 WORKFLOW = Workflow(
@@ -28,14 +19,13 @@ WORKFLOW = Workflow(
     defaults={
         "source": DEFAULTS["source"],
         "events_per_job": 10000,
+        "plots": 0,
         "amplifier": DEFAULTS["afe"],
-        "adc": DEFAULTS["adc"],
         "g4setup": DEFAULTS["g4setup"],
     },
-    components={**signal.COMPONENTS, "g4setup": "g4setup", "adc": "adc"},
+    components={**signal.COMPONENTS, "g4setup": "g4setup"},
     in_file=signal.IN_FILE,
     job=_job,
-    extract=_extract,
     command=signal.job_command,
 )
 

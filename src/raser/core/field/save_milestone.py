@@ -15,7 +15,23 @@ import numpy as np
 from .assets import field_pickle_path
 from . import devsim_draw
 from .create_parameter import create_parameter, delete_init
+from .conductive import conductive
 from raser.supports.output import create_path
+
+def conductive_of_region(device, region):
+    """Which nodes of a solved region are conductive at its bias, 1.0 or 0.0 each,
+    judged with the mobilities the solve used there."""
+
+    def values(name):
+        return devsim.get_node_model_values(device=device, region=region, name=name)
+
+    def mobility(name):
+        return float(devsim.get_parameter(device=device, region=region, name=name))
+
+    return conductive(
+        values("Electrons"), values("Holes"), values("NetDoping"), mobility("mu_n"), mobility("mu_p")
+    ).astype(float)
+
 
 def milestone_save_1D(device, v, path, is_tcad):
     if is_tcad:
@@ -49,6 +65,7 @@ def milestone_save_1D(device, v, path, is_tcad):
     Holes = []
     TrappingRate_n = []
     TrappingRate_p = []
+    Conductive = []
 
     for region in devsim.get_region_list(device=device):
         if ( devsim.get_material(device=device, region=region) == "Aluminum" or devsim.get_material(device=device, region=region) == "air"
@@ -62,6 +79,8 @@ def milestone_save_1D(device, v, path, is_tcad):
         Holes.extend(devsim.get_node_model_values(device=device, region=region, name=h))
         TrappingRate_n.extend(devsim.get_node_model_values(device=device, region=region, name=trap_n))
         TrappingRate_p.extend(devsim.get_node_model_values(device=device, region=region, name=trap_p))
+        if not is_tcad:
+            Conductive.extend(conductive_of_region(device, region))
 
     x = geometry_scale*np.array(x) # get x-node values
     Potential = np.array(Potential) # get the potential data
@@ -72,9 +91,9 @@ def milestone_save_1D(device, v, path, is_tcad):
     TrappingRate_n = np.array(TrappingRate_n)
     TrappingRate_p = np.array(TrappingRate_p)
 
-    devsim_draw.draw1D(x,Potential,"Potential","Depth[cm]","Potential[V]", v, path)
-    devsim_draw.draw1D(x,TrappingRate_n,"Electron Trapping Rate","Depth[cm]","Trapping Rate[s]", v, path,)
-    devsim_draw.draw1D(x,TrappingRate_p,"Hole Trapping Rate","Depth[cm]","Trapping Rate[s]", v, path,)
+    devsim_draw.draw1D(x,Potential,"Potential","Depth[um]","Potential[V]", v, path)
+    devsim_draw.draw1D(x,TrappingRate_n,"Electron Trapping Rate","Depth[um]","Trapping Rate[1/s]", v, path,)
+    devsim_draw.draw1D(x,TrappingRate_p,"Hole Trapping Rate","Depth[um]","Trapping Rate[1/s]", v, path,)
 
     if is_tcad:
         ElectricField = []
@@ -84,7 +103,7 @@ def milestone_save_1D(device, v, path, is_tcad):
                 continue
             ElectricField.extend(devsim.get_node_model_values(device=device, region=region, name=E))
         ElectricField = np.array(ElectricField)
-        devsim_draw.draw1D(x,ElectricField,"Electric Field","Depth[cm]","Electric Field[V/cm]", v, path,)
+        devsim_draw.draw1D(x,ElectricField,"Electric Field","Depth[um]","Electric Field[V/cm]", v, path,)
     else:
         x_mid = []
         ElectricField = []
@@ -97,13 +116,15 @@ def milestone_save_1D(device, v, path, is_tcad):
             ElectricField.extend(devsim.get_edge_model_values(device=device, region=region, name=E)) # get y-node values
         x_mid = np.array(x_mid) # get x-node values
         ElectricField = np.array(ElectricField) # get y-node values
-        devsim_draw.draw1D(x_mid,ElectricField,"Electric Field","Depth[cm]","Electric Field[V/cm]", v, path,)
+        devsim_draw.draw1D(x_mid,ElectricField,"Electric Field","Depth[um]","Electric Field[V/cm]", v, path,)
 
     metadata = {}
     metadata['voltage'] = v
     metadata['dimension'] = 1
 
-    names = ['Potential', 'TrappingRate_p', 'TrappingRate_n']
+    names = ['Potential', 'TrappingRate_p', 'TrappingRate_n', 'Electrons', 'Holes']
+    if not is_tcad:
+        names.append('Conductive')
     if v == 0 or is_tcad:
         names.append('NetDoping')
 
@@ -187,6 +208,7 @@ def milestone_save_2D(device, v, path, is_tcad, is_flip=False):
     Holes = []
     TrappingRate_n = []
     TrappingRate_p = []
+    Conductive = []
 
     # TODO: TCAD imports can contain dielectric/metal regions that do not carry
     # semiconductor node models; filter by available node models before saving.
@@ -203,6 +225,8 @@ def milestone_save_2D(device, v, path, is_tcad, is_flip=False):
         Holes.extend(devsim.get_node_model_values(device=device, region=region, name=h))
         TrappingRate_n.extend(devsim.get_node_model_values(device=device, region=region, name=trap_n))
         TrappingRate_p.extend(devsim.get_node_model_values(device=device, region=region, name=trap_p))
+        if not is_tcad:
+            Conductive.extend(conductive_of_region(device, region))
 
     x = geometry_scale*np.array(x) # get x-node values
     y = geometry_scale*np.array(y) # get y-node values
@@ -255,7 +279,9 @@ def milestone_save_2D(device, v, path, is_tcad, is_flip=False):
     metadata['voltage'] = v
     metadata['dimension'] = 2
 
-    names = ['Potential', 'TrappingRate_p', 'TrappingRate_n']
+    names = ['Potential', 'TrappingRate_p', 'TrappingRate_n', 'Electrons', 'Holes']
+    if not is_tcad:
+        names.append('Conductive')
     if v == 0 or is_tcad:
         names.append('NetDoping')
 
@@ -358,6 +384,7 @@ def milestone_save_3D(device, v, path, is_tcad):
     Holes = []              
     TrappingRate_n = []     
     TrappingRate_p = []    
+    Conductive = []
 
     
     for region in devsim.get_region_list(device=device):
@@ -374,6 +401,8 @@ def milestone_save_3D(device, v, path, is_tcad):
         Holes.extend(devsim.get_node_model_values(device=device, region=region, name=h))
         TrappingRate_n.extend(devsim.get_node_model_values(device=device, region=region, name=trap_n))
         TrappingRate_p.extend(devsim.get_node_model_values(device=device, region=region, name=trap_p))
+        if not is_tcad:
+            Conductive.extend(conductive_of_region(device, region))
 
   
     x = geometry_scale * np.array(x)
@@ -427,7 +456,9 @@ def milestone_save_3D(device, v, path, is_tcad):
         "dimension": 3       
     }
 
-    names = ["Potential", "TrappingRate_p", "TrappingRate_n"]
+    names = ["Potential", "TrappingRate_p", "TrappingRate_n", "Electrons", "Holes"]
+    if not is_tcad:
+        names.append('Conductive')
     if v == 0 or is_tcad:
         names.append("NetDoping")
 
@@ -511,7 +542,7 @@ def save_record(path, **entries):
 
 def save_solved(path, asset, at):
     """Add to the "solved" entry of run.json that the folder now holds `asset`
-    at `at`: {"potential": [0, 100.0, 200.0], "weighting": ["any"], ...}."""
+    at `at`: {"potential": [0, 100.0, 200.0], "weighting": [200.0], ...}."""
     record = {}
     if os.path.exists(os.path.join(path, "run.json")):
         with open(os.path.join(path, "run.json")) as file:

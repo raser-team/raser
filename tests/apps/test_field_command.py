@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import sys
+import types
 from pathlib import Path
 from typing import Any
 
@@ -96,7 +98,7 @@ def test_a_field_is_out_of_date_for_what_its_solve_read_its_flux_and_its_setting
     [
         ((), []),
         (("-bias", "100"), []),
-        (("-bias", "300"), ["iv+cv"]),
+        (("-bias", "300"), ["iv+cv", "emptied", "wf"]),
         (("-cv",), ["cv at True"]),
         (("-cv", "100"), []),
         (("-iv", "-cv", "0", "-wf"), ["cv at 0.0"]),
@@ -105,9 +107,39 @@ def test_a_field_is_out_of_date_for_what_its_solve_read_its_flux_and_its_setting
 def test_a_part_that_run_json_lists_as_solved_is_left_as_it_is(
     solves: list[str], tmp_path: Path, options: tuple[str, ...], solved: list[str]
 ) -> None:
-    listed = {"potential": [0.0, 100.0, 200.0], "capacitance": [100.0], "weighting": ["any"]}
+    listed = {"potential": [0.0, 100.0, 200.0], "capacitance": [100.0], "weighting": [100.0, 200.0]}
     (tmp_path / "run.json").write_text(json.dumps({"solved": listed}))
 
     field.solve(_parsed(*options, folder=tmp_path))
 
     assert solves == solved
+
+
+@pytest.mark.parametrize(
+    "chosen",
+    [
+        {"direct_solver": "mkl_pardiso"},  # devsim with MKL has no solver_callback
+        {"direct_solver": "custom", "solver_callback": "the UMFPACK shim"},
+    ],
+)
+def test_emptying_devsim_keeps_the_linear_solver_it_had(
+    monkeypatch: pytest.MonkeyPatch, chosen: dict[str, str]
+) -> None:
+    parameters = {**chosen, "of the device that is emptied": 1.0}
+
+    def get_parameter(name: str) -> object:
+        if name not in parameters:
+            raise RuntimeError(f'Cannot find parameter "{name}"')
+        return parameters[name]
+
+    devsim = types.SimpleNamespace(
+        get_parameter=get_parameter,
+        get_parameter_list=lambda: list(parameters),
+        set_parameter=lambda name, value: parameters.update({name: value}),
+        reset_devsim=parameters.clear,
+    )
+    monkeypatch.setitem(sys.modules, "devsim", devsim)
+
+    field._empty_devsim()
+
+    assert parameters == chosen

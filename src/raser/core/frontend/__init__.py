@@ -11,7 +11,6 @@ from .noise import equivalent_noise_charge
 from .noise import load_noise_spectrum
 from .noise import output_noise_rms_from_enc
 from .noise import spieler_noise_spectrum
-from .noise import synthesize_noise_from_spectrum
 from .noise import white_noise_spectrum_for_rms
 from .sensor_network import SensorNetwork
 from .sensor_network import SheetContact
@@ -29,7 +28,6 @@ __all__ = [
     "load_noise_spectrum",
     "output_noise_rms_from_enc",
     "spieler_noise_spectrum",
-    "synthesize_noise_from_spectrum",
     "white_noise_spectrum_for_rms",
     "SensorNetwork",
     "SheetContact",

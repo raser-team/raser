@@ -10,13 +10,7 @@ DEFAULTS = json.loads((Path(__file__).parent / "charge_collection.json").read_te
 
 
 def _job(kwargs):
-    signal.run_job(kwargs, "cce")
-
-
-def _extract(point_root, done):
-    from raser.apps.cce import summary
-
-    return summary.collect_point(point_root, done)
+    signal.run_job(kwargs)
 
 
 WORKFLOW = Workflow(
@@ -25,14 +19,13 @@ WORKFLOW = Workflow(
     defaults={
         "source": DEFAULTS["source"],
         "events_per_job": 10000,
+        "plots": 0,
         "amplifier": DEFAULTS["afe"],
-        "adc": DEFAULTS["adc"],
         "g4setup": DEFAULTS["g4setup"],
     },
-    components={**signal.COMPONENTS, "g4setup": "g4setup", "adc": "adc"},
+    components={**signal.COMPONENTS, "g4setup": "g4setup"},
     in_file=signal.IN_FILE,
     job=_job,
-    extract=_extract,
     command=signal.job_command,
 )
 

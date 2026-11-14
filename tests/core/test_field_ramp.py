@@ -18,6 +18,8 @@ def solved(monkeypatch: pytest.MonkeyPatch) -> list[str]:
         circuit_alter=lambda **_: None,
         solve=lambda **asked: kinds.append(asked["type"]),
         get_contact_current=lambda **_: 1.0,
+        get_node_model_values=lambda **_: [0.0],
+        set_node_values=lambda **_: None,
         get_circuit_node_value=lambda **_: 1.0,
     )
     monkeypatch.setattr(loop_section, "devsim", devsim)
@@ -46,7 +48,7 @@ def test_every_bias_step_gives_one_value_of_each_curve_that_was_asked_for(
         "maximum_iterations_VoltageSteps": 1,
         "frequency": 1.0,
     }
-    ramp = loop_section.loop_section(paras, "d", "r", solve_model, False, with_noise)
+    ramp = loop_section.loop_section(paras, "d", "r", solve_model, False, "folder", with_noise)
 
     for bias in (1.0, 2.0):
         ramp.loop_solver(circuit_contact="top", v_trial=bias, area_factor=1.0)

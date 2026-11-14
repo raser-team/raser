@@ -2,6 +2,16 @@
 * Inverting transimpedance stage on a BFR840L3RHESD, feedback 475 Ohm,
 * AC-coupled at the input and at the output.
 * Ports: in (sensor side), out (to the load). Ground is node 0.
+*
+* After the schematic "Prototype Beam Test Board", SCIPP/UCSC, M. Wilder,
+* 02/19/16, file proto_beam_test_board_V1.1C.pdf. Names there:
+*   R13 = R13, C1 = C23, R1 = R14, R2 = R15, C2 = C24, C5 = C25, L1 = L4,
+*   R3 = R16, C3 C4 = C27 C28, L2 = L5, C7 C8 = C35 C36.
+* L2, C7 and C8 carry the values pencilled on the schematic ("replace with
+* nH", "replace with 10nF") in place of the drawn 22 uH and 10 uF.
+* Not in this file: the protection diodes D7 and D8 at the input, the
+* calibration capacitor C22, whose value the schematic does not give, and
+* the optional 3 pF shaping capacitor C26 at the output.
 
 
 * definition of BFR840L3RHESD, as a subcircuit
@@ -115,7 +125,8 @@ Q1 11 22 33 55 M_BFR840L3RHESD
 .ends BFR840L3RHESD
 
 .subckt SantaCruz in out
-VCC 6 0 dc 2.25
+VCC 8 0 dc 2.25
+R13 in 0 1MEG
 C1 in 3 3.3n
 x1 5 3 0 BFR840L3RHESD
 R1 3 4 475
