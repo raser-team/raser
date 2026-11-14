@@ -30,6 +30,7 @@ class loop_section:
         self.region = region
         self.irradiation = irradiation
         self.voltage = []
+        self.solved = []  # the last two solved biases: (bias, {solution name: node values})
         self.current = []
         self.capacitance = []
         self.noise = []
@@ -59,17 +60,44 @@ class loop_section:
         print("=====================\nDriftDiffusion initialize successfully\n======================")
         print("=========RASER info =========\nAll initialization successfully\n=========info========== ")    
 
+    def start_from_solved(self, v_trial):
+        """Start the step to v_trial from the last solved bias, its potential carried on along the last two."""
+        if not self.solved:
+            return
+        v_last, last = self.solved[-1]
+        start = dict(last)
+        if len(self.solved) == 2:
+            v_before, before = self.solved[0]
+            slope = (last["Potential"] - before["Potential"]) / (v_last - v_before)
+            start["Potential"] = last["Potential"] + (v_trial - v_last) * slope
+        for name, values in start.items():
+            devsim.set_node_values(device=self.device, region=self.region, name=name, values=list(values))
+
+    def keep_solved(self, v_trial):
+        state = {name: np.array(devsim.get_node_model_values(device=self.device, region=self.region, name=name))
+                 for name in ("Potential", "Electrons", "Holes")}
+        if self.solved and self.solved[-1][0] == v_trial:
+            self.solved[-1] = (v_trial, state)
+        else:
+            self.solved = self.solved[-1:] + [(v_trial, state)]
+
     @memory_decorator
-    def loop_solver(self, circuit_contact, v_trial, area_factor):
+    def loop_solver(self, circuit_contact, v_trial, area_factor, on_curve=True):
+        if self.solve_model != "wf":
+            self.start_from_solved(v_trial)
         devsim.set_parameter(device=self.device, name=physics_drift_diffusion.GetContactBiasName(circuit_contact), value=v_trial,)
         try:
             devsim.solve(type="dc", absolute_error=self.paras['absolute_error_VoltageSteps'], relative_error=self.paras['relative_error_VoltageSteps'], maximum_iterations=self.paras['maximum_iterations_VoltageSteps'],)
-            self.voltage.append(v_trial)
+            if on_curve:
+                self.voltage.append(v_trial)
         except devsim.error as msg:
             devsim.write_devices(file=os.path.join(self.path, "last_solvable.dd"), type="tecplot")
             raise
         
         if self.solve_model !="wf":     
+            self.keep_solved(v_trial)
+            if not on_curve:  # a step between two points of the IV and CV curves
+                return
             physics_drift_diffusion.PrintCurrents(device=self.device, contact=circuit_contact)
             electron_current = devsim.get_contact_current(device=self.device, contact=circuit_contact, equation="ElectronContinuityEquation",)
             hole_current     = devsim.get_contact_current(device=self.device, contact=circuit_contact, equation="HoleContinuityEquation",)

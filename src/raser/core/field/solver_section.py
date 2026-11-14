@@ -40,11 +40,11 @@ SOLVER = {
         "relative_error": 1e-4,
         "maximum_iterations": 100,
         "initial": 1.0,
-        "maximum": 8.0,
         "increase_factor": 2.0,
         "decrease_factor": 0.5,
     },
     "saved_voltage_interval": 100.0,
+    "curve_voltage_interval": 10.0,  # between two points of the IV and CV curves
     "ac": {"real": 1.0, "imaginary": 0.0, "frequency": 1000.0},
 }
 
@@ -85,7 +85,7 @@ def _legacy_solver_parameters(configuration, *, weightfield):
         ),
         "milestone_mode": True,
         "milestone_step": float(solver["saved_voltage_interval"]),
-        "max_voltage_step": float(voltage_step["maximum"]),
+        "curve_step": float(solver["curve_voltage_interval"]),
         "increase_factor": float(voltage_step["increase_factor"]),
         "decrease_factor": float(voltage_step["decrease_factor"]),
         "voltage_step": float(voltage_step["initial"]),
@@ -234,26 +234,26 @@ def main (kwargs):
         else:
             milestone_step = -1 * paras['milestone_step']
             voltage_step = -abs(paras['voltage_step'])
-        max_voltage_step = paras['max_voltage_step']
 
         step_too_small = False
         milestone_flag = False
         goal_flag = False
         voltage_milestones = _voltage_milestones(v_goal, milestone_step)
+        curve_points = _voltage_milestones(v_goal, paras['curve_step'] if v_goal > 0 else -paras['curve_step'])
         while abs(v_current) <= abs(v_goal):
             v_trial = v_current + voltage_step
-            if abs(v_trial) > abs(v_goal):
-                v_trial = v_goal
-                goal_flag = True
-            elif voltage_milestones and abs(v_trial) > abs(voltage_milestones[0]):
-                v_trial = voltage_milestones[0]
-                milestone_flag = True
+            # The step ends at the nearest bias it has to stop at, if it would pass it.
+            next_stop = min([v_goal] + voltage_milestones[:1] + curve_points[:1], key=abs)
+            if abs(v_trial) > abs(next_stop):
+                v_trial = next_stop
+            goal_flag = v_trial == v_goal
+            milestone_flag = bool(voltage_milestones) and v_trial == voltage_milestones[0]
+            on_curve = bool(curve_points) and v_trial == curve_points[0]
             try:
-                loop.loop_solver(circuit_contact=bias_contact, v_trial=v_trial, area_factor=paras["area_factor"],)
-                if abs(voltage_step) < max_voltage_step:
-                    voltage_step = voltage_step * paras['increase_factor']
-                else:
-                    pass
+                loop.loop_solver(circuit_contact=bias_contact, v_trial=v_trial, area_factor=paras["area_factor"], on_curve=on_curve,)
+                voltage_step = voltage_step * paras['increase_factor']
+                if on_curve:
+                    curve_points.pop(0)
                 print("=========RASER info===========\nConvergence success, voltage = {}, increased voltage step = {}\n================".format(v_trial, voltage_step))
                 if (paras['milestone_mode']) and (milestone_flag or goal_flag):
                     save_milestone.save_milestone(device=device, v=v_trial, path=path, dimension=default_dimension, contact_name=bias_contact, is_wf=is_wf,)
@@ -273,7 +273,8 @@ def main (kwargs):
                 goal_flag = False
                 if str(msg).find("Convergence failure") == -1:
                     raise
-                voltage_step *= paras['decrease_factor'] 
+                # of the step that was tried, which a stop may have cut short
+                voltage_step = (v_trial - v_current) * paras['decrease_factor']
 
                 print("=========RASER info===========\nConvergence failure, voltage = {}, decreased voltage step = {}\n================".format(v_trial, voltage_step))
   
