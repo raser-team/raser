@@ -1,5 +1,8 @@
-ucsc circuit 
-* name of the circuit
+* SantaCruz: single-channel LGAD read-out board of UC Santa Cruz.
+* Inverting transimpedance stage on a BFR840L3RHESD, feedback 475 Ohm,
+* AC-coupled at the input and at the output.
+* Ports: in (sensor side), out (to the load). Ground is node 0.
+
 
 * definition of BFR840L3RHESD, as a subcircuit
 .subckt BFR840L3RHESD 1 2 3
@@ -111,23 +114,14 @@ Q1 11 22 33 55 M_BFR840L3RHESD
 +	AF	=	1.53)
 .ends BFR840L3RHESD
 
-I1 2 0 pulse(0 -10u 0 0.1n 1n 0.00000001n 20n 0)
-* input current source
+.subckt SantaCruz in out
 VCC 6 0 dc 2.25
-* VCC, DC source
-Rin 2 0 1MEG
-* resistance of the sensor
-C6 2 0 20p
-* capacitance of the sensor
-C1 2 3 3.3n
+C1 in 3 3.3n
 x1 5 3 0 BFR840L3RHESD
-* the amplifier BFR840L3RHESD
 R1 3 4 475
-* feedback resistance
 R2 4 5 3k
 C2 4 5 3.3n
 C5 5 out 3.3n
-R4 out 0 50
 L1 5 6 47U
 R3 6 7 63.7
 C7 8 0 10n
@@ -135,12 +129,4 @@ C8 7 0 10n
 C3 7 0 1n
 C4 7 0 1n
 L2 8 7 2.2u
-* some other devices
-
-.control
-tran 0.1p 20n
-* <step> <stopping time>
-wrdata output/fig/ucsc.raw v(out)
-.endc
-
-.end
+.ends SantaCruz
