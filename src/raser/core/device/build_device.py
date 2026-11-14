@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 
 """
-Description:  Define physical models for different materials
+Description:  The detector as its json describes it
 @Date       : 2025/11/11
 @Author     : Yuhang Tan, Tao Yang, Chenxi Fu
 @version    : 3.0
@@ -44,17 +44,19 @@ class Detector:
     """
     Description:
     ---------
-        Different types detectors parameters assignment.
+        A detector: every key of its json is an attribute, with a few more
+        that follow from them.
     Parameters:
     ---------
     device_name : string
-        name the device and define the device by device.json
-    dimension : int
-        the dimension of devsim mesh
+        name of the device, or the path of its json
+    device_dict : dict
+        the content of the json as a run recorded it; read from the file
+        when not given
     Modify:
     ---------
-        2023/12/03
-    """ 
+        2026/11/13
+    """
     def __init__(self, device_name, device_dict=None):
         path = device_file(device_name)
         # A run hands in the content it recorded; otherwise the file is read.
@@ -169,7 +171,3 @@ class Detector:
             return True
         else:
             return False
-
-if __name__ == "__main__":
-    import sys
-    Detector(sys.argv[1])
