@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from raser.apps import ana
+from raser.lifecycle import workflow
 from raser.apps.ana.point import write_point
 from raser.core.current.currents import EventCurrents
 from raser.core.current.currents import append_currents
@@ -95,12 +96,12 @@ def test_point_with_too_few_selected_events_keeps_its_efficiency_and_tells_why(t
     assert not (tmp_path / "out" / "time_difference.png").exists()
 
 
-def test_results_of_a_point_are_in_its_own_folder_and_a_point_without_jobs_is_reported(
+def test_every_point_of_the_analysis_holds_the_results_of_the_points_it_analyses(
     tmp_path, monkeypatch
 ) -> None:
     root = tmp_path / "work" / "device" / "timeres"
     _job(root / "seed_1", 0, 1.0, 100, seed=4)
-    _job(root / "voltage_100" / "seed_1", 0, 1.0, 100, seed=5)
+    _job(root / "voltage_100" / "seed_1", 0, 0.4, 100, seed=5)  # 4 mV
     (root / "config.json").write_text(json.dumps({"workflow": "timeres", "device": "device"}))
     points: list[tuple[str, dict, list]] = [
         ("", {"voltage": 300.0, "plots": 0}, [(root / "seed_1", 0)]),
@@ -109,20 +110,41 @@ def test_results_of_a_point_are_in_its_own_folder_and_a_point_without_jobs_is_re
     ]
     monkeypatch.setattr(ana, "finished_in", lambda folder: points if folder == root.resolve() else None)
     monkeypatch.setattr(
-        ana, "load_component", lambda kind, name: (None, {"threshold": 3, "amplitude_threshold": 5})
+        workflow, "load_component", lambda kind, name: (None, {"threshold": 3, "amplitude_threshold": 5})
     )
 
-    with pytest.raises(SystemExit, match="1 of 3 points are not complete:\n.*voltage_200: no finished job"):
-        ana.collect({"experiment": str(root), "adc": "scope"})
+    def own_process(flow, kwargs, words):
+        try:
+            workflow._run_job(flow, {**kwargs, "job_dir": words[-1]})
+        except SystemExit as stopped:  # as the command of a job that stops
+            raise RuntimeError(str(stopped)) from stopped
 
-    for point in ("", "voltage_100"):
-        result = json.loads((root / point / "ana" / "scope" / "result.json").read_text())
-        assert result["timing"]["selected"] == 100
-    assert not (root / "voltage_200").exists()
+    monkeypatch.setattr(workflow, "_own_process", own_process)
+    kwargs: dict = {"experiment": str(root), "adc": None, "threshold": None, "amplitude_threshold": None}
+    kwargs.update(jobs=None, batch=False, mem=1, dry_run=False, _entry_command_prefix=("raser",))
+
+    # the digitizer's 5 mV select the first point only; with 2 mV both are selected
+    with pytest.raises(SystemExit, match="2 of 2 points failed"):
+        ana.run({**kwargs, "scan": ["amplitude_threshold=5,2"]})
+
+    place = root / "ana"
+    assert json.loads((place / "config.json").read_text())["scan"] == {"amplitude_threshold": [5, 2]}
+    selected = {
+        (point, upstream): json.loads((place / point / upstream / "result.json").read_text())["timing"]["selected"]
+        for point in ("", "amplitude_threshold_2")
+        for upstream in ("", "voltage_100")
+    }
+    assert selected == {
+        ("", ""): 100, ("", "voltage_100"): 0,
+        ("amplitude_threshold_2", ""): 100, ("amplitude_threshold_2", "voltage_100"): 100,
+    }
+    low = json.loads((place / "amplitude_threshold_2" / "result.json").read_text())
+    assert low["digitizer"] == {"threshold": 3, "amplitude_threshold": 2}
+    assert not (root / "voltage_200").exists() and not (place / "voltage_200").exists()
     # one row per point that ran, with the option that differs between them
-    rows = json.loads((root / "ana" / "scope" / "points.json").read_text())
+    rows = json.loads((place / "amplitude_threshold_2" / "points.json").read_text())
     assert [(row["point"], row["voltage"], row["events"]) for row in rows] == [("", 300.0, 100), ("voltage_100", 100.0, 100)]
     assert "plots" not in rows[0]
-    half = json.loads((root / "voltage_100" / "ana" / "scope" / "result.json").read_text())["timing"]["times"]["CFD50"]
+    half = json.loads((place / "amplitude_threshold_2" / "voltage_100" / "result.json").read_text())["timing"]["times"]["CFD50"]
     assert rows[1]["CFD50"] == {key: half[key] for key in ("sigma68", "sigma", "sigma_error")}
     assert rows[1]["efficiency"] == pytest.approx(0.9)
