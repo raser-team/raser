@@ -5,7 +5,7 @@ ALL_CHECK_PATHS ?= src/raser tests
 
 # Publish on pypi.org 
 check: 
-	python setup.py sdist
+	uv build --sdist
 	twine check dist/* 
 	
 upload: 

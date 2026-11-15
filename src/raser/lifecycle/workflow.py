@@ -41,6 +41,9 @@ class Workflow:
     keys: tuple = ()  # the options an experiment may set
     defaults: Mapping = field(default_factory=dict)  # their values when nobody set them
     components: Mapping = field(default_factory=dict)  # kind of json file -> the option naming it
+    # kind of file -> the function that reads the file its option names into
+    # a dict, for a file that is not json, such as the SPICE files of a chain
+    readers: Mapping = field(default_factory=dict)
     in_file: Mapping = field(default_factory=dict)  # option -> where its value sits in a file
     device: bool = True  # the command names a device
     # False: nothing is drawn; a point holds one run, in its own folder, and its
@@ -51,11 +54,9 @@ class Workflow:
     # and so do uncommitted changes of the code.
     outdated: Callable | None = None
     command: Callable | None = None  # extra words of the job command
-    extract: Callable | None = None  # (point folder, [(seed folder, job)]) -> a summary row
-    # TODO(ana): nothing calls extract yet. A separate `raser ana` command is to
-    # collect the results of an experiment folder: it takes the points and jobs
-    # from `finished` and hands them to the analysis. Until it exists, cce and
-    # timeres have no command that writes their summary.
+    # the options of a command -> its experiment folder, for an experiment that
+    # is not at work/<device>/<words>, such as one inside another experiment
+    folder: Callable | None = None
 
     @property
     def words(self):
@@ -89,9 +90,9 @@ def execute(workflow, kwargs):
     identity = {"workflow": workflow.name}
     if workflow.device:
         identity["device"] = kwargs["det_name"]
-    root = Path.cwd()
+    root = Path(workflow.folder(kwargs)) if workflow.folder else Path.cwd()
     config = _read(root / "config.json")
-    if any(config.get(key) != value for key, value in identity.items()):
+    if not workflow.folder and any(config.get(key) != value for key, value in identity.items()):
         root = Path(project_path(*workflow.words))
         config = _read(root / "config.json")
     given = {key: kwargs[key] for key in workflow.keys if kwargs.get(key) is not None}
@@ -325,7 +326,8 @@ def _point(workflow, kwargs, options) -> tuple[dict, dict]:
     if workflow.device:
         files["device"] = device_json(kwargs["det_name"])
     for kind, key in workflow.components.items():
-        files[kind] = load_component(kind, options[key])[1]
+        read = workflow.readers.get(kind)
+        files[kind] = read(options[key]) if read else load_component(kind, options[key])[1]
 
     # An option that is a value inside a file, such as the bias in the device:
     # given, it is written into the file; not given, it takes the file's value.
