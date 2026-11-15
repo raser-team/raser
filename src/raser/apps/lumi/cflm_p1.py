@@ -28,26 +28,8 @@ class cflmPixelG4Particles:
 
     def __init__(self, my_d, i, j, l):
 
-        global s_eventIDs,s_edep_devices,s_p_steps,s_energy_steps
-        s_eventIDs,s_edep_devices,s_p_steps,s_energy_steps = {}, {}, {}, {}
-
-        global detectorID, pixelAreaEdep
-        detectorID, pixelAreaEdep = [], []
-
         self.geant4_model = "cflm"
 
-        for k  in ('I', 'II'):
-            s_eventIDs[f'detector_{k}'] = {}
-            s_edep_devices[f'detector_{k}'] = {}
-            s_p_steps[f'detector_{k}'] = {}
-            s_energy_steps[f'detector_{k}'] = {}
-            for m in pixelAreaYIndex:
-                for n in pixelAreaZIndex:
-                    s_eventIDs[f'detector_{k}'][f'{m}_{n}'] = []
-                    s_edep_devices[f'detector_{k}'][f'{m}_{n}'] = []
-                    s_p_steps[f'detector_{k}'][f'{m}_{n}'] = []
-                    s_energy_steps[f'detector_{k}'][f'{m}_{n}'] = []
-        
         json_s_p_steps_path = os.path.join(output_path, "s_p_steps.json")                        
         json_s_energy_steps_path = os.path.join(output_path, "s_energy_steps.json")           
         json_s_edep_devices_path = os.path.join(output_path, "s_edep_devices.json")          
@@ -113,43 +95,74 @@ class cflmPixelG4Particles:
             with open(geant4_json) as f:
                 g4_dic = json.load(f)
 
-            runManager = g4b.G4RunManager.GetRunManager() or g4b.G4RunManager()
-            rand_engine= g4b.cppyy.gbl.CLHEP.RanecuEngine()
-            g4b.cppyy.gbl.CLHEP.HepRandom.setTheEngine(rand_engine)
-            g4b.cppyy.gbl.CLHEP.HepRandom.setTheSeed(g4_dic['seed'])
-            UImanager = g4b.G4UImanager.GetUIpointer()
-
-            physicsList = g4b.FTFP_BERT()
-            physicsList.SetVerboseLevel(0)
-            # the physics list deletes what is registered in it: python must not
-            stepLimiterPhysics = g4b.G4StepLimiterPhysics()
-            stepLimiterPhysics.__python_owns__ = False
-            physicsList.RegisterPhysics(stepLimiterPhysics)
-            runManager.SetUserInitialization(physicsList)
-
-            detConstruction = cflmDetectorConstruction(g4_dic)
-            runManager.SetUserInitialization(detConstruction)
-
-            actionInitialization = cflmaActionInitialization(detConstruction,
-                                                            g4_dic['par_in'],
-                                                            g4_dic['par_direct'],
-                                                            g4_dic['par_type'],
-                                                            g4_dic['par_energy'],
-                                                            g4_dic['NumofGun']
-                                                            )
-            runManager.SetUserInitialization(actionInitialization)
-            
-            UImanager = g4b.G4UImanager.GetUIpointer()
-            UImanager.ApplyCommand('/run/initialize')
-            UImanager.ApplyCommand('/tracking/verbose 0')
-
-            runManager.BeamOn(int(g4_dic['BeamOn']))
+            s_p_steps, s_energy_steps, s_edep_devices = simulate_bunches(g4_dic, g4_dic['seed'])
 
             SaveJson(s_p_steps, json_s_p_steps_path)
             SaveJson(s_energy_steps, json_s_energy_steps_path)
             SaveJson(s_edep_devices, json_s_edep_devices_path)
         def __del__(self):
             pass
+
+
+def simulate_bunches(g4_dic, seed):
+    """Shoot the bunches of g4_dic and give the steps in every pad.
+
+    Three dicts, [detector_I or detector_II][i_j] -> one entry per bunch:
+    the positions of the steps [um, in the frame of the beam pipe], their
+    energies [MeV], and the energy left in the pad [MeV]. A bunch without a
+    step in a pad holds [[0, 0, 0]] and [0] there.
+    """
+    global s_eventIDs,s_edep_devices,s_p_steps,s_energy_steps
+    s_eventIDs,s_edep_devices,s_p_steps,s_energy_steps = {}, {}, {}, {}
+
+    global detectorID, pixelAreaEdep
+    detectorID, pixelAreaEdep = [], []
+
+    for k  in ('I', 'II'):
+        s_eventIDs[f'detector_{k}'] = {}
+        s_edep_devices[f'detector_{k}'] = {}
+        s_p_steps[f'detector_{k}'] = {}
+        s_energy_steps[f'detector_{k}'] = {}
+        for m in pixelAreaYIndex:
+            for n in pixelAreaZIndex:
+                s_eventIDs[f'detector_{k}'][f'{m}_{n}'] = []
+                s_edep_devices[f'detector_{k}'][f'{m}_{n}'] = []
+                s_p_steps[f'detector_{k}'][f'{m}_{n}'] = []
+                s_energy_steps[f'detector_{k}'][f'{m}_{n}'] = []
+        
+    runManager = g4b.G4RunManager.GetRunManager() or g4b.G4RunManager()
+    rand_engine= g4b.cppyy.gbl.CLHEP.RanecuEngine()
+    g4b.cppyy.gbl.CLHEP.HepRandom.setTheEngine(rand_engine)
+    g4b.cppyy.gbl.CLHEP.HepRandom.setTheSeed(seed)
+    UImanager = g4b.G4UImanager.GetUIpointer()
+
+    physicsList = g4b.FTFP_BERT()
+    physicsList.SetVerboseLevel(0)
+    # the physics list deletes what is registered in it: python must not
+    stepLimiterPhysics = g4b.G4StepLimiterPhysics()
+    stepLimiterPhysics.__python_owns__ = False
+    physicsList.RegisterPhysics(stepLimiterPhysics)
+    runManager.SetUserInitialization(physicsList)
+
+    detConstruction = cflmDetectorConstruction(g4_dic)
+    runManager.SetUserInitialization(detConstruction)
+
+    actionInitialization = cflmaActionInitialization(detConstruction,
+                                                    g4_dic['par_in'],
+                                                    g4_dic['par_direct'],
+                                                    g4_dic['par_type'],
+                                                    g4_dic['par_energy'],
+                                                    g4_dic['NumofGun']
+                                                    )
+    runManager.SetUserInitialization(actionInitialization)
+            
+    UImanager = g4b.G4UImanager.GetUIpointer()
+    UImanager.ApplyCommand('/run/initialize')
+    UImanager.ApplyCommand('/tracking/verbose 0')
+
+    runManager.BeamOn(int(g4_dic['BeamOn']))
+
+    return s_p_steps, s_energy_steps, s_edep_devices
 
 
 class cflmDetectorConstruction(g4b.G4VUserDetectorConstruction):
