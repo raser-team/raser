@@ -3,6 +3,7 @@
 import numpy as np
 
 from raser.core.frontend.waveforms import read_waveforms
+from raser.core.interaction.deposits import read_deposits
 from raser.core.metrics.reconstruction import InputWaveform
 from raser.core.metrics.reconstruction import get_CFD50
 from raser.core.metrics.reconstruction import get_CoG
@@ -10,6 +11,7 @@ from raser.core.metrics.reconstruction import net_pulse
 from raser.core.metrics.reconstruction import pulse_polarity
 
 from .files import job_file
+from .files import slice_file
 
 
 CFD_FRACTIONS = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9)
@@ -32,10 +34,11 @@ def event_times(jobs, threshold, amplitude_threshold):
         amplitude   [V]
         baseline    mean of the samples before the pulse [V]
         noise       their standard deviation [V]
+        truth       time of the earliest deposit of the event [s]
         CoG         centre of gravity in time of the part above the threshold [s]
         CFD10 ... CFD90   constant-fraction time at 10 % ... 90 % of the amplitude [s]
     """
-    names = ["ToA", "ToT", "amplitude", "baseline", "noise", "CoG"] + [f"CFD{round(100 * part)}" for part in CFD_FRACTIONS]
+    names = ["ToA", "ToT", "amplitude", "baseline", "noise", "truth", "CoG"] + [f"CFD{round(100 * part)}" for part in CFD_FRACTIONS]
     events = []
     for folder, index in jobs:
         path = job_file(folder, index, "waveforms")
@@ -47,13 +50,19 @@ def event_times(jobs, threshold, amplitude_threshold):
                 f"{path}: {len(waveforms.electrodes)} electrodes; "
                 "the time of an event with several electrodes is not settled"
             )
+        deposits = read_deposits(str(slice_file(folder, index, "deposits")))
+        earliest = {event.event: min(event.t) for event in deposits.events}
         for event in waveforms.events:
-            events.append((event.t0, waveforms.dt, *net_pulse(event.voltage[0])))
+            if event.event not in earliest:
+                raise ValueError(f"{path}: event {event.event} is not among the deposits of the job")
+            events.append(
+                (event.t0, waveforms.dt, earliest[event.event], *net_pulse(event.voltage[0]))
+            )
     if not events:
         raise ValueError("the jobs recorded no event")
-    polarity = pulse_polarity([net for _, _, net, _, _ in events])
+    polarity = pulse_polarity([net for _, _, _, net, _, _ in events])
     rows = []
-    for t0, dt, net, baseline, noise in events:
+    for t0, dt, truth, net, baseline, noise in events:
         one = InputWaveform(
             [polarity * net], t0, dt, None, threshold, amplitude_threshold, None, None
         )
@@ -65,7 +74,7 @@ def event_times(jobs, threshold, amplitude_threshold):
         ]
         center = get_CoG(one.times, one.waveforms[0], threshold, one.peak_time[0])
         rows.append(
-            [one.data["ToA"], one.data["ToT"], one.data["amplitude"], baseline, noise, center, *fractions]
+            [one.data["ToA"], one.data["ToT"], one.data["amplitude"], baseline, noise, truth, center, *fractions]
         )
     table = np.array(rows, dtype="float64").reshape(len(rows), len(names))
     return len(events), polarity, {name: table[:, k] for k, name in enumerate(names)}

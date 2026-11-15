@@ -7,6 +7,7 @@ from raser.apps.ana.timing import event_times
 from raser.core.frontend.waveforms import EventWaveforms
 from raser.core.frontend.waveforms import append_waveforms
 from raser.core.interaction.deposits import Deposits
+from raser.core.interaction.deposits import EventDeposits
 from raser.core.interaction.deposits import write_deposits
 
 # a negative triangle [V]: 2 mV per bin up to 10 mV in bin 6, then down again
@@ -26,18 +27,29 @@ def _alone(folder):
 def _job(folder, index, events, electrodes=("top",)):
     """A job with one event per (t0, scale): the triangle, scaled, starting at
     t0, on a baseline 2 mV above zero that starts 200 bins earlier. The last
-    bin of the second event of a job is 12 mV above the baseline."""
+    bin of the second event of a job is 12 mV above the baseline. Event n of
+    job i has the Geant4 number 10 i + n and two deposits, the earlier one
+    (n + 1) ps before t0."""
     _alone(folder)
     batch = folder / "batch"
     batch.mkdir(parents=True, exist_ok=True)
+    deposits = []
     for number, (t0, scale) in enumerate(events):
+        earliest = t0 - (number + 1) * 1.0e-12
+        deposits.append(
+            EventDeposits(
+                10 * index + number, ["Device"] * 2, [0.0] * 2, [0.0] * 2, [1.0, 2.0],
+                [earliest + 5.0e-12, earliest], [0.1] * 2, [1000.0] * 2,
+            )
+        )
         samples = OFFSET + np.concatenate([np.zeros(BEFORE), scale * TRIANGLE])
         if number == 1:
             samples[-1] += 12.0e-3
         voltage = np.array([samples] * len(electrodes))
         append_waveforms(
-            batch / f"waveforms_{index}.h5", list(electrodes), DT, EventWaveforms(number, t0 - BEFORE * DT, voltage)
+            batch / f"waveforms_{index}.h5", list(electrodes), DT, EventWaveforms(10 * index + number, t0 - BEFORE * DT, voltage)
         )
+    write_deposits(str(batch / f"deposits_{index}.h5"), Deposits(50, None, None, deposits))
 
 
 def test_point_takes_the_quantities_of_the_events_above_the_amplitude_threshold(tmp_path) -> None:
@@ -46,7 +58,6 @@ def test_point_takes_the_quantities_of_the_events_above_the_amplitude_threshold(
     _job(first, 1, [(2.0e-10, 0.4)])  # 4 mV, below the amplitude threshold
     _job(second, 0, [(-1.0e-10, 2.0)])  # 20 mV: crosses 3 mV one bin earlier
     _job(second, 2, [(5.0e-9, 1.0)])  # not among the finished jobs
-    (second / "batch").mkdir(exist_ok=True)
     write_deposits(str(second / "batch" / "deposits_1.h5"), Deposits(50, None, None, []))
 
     count, polarity, times = event_times([(first, 0), (first, 1), (second, 0), (second, 1)], 3.0e-3, 5.0e-3)
@@ -59,6 +70,7 @@ def test_point_takes_the_quantities_of_the_events_above_the_amplitude_threshold(
     assert times["amplitude"] == pytest.approx(np.array([10.0e-3, 10.0e-3, 20.0e-3]))
     assert times["baseline"] == pytest.approx(np.full(3, OFFSET))
     starts = np.array([0.0, 1.0e-10, -1.0e-10])
+    assert times["truth"] == pytest.approx(starts - np.array([1.0e-12, 2.0e-12, 1.0e-12]))
     # the triangle is symmetric about the centre of bin 6
     assert times["CoG"] == pytest.approx(starts + 6.5e-9)
     # the edge rises by a fifth of the amplitude per ns from 1.5 ns after t0
@@ -71,3 +83,13 @@ def test_several_electrodes_are_refused(tmp_path) -> None:
 
     with pytest.raises(NotImplementedError, match="2 electrodes"):
         event_times([(tmp_path, 0)], 3.0e-3, 5.0e-3)
+
+
+def test_event_that_is_not_among_the_deposits_is_an_error(tmp_path) -> None:
+    _job(tmp_path, 0, [(0.0, 1.0)])
+    _job(tmp_path, 1, [(0.0, 1.0)])
+    batch = tmp_path / "batch"
+    (batch / "deposits_1.h5").write_bytes((batch / "deposits_0.h5").read_bytes())
+
+    with pytest.raises(ValueError, match="event 10 is not among the deposits"):
+        event_times([(tmp_path, 0), (tmp_path, 1)], 3.0e-3, 5.0e-3)
