@@ -353,7 +353,9 @@ class TelescopeEventAction(GeneralEventAction):
         volume = touchable.GetVolume()
 
         transform = touchable.GetHistory().GetTopTransform()
-        localpos = transform.TransformPoint(point_in)
+        # the middle of the step: its start lies on the surface of the pixel
+        # when the particle enters, and rounding can put it outside
+        localpos = transform.TransformPoint((point_in + point_out) / 2)
 
         self.edep_device += edep
         self.p_step.append(
