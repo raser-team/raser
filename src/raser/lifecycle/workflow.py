@@ -41,6 +41,9 @@ class Workflow:
     keys: tuple = ()  # the options an experiment may set
     defaults: Mapping = field(default_factory=dict)  # their values when nobody set them
     components: Mapping = field(default_factory=dict)  # kind of json file -> the option naming it
+    # kind of file -> the function that reads the file its option names into
+    # a dict, for a file that is not json, such as the SPICE files of a chain
+    readers: Mapping = field(default_factory=dict)
     in_file: Mapping = field(default_factory=dict)  # option -> where its value sits in a file
     device: bool = True  # the command names a device
     # False: nothing is drawn; a point holds one run, in its own folder, and its
@@ -325,7 +328,8 @@ def _point(workflow, kwargs, options) -> tuple[dict, dict]:
     if workflow.device:
         files["device"] = device_json(kwargs["det_name"])
     for kind, key in workflow.components.items():
-        files[kind] = load_component(kind, options[key])[1]
+        read = workflow.readers.get(kind)
+        files[kind] = read(options[key]) if read else load_component(kind, options[key])[1]
 
     # An option that is a value inside a file, such as the bias in the device:
     # given, it is written into the file; not given, it takes the file's value.

@@ -1128,3 +1128,56 @@ def test_a_slice_does_not_start_while_one_before_it_is_not_done_where_it_is_held
     slices.mark(folders["deposits"], 0, "deposits").touch()
     assert slices.run(chain, folders, 0, {}, ["currents"], lambda piece: None)
     assert ran == ["currents"]
+
+
+def test_a_slice_that_ends_the_job_leaves_it_done_and_the_later_slices_unrun_in_every_point(tmp_path: Path) -> None:
+    from raser.lifecycle import slices
+
+    ran: list[str] = []
+
+    def no_event(options) -> None:
+        ran.append("deposits")
+        raise slices.Ended
+
+    chain = (
+        Slice("deposits", no_event),
+        Slice("currents", lambda options: ran.append("currents")),
+        Slice("waveforms", lambda options: ran.append("waveforms")),
+    )
+    here = {name: tmp_path / "here" for name in ("deposits", "currents", "waveforms")}
+    other = {**here, "waveforms": tmp_path / "other"}  # a point that only has its own waveforms
+    for folder in (tmp_path / "here", tmp_path / "other"):
+        (folder / "batch").mkdir(parents=True)
+
+    assert slices.run(chain, here, 0, {}, ["deposits", "currents", "waveforms"], lambda piece: None)
+    assert slices.run(chain, other, 0, {}, ["waveforms"], lambda piece: None)
+    assert ran == ["deposits"]
+
+    # a job that did record events is not held back by the one that ended
+    assert slices.run(chain[1:], here, 1, {}, ["currents", "waveforms"], lambda piece: None)
+    assert ran == ["deposits", "currents", "waveforms"]
+
+
+def test_a_file_read_by_a_function_of_the_app_is_judged_and_handed_to_the_job_as_it_was_read(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], ran: list[tuple[str, Any]]
+) -> None:
+    circuit = {"R1": {"ohm": 470.0}}  # what the SPICE file of the amplifier holds
+    handed: list[Any] = []
+
+    def waveforms(options: dict[str, Any]) -> None:
+        ran.append(("waveforms", options["amplifier"]))
+        handed.append(options["_files"]["afe"])
+
+    chain = _chain(ran)
+    last = replace(chain.slices[2], run=waveforms)
+    workflow = replace(
+        chain, slices=(*chain.slices[:2], last), readers={"afe": lambda name: {"name": name, **circuit}}
+    )
+
+    execute(workflow, _chain_kwargs())
+    execute(workflow, _chain_kwargs())
+    circuit["R1"] = {"ohm": 499.0}  # the file is edited
+    execute(workflow, _chain_kwargs())
+
+    assert ran == [("deposits", "beta"), ("currents", 200.0), ("waveforms", "standard"), ("waveforms", "standard")]
+    assert handed == [{"name": "standard", "R1": {"ohm": 470.0}}, {"name": "standard", "R1": {"ohm": 499.0}}]
