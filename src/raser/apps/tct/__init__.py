@@ -44,7 +44,7 @@ def _waveforms(kwargs):
 WORKFLOW = Workflow(
     name="tct",
     keys=KEYS,
-    defaults={"amplifier": DEFAULTS["amplifier"]},
+    defaults={"laser": DEFAULTS["laser"], "amplifier": DEFAULTS["amplifier"]},
     components=COMPONENTS,
     in_file=IN_FILE,
     slices=(
