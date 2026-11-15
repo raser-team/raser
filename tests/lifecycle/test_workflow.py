@@ -1181,3 +1181,22 @@ def test_a_file_read_by_a_function_of_the_app_is_judged_and_handed_to_the_job_as
 
     assert ran == [("deposits", "beta"), ("currents", 200.0), ("waveforms", "standard"), ("waveforms", "standard")]
     assert handed == [{"name": "standard", "R1": {"ohm": 470.0}}, {"name": "standard", "R1": {"ohm": 499.0}}]
+
+
+def test_what_a_slice_returns_is_kept_with_its_mark_and_does_not_end_the_job(tmp_path: Path) -> None:
+    from raser.lifecycle import slices
+
+    ran: list[str] = []
+    field = {"field": {"folder": "work/dev/field", "commit": "abc"}}
+    chain = (
+        Slice("currents", lambda options: field),
+        Slice("waveforms", lambda options: ran.append("waveforms")),
+    )
+    folders = {name: tmp_path for name in ("currents", "waveforms")}
+    (tmp_path / "batch").mkdir()
+
+    assert slices.run(chain, folders, 0, {}, ["currents", "waveforms"], lambda piece: None)
+
+    assert slices.notes(tmp_path, 0, "currents") == field
+    assert slices.notes(tmp_path, 0, "waveforms") == {}
+    assert ran == ["waveforms"]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -12,7 +13,10 @@ class Slice:
     """One stretch of a job, between two of the files it leaves behind."""
 
     name: str
-    run: Callable  # runs the slice of one job; receives the options as a dict
+    # Runs the slice of one job; receives the options as a dict. It may return
+    # a dict of what it used that the run could not know before, such as the
+    # field it found: `notes` reads it back. It is kept, not judged.
+    run: Callable
     keys: tuple = ()  # the options that change what it writes
     kinds: tuple = ()  # the kinds of json file that change what it writes
     # A scanned option of it makes each point a measurement of its own, with
@@ -31,6 +35,12 @@ class Ended(Exception):
 def mark(folder, index, name="job") -> Path:
     """The file that says the slice `name` of a job, or the whole job, is done."""
     return Path(folder) / "batch" / f"{name}_{index}.done"
+
+
+def notes(folder, index, name) -> dict:
+    """What the slice `name` of a job left with its mark: what its function
+    returned, and "ended" when it ended the job."""
+    return json.loads(mark(folder, index, name).read_text() or "{}")
 
 
 def owner(slices, key) -> int:
@@ -86,14 +96,13 @@ def run(slices, folders, index, options, wanted, before) -> bool:
                     f"which is not done in {folders[earlier.name]}"
                 )
         done = mark(folders[piece.name], index, piece.name)
-        if any(mark(folders[earlier.name], index, earlier.name).read_text() for earlier in slices[:k]):
+        if any(notes(folders[earlier.name], index, earlier.name).get("ended") for earlier in slices[:k]):
             done.touch()  # an earlier slice ended the job
             continue
         before(piece)
         try:
-            piece.run(options)
+            left = piece.run(options) or {}
         except Ended:
-            done.write_text("ended")
-        else:
-            done.touch()
+            left = {"ended": True}
+        done.write_text(json.dumps(left) if left else "")
     return all(mark(folders[piece.name], index, piece.name).exists() for piece in slices)
