@@ -61,3 +61,19 @@ def solved_field(my_d, voltage, irradiation_flux):
             f"(solved at: {solved.get('weighting', [])}); solve it with `{again} -wf`"
         )
     return folder
+
+
+def solved_capacitance(folder, voltage):
+    """The capacitance [F] of the device at this bias, as the field in
+    `folder` gives it: the specific capacitance of the mesh times the area
+    factor of the device. An error says what is missing."""
+    record = json.loads((folder / "run.json").read_text())
+    name = record["files"]["device"]["det_name"]
+    solved = record.get("solved", {}).get("capacitance", [])
+    if float(voltage) not in solved:
+        raise FileNotFoundError(
+            f"the field in {folder} has no capacitance at {voltage} V "
+            f"(solved at: {solved}); solve it with `raser field {name} -cv {voltage}`"
+        )
+    point = json.loads((folder / f"{float(voltage)}V.cv.json").read_text())
+    return float(point["specific_capacitance_pF"]) * float(point["area_factor"]) * 1e-12

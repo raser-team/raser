@@ -66,3 +66,15 @@ def test_a_field_that_does_not_serve_the_run_is_refused_with_what_is_missing(
     _field(fields, read=False)
     with pytest.raises(ValueError, match="nothing solved yet"):
         solved_field(_device(), 100.0, 0)
+
+
+def test_the_capacitance_of_a_field_is_its_specific_capacitance_times_the_area_factor(fields: Path) -> None:
+    from raser.core.field.solved import solved_capacitance
+
+    _field(fields, solved={"potential": [0.0, 100.0], "weighting": [100.0], "capacitance": [100.0]})
+    point = {"voltage_V": 100.0, "specific_capacitance_pF": 210.0, "per": "cm^2", "area_factor": 0.0169}
+    (fields / "100.0V.cv.json").write_text(json.dumps(point))
+
+    assert solved_capacitance(fields, 100) == pytest.approx(3.549e-12)
+    with pytest.raises(FileNotFoundError, match=r"no capacitance at 0.0 V.*\[100.0\].*raser field HPK-Si-PiN -cv 0.0"):
+        solved_capacitance(fields, 0.0)
