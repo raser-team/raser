@@ -125,19 +125,19 @@ Q1 11 22 33 55 M_BFR840L3RHESD
 .ends BFR840L3RHESD
 
 .subckt SantaCruz in out
-VCC 8 0 dc 2.25
-R13 in 0 1MEG
-C1 in 3 3.3n
-x1 5 3 0 BFR840L3RHESD
-R1 3 4 475
-R2 4 5 3k
-C2 4 5 3.3n
-C5 5 out 3.3n
-L1 5 6 47U
-R3 6 7 63.7
-C7 8 0 10n
-C8 7 0 10n
-C3 7 0 1n
-C4 7 0 1n
-L2 8 7 2.2u
+VCC 8 0 dc 2.25 ; down, shift right 2
+R13 in 0 1MEG ; down
+C1 in 3 3.3n ; right
+x1 5 3 0 BFR840L3RHESD ; npn
+R1 3 4 475 ; up
+R2 4 5 3k ; right
+C2 4 5 3.3n ; right, shift up 1.5
+C5 5 out 3.3n ; right 4
+L1 5 6 47U ; up 4, shift right 1
+R3 6 7 63.7 ; right
+C7 8 0 10n ; down
+C8 7 0 10n ; down
+C3 7 0 1n ; down, shift right 2
+C4 7 0 1n ; down, shift right 4
+L2 8 7 2.2u ; left, shift right 4
 .ends SantaCruz
