@@ -1,12 +1,11 @@
 """Charge collection efficiency of one point of an experiment."""
 
-from pathlib import Path
-
 import numpy as np
 
 from raser.core.current.currents import read_currents
-from raser.core.interaction.deposits import read_deposits
 from raser.core.metrics.collection import collection_efficiency
+
+from .files import job_file
 
 
 def event_efficiencies(jobs):
@@ -19,17 +18,10 @@ def event_efficiencies(jobs):
     """
     efficiencies = []
     for folder, index in jobs:
-        batch = Path(folder) / "batch"
-        currents_path = batch / f"currents_{index}.h5"
-        if not currents_path.exists():
-            recorded = len(read_deposits(str(batch / f"deposits_{index}.h5")).events)
-            if recorded:
-                raise FileNotFoundError(
-                    f"{currents_path}: job {index} recorded {recorded} events "
-                    "but left no currents file"
-                )
+        path = job_file(folder, index, "currents")
+        if path is None:
             continue
-        events = read_currents(currents_path).events
+        events = read_currents(path).events
         efficiencies.append(
             collection_efficiency(
                 [event.charge for event in events], [event.pairs for event in events]
