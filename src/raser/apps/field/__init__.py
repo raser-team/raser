@@ -123,7 +123,16 @@ def solve(kwargs):
     the weighting field of the read-out electrodes. With none named, the field
     with its IV and its CV along the ramp, then the weighting field. A part
     that run.json lists as solved is left as it is. With -ext nothing is
-    solved: the field is taken from a TCAD file."""
+    solved: the field is taken from a TCAD file.
+
+    --solution says how the field is found: "full" solves the electric field
+    and the weighting field on the mesh of the device; "semi_fast" takes the
+    electric field of a planar device and solves the weighting field of the
+    fully depleted device; "fast" takes both from closed forms."""
+    if kwargs["solution"] != "full":
+        raise NotImplementedError(
+            f"the {kwargs['solution']} solution of a field is not there yet: only `--solution full` is"
+        )
     if kwargs["input"] is not None:
         return _import(kwargs)
     # Temporary: the HEMT solver is outside this command for now and is only
@@ -182,7 +191,7 @@ def outdated(old, record):
     flux, other settings in the device file, or a change in what the solve
     read from the device."""
     if old["options"] != record["options"]:
-        return "another irradiation flux"
+        return "another irradiation flux or another solution"
     device, before = record["files"]["device"], old["files"]["device"]
     if device.get("field") != before.get("field"):
         return 'other settings under "field" in the device file'
@@ -208,8 +217,8 @@ WORKFLOW = Workflow(
     name="field",
     job=solve,
     command=job_command,
-    keys=("irradiation_flux",),
-    defaults={"irradiation_flux": None},
+    keys=("irradiation_flux", "solution"),
+    defaults={"irradiation_flux": None, "solution": "full"},
     seeds=False,
     outdated=outdated,
 )
@@ -239,6 +248,11 @@ def register(subparsers):
     parser.add_argument("-wf", help="the weighting field", action="store_true")
     parser.add_argument(
         "-irr", "--irradiation_flux", help="irradiationm flux", type=float
+    )
+    parser.add_argument(
+        "--solution",
+        choices=("full", "semi_fast", "fast"),
+        help="how the field is found: solved in full, the planar field with a solved weighting field, or closed forms",
     )
     parser.add_argument("-bias", help="bias voltage", type=float)
     parser.add_argument(
