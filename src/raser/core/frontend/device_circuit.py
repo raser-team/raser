@@ -41,7 +41,35 @@ def on_sensor(my_d):
     )
 
 
-def device_sensor(my_d, electrodes, solved_f=None, row=None):
+def undepleted_layer_of(my_d, solved=None):
+    """Resistance [Ohm] and capacitance [F] of the layer the bias does not
+    deplete, under one read-out electrode, and where they are from, for the
+    record of the run. None and None for a fully depleted device.
+
+    "device file" : undepleted_resistance_ohm and undepleted_capacitance_pF
+        of the device file;
+    "field" : solved, the two the field gives at the bias of the run, taken
+        when the device file has neither.
+    """
+    keys = ("undepleted_resistance_ohm", "undepleted_capacitance_pF")
+    given = [key for key in keys if key in my_d.device_dict]
+    if len(given) == 1:
+        raise ValueError(
+            f"{my_d.det_name} gives {given[0]} alone: the undepleted layer "
+            f"has both {keys[0]} and {keys[1]}"
+        )
+    if given:
+        return (
+            float(my_d.device_dict[keys[0]]),
+            float(my_d.device_dict[keys[1]]) * 1e-12,
+        ), "device file"
+    if solved is not None:
+        resistance_ohm, capacitance_f = solved
+        return (float(resistance_ohm), float(capacitance_f)), "field"
+    return None, None
+
+
+def device_sensor(my_d, electrodes, solved_f=None, row=None, solved_undepleted=None):
     """SensorCircuit of the read-out electrodes of a device, and the values it
     is made of, for the record of the run.
 
@@ -55,17 +83,22 @@ def device_sensor(my_d, electrodes, solved_f=None, row=None):
         together, all in F per cm of strip; "neighbours_coupled", the number
         of places up to which strips are coupled. It takes the place of
         solved_f.
+    solved_undepleted : as undepleted_layer_of takes it.
 
     Without row every electrode has the junction capacitance to the back, on
     ground, and no capacitance to another. With row the strips up to
     neighbours_coupled places apart have theirs between them, and the rest of
     the capacitance of a strip is on ground: the back, the strips further
     away and those beyond the ends of the row, which are not read out.
+    Without row a device that is not fully depleted has its undepleted layer
+    behind the depleted one of every electrode. A row has none: the layer
+    under strips is not a slab under each of them.
     Every electrode has the bias resistance and the coupling capacitance of
     the device file, as on_sensor gives them.
     The record says what the circuit does not have.
     """
     bias_ohm, coupling_f = on_sensor(my_d)
+    undepleted, undepleted_from = undepleted_layer_of(my_d, solved_undepleted)
     if row is None:
         farad, source = junction_capacitance(my_d, solved_f)
         sensor = side_by_side(
@@ -73,6 +106,7 @@ def device_sensor(my_d, electrodes, solved_f=None, row=None):
                 planar_sensor(
                     electrode,
                     farad,
+                    undepleted=undepleted,
                     bias_resistance_ohm=bias_ohm,
                     coupling_capacitance_f=coupling_f,
                 )
@@ -85,6 +119,12 @@ def device_sensor(my_d, electrodes, solved_f=None, row=None):
             raise ValueError(
                 f"{my_d.det_name} is not a row of strips: the capacitances "
                 "between its electrodes are not taken from a row"
+            )
+        if undepleted is not None:
+            raise ValueError(
+                f"{my_d.det_name} is a row of strips and has an undepleted "
+                f"layer, from the {undepleted_from}: the circuit of a row "
+                "has none"
             )
         if row["unit"] != "F/cm":
             raise ValueError(f"The capacitances of the row are in {row['unit']}")
@@ -123,6 +163,8 @@ def device_sensor(my_d, electrodes, solved_f=None, row=None):
         "between_electrodes": between,
         "bias_resistance": None if bias_ohm is None else {"ohm": bias_ohm},
         "coupling_capacitance": None if coupling_f is None else {"farad": coupling_f},
-        "undepleted_layer": None,
+        "undepleted_layer": None
+        if undepleted is None
+        else {"ohm": undepleted[0], "farad": undepleted[1], "from": undepleted_from},
     }
     return sensor, values

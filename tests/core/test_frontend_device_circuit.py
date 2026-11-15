@@ -110,6 +110,66 @@ def test_charge_through_the_coupling_capacitance_is_what_the_bias_resistance_lea
     assert abs(voltage[0][-1]) < 1e-7
 
 
+@pytest.mark.ngspice
+def test_charge_on_a_device_not_fully_depleted_is_held_back_by_its_undepleted_layer():
+    # 1 nC at once across 20 pF, behind it 2 kOhm and 60 pF, read out on
+    # 1 Ohm: 60 / 80 of it is out at once, and the 20 / 80 left on the
+    # undepleted layer comes with 2 kOhm x 80 pF = 160 ns
+    wire = {
+        "ports": {"in": "a", "out": "b"},
+        "elements": {"R1": {"between": ["a", "b"], "ohm": 1e-6}},
+    }
+    load = {
+        "ports": {"in": "a"},
+        "elements": {"R1": {"between": ["a", "0"], "ohm": 1.0}},
+    }
+    dt_s = 1e-9
+    times = (np.arange(1000) + 0.5) * dt_s
+    current = np.zeros(1000)
+    current[0] = 1e-9 / dt_s
+    chain = {"stages": {"wire": wire}, "load": load}
+
+    from_file, values = device_sensor(
+        _device(
+            capacitance_pF=20.0,
+            undepleted_resistance_ohm=2e3,
+            undepleted_capacitance_pF=60.0,
+        ),
+        ["pad"],
+        solved_undepleted=(9e3, 9e-12),
+    )
+    from_field, of_field = device_sensor(
+        _device(capacitance_pF=20.0), ["pad"], solved_undepleted=(2e3, 60e-12)
+    )
+    voltage = solve(chain, ["pad"], dt_s, [current], from_file)[0]
+
+    assert values["undepleted_layer"] == {
+        "ohm": 2e3,
+        "farad": pytest.approx(60e-12),
+        "from": "device file",
+    }
+    assert of_field["undepleted_layer"] == {
+        "ohm": 2e3,
+        "farad": 60e-12,
+        "from": "field",
+    }
+    assert from_field.lines == from_file.lines
+    late = times > 5e-9
+    expected = 1.0 * 1e-9 * 20 / 80 / 160e-9 * np.exp(-(times - dt_s) / 160e-9)
+    assert voltage[late] == pytest.approx(expected[late], rel=1e-2, abs=1e-8)
+    assert voltage.sum() * dt_s == pytest.approx(1.0 * 1e-9, rel=1e-2)
+
+
+def test_undepleted_layer_with_one_of_its_two_values_is_an_error():
+    with pytest.raises(ValueError, match="alone"):
+        device_sensor(_device(undepleted_resistance_ohm=2e3), ["pad"])
+
+
+def test_row_of_strips_with_an_undepleted_layer_is_an_error():
+    with pytest.raises(ValueError, match="undepleted"):
+        device_sensor(_strips(), ["top1"], row=ROW, solved_undepleted=(2e3, 60e-12))
+
+
 def _strips(**keys):
     """ITk-Si-strip: strips 5 mm long."""
     content = json.loads(device_file("ITk-Si-strip").read_text(encoding="utf-8"))
