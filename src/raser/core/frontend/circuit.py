@@ -7,6 +7,8 @@ address: plain numbers under the names of the elements.
 import re
 from pathlib import Path
 
+from raser.supports.paths import component_path
+
 # what an element is, by the quantity it carries: the letter SPICE knows it by
 KINDS = {"ohm": "R", "farad": "C", "henry": "L", "volt": "V"}
 QUANTITIES = {letter: quantity for quantity, letter in KINDS.items()}
@@ -124,6 +126,16 @@ def read_chain(paths):
     if not stages:
         raise ValueError("A chain needs at least one stage before its load")
     return {"stages": stages, "load": load}
+
+
+def named_chain(name):
+    """Chain, as spice.solve takes it, that a name puts together: the names
+    of its stages from the sensor to the load, joined by "+", the last one the
+    load, such as Gali52+Gali52+Termination50. Each is a SPICE file among the
+    afe components."""
+    return read_chain(
+        [component_path("afe", f"{part}.cir") for part in name.split("+")]
+    )
 
 
 def subcircuit(name, stage):

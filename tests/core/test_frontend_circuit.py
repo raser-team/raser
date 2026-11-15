@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from raser.core.frontend.circuit import named_chain
 from raser.core.frontend.circuit import read_chain
 from raser.core.frontend.circuit import read_subcircuit
 from raser.core.frontend.circuit import spice_number
@@ -286,3 +287,15 @@ def test_chain_that_does_not_end_in_its_only_load_is_refused(tmp_path):
         read_chain([files["load"], files["series"], files["load"]])
     with pytest.raises(ValueError, match="across.cir is the last of the chain"):
         read_chain([files["series"], files["across"]])
+
+
+def test_chain_by_the_names_of_its_stages_among_the_components(tmp_path, monkeypatch):
+    (tmp_path / "afe").mkdir()
+    files = _chain_files(tmp_path / "afe")
+    monkeypatch.setenv("RASER_COMPONENT_PATH", str(tmp_path))
+
+    chain = named_chain("across+series+series+load")
+
+    assert chain == read_chain(
+        [files["across"], files["series"], files["series"], files["load"]]
+    )
