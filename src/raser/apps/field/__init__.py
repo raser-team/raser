@@ -66,7 +66,8 @@ def _ramp_or_weighting(kwargs, cv, wf):
 def _capacitance(kwargs):
     """The capacitance at one bias the field was saved at, the bias of the
     field itself when none is given, into the folder of that field as
-    <bias>V.cv.json."""
+    <bias>V.cv.json: the specific capacitance of the mesh, and beside it the
+    area factor of the device that makes it the capacitance of the device."""
     # devsim stays out of the command line until a solve needs it.
     from raser.core.field import saved_point
 
@@ -76,7 +77,13 @@ def _capacitance(kwargs):
     voltage = _bias(kwargs) if kwargs["cv"] is True else float(kwargs["cv"])
     folder = Path(kwargs["_run_path"])
     value, frequency = saved_point.capacitance(my_d, folder, voltage, _solver(kwargs))
-    point = {"voltage_V": voltage, "capacitance_pF": value, "frequency_Hz": frequency}
+    point = {
+        "voltage_V": voltage,
+        "specific_capacitance_pF": value,
+        "per": {1: "cm^2", 2: "cm", 3: "device"}[my_d.dimension],
+        "area_factor": float(my_d.device_dict.get("area_factor", 1.0)),
+        "frequency_Hz": frequency,
+    }
     (folder / f"{voltage}V.cv.json").write_text(json.dumps(point, indent=2))
     save_solved(str(folder), "capacitance", voltage)
     print(point)
