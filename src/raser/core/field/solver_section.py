@@ -50,6 +50,12 @@ SOLVER = {
     "saved_voltage_interval": 100.0,
     "curve_voltage_interval": 10.0,  # between two points of the IV and CV curves
     "ac": {"real": 1.0, "imaginary": 0.0, "frequency": 1000.0},
+    # What may be left of the weighting potential of an electrode at the ends
+    # of the row of cells it is solved on.
+    "weighting_tolerance": 5e-2,
+    # The part of the capacitance of an electrode that the neighbours a
+    # distance away must hold for a signal to be carried over to them.
+    "crosstalk_tolerance": 5e-2,
 }
 
 
@@ -102,21 +108,16 @@ def _legacy_solver_parameters(configuration, *, weightfield):
         "weightfield": bool(weightfield),
     }
 
-# What may be left of the weighting potential of an electrode at the ends of
-# the row of cells it is solved on.
-WEIGHTING_TOLERANCE = 5e-2
-
-
-def cells_to_fall_off(depth, pitch):
+def cells_to_fall_off(depth, pitch, tolerance):
     """Cells on either side of an electrode for its weighting potential to
-    fall to WEIGHTING_TOLERANCE in a fully depleted device.
+    fall to `tolerance` in a fully depleted device.
 
     Far from the electrode the potential falls as exp(-pi * distance / depth)
     between the plane of the electrodes and the back. A device that is not
     fully depleted is thinner than that. The end of the row reflects what
     reaches it, which doubles it there.
     """
-    return math.ceil(depth / (math.pi * pitch) * math.log(2 / WEIGHTING_TOLERANCE))
+    return math.ceil(depth / (math.pi * pitch) * math.log(2 / tolerance))
 
 
 def left_at_the_ends(device, region, pitch):
@@ -126,11 +127,6 @@ def left_at_the_ends(device, region, pitch):
     potential = np.array(devsim.get_node_model_values(device=device, region=region, name="Potential"))
     ends = (across < across.min() + pitch) | (across > across.max() - pitch)
     return float(np.abs(potential[ends]).max())
-
-
-# The part of the capacitance of an electrode that the neighbours a distance
-# away must hold for a signal to be carried over to them.
-CROSSTALK_TOLERANCE = 5e-2
 
 
 def capacitances(device, electrode, relative_permittivity):
@@ -147,13 +143,13 @@ def capacitances(device, electrode, relative_permittivity):
     }
 
 
-def neighbours_coupled(to_others):
+def neighbours_coupled(to_others, tolerance):
     """How far along the row an electrode carries a signal over: the number
     of "neighbour<n>" electrodes, from the nearest, each of which holds at
-    least CROSSTALK_TOLERANCE of the capacitance `to_others` adds up to."""
+    least `tolerance` of the capacitance `to_others` adds up to."""
     total = sum(to_others.values())
     coupled = 0
-    while to_others.get("neighbour{}".format(coupled + 1), 0.0) >= CROSSTALK_TOLERANCE * total:
+    while to_others.get("neighbour{}".format(coupled + 1), 0.0) >= tolerance * total:
         coupled += 1
     return coupled
 
@@ -201,9 +197,11 @@ def main (kwargs):
     # electrode: it is solved once, on the cell with cells on either side.
     listed = MyDetector.device_dict["read_out_contact"]
     cells_either_side = 0
+    weighting_tolerance = float(configuration["solver"]["weighting_tolerance"])
+    crosstalk_tolerance = float(configuration["solver"]["crosstalk_tolerance"])
     if is_wf and len(listed) == 1 and MyDetector.read_ele_num > 1:
         cells_either_side = kwargs.get("_cells_either_side") or cells_to_fall_off(
-            MyDetector.l_z, MyDetector.p_x
+            MyDetector.l_z, MyDetector.p_x, weighting_tolerance
         )
     MyDevsimMesh = DevsimMesh(
         MyDetector,
@@ -300,9 +298,10 @@ def main (kwargs):
                 to_others = capacitances(device, contact, Material(MyDetector.material).permittivity)
                 # The neighbours at the ends of the row hold what would have
                 # gone further: one that is still coupled is not the last.
-                if left > WEIGHTING_TOLERANCE or neighbours_coupled(to_others) == cells_either_side:
+                coupled = neighbours_coupled(to_others, crosstalk_tolerance)
+                if left > weighting_tolerance or coupled == cells_either_side:
                     more = math.ceil(1.5 * cells_either_side)
-                    if more > 2 * cells_to_fall_off(MyDetector.l_z, MyDetector.p_x):
+                    if more > 2 * cells_to_fall_off(MyDetector.l_z, MyDetector.p_x, weighting_tolerance):
                         raise ValueError(
                             f"the weighting potential of {contact} of {simname} at {v_goal} V does not fall off "
                             f"along the row: {left:.3g} is left {cells_either_side} cells away, where "
@@ -321,7 +320,7 @@ def main (kwargs):
                     "of": contact,
                     "total": sum(to_others.values()),
                     "to": to_others,
-                    "neighbours_coupled": neighbours_coupled(to_others),
+                    "neighbours_coupled": neighbours_coupled(to_others, crosstalk_tolerance),
                 }
                 with open(
                     field_pickle_path(os.path.join(folder_path, contact), "Capacitance", float(v_goal)).with_suffix(".json"), "w"
