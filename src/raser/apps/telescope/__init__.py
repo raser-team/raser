@@ -1,6 +1,11 @@
 """Telescope application package."""
 
+import json
+from pathlib import Path
+
 from raser.lifecycle.workflow import Workflow
+
+TAICHU_V1 = json.loads((Path(__file__).parent / "telescope.json").read_text("utf-8"))
 
 
 def register(subparsers):
@@ -9,11 +14,22 @@ def register(subparsers):
     for setup in ("taichu_v1", "taichu_v2", "acts_v1", "g4"):
         setup_parser = setups.add_parser(setup)
         command = None
+        keys = ()
+        if setup == "taichu_v1":
+            setup_parser.add_argument(
+                "-evt", "--events-per-job", type=int, help="events per job"
+            )
+            keys = ("events_per_job",)
         if setup == "taichu_v2":
             setup_parser.add_argument("variant", nargs="?", default="taichu_v2")
             command = _variant
         Workflow(
-            name=f"telescope {setup}", job=run, device=False, command=command
+            name=f"telescope {setup}",
+            job=run,
+            keys=keys,
+            defaults={key: TAICHU_V1["total_events"] for key in keys},
+            device=False,
+            command=command,
         ).attach(setup_parser)
     parser.set_defaults(_run=run, _components=("telescope",))
 
@@ -27,7 +43,7 @@ def run(kwargs):
     if setup == "taichu_v1":
         from .telescope_signal import main
 
-        return main(kwargs["seed"])
+        return main(kwargs["seed"], kwargs["events_per_job"])
     if setup == "taichu_v2":
         from .telescope_signal import taichu_v2
 

@@ -17,9 +17,10 @@ from pathlib import Path
 
 import numpy as np
 import ROOT
+from scipy.spatial import Delaunay
 from scipy.spatial import cKDTree
 from ..current.model import Material
-from .assets import resolve_field_pickle
+from .assets import field_pickle_path
 from .gradient import gradient
 from .interpolation import interpolate_1d
 from .interpolation import interpolate_2d
@@ -124,10 +125,10 @@ class DevsimField:
                 # example: DopingFile = path + "NetDoping_0V.pkl"
                 break
 
-        PotentialFile = resolve_field_pickle(path, "Potential", self.voltage)
-        TrappingRate_pFile = resolve_field_pickle(path, "TrappingRate_p", self.voltage)
-        TrappingRate_nFile = resolve_field_pickle(path, "TrappingRate_n", self.voltage)
-        ConductiveFile = resolve_field_pickle(path, "Conductive", self.voltage)
+        PotentialFile = field_pickle_path(path, "Potential", self.voltage)
+        TrappingRate_pFile = field_pickle_path(path, "TrappingRate_p", self.voltage)
+        TrappingRate_nFile = field_pickle_path(path, "TrappingRate_n", self.voltage)
+        ConductiveFile = field_pickle_path(path, "Conductive", self.voltage)
 
         self.set_doping(DopingFile) #self.Doping
         self.set_potential(PotentialFile) #self.Potential, self.x_efield, self.y_efield, self.z_efield
@@ -194,7 +195,7 @@ class DevsimField:
     def set_w_p(self, WeightingPotentialFiles):
         self.WeightingPotential = []
         for i in range(len(self.read_out_contact)):
-            WeightingPotentialFile = resolve_field_pickle(
+            WeightingPotentialFile = field_pickle_path(
                 os.path.dirname(WeightingPotentialFiles[i]), "Potential", self.voltage
             )
             WeightingPotentialNotUniform = self._stored(
@@ -247,6 +248,13 @@ class DevsimField:
         points = np.asarray(stored['points'], dtype=float).reshape(len(stored['points']), -1)
         self.conductive_nodes = cKDTree(points)
         self.conductive_values = np.asarray(stored['values']) > 0.5
+        # The cells of the mesh: the intervals between its nodes in one
+        # dimension, the simplices that join its nodes otherwise.
+        if points.shape[1] == 1:
+            self.conductive_order = np.argsort(points[:, 0])
+            self.conductive_line = points[self.conductive_order, 0]
+        else:
+            self.conductive_cells = Delaunay(points)
 
     def _along_axes(self, x, y, z):
         """A position, as the coordinates the field files are stored in."""
@@ -304,13 +312,23 @@ class DevsimField:
     def get_conductive(self, x, y, z):
         """
         input: position in um
-        output: whether the device conducts there at the bias of the field,
-        as its mesh node nearest to the position does; a position outside
-        the mesh is answered by the nearest node too
+        output: whether the device conducts there at the bias of the field:
+        every node of the cell of the mesh that holds the position does, as
+        in the weighting field, where an edge conducts when both its nodes
+        do; a position outside the mesh is answered by the nearest node
         """
         x, y, z = x/1e4, y/1e4, z/1e4 # um to cm
-        nearest = self.conductive_nodes.query(self._along_axes(x, y, z))[1]
-        return bool(self.conductive_values[nearest])
+        place = self._along_axes(x, y, z)
+        if len(place) == 1:
+            after = int(np.searchsorted(self.conductive_line, place[0]))
+            if 0 < after < len(self.conductive_line):
+                ends = self.conductive_order[after - 1 : after + 1]
+                return bool(self.conductive_values[ends].all())
+        else:
+            cell = int(self.conductive_cells.find_simplex(place))
+            if cell >= 0:
+                return bool(self.conductive_values[self.conductive_cells.simplices[cell]].all())
+        return bool(self.conductive_values[self.conductive_nodes.query(place)[1]])
 
     def get_trap_e(self, x, y, z):
         """
@@ -332,12 +350,28 @@ class DevsimField:
     _planar_gain = None
 
     def planar_gain(self, my_d):
-        """Gain of a planar device, integrated once through its whole depth
-        along the line through the middle of the device."""
-        # gain = K(d) / {1 - int[alpha_minor * K(z) dz]} - 1
-        # K(z) = exp{int[(alpha_major - alpha_minor) dz]}
+        """Gain of a planar device for the pairs made in its bulk: on the side
+        of the gain layer that is away from the face the layer lies at."""
+        self._integrate_planar_gain(my_d)
+        return self._planar_gain
+
+    def planar_gain_at(self, my_d, z):
+        """Gain of a planar device for a pair made at the depth z in um: how
+        many more pairs it becomes. The pairs made in front of the gain layer
+        send the other carrier through it, and have another gain."""
+        self._integrate_planar_gain(my_d)
+        nodes, log_growth, det = self._planar_gain_profile
+        return float(np.exp(np.interp(z * 1e-4, nodes, log_growth)) / (1 - det) - 1)
+
+    def _integrate_planar_gain(self, my_d):
+        """One integration through the whole depth, along the line through the
+        middle of the device."""
+        # gain(z) = K(z) / {1 - int[alpha_p * K dz]} - 1
+        # K(z) = exp{int_b^z[(alpha_n - alpha_p) dz]}
+        # b is the face the electrons leave by; a pair made there sends its
+        # hole through the device, a pair made at the other face its electron
         if self._planar_gain is not None:
-            return self._planar_gain
+            return
         if "z" not in self.axes:
             raise ValueError(
                 "the field of {} is stored along {}, without the depth z: it has no planar gain".format(
@@ -357,21 +391,30 @@ class DevsimField:
         alpha_n = np.array([cal_coefficient(abs(E), -1, my_d.temperature) for E in field])
         alpha_p = np.array([cal_coefficient(abs(E), +1, my_d.temperature) for E in field])
 
-        # Where the field is strongest it says which carrier multiplies, and
-        # the multiplied carriers start from the middle of that interval.
+        # The gain layer is where the field is strongest, and the multiplied
+        # carriers start from the middle of that interval.
         strongest = int(np.argmax(np.abs(field)))
         self._planar_gain_depth = 0.5 * (z[strongest] + z[strongest + 1]) * 1e4  # um
-        if field[strongest] > 0:
-            alpha_major, alpha_minor = alpha_n, alpha_p  # electrons, as in a conventional Si LGAD
-        else:
-            alpha_major, alpha_minor = alpha_p, alpha_n  # holes, as in a conventional SiC LGAD
+        # Electrons drift against the field, holes along it.
+        electrons_to_front = field[strongest] > 0
+        # The carriers of the bulk that multiply are the ones that drift
+        # towards the face the layer lies at.
+        layer_at_front = z[strongest] + z[strongest + 1] <= z[0] + z[-1]
+        self._planar_gain_carrier = -1 if electrons_to_front == layer_at_front else +1
 
-        # Both integrals are exact for a field that is constant in each interval.
-        rate = alpha_major - alpha_minor
-        growth = np.exp(np.concatenate([[0.0], np.cumsum(rate * width)]))  # K at the nodes
+        # K at the nodes, counted from the face the electrons leave by. Both
+        # integrals are exact for a field that is constant in each interval.
+        rate = alpha_n - alpha_p
+        steps = rate * width
+        if electrons_to_front:
+            log_growth = np.concatenate([[0.0], np.cumsum(steps)])
+            nearer = log_growth[:-1]
+        else:
+            log_growth = np.concatenate([np.cumsum(steps[::-1])[::-1], [0.0]])
+            nearer = log_growth[1:]
         even = rate == 0
-        within = np.where(even, width, np.expm1(rate * width) / np.where(even, 1.0, rate))
-        det = float(np.sum(alpha_minor * growth[:-1] * within))  # determinant of breakdown
+        within = np.where(even, width, np.expm1(steps) / np.where(even, 1.0, rate))
+        det = float(np.sum(alpha_p * np.exp(nearer) * within))  # determinant of breakdown
         if det >= 1:
             raise ValueError(
                 "{} breaks down at {} V: the breakdown integral is {:.4g}, not below 1".format(
@@ -379,14 +422,22 @@ class DevsimField:
                 )
             )
 
-        self._planar_gain = growth[-1] / (1 - det) - 1
-        return self._planar_gain
+        # K at every node comes with the one integration
+        self._planar_gain_profile = (z, log_growth, det)
+        bulk = log_growth[-1] if layer_at_front else log_growth[0]
+        self._planar_gain = float(np.exp(bulk) / (1 - det) - 1)
 
     def planar_gain_depth(self, my_d):
         """The depth in um that the carriers of the planar gain start from:
         the middle of the mesh interval where the field is strongest."""
         self.planar_gain(my_d)
         return self._planar_gain_depth
+
+    def planar_gain_carrier(self, my_d):
+        """The charge sign of the carriers that the planar gain multiplies:
+        -1 for electrons, +1 for holes. They drift from the bulk into the gain layer."""
+        self.planar_gain(my_d)
+        return self._planar_gain_carrier
 
     def get_e_field_cached(self, x, y, z):
         try:

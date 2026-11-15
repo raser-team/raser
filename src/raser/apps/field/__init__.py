@@ -8,10 +8,10 @@ when any of that has changed.
 
 import copy
 import json
+import os
 from pathlib import Path
 
 from raser.core.device.build_device import Detector
-from raser.core.field import command
 from raser.core.field.reading import changed
 from raser.lifecycle.workflow import Workflow
 from raser.lifecycle.workflow import execute
@@ -82,6 +82,18 @@ def _capacitance(kwargs):
     print(point)
 
 
+def _import(kwargs):
+    """The TCAD solution in the file of -ext, into the folder of the run as
+    the field at the bias of that file."""
+    from raser.core.field import tcad
+
+    my_d = Detector(kwargs["det_name"], kwargs["_files"]["device"])
+    bias = tcad.import_field(
+        kwargs["input"], my_d, kwargs["_run_path"], kwargs["bias"], kwargs["flip"]
+    )
+    print(f"{kwargs['_run_path']}: the field of {kwargs['input']} at {bias} V")
+
+
 def _empty_devsim():
     """devsim holds one device: emptied for the next part, with the linear
     solver it chose when it was loaded, which emptying forgets. With MKL that
@@ -103,7 +115,10 @@ def solve(kwargs):
     with its IV, -cv the capacitance at one bias the field was saved at, -wf
     the weighting field of the read-out electrodes. With none named, the field
     with its IV and its CV along the ramp, then the weighting field. A part
-    that run.json lists as solved is left as it is."""
+    that run.json lists as solved is left as it is. With -ext nothing is
+    solved: the field is taken from a TCAD file."""
+    if kwargs["input"] is not None:
+        return _import(kwargs)
     # Temporary: the HEMT solver is outside this command for now and is only
     # passed through here; this goes when it is taken into the field solve.
     physics = kwargs["_files"]["device"].get("hemt_physics", {})
@@ -172,7 +187,9 @@ def outdated(old, record):
 
 def job_command(kwargs):
     """The options of a field command that its run does not record."""
-    words = [f"-{part}" for part in ("iv", "wf", "noise", "umf") if kwargs[part]]
+    words = [f"-{part}" for part in ("iv", "wf", "noise", "umf", "flip") if kwargs[part]]
+    if kwargs["input"] is not None:
+        words.append(f"-ext={os.path.abspath(kwargs['input'])}")
     if kwargs["cv"] is not None:
         words.append("-cv" if kwargs["cv"] is True else f"-cv={kwargs['cv']}")
     if kwargs["bias"] is not None:
@@ -192,8 +209,6 @@ WORKFLOW = Workflow(
 
 
 def run(kwargs):
-    if kwargs["input"] is not None:  # importing a TCAD field: not on the lifecycle yet
-        return command.main({**kwargs, "target": kwargs["det_name"], "dry_run": False})
     return execute(WORKFLOW, kwargs)
 
 

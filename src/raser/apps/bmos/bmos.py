@@ -11,7 +11,7 @@
 import os
 import math
 
-from raser.core.interaction.geant4 import g4b
+from raser.core.interaction.geant4.g4ppyy_runtime import g4b
 
 g4b.include("G4VUserDetectorConstruction.hh")
 g4b.include("G4VUserActionInitialization.hh")

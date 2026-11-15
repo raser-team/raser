@@ -48,9 +48,9 @@ def view_geometry(
             "use a TSG or an OGL driver, or no output"
         )
     # g4ppyy creates the Geant4 managers when imported.
-    from raser.core.interaction.geant4 import g4b
+    from raser.core.interaction.geant4.g4ppyy_runtime import g4b
 
-    from .interaction import GeneralG4Interaction, _release_cppyy_ownership
+    from .geant4.interaction import GeneralG4Interaction, _release_cppyy_ownership
 
     def command(text: str) -> None:
         status = g4b.G4UImanager.GetUIpointer().ApplyCommand(text)

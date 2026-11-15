@@ -32,6 +32,15 @@ class _UniformField:
     def planar_gain(self, my_d):
         return GAIN
 
+    def planar_gain_at(self, my_d, z):
+        return GAIN
+
+    def planar_gain_depth(self, my_d):
+        return 1.0
+
+    def planar_gain_carrier(self, my_d):
+        return -1
+
 
 def _lgad():
     return SimpleNamespace(
@@ -52,7 +61,6 @@ def _lgad():
         det_model="planar",
         voltage=200.0,
         has_avalanche=True,
-        avalanche_bond=1.0,
     )
 
 
