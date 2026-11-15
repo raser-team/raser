@@ -22,7 +22,7 @@
     
     "temperature" : 300,
 
-    "area_factor" : 1,
+    "area_factor" : 0.1,
     "default_dimension" : 2,
     "read_out_contact" : [{"x_span":4, "y_span":0, "name":"top"}],
     "field_shift_x" : 100,

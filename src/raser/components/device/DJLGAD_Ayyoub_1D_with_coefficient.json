@@ -23,7 +23,7 @@
     "avalanche_model" : "vanOverstraeten",
     "enable_gain" : true,
 
-    "area_factor" : 1,
+    "area_factor" : 0.0169,
     "default_dimension" : 1,
     "read_out_contact" : [{"x_span":0, "y_span":0, "name":"top"}],
     "field_shift_x" : 0,

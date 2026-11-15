@@ -3,8 +3,8 @@
     "det_model" : "planar",
     "material" : "Si",
 
-    "l_x" : 1300,
-    "l_y" : 1300,
+    "l_x" : 8000,
+    "l_y" : 8000,
     "l_z" : 50,
 
     "doping": {
@@ -23,7 +23,7 @@
         "irradiation_flux" : 1e15
     },
 
-    "area_factor" : 1.73,
+    "area_factor" : 0.64,
     "default_dimension" : 1,
     "read_out_contact" : [{"x_span":0, "y_span":0, "name":"top"}],
     "field_shift_x" : 0,

@@ -27,7 +27,7 @@
         "irradiation_flux" : 1.7e15
     },
 
-    "area_factor" : 0.01,
+    "area_factor" : 4.8,
     "default_dimension" : 2,
     "read_out_contact" : [{"name":"top"}],
     "field_shift_x" : 0,
