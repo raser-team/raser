@@ -5,15 +5,15 @@ Description:  g4_sr90_time_resolution.py
 @version    : 2.0
 """
 
-from raser.core.interaction.geant4 import g4b
+from raser.core.interaction.geant4.g4ppyy_runtime import g4b
 
-from raser.core.interaction.primary_generator_action import (
+from raser.core.interaction.geant4.primary_generator_action import (
     GeneralPrimaryGeneratorAction,
 )
-from raser.core.interaction.event_action import GeneralEventAction
-from raser.core.interaction.run_action import GeneralRunAction
-from raser.core.interaction.stepping_action import GeneralSteppingAction
-from raser.core.interaction.action_initialization import GeneralActionInitialization
+from raser.core.interaction.geant4.event_action import GeneralEventAction
+from raser.core.interaction.geant4.run_action import GeneralRunAction
+from raser.core.interaction.geant4.stepping_action import GeneralSteppingAction
+from raser.core.interaction.geant4.action_initialization import GeneralActionInitialization
 
 
 class Sr90PrimaryGeneratorAction(GeneralPrimaryGeneratorAction):

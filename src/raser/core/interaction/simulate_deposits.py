@@ -84,7 +84,7 @@ def _energy_deposits(my_d, source, g4setup, events, g4_seed, edep_min, edep_max)
         )
     # g4ppyy creates the Geant4 managers when imported; sources that do
     # not need Geant4 must not pay for it.
-    from .interaction import GeneralG4Interaction
+    from .geant4.interaction import GeneralG4Interaction
 
     my_g4 = GeneralG4Interaction(
         my_d, g4_configuration(source, g4setup, events, edep_min, edep_max), g4_seed
