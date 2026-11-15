@@ -150,5 +150,9 @@ def test_output_noise_of_a_resistor_on_a_capacitor():
     )
 
     assert density[:, 0] == pytest.approx(np.sqrt(4 * k_t * LOAD_OHM), rel=1e-3)
-    rms = np.sqrt(np.trapezoid(density**2, frequencies, axis=1))
+    power = density**2
+    # trapezoids between the frequencies
+    rms = np.sqrt(
+        np.sum((power[:, 1:] + power[:, :-1]) / 2 * np.diff(frequencies), axis=1)
+    )
     assert rms == pytest.approx(np.sqrt(k_t / np.array([40e-12, 10e-12])), rel=5e-3)
