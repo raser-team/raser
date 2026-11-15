@@ -122,10 +122,20 @@ def main (kwargs):
     device = MyDetector.device
     region = MyDetector.region
     field_directory = kwargs.get("_field_directory")
+    # A device that lists one electrode for a row of them has the mesh of one
+    # cell. Its electric field repeats from cell to cell. The weighting
+    # potential of an electrode does not, but it is the same for every
+    # electrode: it is solved once, on the cell with as many cells on either
+    # side as the electrode is read out over.
+    listed = MyDetector.device_dict["read_out_contact"]
+    cells_either_side = int(listed[0]["x_span"]) if is_wf and len(listed) == 1 else 0
+    if is_wf and len(listed) == 1 and listed[0]["y_span"]:
+        raise ValueError(f"{simname}: an electrode read out over its neighbours along y is not solved yet")
     MyDevsimMesh = DevsimMesh(
         MyDetector,
         devsim_solve_paras=paras,
         output_directory=field_directory,
+        cells_either_side=cells_either_side,
     )
     MyDevsimMesh.mesh_define()
 
@@ -205,7 +215,10 @@ def main (kwargs):
                 os.makedirs(folder_path)
             
             loop.initial_solver(contact=contact,set_contact_type=None,impact_model=impact_model,irradiation_model=irradiation_model,irradiation_flux=irradiation_flux,)
-            take_conductors_into_electrodes(device, region, conductive_file)
+            take_conductors_into_electrodes(
+                device, region, conductive_file,
+                cell_width=float(MyDetector.p_x) * 1e-4 if cells_either_side else None,
+            )
             loop.loop_solver(circuit_contact=contact,v_trial=v_trial,area_factor=paras["area_factor"],)
 
             # Stored as the weighting field of the bias, as Potential_<bias>V.pkl.
