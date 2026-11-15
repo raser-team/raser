@@ -24,7 +24,6 @@ from .currents import EventCurrents, append_currents
 
 from ..interaction.carrier_list import CarrierListFromG4P
 from ..interaction.deposits import read_deposits
-from ..interaction.toy_mip import ToyMIPLineSource
 from raser.supports.output import output
 
 t_bin = {
@@ -525,18 +524,6 @@ class CalCurrentG4P(CalCurrent):
             my_f,
             G4P_carrier_list.ionized_pairs,
             G4P_carrier_list.track_position,
-            keep_drift_paths=keep_drift_paths,
-        )
-
-
-class CalCurrentToyMIP(CalCurrent):
-    def __init__(self, my_d, my_f, source: ToyMIPLineSource, keep_drift_paths=True):
-        self.generated_pairs = sum(source.ionized_pairs)
-        super().__init__(
-            my_d,
-            my_f,
-            source.ionized_pairs,
-            source.track_position,
             keep_drift_paths=keep_drift_paths,
         )
 
