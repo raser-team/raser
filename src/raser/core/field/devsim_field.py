@@ -213,6 +213,11 @@ class DevsimField:
                 )
 
             self.WeightingPotential.append(WeightingPotentialUniform)
+            if i == 0:  # the ends of its mesh along each axis, in cm
+                points = np.asarray(WeightingPotentialNotUniform['points'], dtype=float).reshape(
+                    len(WeightingPotentialNotUniform['points']), -1
+                )
+                self.weighting_ranges = list(zip(points.min(axis=0).tolist(), points.max(axis=0).tolist()))
     
     def set_trap_p(self, TrappingRate_pFile):
         TrappingRate_pNotUniform = self._stored(TrappingRate_pFile, "hole trapping rate")
@@ -261,13 +266,35 @@ class DevsimField:
         position = {"x": x, "y": y, "z": z}
         return [position[axis] for axis in self.axes]
 
+    def _in_the_cell(self, x, y, z):
+        """A position in cm, as the coordinates of the solved electric field.
+
+        The electric field of a row of equal electrodes repeats from one to
+        the next. Where the device is wider than the mesh the field was
+        solved on, a position is taken back into one cell of that mesh, the
+        middle one if it holds several. A cell is as wide as the weighting
+        potential of the one listed electrode divided by the cells it spans.
+        """
+        position = {"x": x, "y": y, "z": z}
+        if len(self.read_out_contact) != 1:
+            return [position[axis] for axis in self.axes]
+        for axis, (low, high), (first, last) in zip(self.axes, self.potential_ranges, self.weighting_ranges):
+            if axis == "z" or axis not in self.bounds:
+                continue
+            start, end = (edge * 1e-4 for edge in self.bounds[axis])
+            if end - start > (high - low) * (1 + 1e-6):
+                cell = (last - first) / (2 * self.read_out_contact[0][axis + "_span"] + 1)
+                middle = round((high - low) / cell) // 2
+                position[axis] = low + middle * cell + (position[axis] - start) % cell
+        return [position[axis] for axis in self.axes]
+
     def get_doping(self, x, y, z):
         """
         input: position in um
         output: doping in cm^-3
         """
         x, y, z = x/1e4, y/1e4, z/1e4 # um to cm
-        return self.Doping(*self._along_axes(x, y, z))
+        return self.Doping(*self._in_the_cell(x, y, z))
     
     def get_potential(self, x, y, z):
         """
@@ -275,7 +302,7 @@ class DevsimField:
         output: potential in V
         """
         x, y, z = x/1e4, y/1e4, z/1e4 # um to cm
-        return self.Potential(*self._along_axes(x, y, z))
+        return self.Potential(*self._in_the_cell(x, y, z))
     
     def get_e_field(self, x, y, z):
         """
@@ -284,7 +311,7 @@ class DevsimField:
         """ 
         x, y, z = x / 1e4, y / 1e4, z / 1e4  # um to cm
 
-        nabla_U = gradient(self.Potential, self._along_axes(x, y, z), self.potential_ranges)
+        nabla_U = gradient(self.Potential, self._in_the_cell(x, y, z), self.potential_ranges)
         E = {axis: -1 * component for axis, component in zip(self.axes, nabla_U)}
         return (E.get("x", 0), E.get("y", 0), E.get("z", 0))
 
@@ -318,7 +345,7 @@ class DevsimField:
         do; a position outside the mesh is answered by the nearest node
         """
         x, y, z = x/1e4, y/1e4, z/1e4 # um to cm
-        place = self._along_axes(x, y, z)
+        place = self._in_the_cell(x, y, z)
         if len(place) == 1:
             after = int(np.searchsorted(self.conductive_line, place[0]))
             if 0 < after < len(self.conductive_line):
@@ -336,7 +363,7 @@ class DevsimField:
         output: electron trapping rate in s^-1
         """
         x, y, z = x/1e4, y/1e4, z/1e4 # um to cm
-        return self.TrappingRate_n(*self._along_axes(x, y, z))
+        return self.TrappingRate_n(*self._in_the_cell(x, y, z))
 
     def get_trap_h(self, x, y, z):
         """
@@ -344,7 +371,7 @@ class DevsimField:
         output: hole trapping rate in s^-1
         """
         x, y, z = x/1e4, y/1e4, z/1e4 # um to cm
-        return self.TrappingRate_p(*self._along_axes(x, y, z))
+        return self.TrappingRate_p(*self._in_the_cell(x, y, z))
 
     # 缓存方法
     _planar_gain = None
