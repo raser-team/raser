@@ -429,7 +429,12 @@ def milestone_save_3D(device, v, path, is_tcad):
             if ( devsim.get_material(device=device, region=region) == "Aluminum" or devsim.get_material(device=device, region=region) == "air"
             ):
                 continue 
-            ElectricField.extend(devsim.get_node_model_values(device=device, region=region, name=E))
+            # A TDR file holds the field of a 3D solution as its three components.
+            components = [
+                np.array(devsim.get_node_model_values(device=device, region=region, name=f"{E}_{axis}"))
+                for axis in range(3)
+            ]
+            ElectricField.extend(np.sqrt(sum(component**2 for component in components)))
         ElectricField = np.array(ElectricField)     
         devsim_draw.draw3D(x, y, z, ElectricField, "Electric Field", v, path)
     else:    

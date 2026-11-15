@@ -62,7 +62,7 @@ def CreateImpactGeneration(device, region, impact_model,custom_ion_n='0', custom
     #Create other field related models 
     if material=='SiliconCarbide':
         CreateFESRH(device,region)
-        Ion_coeff_rate +="+R_TAT" #default create trap assisted tunneling in SiC
+        Ion_coeff_rate +="-R_TAT" #default create trap assisted tunneling in SiC
     
     if impact_model == 'Tunnel':
         print("creating tunnel")
