@@ -21,7 +21,6 @@
     "avalanche_bond": 5.5,
     "avalanche_model": "vanOverstraeten",
     "enable_gain": true,
-    "gain_algorithm": "local_path",
     "local_gain_integration_steps": 11,
     "area_factor": 0.01,
     "default_dimension": 2,
