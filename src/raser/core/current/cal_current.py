@@ -23,7 +23,7 @@ from .draw_drift_path import draw_drift_path
 from .currents import EventCurrents, append_currents
 
 from ..interaction.carrier_list import CarrierListFromG4P
-from ..interaction.deposits import read_deposits
+from ..interaction.deposits import EventDeposits, read_deposits
 from raser.supports.output import output
 
 t_bin = {
@@ -561,9 +561,22 @@ class CalCurrentLaser(CalCurrent):
                 fill_histogram(histograms[i], np.pad(currents[i], 1))
 
 
-def write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, plot_path=None):
+def deposits_in(record, detector):
+    """The deposits of an event that lie in the detector of this name."""
+    kept = [k for k, name in enumerate(record.detector) if name == detector]
+    return EventDeposits(
+        record.event,
+        *([column[k] for k in kept] for column in (record.detector, record.x, record.y, record.z, record.t, record.e)),
+        pairs=None if record.pairs is None else [record.pairs[k] for k in kept],
+    )
+
+
+def write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, plot_path=None, detector=None):
     """Drift the pairs of every event of the deposits file in the field and
     write the currents they induce to the currents file, event by event.
+
+    With `detector`, only the deposits that lie in the detector of that name
+    are drifted, and an event without any of them writes no row.
 
     A currents file an earlier start left there is replaced. The first `plots`
     events are also drawn, each in plot_path/event_<number>: the drift paths
@@ -572,9 +585,16 @@ def write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, pl
     deposits = read_deposits(deposits_path)
     if not deposits.events:
         raise ValueError(f"{deposits_path} holds no event: there is no current to write")
+    events = deposits.events
+    if detector is not None:
+        events = [record for record in (deposits_in(record, detector) for record in events) if record.detector]
+        if not events:
+            raise ValueError(
+                f"{deposits_path} holds no deposit in the detector {detector}: there is no current to write"
+            )
     if os.path.exists(currents_path):
         os.remove(currents_path)
-    for count, record in enumerate(deposits.events):
+    for count, record in enumerate(events):
         drawn = count < plots
         positions = [list(point) for point in zip(record.x, record.y, record.z, record.t)]
         my_current = CalCurrent(my_d, my_f, record.pairs, positions, keep_drift_paths=drawn)
