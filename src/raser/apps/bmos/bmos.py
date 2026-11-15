@@ -349,8 +349,13 @@ class EventAction(g4b.G4UserEventAction):
 
     def RecordDevice(self, edep, point_in, point_out):
         self.edep_device += edep
+        # the energy of a step is put at its middle [um]
         self.p_step.append(
-            [point_in.getX() * 1000, point_in.getY() * 1000, point_in.getZ() * 1000]
+            [
+                (point_in.getX() + point_out.getX()) * 500,
+                (point_in.getY() + point_out.getY()) * 500,
+                (point_in.getZ() + point_out.getZ()) * 500,
+            ]
         )
         self.energy_step.append(edep)
 
