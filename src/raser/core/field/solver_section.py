@@ -106,9 +106,7 @@ def main (kwargs):
     irradiation_flux = kwargs["irradiation_flux"]
     v_goal = kwargs["bias"]
     
-    configuration = kwargs.get("_field_configuration")
-    if configuration is None:  # a run of the lifecycle: its settings and its device content
-        configuration = {"solver": kwargs.get("solver", SOLVER), "area_factor": 1.0}
+    configuration = {"solver": kwargs.get("solver", SOLVER), "area_factor": 1.0}
     paras = _legacy_solver_parameters(configuration, weightfield=is_wf)
 
     # Everything the solve takes from the device goes through this, and is noted.
