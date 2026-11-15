@@ -12,7 +12,6 @@ import os
 
 import ROOT
 ROOT.gROOT.SetBatch(True)
-import acts
 import numpy as np
 
 from raser.apps.telescope.g4_interaction import TelescopeG4Interaction
