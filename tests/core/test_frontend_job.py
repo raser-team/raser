@@ -5,6 +5,7 @@ from raser.core.current.currents import EventCurrents
 from raser.core.current.currents import append_currents
 from raser.core.frontend.job import write_waveforms
 from raser.core.frontend.planar_sensor import planar_sensor
+from raser.core.frontend.waveforms import read_sensor_values
 from raser.core.frontend.waveforms import read_waveforms
 
 pytestmark = pytest.mark.ngspice
@@ -41,10 +42,15 @@ def test_each_event_of_the_currents_file_gets_its_waveform(tmp_path):
     append_currents(currents_path, ["top"], DT_S, second)
     sensor = planar_sensor("top", 10e-12)
 
+    values = {"junction_capacitance": {"farad": 10e-12, "from": "device file"}}
+
     write_waveforms(currents_path, waveforms_path, CHAIN, sensor, None)
+    assert read_sensor_values(waveforms_path) is None
     # a second start of the job replaces the file instead of adding to it
-    write_waveforms(currents_path, waveforms_path, CHAIN, sensor, None)
+    write_waveforms(currents_path, waveforms_path, CHAIN, sensor, None, values)
     waveforms = read_waveforms(waveforms_path)
+
+    assert read_sensor_values(waveforms_path) == values
 
     assert waveforms.electrodes == ["top"]
     assert waveforms.dt == DT_S

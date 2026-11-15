@@ -14,6 +14,7 @@ WORKFLOW = Workflow(
     keys=signal.KEYS + ("g4setup",),
     defaults={
         "source": DEFAULTS["source"],
+        "tilt": 0,
         "events_per_job": 10000,
         "plots": 0,
         "amplifier": DEFAULTS["afe"],

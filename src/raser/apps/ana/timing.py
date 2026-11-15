@@ -30,6 +30,8 @@ def event_times(jobs, threshold, amplitude_threshold):
 
     Returns the number of events, the sign of the pulses (+1 or -1) and, for
     the events above the amplitude threshold, one array per quantity:
+        job         place of the job of the event in `jobs`
+        event       Geant4 number of the event in its job
         ToA         time of arrival [s]
         ToT         time over threshold [s]
         amplitude   [V]
@@ -39,9 +41,9 @@ def event_times(jobs, threshold, amplitude_threshold):
         CoG         centre of gravity in time of the part above the threshold [s]
         CFD10 ... CFD90   constant-fraction time at 10 % ... 90 % of the amplitude [s]
     """
-    names = ["ToA", "ToT", "amplitude", "baseline", "noise", "truth", "CoG"] + [f"CFD{round(100 * part)}" for part in CFD_FRACTIONS]
+    names = ["job", "event", "ToA", "ToT", "amplitude", "baseline", "noise", "truth", "CoG"] + [f"CFD{round(100 * part)}" for part in CFD_FRACTIONS]
     events = []
-    for folder, index in jobs:
+    for place, (folder, index) in enumerate(jobs):
         path = job_file(folder, index, "waveforms")
         if path is None:
             continue
@@ -57,13 +59,13 @@ def event_times(jobs, threshold, amplitude_threshold):
             if event.event not in earliest:
                 raise ValueError(f"{path}: event {event.event} is not among the deposits of the job")
             events.append(
-                (event.t0, waveforms.dt, earliest[event.event], *net_pulse(event.voltage[0]))
+                (place, event.event, event.t0, waveforms.dt, earliest[event.event], *net_pulse(event.voltage[0]))
             )
     if not events:
         raise ValueError("the jobs recorded no event")
-    polarity = pulse_polarity([net for _, _, _, net, _, _ in events])
+    polarity = pulse_polarity([net for _, _, _, _, _, net, _, _ in events])
     rows = []
-    for t0, dt, truth, net, baseline, noise in events:
+    for place, number, t0, dt, truth, net, baseline, noise in events:
         one = InputWaveform(
             [polarity * net], t0, dt, None, threshold, amplitude_threshold, None, None
         )
@@ -75,10 +77,21 @@ def event_times(jobs, threshold, amplitude_threshold):
         ]
         center = get_CoG(one.times, one.waveforms[0], threshold, one.peak_time[0])
         rows.append(
-            [one.data["ToA"], one.data["ToT"], one.data["amplitude"], baseline, noise, truth, center, *fractions]
+            [place, number, one.data["ToA"], one.data["ToT"], one.data["amplitude"], baseline, noise, truth, center, *fractions]
         )
     table = np.array(rows, dtype="float64").reshape(len(rows), len(names))
     return len(events), polarity, {name: table[:, k] for k, name in enumerate(names)}
+
+
+def time_widths(times):
+    """For ToA, CoG, CFD10 ... CFD90 of `event_times` what `core_width` gives
+    for time - truth [s], and `missing`: the events that have no such time."""
+    widths = {}
+    for name in ["ToA", "CoG"] + [f"CFD{round(100 * part)}" for part in CFD_FRACTIONS]:
+        difference = times[name] - times["truth"]
+        found = ~np.isnan(difference)
+        widths[name] = {**core_width(difference[found]), "missing": int(np.sum(~found))}
+    return widths
 
 
 def point_resolution(jobs, threshold, amplitude_threshold):
@@ -90,18 +103,12 @@ def point_resolution(jobs, threshold, amplitude_threshold):
         events    number of events
         selected  number of them above the amplitude threshold
         polarity  sign of the pulses, +1 or -1
-        times     for ToA, CoG, CFD10 ... CFD90 what `core_width` gives [s],
-                  and `missing`: the selected events that have no such time
+        times     what `time_widths` gives for the selected events
     """
     count, polarity, times = event_times(jobs, threshold, amplitude_threshold)
-    widths = {}
-    for name in ["ToA", "CoG"] + [f"CFD{round(100 * part)}" for part in CFD_FRACTIONS]:
-        difference = times[name] - times["truth"]
-        found = ~np.isnan(difference)
-        widths[name] = {**core_width(difference[found]), "missing": int(np.sum(~found))}
     return {
         "events": count,
         "selected": len(times["truth"]),
         "polarity": polarity,
-        "times": widths,
+        "times": time_widths(times),
     }

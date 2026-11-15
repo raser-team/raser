@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -12,7 +13,10 @@ class Slice:
     """One stretch of a job, between two of the files it leaves behind."""
 
     name: str
-    run: Callable  # runs the slice of one job; receives the options as a dict
+    # Runs the slice of one job; receives the options as a dict. It may return
+    # a dict of what it used that the run could not know before, such as the
+    # field it found: `notes` reads it back. It is kept, not judged.
+    run: Callable
     keys: tuple = ()  # the options that change what it writes
     kinds: tuple = ()  # the kinds of json file that change what it writes
     # A scanned option of it makes each point a measurement of its own, with
@@ -23,9 +27,20 @@ class Slice:
     new_events: bool = True
 
 
+class Ended(Exception):
+    """Raised by a slice that leaves nothing for the slices after it, such as
+    a job that recorded no event: the job is done, the later slices are not run."""
+
+
 def mark(folder, index, name="job") -> Path:
     """The file that says the slice `name` of a job, or the whole job, is done."""
     return Path(folder) / "batch" / f"{name}_{index}.done"
+
+
+def notes(folder, index, name) -> dict:
+    """What the slice `name` of a job left with its mark: what its function
+    returned, and "ended" when it ended the job."""
+    return json.loads(mark(folder, index, name).read_text() or "{}")
 
 
 def owner(slices, key) -> int:
@@ -68,7 +83,8 @@ def run(slices, folders, index, options, wanted, before) -> bool:
 
     `folders` gives each slice the seed folder that holds its mark, which is
     another point's when the slice does not read what makes this point
-    differ. A slice starts only when the ones before it are done there.
+    differ. A slice starts only when the ones before it are done there, and
+    is not run when one of them raised `Ended`, which the mark of that one says.
     `before` is called with a slice before it runs."""
     for k, piece in enumerate(slices):
         if piece.name not in wanted or mark(folders[piece.name], index, piece.name).exists():
@@ -79,7 +95,14 @@ def run(slices, folders, index, options, wanted, before) -> bool:
                     f"{piece.name} of job {index} needs {earlier.name}, "
                     f"which is not done in {folders[earlier.name]}"
                 )
+        done = mark(folders[piece.name], index, piece.name)
+        if any(notes(folders[earlier.name], index, earlier.name).get("ended") for earlier in slices[:k]):
+            done.touch()  # an earlier slice ended the job
+            continue
         before(piece)
-        piece.run(options)
-        mark(folders[piece.name], index, piece.name).touch()
+        try:
+            left = piece.run(options) or {}
+        except Ended:
+            left = {"ended": True}
+        done.write_text(json.dumps(left) if left else "")
     return all(mark(folders[piece.name], index, piece.name).exists() for piece in slices)

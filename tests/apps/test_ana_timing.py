@@ -13,7 +13,7 @@ from raser.core.interaction.deposits import write_deposits
 
 # a negative triangle [V]: 2 mV per bin up to 10 mV in bin 6, then down again
 TRIANGLE = 1.0e-3 * np.array([0.0, 0, -2, -4, -6, -8, -10, -8, -6, -4, -2, 0, 0])
-DT = 1.0e-9  # with a 3 mV threshold the arrival is 2.5 ns and the half height 4 ns after t0
+DT = 1.0e-9  # with a 3 mV threshold the arrival is 3 ns and the half height 4 ns after t0
 BEFORE = 200  # bins before the triangle
 OFFSET = 2.0e-3  # of the baseline [V]
 
@@ -57,7 +57,7 @@ def test_point_takes_the_quantities_of_the_events_above_the_amplitude_threshold(
     first, second = tmp_path / "seed_1", tmp_path / "seed_2"
     _job(first, 0, [(0.0, 1.0), (1.0e-10, 1.0)])
     _job(first, 1, [(2.0e-10, 0.4)])  # 4 mV, below the amplitude threshold
-    _job(second, 0, [(-1.0e-10, 2.0)])  # 20 mV: crosses 3 mV one bin earlier
+    _job(second, 0, [(-1.0e-10, 2.0)])  # 20 mV: crosses 3 mV three quarters of a bin earlier
     _job(second, 2, [(5.0e-9, 1.0)])  # not among the finished jobs
     write_deposits(str(second / "batch" / "deposits_1.h5"), Deposits(50, None, None, []))
 
@@ -66,8 +66,11 @@ def test_point_takes_the_quantities_of_the_events_above_the_amplitude_threshold(
     assert count == 4
     # the 12 mV above the baseline are not the pulse of the second event
     assert polarity == -1.0
-    assert times["ToA"] == pytest.approx(np.array([2.5e-9, 2.6e-9, 1.4e-9]))
-    assert times["ToT"] == pytest.approx(np.array([8.0e-9, 8.0e-9, 10.0e-9]))
+    # the event below the amplitude threshold is the only one of the second job; the last is event 0 of the third
+    assert list(times["job"]) == [0, 0, 2]
+    assert list(times["event"]) == [0, 1, 0]
+    assert times["ToA"] == pytest.approx(np.array([3.0e-9, 3.1e-9, 2.15e-9]))
+    assert times["ToT"] == pytest.approx(np.array([7.0e-9, 7.0e-9, 8.5e-9]))
     assert times["amplitude"] == pytest.approx(np.array([10.0e-3, 10.0e-3, 20.0e-3]))
     assert times["baseline"] == pytest.approx(np.full(3, OFFSET))
     starts = np.array([0.0, 1.0e-10, -1.0e-10])

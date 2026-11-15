@@ -64,6 +64,6 @@ def test_global_batch_test_keeps_commands_structured_and_scheduler_idle(
     monkeypatch.setenv("RASER_WORK_PATH", str(work_root))
     monkeypatch.delenv("RASER_PROJECT_PATH", raising=False)
 
-    assert main(["-t", "-b", "bmos", "one_histogram", "HPK-Si-PiN"]) == 0
+    assert main(["-t", "-b", "ana", "work/HPK-Si-PiN/cce"]) == 0
     assert "hep_sub" in capsys.readouterr().out
     assert not work_root.exists()

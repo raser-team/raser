@@ -1,41 +1,38 @@
-"""BMOS application package."""
+"""Beam monitor: the pulses that the bunches of a beam leave in one detector.
 
+An event is one bunch. Its slices are those of the signal app; only the
+deposits are its own, until the Geant4 entry of core/interaction shoots
+several particles in one event.
+"""
+
+from raser.apps import signal
+from raser.lifecycle.slices import Slice
 from raser.lifecycle.workflow import Workflow
+
+
+def _deposits(kwargs):
+    from . import deposits
+
+    deposits.deposits(kwargs)
+
+
+SLICES = (Slice("deposits", _deposits), *signal.SLICES[1:])
+
+WORKFLOW = Workflow(
+    name="bmos",
+    keys=("voltage", "irradiation", "plots", "amplifier"),
+    defaults={"amplifier": signal.DEFAULTS["afe"], "plots": 0},
+    in_file=signal.IN_FILE,
+    slices=SLICES,
+)
 
 
 def register(subparsers):
     parser = subparsers.add_parser("bmos", help="Beam Monitor Online System")
-    actions = parser.add_subparsers(dest="bmos_action", required=True)
-    get_signal = actions.add_parser("GetSignal", help="generate BMOS signal")
-    get_signal.add_argument("det_name", help="sensor or BMOS detector config")
-    get_signal.set_defaults(_project="det_name")
-    Workflow(name="bmos GetSignal", job=run).attach(get_signal)
-    histogram_signal = actions.add_parser(
-        "histogram_signal", help="generate BMOS histogram signal"
-    )
-    histogram_signal.add_argument("det_name", help="sensor or BMOS detector config")
-    histogram_signal.set_defaults(_project="det_name")
-    Workflow(name="bmos histogram_signal", job=run).attach(histogram_signal)
-    for action, text in (
-        ("one_histogram", "draw one BMOS histogram"),
-        ("all_histogram", "draw all BMOS histograms"),
-    ):
-        histogram = actions.add_parser(action, help=text)
-        histogram.add_argument("det_name", help="sensor or BMOS detector config")
-        histogram.set_defaults(_project="det_name")
-    parser.set_defaults(_run=run)
-
-
-def run(kwargs):
-    action = kwargs["bmos_action"]
-    if action == "GetSignal":
-        from .get_signal import get_signal
-
-        return get_signal(kwargs["det_name"])
-    if action == "histogram_signal":
-        from .histogram_signal import get_signal
-
-        return get_signal(kwargs["det_name"])
-    from .histogram import main
-
-    return main({"one_histogram": "one", "all_histogram": "all"}[action])
+    parser.add_argument("det_name", help="Device project")
+    parser.add_argument("--plots", type=int, help="draw the first N recorded bunches of each job")
+    parser.add_argument("-vol", "--voltage", type=float, help="bias voltage")
+    parser.add_argument("-irr", "--irradiation", type=float, help="irradiation flux")
+    parser.add_argument("-amp", "--amplifier", type=str, help="amplifier")
+    WORKFLOW.attach(parser)
+    parser.set_defaults(_project="det_name")

@@ -14,6 +14,7 @@ from raser.lifecycle.workflow import Workflow
 DEFAULTS = json.loads((Path(__file__).parent / "signal.json").read_text("utf-8"))
 KEYS = (
     "source",
+    "tilt",
     "events_per_job",
     "edep_min",
     "edep_max",
@@ -32,6 +33,9 @@ def add_arguments(parser):
         "source",
         nargs="?",
         help="signal source or beam configuration",
+    )
+    parser.add_argument(
+        "--tilt", type=float, help="tilt of the device against the source, about y [degree]"
     )
     parser.add_argument("-evt", "--events-per-job", type=int, help="events per job")
     parser.add_argument(
@@ -84,7 +88,7 @@ SLICES = (
     Slice(
         "deposits",
         _deposits,
-        keys=("source", "g4setup", "events_per_job", "edep_min", "edep_max"),
+        keys=("source", "tilt", "g4setup", "events_per_job", "edep_min", "edep_max"),
         kinds=("source", "g4setup"),
     ),
     Slice("currents", _currents, keys=("voltage", "irradiation", "plots")),
@@ -98,6 +102,7 @@ WORKFLOW = Workflow(
     keys=KEYS,
     defaults={
         "source": DEFAULTS["source"],
+        "tilt": 0,
         "amplifier": DEFAULTS["afe"],
         "events_per_job": 1,
         "plots": 100,
