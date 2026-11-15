@@ -73,7 +73,8 @@ class bmosG4Interaction:
         runManager.BeamOn(int(g4_dic["BeamOn"]))
 
         self.p_steps = s_p_steps
-        self.init_tz_device = 0
+        # the detector is centred on the origin in Geant4; the device starts at z = 0
+        self.init_tz_device = -my_d.l_z / 2
         self.p_steps_current = [
             [
                 [
