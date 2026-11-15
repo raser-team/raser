@@ -334,8 +334,9 @@ class DevsimField:
     def planar_gain(self, my_d):
         """Gain of a planar device, integrated once through its whole depth
         along the line through the middle of the device."""
-        # gain = K(d) / {1 - int[alpha_minor * K(z) dz]} - 1
-        # K(z) = exp{int[(alpha_major - alpha_minor) dz]}
+        # gain = K(a) / {1 - int[alpha_minor * K(z) dz]} - 1
+        # K(z) = exp{int_b^z[(alpha_major - alpha_minor) dz]}
+        # the carriers that multiply enter the device at a and leave it at b
         if self._planar_gain is not None:
             return self._planar_gain
         if "z" not in self.axes:
@@ -357,17 +358,25 @@ class DevsimField:
         alpha_n = np.array([cal_coefficient(abs(E), -1, my_d.temperature) for E in field])
         alpha_p = np.array([cal_coefficient(abs(E), +1, my_d.temperature) for E in field])
 
-        # Where the field is strongest it says which carrier multiplies, and
-        # the multiplied carriers start from the middle of that interval.
+        # The gain layer is where the field is strongest, and the multiplied
+        # carriers start from the middle of that interval.
         strongest = int(np.argmax(np.abs(field)))
         self._planar_gain_depth = 0.5 * (z[strongest] + z[strongest + 1]) * 1e4  # um
-        if field[strongest] > 0:
+        # The carriers that multiply are the ones that drift from the bulk into
+        # the gain layer: towards the face the layer lies at. Electrons drift
+        # against the field, holes along it.
+        towards_front = z[strongest] + z[strongest + 1] <= z[0] + z[-1]
+        if (field[strongest] > 0) == towards_front:
             alpha_major, alpha_minor = alpha_n, alpha_p  # electrons, as in a conventional Si LGAD
         else:
             alpha_major, alpha_minor = alpha_p, alpha_n  # holes, as in a conventional SiC LGAD
+        self._planar_gain_carrier = -1 if alpha_major is alpha_n else +1
 
-        # Both integrals are exact for a field that is constant in each interval.
+        # K is counted from the face the multiplying carriers leave by.
         rate = alpha_major - alpha_minor
+        if not towards_front:
+            rate, width, alpha_minor = rate[::-1], width[::-1], alpha_minor[::-1]
+        # Both integrals are exact for a field that is constant in each interval.
         growth = np.exp(np.concatenate([[0.0], np.cumsum(rate * width)]))  # K at the nodes
         even = rate == 0
         within = np.where(even, width, np.expm1(rate * width) / np.where(even, 1.0, rate))
@@ -387,6 +396,12 @@ class DevsimField:
         the middle of the mesh interval where the field is strongest."""
         self.planar_gain(my_d)
         return self._planar_gain_depth
+
+    def planar_gain_carrier(self, my_d):
+        """The charge sign of the carriers that the planar gain multiplies:
+        -1 for electrons, +1 for holes. They drift from the bulk into the gain layer."""
+        self.planar_gain(my_d)
+        return self._planar_gain_carrier
 
     def get_e_field_cached(self, x, y, z):
         try:
