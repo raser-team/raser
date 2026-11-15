@@ -19,7 +19,7 @@ import numpy as np
 import ROOT
 from scipy.spatial import cKDTree
 from ..current.model import Material
-from .assets import resolve_field_pickle
+from .assets import field_pickle_path
 from .gradient import gradient
 from .interpolation import interpolate_1d
 from .interpolation import interpolate_2d
@@ -124,10 +124,10 @@ class DevsimField:
                 # example: DopingFile = path + "NetDoping_0V.pkl"
                 break
 
-        PotentialFile = resolve_field_pickle(path, "Potential", self.voltage)
-        TrappingRate_pFile = resolve_field_pickle(path, "TrappingRate_p", self.voltage)
-        TrappingRate_nFile = resolve_field_pickle(path, "TrappingRate_n", self.voltage)
-        ConductiveFile = resolve_field_pickle(path, "Conductive", self.voltage)
+        PotentialFile = field_pickle_path(path, "Potential", self.voltage)
+        TrappingRate_pFile = field_pickle_path(path, "TrappingRate_p", self.voltage)
+        TrappingRate_nFile = field_pickle_path(path, "TrappingRate_n", self.voltage)
+        ConductiveFile = field_pickle_path(path, "Conductive", self.voltage)
 
         self.set_doping(DopingFile) #self.Doping
         self.set_potential(PotentialFile) #self.Potential, self.x_efield, self.y_efield, self.z_efield
@@ -194,7 +194,7 @@ class DevsimField:
     def set_w_p(self, WeightingPotentialFiles):
         self.WeightingPotential = []
         for i in range(len(self.read_out_contact)):
-            WeightingPotentialFile = resolve_field_pickle(
+            WeightingPotentialFile = field_pickle_path(
                 os.path.dirname(WeightingPotentialFiles[i]), "Potential", self.voltage
             )
             WeightingPotentialNotUniform = self._stored(
