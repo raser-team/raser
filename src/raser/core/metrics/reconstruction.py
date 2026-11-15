@@ -154,30 +154,31 @@ def pulse_polarity(nets):
         raise ValueError("the farthest samples of the events cancel: no polarity")
     return 1.0 if farthest > 0 else -1.0
 
+def crossing(times, samples, threshold, below, above):
+    """Where the line between the centres of the bins `below` and `above`,
+    one below and one not below the threshold, crosses the threshold."""
+    part = (threshold - samples[below]) / (samples[above] - samples[below])
+    return times[below] + part * (times[above] - times[below])
+
 def get_ToA(times, samples, threshold, peak):
-    """Centre of the first bin below the threshold, going back from the bin `peak`."""
-    for i in range(peak, -1, -1):
+    """Where the rising edge crosses the threshold: between the first bin
+    below it, going back from the bin `peak`, and the bin after that one."""
+    for i in range(peak - 1, -1, -1):
         if samples[i] < threshold:
-            return times[i]
+            return crossing(times, samples, threshold, i, i + 1)
     return None
 
 def get_ToT(times, samples, threshold, peak):
-    """From the first bin below the threshold before the bin `peak` to the first after it."""
-    start = None
-    for i in range(peak, -1, -1):
-        if samples[i] < threshold:
-            start = times[i]
-            break
+    """From where the rising edge crosses the threshold to where the falling
+    edge does: between the first bin below it after the bin `peak` and the
+    bin before that one."""
+    start = get_ToA(times, samples, threshold, peak)
     if start is None:
         return 0.0
-    end = None
-    for i in range(peak, len(samples)):
+    for i in range(peak + 1, len(samples)):
         if samples[i] < threshold:
-            end = times[i]
-            break
-    if end is None:
-        return 0.0
-    return end - start
+            return crossing(times, samples, threshold, i, i - 1) - start
+    return 0.0
 
 def get_amplitude(samples):
     """Largest value and the bin it is in."""
