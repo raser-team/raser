@@ -67,6 +67,7 @@ class TelescopeG4Interaction(GeneralG4Interaction):
         self.localpositions = localpositions
         self.ltz = g4_dic["ltz"]
         self.seedcharge = g4_dic["seedcharge"]
+        self.collection_window = g4_dic["collection_window_s"]
 
         class WrappedTelescopeActionInitialization(TelescopeActionInitialization):
             # make sure the class has the same parameters as the original class

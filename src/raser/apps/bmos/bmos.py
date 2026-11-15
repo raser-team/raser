@@ -14,6 +14,8 @@ import math
 from raser.core.interaction.geant4.g4ppyy_runtime import g4b
 
 g4b.include("G4VUserDetectorConstruction.hh")
+g4b.include("G4UserLimits.hh")
+g4b.include("G4Run.hh")
 g4b.include("G4VUserActionInitialization.hh")
 g4b.include("G4VUserPrimaryGeneratorAction.hh")
 g4b.include("G4UserRunAction.hh")
@@ -49,14 +51,16 @@ class bmosG4Interaction:
 
         physicsList = g4b.FTFP_BERT()
         physicsList.SetVerboseLevel(1)
-        physicsList.RegisterPhysics(g4b.G4StepLimiterPhysics())
+        # the physics list deletes what is registered in it: python must not
+        stepLimiterPhysics = g4b.G4StepLimiterPhysics()
+        stepLimiterPhysics.__python_owns__ = False
+        physicsList.RegisterPhysics(stepLimiterPhysics)
         runManager.SetUserInitialization(physicsList)
 
         detConstruction = DetectorConstruction(g4_dic)
         runManager.SetUserInitialization(detConstruction)
 
         actionInitialization = ActionInitialization(
-            detConstruction,
             g4_dic["par_in"],
             g4_dic["par_direction"],
             g4_dic["par_type"],
@@ -72,7 +76,8 @@ class bmosG4Interaction:
         runManager.BeamOn(int(g4_dic["BeamOn"]))
 
         self.p_steps = s_p_steps
-        self.init_tz_device = 0
+        # the detector is centred on the origin in Geant4; the device starts at z = 0
+        self.init_tz_device = -my_d.l_z / 2
         self.p_steps_current = [
             [
                 [
@@ -96,10 +101,11 @@ class bmosG4Interaction:
 
 class DetectorConstruction(g4b.G4VUserDetectorConstruction):
     def __init__(self, g4_dic):
-        g4b.G4VUserDetectorConstruction.__init__(self)
+        super().__init__()
         self.solid = {}
         self.logical = {}
         self.physical = {}
+        self.material = {}  # held here: the logical volumes only point at them
         self.checkOverlaps = True
         self.create_world(g4_dic["world_type"], g4_dic["world_size"])
 
@@ -132,11 +138,11 @@ class DetectorConstruction(g4b.G4VUserDetectorConstruction):
             self.solid["world"], material, "world"
         )
         self.physical["world"] = g4b.G4PVPlacement(
-            None,
+            g4b.cppyy.nullptr,
             g4b.G4ThreeVector(0, 0, 0),
             self.logical["world"],
             "world",
-            None,
+            g4b.cppyy.nullptr,
             False,
             0,
             self.checkOverlaps,
@@ -163,7 +169,7 @@ class DetectorConstruction(g4b.G4VUserDetectorConstruction):
 
         self.logical[name] = g4b.G4LogicalVolume(self.solid[name], material_type, name)
         self.physical[name] = g4b.G4PVPlacement(
-            None,
+            g4b.cppyy.nullptr,
             translation,
             name,
             self.logical[name],
@@ -182,6 +188,7 @@ class DetectorConstruction(g4b.G4VUserDetectorConstruction):
         compound = g4b.G4Material(object["compound_name"], material_density, 2)
         compound.AddElement(material_1, object["natoms_1"] * g4b.perCent)
         compound.AddElement(material_2, object["natoms_2"] * g4b.perCent)
+        self.material[name] = compound
         translation = g4b.G4ThreeVector(
             object["position_x"] * g4b.um,
             object["position_y"] * g4b.um,
@@ -215,7 +222,7 @@ class DetectorConstruction(g4b.G4VUserDetectorConstruction):
 
         self.logical[name] = g4b.G4LogicalVolume(self.solid[name], compound, name)
         self.physical[name] = g4b.G4PVPlacement(
-            None,
+            g4b.cppyy.nullptr,
             translation,
             name,
             self.logical[name],
@@ -231,11 +238,8 @@ class DetectorConstruction(g4b.G4VUserDetectorConstruction):
 
 
 class ActionInitialization(g4b.G4VUserActionInitialization):
-    def __init__(
-        self, detConstruction, par_in, par_direction, par_type, par_energy, par_num
-    ):
+    def __init__(self, par_in, par_direction, par_type, par_energy, par_num):
         super().__init__()
-        self.fDetConstruction = detConstruction
         self.par_in = par_in
         self.par_direction = par_direction
         self.par_type = par_type
@@ -245,28 +249,30 @@ class ActionInitialization(g4b.G4VUserActionInitialization):
         self.par_out = [0, 0, 0]
 
     def Build(self):
-        self.SetUserAction(
-            PrimaryGeneratorAction(
-                self.par_in,
-                self.par_direction,
-                self.par_type,
-                self.par_energy,
-                self.par_num,
-            )
+        myPGA = PrimaryGeneratorAction(
+            self.par_in,
+            self.par_direction,
+            self.par_type,
+            self.par_energy,
+            self.par_num,
         )
+        self.SetUserAction(myPGA)
 
         myRA_action = MyRunAction()
         self.SetUserAction(myRA_action)
         myEA = EventAction(myRA_action, self.par_in, self.par_out)
         self.SetUserAction(myEA)
-        self.SetUserAction(MySteppingAction(myEA))
+        mySA = MySteppingAction(myEA)
+        self.SetUserAction(mySA)
+        # held here: Geant4 only points at its user actions
+        self.actions = [myPGA, myRA_action, myEA, mySA]
 
 
 class PrimaryGeneratorAction(g4b.G4VUserPrimaryGeneratorAction):
     "My Primary Generator Action"
 
     def __init__(self, par_in, par_direction, par_type, par_energy, par_num):
-        g4b.G4VUserPrimaryGeneratorAction.__init__(self)
+        super().__init__()
         self.par_num = par_num
         self.par_direction = par_direction
         self.par_energy = par_energy
@@ -296,7 +302,7 @@ class PrimaryGeneratorAction(g4b.G4VUserPrimaryGeneratorAction):
 
 class MyRunAction(g4b.G4UserRunAction):
     def __init__(self):
-        g4b.G4UserRunAction.__init__(self)
+        super().__init__()
 
     def BeginOfRunAction(self, run):
         g4b.G4RunManager.GetRunManager().SetRandomNumberStore(False)
@@ -312,7 +318,7 @@ class EventAction(g4b.G4UserEventAction):
     "My Event Action"
 
     def __init__(self, runAction, point_in, point_out):
-        g4b.G4UserEventAction.__init__(self)
+        super().__init__()
         self.fRunAction = runAction
         self.point_in = point_in
         self.point_out = point_out
@@ -386,7 +392,7 @@ class MySteppingAction(g4b.G4UserSteppingAction):
     "My Stepping Action"
 
     def __init__(self, eventAction):
-        g4b.G4UserSteppingAction.__init__(self)
+        super().__init__()
         self.fEventAction = eventAction
 
     def UserSteppingAction(self, step):

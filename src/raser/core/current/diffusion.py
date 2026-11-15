@@ -3,7 +3,7 @@
 The model, for a MAPS at low bias whose epitaxial layer is taken as field
 free: the electrons of an event walk at random in x and y; one that enters
 the collection region of a pixel is collected by that pixel at once. The
-collection region is a rectangle of collection_x by collection_y [um] at the
+collection region is a rectangle of e_width_x by e_width_y [um] at the
 centre of every pixel, through the whole thickness.
 
 What the model leaves out: the field of the junction and the drift in it, any
@@ -30,7 +30,7 @@ def collect_by_diffusion(my_d, pairs, positions, window, step):
 
     Parameters:
         my_d : Detector
-            a pixel device with collection_x and collection_y [um]; its
+            a pixel device with e_width_x and e_width_y [um]; its
             doping is two numbers [cm^-3]
         pairs : float[]
             electron-hole pairs of every deposit
@@ -51,11 +51,11 @@ def collect_by_diffusion(my_d, pairs, positions, window, step):
     """
     if not my_d.is_pixel:
         raise ValueError(f"{my_d.det_name} is not a pixel device")
-    for key in ("collection_x", "collection_y"):
+    for key in ("e_width_x", "e_width_y"):
         if not hasattr(my_d, key):
             raise ValueError(f"the device file of {my_d.det_name} has no {key} [um]")
-    low_x = (my_d.p_x - my_d.collection_x) / 2
-    low_y = (my_d.p_y - my_d.collection_y) / 2
+    low_x = (my_d.p_x - my_d.e_width_x) / 2
+    low_y = (my_d.p_y - my_d.e_width_y) / 2
 
     neff = float(my_d.doping["Donors"]) - float(my_d.doping["Acceptors"])
     mobility = Material(my_d.material).cal_mobility(my_d.temperature, neff, -1, 0)

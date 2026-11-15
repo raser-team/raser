@@ -17,7 +17,9 @@ import numpy as np
 from raser.apps.telescope.g4_interaction import TelescopeG4Interaction
 from raser.core.seeding import stream
 from raser.core.device.build_device import Detector
-from raser.core.current.cal_current_diffuse import CalCurrentDiffuse
+from raser.core.current.diffusion import ELEMENTARY_CHARGE, collect_by_diffusion
+from raser.core.interaction.deposits import EventDeposits
+from raser.core.interaction.ionization import ionized_pairs
 from raser.supports.output import create_path
 from raser.supports.output import output
 
@@ -455,6 +457,52 @@ class PixelHitTest:
         #print(t_list)
         return t_list
     
+DIFFUSION_STEP = 50e-12  # s, one random step of the diffusion
+HIT_ELECTRONS = 0.2  # a pixel that collected more is a hit
+
+
+class DiffusedCharge:
+    """The electrons every pixel of every layer collects by diffusion.
+
+    event : one dict per event, layer -> {'index': [[i, j], ...], 'charge': [...]},
+        the pixels of the layer that collected electrons and how many
+    last : (x_ele_num, y_ele_num) array, the electrons of the last layer of
+        the last event
+    """
+    def __init__(self, my_d, my_g4, window):
+        self.event = []
+        for number in range(len(my_g4.devicenames)):
+            layers = {}
+            for layer in range(len(my_g4.ltz)):
+                deposits = EventDeposits(number, [], [], [], [], [], [])
+                for name, local, energy, time in zip(
+                    my_g4.devicenames[number],
+                    my_g4.localpositions[number],
+                    my_g4.energy_steps[number],
+                    my_g4.time_steps[number],
+                    strict=True,
+                ):
+                    # pixels are named <type>_<row>_<column>_Layer_<layer>
+                    _, row, column, _, in_layer = name.split("_")
+                    if int(in_layer) != layer:
+                        continue
+                    deposits.x.append(local[0] + (int(column) + 0.5) * my_d.p_x)
+                    deposits.y.append(local[1] + (int(row) + 0.5) * my_d.p_y)
+                    deposits.z.append(local[2] + my_d.l_z / 2)
+                    deposits.t.append(time)
+                    deposits.e.append(energy)
+                pairs, positions = ionized_pairs(deposits, my_d.material)
+                _, _, charge = collect_by_diffusion(my_d, pairs, positions, window, DIFFUSION_STEP)
+                electrons = (-charge / ELEMENTARY_CHARGE).reshape(my_d.x_ele_num, my_d.y_ele_num)
+                fired = np.argwhere(electrons > HIT_ELECTRONS)
+                layers[layer] = {
+                    "index": fired.tolist(),
+                    "charge": [float(electrons[i, j]) for i, j in fired],
+                }
+                self.last = electrons
+            self.event.append(layers)
+
+
 def draw_charge(my_charge):
     path = os.path.join("output", "telescope",)
     create_path(path) 
@@ -468,12 +516,16 @@ def draw_charge(my_charge):
     ROOT.gStyle.SetOptStat(ROOT.kFALSE)
     ROOT.gStyle.SetOptStat(0)
 
-    my_charge.sum_charge.GetXaxis().SetNdivisions(510)
-    my_charge.sum_charge.GetYaxis().SetNdivisions(505)
-    my_charge.sum_charge.GetXaxis().SetTitle("X")
-    my_charge.sum_charge.GetYaxis().SetTitle("Y")
+    n_x, n_y = my_charge.last.shape
+    sum_charge = ROOT.TH2F("charge", "Pixel Detector charge", n_x, 0, n_x, n_y, 0, n_y)
+    for i, j in np.argwhere(my_charge.last > 0):
+        sum_charge.SetBinContent(int(i) + 1, int(j) + 1, float(my_charge.last[i, j]))
+    sum_charge.GetXaxis().SetNdivisions(510)
+    sum_charge.GetYaxis().SetNdivisions(505)
+    sum_charge.GetXaxis().SetTitle("X")
+    sum_charge.GetYaxis().SetTitle("Y")
 
-    my_charge.sum_charge.Draw("lego")
+    sum_charge.Draw("lego")
     c.Update()
     c.SaveAs(path+"/Pixel_charge.pdf")
     c.SaveAs(path+"/Pixel_charge.root")
@@ -481,7 +533,7 @@ def draw_charge(my_charge):
 def main(seed, events):
     my_d = Detector("TAICHU3") #remain the same
     my_g4 = TelescopeG4Interaction(my_d, "telescope", seed, events) #remove my_f
-    my_hit_charge = CalCurrentDiffuse(my_d,my_g4)
+    my_hit_charge = DiffusedCharge(my_d, my_g4, my_g4.collection_window)
     draw_charge(my_hit_charge)
     my_telescope_charge = Telescope(my_d,my_g4,my_hit_charge) 
     my_hit_test = PixelHitTest(my_d, my_g4)

@@ -4,6 +4,7 @@
 
     "ltz": [20000.0,60000.0,100000.0,140000.0,180000.0,220000.0],
     "seedcharge": 100,
+    "collection_window_s": 10e-9,
 
     "object" : {
         "pixel"  : {
