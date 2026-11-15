@@ -1,4 +1,4 @@
-"""Circuit of a planar sensor with one read-out electrode."""
+"""Circuit of a planar sensor with one read-out electrode, and of several."""
 
 from .spice import SensorCircuit
 
@@ -94,3 +94,30 @@ def side_by_side(sensors):
         sources.update(sensor.sources)
         outputs.update(sensor.outputs)
     return SensorCircuit(lines=tuple(lines), sources=sources, outputs=outputs)
+
+
+def row_of_electrodes(sensors, between_f):
+    """SensorCircuit of the electrodes of a row, each with the sensor it has
+    by itself, and the capacitances between them.
+
+    sensors : SensorCircuit of each electrode, one electrode each, in their
+        order along the row.
+    between_f : capacitance [F] between two electrodes of the row that are
+        one, two, ... places apart. Electrodes further apart than it reaches
+        have none between them.
+
+    The capacitance lies between the electrodes themselves, before a coupling
+    capacitance to the read-out.
+    """
+    row = side_by_side(sensors)
+    electrodes = list(row.sources)
+    if len(electrodes) != len(sensors):
+        raise ValueError("Every sensor of a row has one electrode")
+    lines = list(row.lines)
+    for apart, farad in enumerate(between_f, start=1):
+        for first, second in zip(electrodes, electrodes[apart:]):
+            lines.append(
+                f"C{first}_{second} {row.sources[first][1]} "
+                f"{row.sources[second][1]} {farad:.9g}"
+            )
+    return SensorCircuit(lines=tuple(lines), sources=row.sources, outputs=row.outputs)

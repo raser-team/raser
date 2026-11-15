@@ -6,6 +6,8 @@ after another; ``count`` cuts them into events.
 Attributes of the file:
     electrodes  names of the electrodes, in the order of the columns
     dt          width of a time bin [s]
+    sensor      values the circuit of the sensor is made of and where each is
+                from, as JSON; not there when none were given
 Datasets, one row per event:
     event       Geant4 event number
     t0          left edge of the first time bin of the event [s]
@@ -14,6 +16,7 @@ Dataset, one row per time bin:
     voltage     output voltage of each electrode at the centre of the bin [V]
 """
 
+import json
 import os
 from dataclasses import dataclass
 
@@ -35,8 +38,12 @@ class Waveforms:
     events: list[EventWaveforms]
 
 
-def append_waveforms(path, electrodes, dt, record):
-    """Add one event to the file, which is created with the first event."""
+def append_waveforms(path, electrodes, dt, record, sensor_values=None):
+    """Add one event to the file, which is created with the first event.
+
+    sensor_values : what is written as ``sensor`` when the file is created;
+        None writes none.
+    """
     voltage = np.asarray(record.voltage, dtype="float64")
     if voltage.ndim != 2 or voltage.shape[0] != len(electrodes):
         raise ValueError(
@@ -48,6 +55,8 @@ def append_waveforms(path, electrodes, dt, record):
         if new:
             file.attrs.create("electrodes", list(electrodes), dtype=h5py.string_dtype())
             file.attrs["dt"] = float(dt)
+            if sensor_values is not None:
+                file.attrs["sensor"] = json.dumps(sensor_values)
             for name, kind in (
                 ("event", "int64"),
                 ("t0", "float64"),
@@ -98,3 +107,11 @@ def read_waveforms(path):
         events.append(EventWaveforms(int(number), float(start), voltage[first:last].T))
         first = last
     return Waveforms(electrodes, dt, events)
+
+
+def read_sensor_values(path):
+    """``sensor`` of the file; None when it has none."""
+    with h5py.File(str(path), "r") as file:
+        if "sensor" not in file.attrs:
+            return None
+        return json.loads(file.attrs["sensor"])
