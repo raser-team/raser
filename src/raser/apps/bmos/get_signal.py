@@ -26,6 +26,8 @@ from raser.core.field import devsim_field as devfield
 from raser.core.field.solved import solved_field
 from raser.core.current import cal_current as ccrt
 from raser.core.frontend.set_pwl_input import set_pwl_input as pwlin
+from raser.core.interaction.deposits import EventDeposits
+from raser.core.interaction.ionization import ionized_pairs
 from raser.supports.output import output
 from raser.supports.paths import app_file_path
 from. import bmos
@@ -54,7 +56,7 @@ def get_signal(sensor):
 
     my_g4 = bmos.bmosG4Interaction(my_d)
 
-    my_current = ccrt.CalCurrentG4P(my_d, my_f, my_g4, -1)
+    my_current = ccrt.CalCurrent(my_d, my_f, *first_event_pairs(my_d, my_g4))
     totalengry = my_g4.energy_steps
 
     now = time.strftime("%Y_%m%d_%H%M%S")
@@ -83,6 +85,29 @@ def get_signal(sensor):
 
     end = time.time()
     print("total_time:%s"%(end - start))
+
+def first_event_pairs(my_d, my_g4):
+    """Pairs and [x, y, z, t] of the deposits of the first event that has any.
+
+    The steps carry no time: every deposit is at t = 0.
+    """
+    for number, (steps, energies) in enumerate(
+        zip(my_g4.p_steps_current, my_g4.energy_steps, strict=True)
+    ):
+        kept = [k for k, energy in enumerate(energies) if energy > 0]
+        if kept:
+            event = EventDeposits(
+                number,
+                ["Device"] * len(kept),
+                [steps[k][0] for k in kept],
+                [steps[k][1] for k in kept],
+                [steps[k][2] for k in kept],
+                [0.0] * len(kept),
+                [energies[k] for k in kept],
+            )
+            return ionized_pairs(event, my_d.material)
+    raise ValueError("no event deposits energy in the detector")
+
 
 def save_current(my_current, output_path, root_name, pwl_name, read_ele_num):
     time = array.array('d', [999.0])
