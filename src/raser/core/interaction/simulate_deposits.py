@@ -1,10 +1,11 @@
-"""The entry of the energy-deposition stage: one job in, its Deposits out."""
+"""The energy-deposition stage: the Deposits of one job, and their file."""
 
 from __future__ import annotations
 
 import copy
 
 from .deposits import Deposits
+from .deposits import write_deposits
 from .ionization import ionized_pairs
 from .mip_track import mip_deposits
 
@@ -92,3 +93,19 @@ def _energy_deposits(my_d, source, g4setup, events, g4_seed, edep_min, edep_max)
         return my_g4.deposits()
     finally:
         my_g4.close()
+
+
+def write_simulated_deposits(
+    deposits_path,
+    my_d,
+    source: dict,
+    g4setup: dict | None,
+    events: int,
+    g4_seed: int,
+    edep_min: float | None = None,
+    edep_max: float | None = None,
+) -> None:
+    """simulate_deposits, written to the deposits file; a file an earlier
+    start left there is replaced."""
+    deposits = simulate_deposits(my_d, source, g4setup, events, g4_seed, edep_min, edep_max)
+    write_deposits(deposits_path, deposits)
