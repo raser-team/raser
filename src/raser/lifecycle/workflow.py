@@ -32,7 +32,7 @@ WORKFLOWS: dict = {}  # the workflows that have a command, by name
 class Workflow:
     """What an application hands in."""
 
-    name: str  # command words, "cce" or "tct signal"; folder work/<device>/<words>
+    name: str  # command words, "cce" or "telescope taichu_v1"; folder work/<device>/<words>
     job: Callable | None = None  # runs one job; receives the options as a dict
     # Instead of `job`: the Slices of slices.py that a job runs one after
     # another. A slice is run again when what it or a slice before it reads
