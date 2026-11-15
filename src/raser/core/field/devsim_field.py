@@ -17,6 +17,7 @@ from pathlib import Path
 
 import numpy as np
 import ROOT
+from scipy.spatial import Delaunay
 from scipy.spatial import cKDTree
 from ..current.model import Material
 from .assets import field_pickle_path
@@ -247,6 +248,13 @@ class DevsimField:
         points = np.asarray(stored['points'], dtype=float).reshape(len(stored['points']), -1)
         self.conductive_nodes = cKDTree(points)
         self.conductive_values = np.asarray(stored['values']) > 0.5
+        # The cells of the mesh: the intervals between its nodes in one
+        # dimension, the simplices that join its nodes otherwise.
+        if points.shape[1] == 1:
+            self.conductive_order = np.argsort(points[:, 0])
+            self.conductive_line = points[self.conductive_order, 0]
+        else:
+            self.conductive_cells = Delaunay(points)
 
     def _along_axes(self, x, y, z):
         """A position, as the coordinates the field files are stored in."""
@@ -304,13 +312,23 @@ class DevsimField:
     def get_conductive(self, x, y, z):
         """
         input: position in um
-        output: whether the device conducts there at the bias of the field,
-        as its mesh node nearest to the position does; a position outside
-        the mesh is answered by the nearest node too
+        output: whether the device conducts there at the bias of the field:
+        every node of the cell of the mesh that holds the position does, as
+        in the weighting field, where an edge conducts when both its nodes
+        do; a position outside the mesh is answered by the nearest node
         """
         x, y, z = x/1e4, y/1e4, z/1e4 # um to cm
-        nearest = self.conductive_nodes.query(self._along_axes(x, y, z))[1]
-        return bool(self.conductive_values[nearest])
+        place = self._along_axes(x, y, z)
+        if len(place) == 1:
+            after = int(np.searchsorted(self.conductive_line, place[0]))
+            if 0 < after < len(self.conductive_line):
+                ends = self.conductive_order[after - 1 : after + 1]
+                return bool(self.conductive_values[ends].all())
+        else:
+            cell = int(self.conductive_cells.find_simplex(place))
+            if cell >= 0:
+                return bool(self.conductive_values[self.conductive_cells.simplices[cell]].all())
+        return bool(self.conductive_values[self.conductive_nodes.query(place)[1]])
 
     def get_trap_e(self, x, y, z):
         """
