@@ -1,4 +1,7 @@
-"""Values of the circuit of a sensor, taken from its device and its field."""
+"""Circuit of a sensor and its values, taken from its device and its field."""
+
+from .planar_sensor import planar_sensor
+from .planar_sensor import side_by_side
 
 
 def junction_capacitance(my_d, solved_f=None):
@@ -22,3 +25,24 @@ def junction_capacitance(my_d, solved_f=None):
             "its field was not asked for one, and the device has no estimate"
         )
     return float(estimate_pf) * 1e-12, "parallel plate"
+
+
+def device_sensor(my_d, electrodes, solved_f=None):
+    """SensorCircuit of the read-out electrodes of a device, and the values it
+    is made of, for the record of the run.
+
+    electrodes : names of the read-out electrodes, those of the currents.
+    solved_f : as junction_capacitance takes it.
+
+    Every electrode has the junction capacitance to the back, on ground, and
+    is read out itself. The record says what the circuit does not have: no
+    capacitance between the electrodes, no undepleted layer.
+    """
+    farad, source = junction_capacitance(my_d, solved_f)
+    sensor = side_by_side([planar_sensor(electrode, farad) for electrode in electrodes])
+    values = {
+        "junction_capacitance": {"farad": farad, "from": source},
+        "between_electrodes": None,
+        "undepleted_layer": None,
+    }
+    return sensor, values
