@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 
 from .deposits import Deposits
+from .ionization import ionized_pairs
 from .mip_track import mip_deposits
 
 # Kinds of source that Geant4 simulates.
@@ -55,7 +56,8 @@ def simulate_deposits(
     edep_min: float | None = None,
     edep_max: float | None = None,
 ) -> Deposits:
-    """Deposits of `events` generated events of `source` in the device.
+    """Deposits of `events` generated events of `source` in the device,
+    each with the electron-hole pairs it created in the material of the device.
 
     source and g4setup are the contents of the component files; g4setup
     None is the device alone in vacuum. edep_min and edep_max [MeV] bound
@@ -63,6 +65,13 @@ def simulate_deposits(
     A toy MIP takes only the step limit from the g4setup and does not use
     g4_seed.
     """
+    deposits = _energy_deposits(my_d, source, g4setup, events, g4_seed, edep_min, edep_max)
+    for event in deposits.events:
+        event.pairs, _ = ionized_pairs(event, my_d.material)
+    return deposits
+
+
+def _energy_deposits(my_d, source, g4setup, events, g4_seed, edep_min, edep_max) -> Deposits:
     kind = source.get("kind")
     if kind == "toy_mip":
         max_step = (DEVICE_ALONE if g4setup is None else g4setup)["maxstep"]

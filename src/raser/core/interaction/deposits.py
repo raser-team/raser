@@ -11,6 +11,7 @@ Datasets, one value per deposit:
     x, y, z   position in the coordinates of that detector [um]
     t         time since the primary was generated [s]
     e         deposited energy [MeV]
+    pairs     electron-hole pairs the deposit created
 
 Attributes of the file: generated_events, and edep_min, edep_max [MeV]
 where the window has that bound.
@@ -35,6 +36,8 @@ class EventDeposits:
     z: list[float]
     t: list[float]
     e: list[float]
+    # electron-hole pairs of every deposit; None until the ionization is drawn
+    pairs: list[float] | None = None
 
 
 @dataclass
@@ -85,6 +88,12 @@ def deposits_of_steps(
 
 def write_deposits(path: str, deposits: Deposits) -> None:
     events = deposits.events
+    for record in events:
+        if record.pairs is None:
+            raise ValueError(
+                f"event {record.event} has no electron-hole pairs: "
+                "only deposits whose ionization was drawn are written"
+            )
     with h5py.File(str(path), "w") as file:
         file.attrs["generated_events"] = deposits.generated_events
         for bound in ("edep_min", "edep_max"):
@@ -97,7 +106,7 @@ def write_deposits(path: str, deposits: Deposits) -> None:
             data=[name for record in events for name in record.detector],
             dtype=h5py.string_dtype(),
         )
-        for name in _NUMBERS:
+        for name in (*_NUMBERS, "pairs"):
             file[name] = np.array(
                 [value for record in events for value in getattr(record, name)],
                 dtype="float64",
@@ -114,7 +123,7 @@ def read_deposits(path: str) -> Deposits:
         numbers = file["event"][()]
         counts = file["count"][()]
         detector = file["detector"].asstr()[()]
-        columns = {name: file[name][()] for name in _NUMBERS}
+        columns = {name: file[name][()] for name in (*_NUMBERS, "pairs")}
     events = []
     first = 0
     for number, count in zip(numbers, counts, strict=True):
@@ -123,7 +132,7 @@ def read_deposits(path: str) -> Deposits:
             EventDeposits(
                 int(number),
                 detector[first:last].tolist(),
-                *(columns[name][first:last].tolist() for name in _NUMBERS),
+                *(columns[name][first:last].tolist() for name in (*_NUMBERS, "pairs")),
             )
         )
         first = last

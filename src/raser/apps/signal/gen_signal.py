@@ -23,7 +23,6 @@ from raser.core.field import devsim_field as devfield
 from raser.core.field.solved import solved_field
 from raser.core.frontend.toy_readout import Amplifier
 from raser.core.interaction.deposits import write_deposits
-from raser.core.interaction.ionization import ionized_pairs
 from raser.core.interaction.simulate_deposits import simulate_deposits
 from raser.core.interaction.view_geometry import view_geometry
 
@@ -57,8 +56,8 @@ def run_events(my_d, my_f, deposits, amplifier, batch_path, job, plots, plot_pat
     for count, record in enumerate(deposits.events):
         print("run events number:%s" % (record.event))
         drawn = count < plots
-        pairs, positions = ionized_pairs(record, my_d.material)
-        my_current = ccrt.CalCurrent(my_d, my_f, pairs, positions, keep_drift_paths=drawn)
+        positions = [list(point) for point in zip(record.x, record.y, record.z, record.t)]
+        my_current = ccrt.CalCurrent(my_d, my_f, record.pairs, positions, keep_drift_paths=drawn)
         append_currents(
             currents_path,
             my_current.electrodes,
