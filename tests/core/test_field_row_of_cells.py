@@ -106,17 +106,19 @@ def test_a_mesh_that_is_not_one_pitch_wide_is_not_laid_side_by_side() -> None:
         _clear()
 
 
-@pytest.mark.parametrize(("depth", "pitch"), [(305.0, 75.5), (50.0, 25.0), (300.0, 20.0)])
-def test_the_cells_of_a_row_leave_the_tolerance_at_its_ends(depth: float, pitch: float) -> None:
-    from raser.core.field.solver_section import WEIGHTING_TOLERANCE, cells_to_fall_off
+@pytest.mark.parametrize(
+    ("depth", "pitch", "tolerance"), [(305.0, 75.5, 5e-2), (50.0, 25.0, 1e-2), (300.0, 20.0, 1e-3)]
+)
+def test_the_cells_of_a_row_leave_the_tolerance_at_its_ends(depth: float, pitch: float, tolerance: float) -> None:
+    from raser.core.field.solver_section import cells_to_fall_off
 
     def left(cells: int) -> float:
         # what reaches the end of the row, doubled by its reflection there
         return 2 * math.exp(-math.pi * cells * pitch / depth)
 
-    cells = cells_to_fall_off(depth, pitch)
+    cells = cells_to_fall_off(depth, pitch, tolerance)
 
-    assert left(cells) <= WEIGHTING_TOLERANCE < left(cells - 1)
+    assert left(cells) <= tolerance < left(cells - 1)
 
 
 @pytest.mark.devsim
@@ -138,13 +140,17 @@ def test_what_is_left_of_a_potential_is_looked_for_in_the_two_end_cells() -> Non
         _clear()
 
 
-def test_neighbours_are_coupled_as_far_as_they_hold_a_hundredth_of_the_capacitance() -> None:
+def test_neighbours_are_coupled_as_far_as_they_hold_the_tolerance_of_the_capacitance() -> None:
     from raser.core.field.solver_section import neighbours_coupled
 
-    # of 100 in all, the third pair of neighbours holds one and the fourth less
-    to_others = {"bot": 24.5, "neighbour1": 55.0, "neighbour2": 19.0, "neighbour3": 1.0,
-                 "neighbour4": 0.4, "neighbour5": 0.1}  # fmt: skip
+    # of 100 in all, the third pair of neighbours holds the tolerance and the fourth less
+    tolerance = 0.02
+    edge = 100 * tolerance
+    to_others = {"bot": 25.0 - 1.5 * edge, "neighbour1": 55.0, "neighbour2": 20.0, "neighbour3": edge,
+                 "neighbour4": 0.4 * edge, "neighbour5": 0.1 * edge}  # fmt: skip
 
-    assert neighbours_coupled(to_others) == 3
+    assert neighbours_coupled(to_others, tolerance) == 3
+    # with a tolerance the fourth pair holds too, it is the fifth that does not
+    assert neighbours_coupled(to_others, 0.4 * tolerance) == 4
     # a pair further away that holds more again is past the first that does not
-    assert neighbours_coupled({**to_others, "neighbour5": 5.0, "bot": 19.6}) == 3
+    assert neighbours_coupled({**to_others, "neighbour5": 2 * edge, "bot": 25.0 - 3.4 * edge}, tolerance) == 3

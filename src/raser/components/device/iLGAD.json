@@ -3,13 +3,13 @@
     "det_model" : "ilgad_planar",
     "material" : "Si",
 
-    "l_x" : 180,
-    "l_y" : 180,
-    "l_z" : 180,
+    "l_x" : 10000,
+    "l_y" : 10000,
+    "l_z" : 285,
 
     "doping":{
-        "Donors" : "5.0e18*step(1e-4-x)+1.0e16*(step(2e-4-x)-step(1e-4-x))+1.0e16*(step(179e-4-x)-step(178e-4-x))",
-        "Acceptors" :"6.64e12*(step(178e-4-x)-step(2e-4-x))+5.0e18*(step(180e-4-x)-step(179e-4-x))"
+        "Acceptors" : "1.0e19*step(1e-4-x) + 6.64e12*(step(282e-4-x)-step(1e-4-x)) + 1.71e16*(step(283e-4-x)-step(282e-4-x)) + 6.64e12*(step(284e-4-x)-step(283e-4-x))",
+        "Donors" : "1.0e19*step(x-284e-4)"
     },
 
     "avalanche_model" : "vanOverstraeten",
@@ -17,7 +17,7 @@
 
     "bias" : {
         "electrode" : "bot",
-        "voltage" : -500.0
+        "voltage" : 700.0
     },
 
     "temperature" : 300.0,
@@ -30,11 +30,12 @@
     "mesh" : {
         "1D_mesh" : {
             "mesh_line" : [
-                {"pos" : 0,      "ps" : 5e-6, "tag" : "top"},
-                {"pos" : 1e-4,   "ps" : 5e-6, "tag" : "n_plus"},
-                {"pos" : 3e-4,   "ps" : 2e-5, "tag" : "n_layer"},
+                {"pos" : 0,      "ps" : 1e-5, "tag" : "top"},
+                {"pos" : 2e-4,   "ps" : 1e-5, "tag" : "p_plus"},
                 {"pos" : 10e-4,  "ps" : 1e-4, "tag" : "bulk"},
-                {"pos" : 180e-4, "ps" : 1e-4, "tag" : "bot"}
+                {"pos" : 280e-4, "ps" : 1e-4, "tag" : "gain_up"},
+                {"pos" : 281e-4, "ps" : 1e-5, "tag" : "gain"},
+                {"pos" : 285e-4, "ps" : 1e-5, "tag" : "bot"}
             ],
             "region" : [
                 {

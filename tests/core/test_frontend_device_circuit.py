@@ -64,6 +64,8 @@ def test_sensor_of_a_device_has_its_junction_capacitance_on_every_electrode():
     assert values == {
         "junction_capacitance": {"farad": pytest.approx(20e-12), "from": "device file"},
         "between_electrodes": None,
+        "bias_resistance": None,
+        "coupling_capacitance": None,
         "undepleted_layer": None,
     }
     expected = 1e-6 * 50.0 * (1 - np.exp(-np.clip(times, 0, None) / 1e-9))
@@ -72,3 +74,188 @@ def test_sensor_of_a_device_has_its_junction_capacitance_on_every_electrode():
     assert voltage[1][off_the_jump] == pytest.approx(
         -2 * expected[off_the_jump], abs=4e-7
     )
+
+
+@pytest.mark.ngspice
+def test_charge_through_the_coupling_capacitance_is_what_the_bias_resistance_leaves():
+    # 1 uA for good on 20 pF: the electrode ends at 1 uA x 200 Ohm, and the
+    # 30 pF to the read-out has taken 30 pF x 200 uV through the 50 Ohm load
+    wire = {
+        "ports": {"in": "a", "out": "b"},
+        "elements": {"R1": {"between": ["a", "b"], "ohm": 1e-6}},
+    }
+    load = {
+        "ports": {"in": "a"},
+        "elements": {"R1": {"between": ["a", "0"], "ohm": 50.0}},
+    }
+    dt_s = 20e-12
+    times = -1e-9 + (np.arange(5000) + 0.5) * dt_s
+    step = np.where(times > 0, 1e-6, 0.0)
+
+    sensor, values = device_sensor(
+        _device(
+            capacitance_pF=20.0, bias_resistance_ohm=200.0, coupling_capacitance_pF=30.0
+        ),
+        ["pad"],
+    )
+    voltage = solve(
+        {"stages": {"wire": wire}, "load": load}, ["pad"], dt_s, [step], sensor
+    )
+
+    assert values["bias_resistance"] == {"ohm": 200.0}
+    assert values["coupling_capacitance"] == {"farad": pytest.approx(30e-12)}
+    assert voltage[0].sum() * dt_s == pytest.approx(
+        50.0 * 30e-12 * 1e-6 * 200.0, rel=2e-3
+    )
+    assert abs(voltage[0][-1]) < 1e-7
+
+
+@pytest.mark.ngspice
+def test_charge_on_a_device_not_fully_depleted_is_held_back_by_its_undepleted_layer():
+    # 1 nC at once across 20 pF, behind it 2 kOhm and 60 pF, read out on
+    # 1 Ohm: 60 / 80 of it is out at once, and the 20 / 80 left on the
+    # undepleted layer comes with 2 kOhm x 80 pF = 160 ns
+    wire = {
+        "ports": {"in": "a", "out": "b"},
+        "elements": {"R1": {"between": ["a", "b"], "ohm": 1e-6}},
+    }
+    load = {
+        "ports": {"in": "a"},
+        "elements": {"R1": {"between": ["a", "0"], "ohm": 1.0}},
+    }
+    dt_s = 1e-9
+    times = (np.arange(1000) + 0.5) * dt_s
+    current = np.zeros(1000)
+    current[0] = 1e-9 / dt_s
+    chain = {"stages": {"wire": wire}, "load": load}
+
+    from_file, values = device_sensor(
+        _device(
+            capacitance_pF=20.0,
+            undepleted_resistance_ohm=2e3,
+            undepleted_capacitance_pF=60.0,
+        ),
+        ["pad"],
+        solved_undepleted=(9e3, 9e-12),
+    )
+    from_field, of_field = device_sensor(
+        _device(capacitance_pF=20.0), ["pad"], solved_undepleted=(2e3, 60e-12)
+    )
+    voltage = solve(chain, ["pad"], dt_s, [current], from_file)[0]
+
+    assert values["undepleted_layer"] == {
+        "ohm": 2e3,
+        "farad": pytest.approx(60e-12),
+        "from": "device file",
+    }
+    assert of_field["undepleted_layer"] == {
+        "ohm": 2e3,
+        "farad": 60e-12,
+        "from": "field",
+    }
+    assert from_field.lines == from_file.lines
+    late = times > 5e-9
+    expected = 1.0 * 1e-9 * 20 / 80 / 160e-9 * np.exp(-(times - dt_s) / 160e-9)
+    assert voltage[late] == pytest.approx(expected[late], rel=1e-2, abs=1e-8)
+    assert voltage.sum() * dt_s == pytest.approx(1.0 * 1e-9, rel=1e-2)
+
+
+def test_undepleted_layer_with_one_of_its_two_values_is_an_error():
+    with pytest.raises(ValueError, match="alone"):
+        device_sensor(_device(undepleted_resistance_ohm=2e3), ["pad"])
+
+
+def test_row_of_strips_with_an_undepleted_layer_is_an_error():
+    with pytest.raises(ValueError, match="undepleted"):
+        device_sensor(_strips(), ["top1"], row=ROW, solved_undepleted=(2e3, 60e-12))
+
+
+def _strips(**keys):
+    """ITk-Si-strip: strips 5 mm long."""
+    content = json.loads(device_file("ITk-Si-strip").read_text(encoding="utf-8"))
+    return Detector("ITk-Si-strip", {**content, **keys})
+
+
+# of a strip, per cm: 1 pF in all, 0.5 pF to the two nearest strips together,
+# 0.125 pF to the two next ones, 0.05 pF to the third ones, which is not coupled
+ROW = {
+    "unit": "F/cm",
+    "of": "top",
+    "total": 1.0e-12,
+    "to": {
+        "neighbour1": 0.5e-12,
+        "neighbour2": 0.125e-12,
+        "neighbour3": 0.05e-12,
+        "bot": 0.325e-12,
+    },
+    "neighbours_coupled": 2,
+}
+
+
+@pytest.mark.ngspice
+def test_charge_on_one_strip_of_a_row_is_shared_by_the_capacitances_between_them():
+    # nothing leads the charge away within the run: the strips come to the
+    # voltages their capacitances give. Each strip is 0.5 cm long and has
+    # 0.5 pF in all; two strips have 0.125 pF between them one place apart
+    # and 0.03125 pF two places apart
+    wire = {
+        "ports": {"in": "a", "out": "b"},
+        "elements": {"R1": {"between": ["a", "b"], "ohm": 1e-6}},
+    }
+    open_end = {
+        "ports": {"in": "a"},
+        "elements": {"R1": {"between": ["a", "0"], "ohm": 1e12}},
+    }
+    electrodes = ["top1", "top2", "top3", "top4"]
+    dt_s = 20e-12
+    currents = np.zeros((4, 200))
+    currents[1, 10:60] = 1e-6  # 1 fC on the second strip
+
+    sensor, values = device_sensor(_strips(), electrodes, row=ROW)
+    voltage = solve(
+        {"stages": {"wire": wire}, "load": open_end}, electrodes, dt_s, currents, sensor
+    )
+
+    assert values["junction_capacitance"] == {
+        "farad": pytest.approx(0.5e-12),
+        "from": "field",
+    }
+    assert values["between_electrodes"] == {
+        "farad": [pytest.approx(0.125e-12), pytest.approx(0.03125e-12)],
+        "from": "field",
+    }
+    near, far = 0.125e-12, 0.03125e-12
+    capacitances = np.array(
+        [
+            [0.5e-12, -near, -far, 0.0],
+            [-near, 0.5e-12, -near, -far],
+            [-far, -near, 0.5e-12, -near],
+            [0.0, -far, -near, 0.5e-12],
+        ]
+    )
+    expected = np.linalg.solve(capacitances, [0.0, 1e-15, 0.0, 0.0])
+    assert voltage[:, -1] == pytest.approx(expected, rel=1e-3)
+
+
+def test_capacitances_of_a_row_are_not_taken_for_a_device_without_strips():
+    with pytest.raises(ValueError, match="not a row of strips"):
+        device_sensor(_device(), ["top"], row=ROW)
+
+
+def test_strip_with_less_capacitance_in_all_than_to_the_other_strips_is_an_error():
+    # 0.1 pF measured in all; the field gives 0.125 pF to the nearest strip
+    with pytest.raises(ValueError, match="to the other strips"):
+        device_sensor(_strips(capacitance_pF=0.1), ["top1", "top2"], row=ROW)
+
+
+def test_strips_of_a_row_have_the_bias_resistance_and_coupling_of_the_device():
+    sensor, _ = device_sensor(
+        _strips(bias_resistance_ohm=1.5e6, coupling_capacitance_pF=10.0),
+        ["top1", "top2"],
+        row=ROW,
+    )
+
+    assert "Rtop2_bias top2_pad 0 1500000" in sensor.lines
+    assert "Ctop2_coupling top2_pad top2_port 1e-11" in sensor.lines
+    assert "Ctop1_top2 top1_pad top2_pad" in " ".join(sensor.lines)
+    assert sensor.outputs == {"top1": "top1_port", "top2": "top2_port"}

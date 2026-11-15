@@ -13,6 +13,8 @@ from pathlib import Path
 
 from raser.core.device.build_device import Detector
 from raser.core.field.reading import changed
+from raser.core.field.solved import DEFAULT_SOLUTION
+from raser.core.field.solved import HAS_DEVSIM
 from raser.lifecycle.workflow import Workflow
 from raser.lifecycle.workflow import execute
 
@@ -66,7 +68,8 @@ def _ramp_or_weighting(kwargs, cv, wf):
 def _capacitance(kwargs):
     """The capacitance at one bias the field was saved at, the bias of the
     field itself when none is given, into the folder of that field as
-    <bias>V.cv.json."""
+    <bias>V.cv.json: the specific capacitance of the mesh, and beside it the
+    area factor of the device that makes it the capacitance of the device."""
     # devsim stays out of the command line until a solve needs it.
     from raser.core.field import saved_point
 
@@ -76,7 +79,13 @@ def _capacitance(kwargs):
     voltage = _bias(kwargs) if kwargs["cv"] is True else float(kwargs["cv"])
     folder = Path(kwargs["_run_path"])
     value, frequency = saved_point.capacitance(my_d, folder, voltage, _solver(kwargs))
-    point = {"voltage_V": voltage, "capacitance_pF": value, "frequency_Hz": frequency}
+    point = {
+        "voltage_V": voltage,
+        "specific_capacitance_pF": value,
+        "per": {1: "cm^2", 2: "cm", 3: "device"}[my_d.dimension],
+        "area_factor": float(my_d.device_dict.get("area_factor", 1.0)),
+        "frequency_Hz": frequency,
+    }
     (folder / f"{voltage}V.cv.json").write_text(json.dumps(point, indent=2))
     save_solved(str(folder), "capacitance", voltage)
     print(point)
@@ -116,7 +125,18 @@ def solve(kwargs):
     the weighting field of the read-out electrodes. With none named, the field
     with its IV and its CV along the ramp, then the weighting field. A part
     that run.json lists as solved is left as it is. With -ext nothing is
-    solved: the field is taken from a TCAD file."""
+    solved: the field is taken from a TCAD file.
+
+    --solution says how the field is found: "full" solves the electric field
+    and the weighting field on the mesh of the device; "semi_fast" takes the
+    electric field of a planar device and solves the weighting field of the
+    fully depleted device; "fast" takes both from closed forms."""
+    if kwargs["solution"] == "fast" and not HAS_DEVSIM:
+        print(f"devsim is not installed: the field of {kwargs['det_name']} is the fast solution, not the full one")
+    if kwargs["solution"] != "full":
+        raise NotImplementedError(
+            f"the {kwargs['solution']} solution of a field is not there yet: only `--solution full` is"
+        )
     if kwargs["input"] is not None:
         return _import(kwargs)
     # Temporary: the HEMT solver is outside this command for now and is only
@@ -175,7 +195,7 @@ def outdated(old, record):
     flux, other settings in the device file, or a change in what the solve
     read from the device."""
     if old["options"] != record["options"]:
-        return "another irradiation flux"
+        return "another irradiation flux or another solution"
     device, before = record["files"]["device"], old["files"]["device"]
     if device.get("field") != before.get("field"):
         return 'other settings under "field" in the device file'
@@ -201,8 +221,8 @@ WORKFLOW = Workflow(
     name="field",
     job=solve,
     command=job_command,
-    keys=("irradiation_flux",),
-    defaults={"irradiation_flux": None},
+    keys=("irradiation_flux", "solution"),
+    defaults={"irradiation_flux": None, "solution": DEFAULT_SOLUTION},
     seeds=False,
     outdated=outdated,
 )
@@ -232,6 +252,12 @@ def register(subparsers):
     parser.add_argument("-wf", help="the weighting field", action="store_true")
     parser.add_argument(
         "-irr", "--irradiation_flux", help="irradiationm flux", type=float
+    )
+    parser.add_argument(
+        "--solution",
+        choices=("full", "semi_fast", "fast"),
+        help="how the field is found: solved in full, the planar field with a solved weighting field, or closed forms; "
+        "full by default, fast where devsim is not installed",
     )
     parser.add_argument("-bias", help="bias voltage", type=float)
     parser.add_argument(

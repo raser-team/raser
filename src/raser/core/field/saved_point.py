@@ -10,9 +10,10 @@ from .physics_drift_diffusion import GetContactBiasName
 
 
 def capacitance(my_d, folder, voltage, solver):
-    """The capacitance in pF at one saved bias in V, scaled by the area factor
-    of the device as the capacitance along the ramp is: the saved state is
-    read back, settled at its bias, and given one small-signal solve."""
+    """The specific capacitance at one saved bias in V, as the mesh gives it:
+    pF/cm^2 of a one-dimensional mesh, pF/cm of a two-dimensional one, pF of
+    a three-dimensional one. The saved state is read back, settled at its
+    bias, and given one small-signal solve."""
     saved = Path(folder) / f"{float(voltage)}V.devsim"
     if not saved.exists():
         have = sorted(point.name for point in Path(folder).glob("*V.devsim"))
@@ -49,5 +50,4 @@ def capacitance(my_d, folder, voltage, solver):
     devsim.circuit_alter(name="V1", value=float(voltage))
     devsim.solve(type="ac", frequency=frequency)
     current = devsim.get_circuit_node_value(node="V1.I", solution="ssac_imag")
-    per_area = 1e12 * current / (-2 * np.pi * frequency)
-    return per_area * float(my_d.device_dict.get("area_factor", 1.0)), frequency
+    return 1e12 * current / (-2 * np.pi * frequency), frequency

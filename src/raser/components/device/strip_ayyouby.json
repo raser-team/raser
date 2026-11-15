@@ -21,7 +21,7 @@
     "avalanche_model": "vanOverstraeten",
     "enable_gain": true,
     "local_gain_integration_steps": 11,
-    "area_factor": 0.01,
+    "area_factor": 0.5,
     "default_dimension": 2,
     "read_out_contact": [
         {

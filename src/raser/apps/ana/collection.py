@@ -30,10 +30,9 @@ def event_efficiencies(jobs):
     return np.concatenate(efficiencies) if efficiencies else np.empty(0)
 
 
-def point_efficiency(jobs):
-    """Number of events of a point, the mean of their efficiencies, its
-    standard error and their standard deviation."""
-    efficiencies = event_efficiencies(jobs)
+def efficiency_spread(efficiencies):
+    """Number of efficiencies, their mean, its standard error and their
+    standard deviation."""
     count = len(efficiencies)
     if count < 2:
         raise ValueError(f"{count} events in the point, a mean and a spread need at least 2")
@@ -44,3 +43,8 @@ def point_efficiency(jobs):
         "mean_error": spread / np.sqrt(count),
         "spread": spread,
     }
+
+
+def point_efficiency(jobs):
+    """`efficiency_spread` of the events of a point."""
+    return efficiency_spread(event_efficiencies(jobs))

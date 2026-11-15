@@ -19,28 +19,14 @@ COMPONENTS = {"laser": "laser"}  # kind of file -> option
 IN_FILE = {"voltage": "device.bias.voltage"}  # option -> where it sits in a file
 
 
-def _add_arguments(parser):
+def register(subparsers):
+    parser = subparsers.add_parser("tct", help="TCT simulation")
     parser.add_argument("det_name", help="name of the detector")
     parser.add_argument("laser", nargs="?", help="name of the laser")
     parser.add_argument("-vol", "--voltage", type=float, help="bias voltage")
     parser.add_argument("-amp", "--amplifier", type=str, help="amplifier")
-
-
-def register(subparsers):
-    parser = subparsers.add_parser("tct", help="TCT simulation")
-    modes = parser.add_subparsers(dest="tct_mode", required=True)
+    WORKFLOW.attach(parser)
     parser.set_defaults(_project="det_name")
-
-    signal = modes.add_parser("signal", help="TCT signal")
-    _add_arguments(signal)
-    SIGNAL.attach(signal)
-
-    position_scan_draw = modes.add_parser(
-        "position_scan_draw", help="draw TCT position scan"
-    )
-    position_scan_draw.add_argument("det_name", help="name of the detector")
-    position_scan_draw.add_argument("laser", help="name of the laser")
-    position_scan_draw.set_defaults(_run=run_position_scan_draw)
 
 
 def _currents(kwargs):
@@ -55,10 +41,10 @@ def _waveforms(kwargs):
     tct_signal.waveforms(kwargs)
 
 
-SIGNAL = Workflow(
-    name="tct signal",
+WORKFLOW = Workflow(
+    name="tct",
     keys=KEYS,
-    defaults={"amplifier": DEFAULTS["amplifier"]},
+    defaults={"laser": DEFAULTS["laser"], "amplifier": DEFAULTS["amplifier"]},
     components=COMPONENTS,
     in_file=IN_FILE,
     slices=(
@@ -68,8 +54,3 @@ SIGNAL = Workflow(
     seeds=False,
 )
 
-
-def run_position_scan_draw(kwargs):
-    from . import tct_signal_position_scan_draw
-
-    tct_signal_position_scan_draw.main(kwargs)
