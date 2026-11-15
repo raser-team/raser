@@ -7,6 +7,7 @@ when any of that has changed.
 """
 
 import copy
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -15,6 +16,10 @@ from raser.core.device.build_device import Detector
 from raser.core.field.reading import changed
 from raser.lifecycle.workflow import Workflow
 from raser.lifecycle.workflow import execute
+
+# The full and the semi_fast solution are solved with devsim. Where it is not
+# installed the solution of a field is the fast one, unless another is asked.
+HAS_DEVSIM = importlib.util.find_spec("devsim") is not None
 
 
 def _solver(kwargs):
@@ -129,6 +134,8 @@ def solve(kwargs):
     and the weighting field on the mesh of the device; "semi_fast" takes the
     electric field of a planar device and solves the weighting field of the
     fully depleted device; "fast" takes both from closed forms."""
+    if kwargs["solution"] == "fast" and not HAS_DEVSIM:
+        print(f"devsim is not installed: the field of {kwargs['det_name']} is the fast solution, not the full one")
     if kwargs["solution"] != "full":
         raise NotImplementedError(
             f"the {kwargs['solution']} solution of a field is not there yet: only `--solution full` is"
@@ -218,7 +225,7 @@ WORKFLOW = Workflow(
     job=solve,
     command=job_command,
     keys=("irradiation_flux", "solution"),
-    defaults={"irradiation_flux": None, "solution": "full"},
+    defaults={"irradiation_flux": None, "solution": "full" if HAS_DEVSIM else "fast"},
     seeds=False,
     outdated=outdated,
 )
@@ -252,7 +259,8 @@ def register(subparsers):
     parser.add_argument(
         "--solution",
         choices=("full", "semi_fast", "fast"),
-        help="how the field is found: solved in full, the planar field with a solved weighting field, or closed forms",
+        help="how the field is found: solved in full, the planar field with a solved weighting field, or closed forms; "
+        "full by default, fast where devsim is not installed",
     )
     parser.add_argument("-bias", help="bias voltage", type=float)
     parser.add_argument(
