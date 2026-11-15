@@ -330,3 +330,55 @@ def test_noiseless_resistor_loads_the_circuit_and_adds_no_noise(tmp_path):
     }
     thermal = np.sqrt(4 * 1.380649e-23 * 300.15 * 50.0)
     assert density[0] == pytest.approx(thermal / 2, rel=1e-3)
+
+
+@pytest.mark.parametrize(("frequency_hz", "gain_db"), [(100e6, 40.0), (2e9, 37.0)])
+def test_broad_band_cividec_has_the_gain_its_maker_gives(frequency_hz, gain_db):
+    # behind a source of 50 Ohm, on a 50 Ohm load, as Gali52 above: 40 dB,
+    # 3 dB less at the 2 GHz of its bandwidth
+    source = {
+        "ports": {"in": "a", "out": "b"},
+        "elements": {
+            "R": {"between": ["a", "0"], "ohm": 50.0},
+            "wire": {"between": ["a", "b"], "ohm": 1e-6},
+        },
+    }
+    load = {
+        "ports": {"in": "a"},
+        "elements": {"R": {"between": ["a", "0"], "ohm": 50.0}},
+    }
+    chain = {
+        "stages": {
+            "source": source,
+            "BroadBandCividec": read_subcircuit(
+                component_path("afe", "BroadBandCividec.cir")
+            ),
+        },
+        "load": load,
+    }
+    dt = 1 / frequency_hz / 100
+    times = (np.arange(3000) + 0.5) * dt
+    sine = np.sin(2 * np.pi * frequency_hz * times)
+
+    voltage = solve(chain, ["top"], dt, [1e-6 * sine], planar_sensor("top", 1e-15))
+
+    settled = voltage[0][2000:]
+    amplitude = (settled.max() - settled.min()) / 2
+    assert 20 * np.log10(amplitude / 25e-6) == pytest.approx(gain_db, abs=0.25)
+    if frequency_hz == 100e6:
+        # it does not invert
+        assert np.mean(settled * sine[2000:]) > 0.45 * amplitude
+
+
+def test_broad_band_cividec_has_the_input_noise_its_maker_gives():
+    # with nothing at its input: 0.4 uA rms, through the 50 Ohm of the input
+    # and the gain of 100
+    chain = named_chain("BroadBandCividec+Termination50")
+
+    frequencies, density = output_noise_spectrum(
+        chain, ["top"], planar_sensor("top", 1e-18), 1e3, 1e12
+    )
+
+    power = density[0] ** 2
+    rms = np.sqrt(np.sum((power[1:] + power[:-1]) / 2 * np.diff(frequencies)))
+    assert rms / (50.0 * 100.0) == pytest.approx(0.4e-6, rel=0.08)
