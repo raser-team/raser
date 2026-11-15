@@ -52,7 +52,7 @@ def data(root_path, root_name):
     mean = np.mean(amplitudes)
     std = np.std(amplitudes)
     # amplitudes = [amplitude*17.925/0.138*0.8847486018957982 for amplitude in amplitudes if amplitude > mean - 3*std and amplitude < mean + 3*std]
-    amplitudes = [amplitude*17.925/0.138 for amplitude in amplitudes if amplitude > mean - 3*std and amplitude < mean + 3*std]
+    amplitudes = [amplitude*17.925/0.138 for amplitude in amplitudes if amplitude >= mean - 3*std and amplitude <= mean + 3*std]
 
     return amplitudes, file_name
 

@@ -177,7 +177,7 @@ def draw(output_path, signal, tag, dirname):
     file = ROOT.TFile(os.path.join(output_path, 'histogram', 'root', dirname, f"Histogram_{tag}.root"), "RECREATE",)
     amplitude = ROOT.TTree("tree", "amplitude")
     amp =array.array('d', [0.0])
-    amplitude.Branch("amplitude", dirname, "amplitude/D")
+    amplitude.Branch("amplitude", amp, "amplitude/D")
     # amplitude.Write()
     # file.Close()
 
