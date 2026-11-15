@@ -382,3 +382,43 @@ def test_broad_band_cividec_has_the_input_noise_its_maker_gives():
     power = density[0] ** 2
     rms = np.sqrt(np.sum((power[1:] + power[:-1]) / 2 * np.diff(frequencies)))
     assert rms / (50.0 * 100.0) == pytest.approx(0.4e-6, rel=0.08)
+
+
+@pytest.mark.parametrize("sensor_pf", [1e-6, 20.0])
+def test_charge_sensitive_cremat_has_the_step_its_maker_gives(sensor_pf):
+    # -1 fC, on a 50 Ohm load: a step of half the 1.4 V/pC of the unloaded
+    # output, upwards, at 90 percent after 3 ns + 0.22 ns per pF
+    chain = named_chain("ChargeSensitiveCremat+Termination50")
+    dt = 20e-12
+    times = (np.arange(3000) + 0.5) * dt
+    current = np.zeros(times.size)
+    current[50] = -1e-15 / dt
+
+    voltage = solve(
+        chain, ["top"], dt, [current], planar_sensor("top", sensor_pf * 1e-12)
+    )[0]
+
+    assert voltage[-1] == pytest.approx(0.7e-3, rel=0.02)
+    to_90_percent = np.interp(0.9, voltage / voltage[-1], times) - times[50]
+    assert to_90_percent == pytest.approx(3e-9 + 0.22e-9 * sensor_pf, abs=0.15e-9)
+
+
+def test_charge_sensitive_cremat_has_the_noise_slope_its_maker_gives():
+    # as the maker measures it: behind a Gaussian shaping of 1 us, here a
+    # differentiation and four integrations of 2.35 us FWHM; 3.8 electrons
+    # per pF, between 50 and 100 pF where the capacitance alone counts
+    chain = named_chain("ChargeSensitiveCremat+Termination50")
+    shaping_s = 2.35e-6 / 4.755
+    # the peak a step of 1 leaves behind the shaping: 4^4 exp(-4) / 4!
+    electron_v = 0.7e-3 / 1e-15 * 1.602176634e-19 * 256 * np.exp(-4) / 24
+
+    def electrons(sensor_f):
+        frequencies, density = output_noise_spectrum(
+            chain, ["top"], planar_sensor("top", sensor_f), 1e1, 1e10
+        )
+        omega = 2 * np.pi * frequencies * shaping_s
+        power = density[0] ** 2 * omega**2 / (1 + omega**2) ** 5
+        rms = np.sqrt(np.sum((power[1:] + power[:-1]) / 2 * np.diff(frequencies)))
+        return rms / electron_v
+
+    assert (electrons(100e-12) - electrons(50e-12)) / 50 == pytest.approx(3.8, rel=0.05)

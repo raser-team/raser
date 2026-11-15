@@ -51,7 +51,7 @@ def test_point_takes_the_events_of_all_its_jobs(tmp_path) -> None:
 def test_job_with_events_but_no_currents_file_is_an_error(tmp_path) -> None:
     folder = tmp_path / "seed_1"
     _job(folder, 0, [0.8, 1.0])
-    event = EventDeposits(4, ["Device"], [0.0], [0.0], [1.0], [0.0], [0.1])
+    event = EventDeposits(4, ["Device"], [0.0], [0.0], [1.0], [0.0], [0.1], [1000.0])
     _empty_job(folder, 1, [event])
 
     with pytest.raises(FileNotFoundError, match="job 1 recorded 1 events"):

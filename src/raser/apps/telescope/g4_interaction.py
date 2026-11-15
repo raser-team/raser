@@ -39,7 +39,7 @@ flag = 0
 # Geant4 main process
 class TelescopeG4Interaction(GeneralG4Interaction):
     def __init__(
-        self, my_d, g4experiment, g4_seed, g4_vis=False
+        self, my_d, g4experiment, g4_seed, events, g4_vis=False
     ):
         """
         Description:
@@ -59,6 +59,7 @@ class TelescopeG4Interaction(GeneralG4Interaction):
         geant4_json = app_file_path("telescope", g4experiment + ".json")
         with open(geant4_json) as f:
             g4_dic = json.load(f)
+        g4_dic["total_events"] = events
         # my_g4d = PixelDetectorConstruction(g4_dic,g4_dic['maxstep'])
 
         devicenames, localpositions = [], []
@@ -130,7 +131,7 @@ class PixelDetectorConstruction(g4b.G4VUserDetectorConstruction):
     "Pixel Detector Construction"
 
     def __init__(self, my_d, g4_dic, detector_material, maxStep=0.5):
-        g4b.G4VUserDetectorConstruction.__init__(self)
+        super().__init__()
         self.g4_dic = g4_dic
         self.solid = {}
         self.logical = {}
@@ -164,11 +165,11 @@ class PixelDetectorConstruction(g4b.G4VUserDetectorConstruction):
             self.solid["world"], material, "world"
         )
         self.physical["world"] = g4b.G4PVPlacement(
-            None,
+            g4b.cppyy.nullptr,
             g4b.G4ThreeVector(0, 0, 0),
             self.logical["world"],
             "world",
-            None,
+            g4b.cppyy.nullptr,
             False,
             0,
             self.checkOverlaps,
@@ -224,8 +225,8 @@ class PixelDetectorConstruction(g4b.G4VUserDetectorConstruction):
                     self.solid[p_name], p_mixture, p_name
                 )
 
-                g4b.G4PVPlacement(
-                    None,
+                self.physical[p_name] = g4b.G4PVPlacement(
+                    g4b.cppyy.nullptr,
                     p_translation,
                     self.logical[p_name],
                     p_name,
@@ -272,8 +273,8 @@ class PixelDetectorConstruction(g4b.G4VUserDetectorConstruction):
                     0.0 * g4b.um,
                 )
                 t_pixelname = pixel_type + "_" + str(i) + "_" + str(j) + "_" + name
-                g4b.G4PVPlacement(
-                    None,
+                self.physical[t_pixelname] = g4b.G4PVPlacement(
+                    g4b.cppyy.nullptr,
                     t_translation,
                     self.logical[pixel_type],
                     t_pixelname,
@@ -413,7 +414,7 @@ class TelescopeActionInitialization(g4b.G4VUserActionInitialization):
         localpositions,
         geant4_model,
     ):
-        g4b.G4VUserActionInitialization.__init__(self)
+        super().__init__()
         self.par_in = par_in
         self.par_out = par_out
         self.par_type = par_type
