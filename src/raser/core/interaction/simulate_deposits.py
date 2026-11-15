@@ -140,8 +140,9 @@ def write_simulated_deposits(
     g4_seed: int,
     edep_min: float | None = None,
     edep_max: float | None = None,
-) -> None:
+) -> int:
     """simulate_deposits, written to the deposits file; a file an earlier
-    start left there is replaced."""
+    start left there is replaced. Returns the number of recorded events."""
     deposits = simulate_deposits(my_d, source, g4setup, events, g4_seed, edep_min, edep_max)
     write_deposits(deposits_path, deposits)
+    return len(deposits.events)

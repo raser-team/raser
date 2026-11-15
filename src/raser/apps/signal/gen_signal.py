@@ -25,6 +25,7 @@ from raser.core.frontend.job import write_waveforms
 from raser.core.interaction.simulate_deposits import tilted
 from raser.core.interaction.simulate_deposits import write_simulated_deposits
 from raser.core.interaction.view_geometry import view_geometry
+from raser.lifecycle.slices import Ended
 
 
 def _job(kwargs):
@@ -39,7 +40,8 @@ def output(kwargs, name):
 
 
 def deposits(kwargs):
-    """The source in the g4setup, or the device alone: deposits_<job>.h5."""
+    """The source in the g4setup, or the device alone: deposits_<job>.h5.
+    A job that recorded no event ends here."""
     files = kwargs["_files"]
     my_d = bdv.Detector(kwargs["det_name"], files["device"])
     source = tilted(files["source"], kwargs.get("tilt"), my_d.l_z)
@@ -59,7 +61,7 @@ def deposits(kwargs):
             picture,
         )
         raise SystemExit
-    write_simulated_deposits(
+    recorded = write_simulated_deposits(
         output(kwargs, "deposits"),
         my_d,
         source,
@@ -69,6 +71,9 @@ def deposits(kwargs):
         kwargs.get("edep_min"),
         kwargs.get("edep_max"),
     )
+    if not recorded:
+        # the file keeps the number of generated events; nothing is left to drift
+        raise Ended
 
 
 def solved(my_d, kwargs):
