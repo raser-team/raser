@@ -19,6 +19,7 @@ ROOT.gROOT.SetBatch(True)
 from .model import Material
 from .drift import Drifted, drift, induced_charges, surviving
 from . import draw
+from .draw_drift_path import draw_drift_path
 from .currents import EventCurrents, append_currents
 
 from ..interaction.carrier_list import CarrierListFromG4P
@@ -573,8 +574,9 @@ def write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, pl
     """Drift the pairs of every event of the deposits file in the field and
     write the currents they induce to the currents file, event by event.
 
-    A currents file an earlier start left there is replaced. The currents of
-    the first `plots` events are also drawn, each in plot_path/event_<number>.
+    A currents file an earlier start left there is replaced. The first `plots`
+    events are also drawn, each in plot_path/event_<number>: the drift paths
+    with the deposits, and the currents.
     """
     deposits = read_deposits(deposits_path)
     if not deposits.events:
@@ -600,6 +602,7 @@ def write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, pl
         if drawn:
             path = os.path.join(plot_path, "event_%s" % (record.event))
             os.makedirs(path, exist_ok=True)
+            draw_drift_path(my_d, list(zip(record.x, record.y, record.z)), my_f, my_current, path)
             my_current.draw_currents(path)
             if my_d.is_strip:
                 my_current.charge_collection_strip(path)
