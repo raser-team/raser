@@ -73,6 +73,7 @@ class Workflow:
         if self.slices:
             names = [piece.name for piece in self.slices]
             parser.add_argument("--until", choices=names, help="stop after this slice")
+            parser.add_argument("--job-slices", help=argparse.SUPPRESS)
         parser.add_argument("--job-dir", help=argparse.SUPPRESS)
         parser.add_argument("--job-index", type=int, help=argparse.SUPPRESS)
         parser.set_defaults(_run=lambda kwargs: execute(self, kwargs))
@@ -94,7 +95,7 @@ def execute(workflow, kwargs):
         root = Path(project_path(*workflow.words))
         config = _read(root / "config.json")
     given = {key: kwargs[key] for key in workflow.keys if kwargs.get(key) is not None}
-    scan, points = _points(workflow, kwargs, config, given)
+    scan, points, asked = _points(workflow, kwargs, config, given)
 
     # The seed folder of this command in every point, and the jobs left in it.
     # Without seeds the point folder itself holds the run, and its one job.
@@ -109,17 +110,28 @@ def execute(workflow, kwargs):
     commit = _commit()
     same_seeds = kwargs.get("same_seeds") or config.get("same_seeds", False)
     todo = []
-    wanted = workflow.slices  # the slices this command runs
+    last = len(workflow.slices)  # the slices this command runs: those before it
     if kwargs.get("until"):
-        wanted = wanted[: 1 + [piece.name for piece in wanted].index(kwargs["until"])]
-    for name, (options, files, given_here) in points.items():
+        last = 1 + [piece.name for piece in workflow.slices].index(kwargs["until"])
+    # A slice is held by the run of the point that differs from this one only
+    # in what the slice reads: the points that hold slices of others come first.
+    order = sorted(points, key=lambda name: points[name][3].index(name) if workflow.slices else 0)
+    for name in order:
+        options, files, given_here, held_in = points[name]
         folder = root / name / label
+        # The slices to run in this folder: those that an asked point has here.
+        wanted = [
+            piece
+            for k, piece in enumerate(workflow.slices[:last])
+            if any(points[other][3][k] == name for other in asked)
+        ]
         record = {"seed": seed, "point": name, "same_seeds": same_seeds}
         if not workflow.seeds:
             record = {"point": name}
         record.update(commit=commit, options=options, files=files)
         for k, piece in enumerate(workflow.slices):
             record.setdefault("slices", {})[piece.name] = _read_by(workflow, kwargs, given_here, k)
+            record.setdefault("held_in", {})[piece.name] = held_in[k]
         record = json.loads(json.dumps(record))
         old = _read(folder / "run.json")
         why = _outdated(workflow, old, record) if old else None
@@ -137,8 +149,10 @@ def execute(workflow, kwargs):
             if stale or not workflow.seeds or not _done(folder, i).exists()
         ]
         if workflow.slices:
-            to_run = slices.left(wanted, folder, range(kwargs.get("jobs") or 1), 0 if stale else again)
-            left = sorted(set().union(*to_run.values()))
+            to_run = slices.left(
+                workflow.slices, folder, range(kwargs.get("jobs") or 1), 0 if stale else again
+            )
+            left = sorted(set().union(*(to_run[piece.name] for piece in wanted)))
         aside = "kept aside" if workflow.seeds else "replaced"
         print(f"{folder}: jobs {left}" + (f", the old run is {aside}: {why}" if stale else ""))
         for piece in wanted:
@@ -147,7 +161,14 @@ def execute(workflow, kwargs):
         # What the jobs wrote into run.json themselves stays while the run is not out of date.
         if not stale:
             record = {**{key: old[key] for key in old if key not in record}, **record}
-        todo.append((folder, left, stale, record, workflow.slices[again:]))
+        # The slices before the first one run here, each with the seed folder that holds it.
+        first = workflow.slices.index(wanted[0]) if wanted else 0
+        before = [
+            (piece.name, root / held_in[k] / label)
+            for k, piece in enumerate(workflow.slices[:first])
+        ]
+        names = ",".join(piece.name for piece in wanted)
+        todo.append((folder, left, stale, record, workflow.slices[again:], before, names))
     if kwargs["dry_run"]:
         return None
     if commit.endswith("+dirty"):
@@ -159,9 +180,19 @@ def execute(workflow, kwargs):
         if workflow.seeds:
             new["same_seeds"] = same_seeds
         _write(root / "config.json", new)
-    failed = []
-    for folder, left, stale, record, run_again in todo:
+    failed: list = []
+    for folder, left, stale, record, run_again, before, names in todo:
         slices.forget(run_again, folder)
+        waiting = [
+            i
+            for i in left
+            if any(not slices.mark(place, i, piece).exists() for piece, place in before)
+        ]
+        if waiting:
+            left = [i for i in left if i not in waiting]
+            needed = ", ".join(f"{piece} in {place}" for piece, place in before)
+            print(f"{folder}: jobs {waiting} wait for {needed}; run the command again when it is done")
+            failed.append(f"  {folder}: jobs {waiting} wait for {needed}")
         if stale and workflow.seeds:
             folder.rename(folder.with_name(f"{label}_{time.strftime('%Y_%m%d_%H%M%S')}"))
         elif stale:  # a point without seeds has no folder of its own to set aside
@@ -172,7 +203,7 @@ def execute(workflow, kwargs):
             (folder / "batch").mkdir(parents=True, exist_ok=True)
             _write(folder / "run.json", record)
             try:
-                _start(workflow, kwargs, folder, left, alone=len(todo) == 1)
+                _start(workflow, {**kwargs, "job_slices": names}, folder, left, alone=len(todo) == 1)
             except Exception as error:
                 if len(todo) == 1:
                     raise
@@ -191,9 +222,10 @@ def finished(workflow, kwargs, root) -> list[tuple[str, dict, list[tuple[Path, i
     A point's jobs come from all its seed folders that ran with the options and
     files the experiment has now, whatever their seed and commit. Folders kept
     aside by a rerun are left out: their name is not seed_<their seed>."""
-    _, points = _points(workflow, kwargs, _read(root / "config.json"), {})
+    _, points, asked = _points(workflow, kwargs, _read(root / "config.json"), {})
     result = []
-    for name, (options, files, _) in points.items():
+    for name in asked:
+        options, files = points[name][:2]
         now = json.loads(json.dumps({"options": options, "files": files}))
         done = []
         for path in sorted((root / name).glob("*/run.json" if workflow.seeds else "run.json")):
@@ -236,6 +268,7 @@ def _points(workflow, kwargs, config, given) -> tuple[dict, dict]:
     One point for every combination of the scanned values. A point's folder is
     named by the scanned options that differ from the unscanned run."""
     fixed = {**workflow.defaults, **config.get("set", {}), **given}
+    same_seeds = kwargs.get("same_seeds") or config.get("same_seeds", False)
     # "names" in the config gives an address a short name: the scan may be
     # written with it, and the folders are named by it.
     names = config.get("names", {})
@@ -254,14 +287,33 @@ def _points(workflow, kwargs, config, given) -> tuple[dict, dict]:
             )
     # A scanned address is not given in the unscanned run: there it takes the file's value.
     base, _ = _point(workflow, kwargs, {**dict.fromkeys(key for key in scan if "." in key), **fixed})
-    points = {}  # folder inside the experiment -> (options, files, the options given)
-    for combination in itertools.product(*scan.values()):
-        given_here = {**fixed, **dict(zip(scan, combination))}
+    # folder inside the experiment -> (options, files, the options given, per
+    # slice the folder of the point whose run holds it)
+    points: dict = {}
+
+    def point(values) -> str:
+        """The folder of the point where the scanned options have `values`.
+        Each of its slices is held by the point that leaves out the scanned
+        options the slice and the ones before it do not read, as far as those
+        options do not make a measurement of its own (Slice.new_events)."""
+        given_here = {**fixed, **values}
         options, files = _point(workflow, kwargs, given_here)
-        changed = [key for key in scan if options[key] != base[key]]
+        changed = [key for key in values if options[key] != base[key]]
         name = "_".join(f"{label[key]}_{_text(options[key])}" for key in changed)
-        points[name] = (options, files, given_here)
-    return scan, points
+        if name not in points:
+            points[name] = (options, files, given_here, held_in := [])
+            for k in range(len(workflow.slices)):
+                read = {
+                    key: v
+                    for key, v in values.items()
+                    if (owner := slices.owner(workflow.slices, key)) <= k
+                    or (not same_seeds and workflow.slices[owner].new_events)
+                }
+                held_in.append(name if len(read) == len(values) else point(read))
+        return name
+
+    asked = [point(dict(zip(scan, combination))) for combination in itertools.product(*scan.values())]
+    return scan, points, list(dict.fromkeys(asked))
 
 
 def _point(workflow, kwargs, options) -> tuple[dict, dict]:
@@ -325,8 +377,8 @@ def _start(workflow, kwargs, folder, left, alone) -> None:
         tail.append(kwargs["det_name"])
     if workflow.command:
         tail += workflow.command(kwargs)
-    if kwargs.get("until"):
-        tail += ["--until", kwargs["until"]]
+    if kwargs.get("job_slices"):
+        tail += ["--job-slices", kwargs["job_slices"]]
     if single:  # one point among several: a process of its own, as on the cluster
         _own_process(workflow, kwargs, [*kwargs["_entry_command_prefix"], *tail, "--job-dir", str(folder)])
         return
@@ -358,21 +410,39 @@ def _run_job(workflow, kwargs):
     options["_run_path"] = str(folder)
     options["_run_batch_path"] = str(folder / "batch")
     options["_files"] = record["files"]
-    if workflow.seeds:
+
+    def seed(piece=None) -> None:
+        """Seed the generators for this job, or for one slice of it. A slice
+        is run by the point that holds it, so the points that read what it
+        wrote all have the numbers it drew there."""
         from raser.core.seeding import seed_generators  # loads ROOT
 
-        source = f"{record['seed']}/{index}"
-        if not record["same_seeds"]:
-            source = f"{record['seed']}/{record['point']}/{index}"
-        digest = hashlib.sha256(source.encode()).digest()
+        point = [] if record["same_seeds"] else [record["point"]]
+        words = [record["seed"], *point, index, *filter(None, [piece])]
+        digest = hashlib.sha256("/".join(map(str, words)).encode()).digest()
         options["seed"] = 1 + int.from_bytes(digest[:8], "big") % (2**31 - 1)
         seed_generators(options["seed"])
-    if workflow.slices:
-        if not slices.run(workflow.slices, folder, index, options, kwargs.get("until")):
-            return  # stopped after --until: the job is not finished
-    else:
+
+    if not workflow.slices:
+        if workflow.seeds:
+            seed()
         workflow.job(options)
-    _done(folder, index).touch()
+        _done(folder, index).touch()
+        return
+    # The seed folder of each slice: the one of this run in the point that holds it.
+    root = folder.parent if workflow.seeds else folder
+    root = root.parent if record["point"] else root
+    label = folder.name if workflow.seeds else ""
+    folders = {name: root / point / label for name, point in record["held_in"].items()}
+    options["_slice_batch_paths"] = {name: str(place / "batch") for name, place in folders.items()}
+    wanted = (kwargs.get("job_slices") or ",".join(folders)).split(",")
+
+    def before(piece) -> None:
+        if workflow.seeds:
+            seed(piece.name)
+
+    if slices.run(workflow.slices, folders, index, options, wanted, before):
+        _done(folder, index).touch()
 
 
 def _done(folder, index) -> Path:

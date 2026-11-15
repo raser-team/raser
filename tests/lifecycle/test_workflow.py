@@ -799,7 +799,8 @@ def _chain(ran: list[tuple[str, Any]], fail: str | None = None) -> Workflow:
                 raise RuntimeError(name)
             ran.append((name, options[key]))
 
-        return Slice(name, run, keys=(key,), kinds=("afe",) if key == "amplifier" else ())
+        last = key == "amplifier"  # the electronics: it reads its file, and measures nothing
+        return Slice(name, run, keys=(key,), kinds=("afe",) if last else (), new_events=not last)
 
     return Workflow(
         name="toy",
@@ -950,3 +951,180 @@ def test_without_seeds_a_run_out_of_date_runs_every_slice_again_in_its_folder(
 
     assert ran == [("deposits", "alpha"), ("currents", 200.0), ("waveforms", "standard")]
     assert _record(tmp_path / "toy")["options"]["source"] == "alpha"
+
+
+def _marks(folder: Path) -> list[str]:
+    return sorted(path.name for path in (folder / "batch").glob("*.done"))
+
+
+def test_a_scanned_option_of_a_slice_with_new_events_runs_every_slice_in_each_point(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], ran: list[tuple[str, Any]], tmp_path: Path
+) -> None:
+    execute(_chain(ran), _chain_kwargs(scan=["voltage=200,300"]))
+
+    assert ran == [
+        ("deposits", "beta"),
+        ("currents", 200),
+        ("waveforms", "standard"),
+        ("deposits", "beta"),
+        ("currents", 300),
+        ("waveforms", "standard"),
+    ]
+    assert "deposits_0.done" in _marks(tmp_path / "toy" / "voltage_300" / "seed_42")
+    assert seeded[0] != seeded[3]  # the two points have deposits of their own
+
+
+def test_with_same_seeds_the_slices_before_the_scanned_one_stay_in_the_unscanned_point(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], ran: list[tuple[str, Any]], tmp_path: Path
+) -> None:
+    execute(_chain(ran), _chain_kwargs(scan=["voltage=200,300"], same_seeds=True))
+
+    assert ran == [
+        ("deposits", "beta"),
+        ("currents", 200),
+        ("waveforms", "standard"),
+        ("currents", 300),
+        ("waveforms", "standard"),
+    ]
+    experiment = tmp_path / "toy"
+    assert _marks(experiment / "seed_42") == [
+        "currents_0.done",
+        "deposits_0.done",
+        "job_0.done",
+        "waveforms_0.done",
+    ]
+    assert _marks(experiment / "voltage_300" / "seed_42") == [
+        "currents_0.done",
+        "job_0.done",
+        "waveforms_0.done",
+    ]
+
+
+def test_the_unscanned_point_runs_only_the_slices_other_points_have_in_it(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], ran: list[tuple[str, Any]], tmp_path: Path
+) -> None:
+    execute(_chain(ran), _chain_kwargs(scan=["amplifier=fast,slow"]))
+
+    assert ran == [
+        ("deposits", "beta"),
+        ("currents", 200.0),
+        ("waveforms", "fast"),
+        ("waveforms", "slow"),
+    ]
+    experiment = tmp_path / "toy"
+    assert _marks(experiment / "seed_42") == ["currents_0.done", "deposits_0.done"]
+    assert _marks(experiment / "amplifier_slow" / "seed_42") == ["job_0.done", "waveforms_0.done"]
+    points = workflow_module.finished(_chain(ran), _chain_kwargs(), experiment)
+    assert [(name, len(done)) for name, _, done in points] == [("amplifier_fast", 1), ("amplifier_slow", 1)]
+
+
+def test_a_slice_is_told_the_batch_folder_of_every_slice(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], tmp_path: Path
+) -> None:
+    told: list[tuple[str, Any, dict[str, str], int]] = []
+
+    def piece(name: str, key: str) -> Slice:
+        def run(options: dict[str, Any]) -> None:
+            told.append((name, options[key], options["_slice_batch_paths"], options["seed"]))
+
+        return Slice(name, run, keys=(key,))
+
+    workflow = Workflow(
+        name="toy",
+        slices=(piece("deposits", "source"), piece("currents", "voltage")),
+        keys=("source", "voltage"),
+        defaults={"source": "beta"},
+        in_file={"voltage": "device.bias.voltage"},
+    )
+    execute(workflow, _chain_kwargs(scan=["voltage=300,400"], same_seeds=True))
+    alone = len(told)
+    execute(workflow, _chain_kwargs(scan=["voltage=300"], same_seeds=True))
+
+    experiment = tmp_path / "toy"
+    assert [(name, value) for name, value, _, _ in told[:alone]] == [
+        ("deposits", "beta"),
+        ("currents", 300),
+        ("currents", 400),
+    ]
+    assert told[1][2] == {
+        "deposits": str(experiment / "seed_42" / "batch"),
+        "currents": str(experiment / "voltage_300" / "seed_42" / "batch"),
+    }
+    assert told[alone:] == []  # the second command finds everything done
+
+
+def test_a_point_whose_earlier_slice_failed_elsewhere_is_not_started_and_is_reported(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], ran: list[tuple[str, Any]]
+) -> None:
+    with pytest.raises(SystemExit, match="wait for deposits"):
+        execute(_chain(ran, fail="deposits"), _chain_kwargs(scan=["voltage=300,400"], same_seeds=True))
+
+    assert ran == []
+
+
+def _seeds_of_slices(name: str, scan: list[str], same_seeds: bool) -> dict[tuple[str, Any], int]:
+    """(slice, the value of its own option) -> its seed, for one command of the workflow `name`."""
+    told: dict[tuple[str, Any], int] = {}
+
+    def piece(name: str, key: str) -> Slice:
+        return Slice(name, lambda options: told.update({(name, options[key]): options["seed"]}), keys=(key,))
+
+    workflow = Workflow(
+        name=name,
+        slices=(piece("deposits", "source"), piece("currents", "voltage")),
+        keys=("source", "voltage"),
+        defaults={"source": "beta"},
+        in_file={"voltage": "device.bias.voltage"},
+    )
+    execute(workflow, _chain_kwargs(scan=scan, same_seeds=same_seeds))
+    return told
+
+
+def test_each_slice_draws_numbers_of_its_own_and_same_seeds_gives_the_points_the_same(
+    started: list[Any], seeded: list[int], disk: dict[str, Any]
+) -> None:
+    unscanned = _seeds_of_slices("one", [], same_seeds=False)
+    scanned = _seeds_of_slices("other", ["voltage=300,400"], same_seeds=False)
+    shared = _seeds_of_slices("third", ["voltage=300,400"], same_seeds=True)
+    alone = _seeds_of_slices("fourth", [], same_seeds=True)
+
+    assert unscanned["deposits", "beta"] != unscanned["currents", 200.0]
+    assert scanned["currents", 300] != scanned["currents", 400]
+    assert shared["currents", 300] == shared["currents", 400]
+    assert shared["deposits", "beta"] == alone["deposits", "beta"]
+
+
+def test_a_second_command_starts_no_job_in_a_point_that_only_holds_slices_of_others(
+    started: list[Any],
+    seeded: list[int],
+    disk: dict[str, Any],
+    ran: list[tuple[str, Any]],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    execute(_chain(ran), _chain_kwargs(scan=["amplifier=fast,slow"]))
+    capsys.readouterr()
+
+    execute(_chain(ran), _chain_kwargs(scan=["amplifier=fast,slow"]))
+
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0].endswith("toy/seed_42: jobs []")
+    assert [line.split() for line in lines[1:3]] == [["deposits", "reused"], ["currents", "reused"]]
+    assert lines[3].endswith("amplifier_fast/seed_42: jobs []")
+
+
+def test_a_slice_does_not_start_while_one_before_it_is_not_done_where_it_is_held(tmp_path: Path) -> None:
+    from raser.lifecycle import slices
+
+    ran: list[str] = []
+    chain = (Slice("deposits", lambda options: ran.append("deposits")), Slice("currents", lambda options: ran.append("currents")))
+    folders = {"deposits": tmp_path / "upstream", "currents": tmp_path / "here"}
+    for folder in folders.values():
+        (folder / "batch").mkdir(parents=True)
+
+    with pytest.raises(RuntimeError, match="currents of job 0 needs deposits"):
+        slices.run(chain, folders, 0, {}, ["currents"], lambda piece: None)
+    assert ran == []
+
+    slices.mark(folders["deposits"], 0, "deposits").touch()
+    assert slices.run(chain, folders, 0, {}, ["currents"], lambda piece: None)
+    assert ran == ["currents"]
