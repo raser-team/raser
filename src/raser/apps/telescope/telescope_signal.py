@@ -578,9 +578,7 @@ def currents(kwargs):
         setup["collection_window_s"],
     )
     draw_charge(my_hit_charge)
-    my_telescope_charge = Telescope(my_d,my_g4,my_hit_charge) 
-    my_hit_test = PixelHitTest(my_d, my_g4)
-    my_telescope_test = Telescope(my_d,my_g4,my_hit_test)
+    Telescope(my_d, my_g4, my_hit_charge)
 
 
 def draw_charge(my_charge):
