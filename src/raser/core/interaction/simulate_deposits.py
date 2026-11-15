@@ -23,6 +23,7 @@ DEVICE_ALONE = {
 }
 
 _DESCRIPTIVE_KEYS = ("name", "kind", "description")
+_PARTICLE_KEYS = ("par_in", "par_out", "par_randx", "par_randy", "par_type", "par_energy")
 
 
 def g4_configuration(
@@ -35,7 +36,10 @@ def g4_configuration(
     """The configuration Geant4 runs with.
 
     The g4setup gives the surroundings and the step limit, the source the
-    particle; the number of events and the window of the energy deposited
+    particle. A source with "particles" fires all of them in every event:
+    each takes from the source what it does not give itself (par_in, par_out,
+    par_randx, par_randy, par_type, par_energy).
+    The number of events and the window of the energy deposited
     in the device [MeV] are of the experiment and replace whatever the two
     files say.
     """
@@ -43,6 +47,11 @@ def g4_configuration(
     configuration.update(copy.deepcopy(source))
     for key in _DESCRIPTIVE_KEYS:
         configuration.pop(key, None)
+    if "particles" in configuration:
+        configuration["particles"] = [
+            {**{key: configuration[key] for key in _PARTICLE_KEYS if key in configuration}, **one}
+            for one in configuration["particles"]
+        ]
     configuration["total_events"] = int(events)
     configuration["edep_min"] = edep_min
     configuration["edep_max"] = edep_max
@@ -54,7 +63,7 @@ def tilted(source: dict, angle: float | None, l_z: float) -> dict:
 
     The device does not move in Geant4: the points par_in and par_out [um]
     of the source are turned by `angle` about the axis along y through the
-    centre of the device, (0, 0, l_z / 2). A source along +z comes, tilted by
+    centre of the device, (0, 0, l_z / 2), and so are those of its "particles". A source along +z comes, tilted by
     a positive angle, with a component along +x. The spread par_randx and
     par_randy stays along x and y.
     """
@@ -66,10 +75,12 @@ def tilted(source: dict, angle: float | None, l_z: float) -> dict:
         )
     cos, sin = math.cos(math.radians(angle)), math.sin(math.radians(angle))
     turned = copy.deepcopy(source)
-    for key in ("par_in", "par_out"):
-        x, y, z = source[key]
-        z -= l_z / 2
-        turned[key] = [x * cos + z * sin, y, -x * sin + z * cos + l_z / 2]
+    for one in (turned, *turned.get("particles", ())):
+        for key in ("par_in", "par_out"):
+            if key in one:
+                x, y, z = one[key]
+                z -= l_z / 2
+                one[key] = [x * cos + z * sin, y, -x * sin + z * cos + l_z / 2]
     return turned
 
 

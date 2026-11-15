@@ -118,6 +118,7 @@ class GeneralG4Interaction:
             self.events_angles,
             self.edep_window,
             self.geant4_model,
+            **({"particles": g4_dic["particles"]} if "particles" in g4_dic else {}),
         )
         self.g4RunManager.SetUserInitialization(self.action_initialization)
 
