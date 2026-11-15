@@ -4,7 +4,9 @@ Each takes what its stage needs out of the run.json of the seed folder
 (kwargs["_files"], the folders, the job) and calls the entry of the module
 that owns the stage. Nothing is written onto the device.
 
-Written into batch/ of the seed folder, one file per job and slice:
+Written into batch/ of the seed folder that holds the slice, which is the
+one of another point when the slice does not read what makes this point
+differ; one file per job and slice:
     deposits_<job>.h5    energy deposits and pairs of the recorded events
     currents_<job>.h5    induced current of every electrode, event by event
     waveforms_<job>.h5   output voltage of the electronics, event by event
@@ -29,7 +31,10 @@ def _job(kwargs):
 
 
 def _file(kwargs, name):
-    return os.path.join(kwargs["_run_batch_path"], "%s_%s.h5" % (name, _job(kwargs)))
+    """The file of the slice `name` of this job, in the point that holds the slice."""
+    return os.path.join(
+        kwargs["_slice_batch_paths"][name], "%s_%s.h5" % (name, _job(kwargs))
+    )
 
 
 def deposits(kwargs):
@@ -87,14 +92,18 @@ def currents(kwargs):
         my_d,
         my_f,
         int(kwargs["plots"]),
-        os.path.join(kwargs["_run_path"], "plots", "job_%s" % _job(kwargs)),
+        os.path.join(
+            os.path.dirname(kwargs["_slice_batch_paths"]["currents"]),
+            "plots",
+            "job_%s" % _job(kwargs),
+        ),
     )
 
 
 def waveforms(kwargs):
     """The currents through the sensor circuit of the device and the chain the
     amplifier names: waveforms_<job>.h5. The noise of the circuit is drawn
-    with the seed of the job."""
+    with the seed lifecycle gives the slice."""
     my_d = bdv.Detector(kwargs["det_name"], kwargs["_files"]["device"])
     sensor, _ = device_sensor(
         my_d, electrode_names(my_d.read_out_contact, my_d.read_ele_num)

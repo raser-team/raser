@@ -88,7 +88,8 @@ SLICES = (
         kinds=("source", "g4setup"),
     ),
     Slice("currents", _currents, keys=("voltage", "irradiation", "plots")),
-    Slice("waveforms", _waveforms, keys=("amplifier",)),
+    # The electronics works on what was measured: its points read the same currents.
+    Slice("waveforms", _waveforms, keys=("amplifier",), new_events=False),
 )
 
 
