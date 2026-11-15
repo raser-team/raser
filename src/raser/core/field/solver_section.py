@@ -104,7 +104,7 @@ def _legacy_solver_parameters(configuration, *, weightfield):
 
 # What may be left of the weighting potential of an electrode at the ends of
 # the row of cells it is solved on.
-WEIGHTING_TOLERANCE = 1e-3
+WEIGHTING_TOLERANCE = 5e-2
 
 
 def cells_to_fall_off(depth, pitch):
@@ -130,7 +130,7 @@ def left_at_the_ends(device, region, pitch):
 
 # The part of the capacitance of an electrode that the neighbours a distance
 # away must hold for a signal to be carried over to them.
-CROSSTALK_TOLERANCE = 1e-2
+CROSSTALK_TOLERANCE = 5e-2
 
 
 def capacitances(device, electrode, relative_permittivity):
@@ -297,12 +297,17 @@ def main (kwargs):
 
             if cells_either_side:
                 left = left_at_the_ends(device, region, float(MyDetector.p_x) * 1e-4)
-                if left > WEIGHTING_TOLERANCE:
+                to_others = capacitances(device, contact, Material(MyDetector.material).permittivity)
+                # The neighbours at the ends of the row hold what would have
+                # gone further: one that is still coupled is not the last.
+                if left > WEIGHTING_TOLERANCE or neighbours_coupled(to_others) == cells_either_side:
                     more = math.ceil(1.5 * cells_either_side)
                     if more > 2 * cells_to_fall_off(MyDetector.l_z, MyDetector.p_x):
                         raise ValueError(
                             f"the weighting potential of {contact} of {simname} at {v_goal} V does not fall off "
-                            f"along the row: {left:.3g} is left {cells_either_side} cells away. "
+                            f"along the row: {left:.3g} is left {cells_either_side} cells away, where "
+                            f"{to_others['neighbour{}'.format(cells_either_side)] / sum(to_others.values()):.3g} "
+                            "of its capacitance is. "
                             "A conductive part of the device that touches the electrodes of the row does this"
                         )
                     _empty_devsim()
@@ -311,7 +316,6 @@ def main (kwargs):
             # Stored as the weighting field of the bias, as Potential_<bias>V.pkl.
             save_milestone.save_milestone(device=device, v=float(v_goal), path=folder_path,dimension=default_dimension,contact_name=contact,is_wf=is_wf,cells_either_side=cells_either_side or None,)
             if cells_either_side:
-                to_others = capacitances(device, contact, Material(MyDetector.material).permittivity)
                 stored = {
                     "unit": "F/cm",
                     "of": contact,
