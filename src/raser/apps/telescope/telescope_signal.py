@@ -187,7 +187,10 @@ class Telescope:
                 k2 += t1**2
             k1 = k1**2
             kt = 1/(N-float(k1/k2))
-            Resolution_DUT[i] = [Resolution_Tol[i][0]/(kt+1),Resolution_Tol[i][1]/(kt+1),]
+            # kt is the leverage of layer i in a line through all N layers; the
+            # residual to a line through the other layers has the variance
+            # sigma^2/(1-kt) when every layer has the resolution sigma
+            Resolution_DUT[i] = [Resolution_Tol[i][0]*(1-kt)**0.5,Resolution_Tol[i][1]*(1-kt)**0.5,]
         
     #final data to be saved
     def save(self):
