@@ -10,6 +10,7 @@ from raser.core.device import build_device as bdv
 from raser.core.interaction.deposits import deposits_of_steps
 from raser.core.interaction.deposits import write_deposits
 from raser.core.interaction.ionization import ionized_pairs
+from raser.lifecycle.slices import Ended
 
 from . import bmos
 
@@ -33,3 +34,5 @@ def deposits(kwargs):
     for event in found.events:
         event.pairs, _ = ionized_pairs(event, my_d.material)
     write_deposits(output(kwargs, "deposits"), found)
+    if not found.events:
+        raise Ended  # no bunch reached the detector: there is no current to drift
