@@ -165,6 +165,7 @@ def execute(workflow, kwargs):
         if stale and workflow.seeds:
             folder.rename(folder.with_name(f"{label}_{time.strftime('%Y_%m%d_%H%M%S')}"))
         elif stale:  # a point without seeds has no folder of its own to set aside
+            slices.forget(workflow.slices, folder)
             for i in left:
                 _done(folder, i).unlink(missing_ok=True)
         if left:

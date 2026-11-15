@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -936,3 +937,16 @@ def test_under_another_commit_every_slice_runs_again_and_the_old_run_is_kept(
 
     assert ran == [("deposits", "beta"), ("currents", 200.0), ("waveforms", "standard")]
     assert len(_kept(tmp_path / "toy")) == 1
+
+
+def test_without_seeds_a_run_out_of_date_runs_every_slice_again_in_its_folder(
+    started: list[Any], disk: dict[str, Any], ran: list[tuple[str, Any]], tmp_path: Path
+) -> None:
+    workflow = replace(_chain(ran), seeds=False)
+    execute(workflow, _chain_kwargs())
+    del ran[:]
+
+    execute(workflow, _chain_kwargs(source="alpha"))
+
+    assert ran == [("deposits", "alpha"), ("currents", 200.0), ("waveforms", "standard")]
+    assert _record(tmp_path / "toy")["options"]["source"] == "alpha"
