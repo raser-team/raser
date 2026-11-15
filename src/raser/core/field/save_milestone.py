@@ -296,7 +296,7 @@ def milestone_save_2D(device, v, path, is_tcad, is_flip=False):
             pickle.dump(data, file)
 
 
-def milestone_save_wf_2D(device, v, path, contact_name, is_tcad, is_flip=False):
+def milestone_save_wf_2D(device, v, path, contact_name, is_tcad, is_flip=False, cells_either_side=None):
     save_wf_path = os.path.join(path,contact_name)
     create_path(save_wf_path)
 
@@ -339,6 +339,9 @@ def milestone_save_wf_2D(device, v, path, contact_name, is_tcad, is_flip=False):
     metadata = {}
     metadata['voltage'] = v
     metadata['dimension'] = 2
+    if cells_either_side is not None:
+        # the potential is on a row of cells, the electrode in the middle one
+        metadata['cells_either_side'] = cells_either_side
 
     for name in ['Potential']: # scalar field on mesh point (instead of on edge)
         with open(field_pickle_path(save_wf_path, name, v),'wb') as file:
@@ -553,7 +556,7 @@ def save_solved(path, asset, at):
     save_record(path, solved=solved)
 
 
-def save_milestone(device, v, path, dimension, contact_name, is_wf, is_tcad = False, is_flip=False):
+def save_milestone(device, v, path, dimension, contact_name, is_wf, is_tcad = False, is_flip=False, cells_either_side=None):
     if dimension == 1:
         if is_wf == True:
             milestone_save_wf_1D(device, v, path, contact_name, is_tcad)
@@ -563,7 +566,7 @@ def save_milestone(device, v, path, dimension, contact_name, is_wf, is_tcad = Fa
             print("==========RASER info ==========\nis_wf only has 2 values, True or False\n==========Error=========")
     if dimension == 2:
         if is_wf == True:
-            milestone_save_wf_2D(device, v, path, contact_name, is_tcad, is_flip)
+            milestone_save_wf_2D(device, v, path, contact_name, is_tcad, is_flip, cells_either_side)
         elif is_wf == False:
             milestone_save_2D(device, v, path, is_tcad, is_flip)
         else:

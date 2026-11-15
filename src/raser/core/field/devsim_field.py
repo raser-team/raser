@@ -218,6 +218,12 @@ class DevsimField:
                     len(WeightingPotentialNotUniform['points']), -1
                 )
                 self.weighting_ranges = list(zip(points.min(axis=0).tolist(), points.max(axis=0).tolist()))
+                # Cells of the row on either side of the electrode's own: what
+                # the solve stored, or what the device lists for a potential
+                # that was not solved here.
+                self.cells_either_side = WeightingPotentialNotUniform['metadata'].get(
+                    'cells_either_side', self.read_out_contact[0].get('x_span', 0)
+                )
     
     def set_trap_p(self, TrappingRate_pFile):
         TrappingRate_pNotUniform = self._stored(TrappingRate_pFile, "hole trapping rate")
@@ -273,7 +279,7 @@ class DevsimField:
         the next. Where the device is wider than the mesh the field was
         solved on, a position is taken back into one cell of that mesh, the
         middle one if it holds several. A cell is as wide as the weighting
-        potential of the one listed electrode divided by the cells it spans.
+        potential of the one listed electrode divided by the cells it is on.
         """
         position = {"x": x, "y": y, "z": z}
         if len(self.read_out_contact) != 1:
@@ -283,7 +289,8 @@ class DevsimField:
                 continue
             start, end = (edge * 1e-4 for edge in self.bounds[axis])
             if end - start > (high - low) * (1 + 1e-6):
-                cell = (last - first) / (2 * self.read_out_contact[0][axis + "_span"] + 1)
+                span = self.cells_either_side if axis == "x" else self.read_out_contact[0].get("y_span", 0)
+                cell = (last - first) / (2 * span + 1)
                 middle = round((high - low) / cell) // 2
                 position[axis] = low + middle * cell + (position[axis] - start) % cell
         return [position[axis] for axis in self.axes]

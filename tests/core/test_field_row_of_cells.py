@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from types import SimpleNamespace
 
 import numpy as np
@@ -9,7 +10,7 @@ import pytest
 def _strips(cells: int) -> SimpleNamespace:
     """A slab 10 um deep with `cells` cells 4 um wide side by side: on top of
     each a strip from 1 to 3 um of its cell, below all of them one electrode.
-    One strip is listed, read out over one neighbour on either side."""
+    One strip is listed."""
     centimetre = 1e-4
     lines = [{"dir": "x", "pos": depth * centimetre, "ps": centimetre} for depth in (-1, 0, 10, 11)]
     lines += [{"dir": "y", "pos": across * centimetre, "ps": centimetre} for across in (0, 4 * cells)]
@@ -30,7 +31,7 @@ def _strips(cells: int) -> SimpleNamespace:
     ]
     return SimpleNamespace(
         device_dict={
-            "read_out_contact": [{"name": "top", "x_span": 1, "y_span": 0}],
+            "read_out_contact": [{"name": "top"}],
             "mesh": {"2D_mesh": {"mesh_line": lines, "region": regions, "contact": contacts}},
         },
         det_name="slab", dimension=2, device="slab", region="slab", file=None, p_x=4.0,
@@ -53,6 +54,16 @@ def _nodes(contact: str | None = None) -> np.ndarray:
 WEIGHTING = {"weightfield": True, "ac-weightfield": False}
 
 
+def _clear() -> None:
+    """devsim without its devices and meshes; its solver stays as loaded."""
+    import devsim
+
+    for device in devsim.get_device_list():
+        devsim.delete_device(device=device)
+    for mesh in devsim.get_mesh_list():
+        devsim.delete_mesh(mesh=mesh)
+
+
 @pytest.mark.devsim
 def test_a_cell_laid_side_by_side_is_the_mesh_of_the_row_with_the_listed_electrode_in_the_middle() -> (
     None
@@ -64,14 +75,14 @@ def test_a_cell_laid_side_by_side_is_the_mesh_of_the_row_with_the_listed_electro
     try:
         DevsimMesh(_strips(3), WEIGHTING).create2DMesh()
         whole = {tuple(place) for place in _nodes()}
-        devsim.reset_devsim()
+        _clear()
 
         DevsimMesh(_strips(1), WEIGHTING, cells_either_side=1).createRowOfCells()
         row = _nodes()
         contacts = set(devsim.get_contact_list(device="slab"))
         read_out, neighbours, back = _nodes("top"), _nodes("neighbours"), _nodes("bot")
     finally:
-        devsim.reset_devsim()
+        _clear()
 
     # the nodes two cells share are there once
     assert len(row) == len(whole)
@@ -84,8 +95,6 @@ def test_a_cell_laid_side_by_side_is_the_mesh_of_the_row_with_the_listed_electro
 
 @pytest.mark.devsim
 def test_a_mesh_that_is_not_one_pitch_wide_is_not_laid_side_by_side() -> None:
-    import devsim
-
     from raser.core.field.create_mesh import DevsimMesh
 
     device = _strips(1)
@@ -94,4 +103,36 @@ def test_a_mesh_that_is_not_one_pitch_wide_is_not_laid_side_by_side() -> None:
         with pytest.raises(ValueError, match="4 um wide, not one pitch of 5 um"):
             DevsimMesh(device, WEIGHTING, cells_either_side=1).createRowOfCells()
     finally:
-        devsim.reset_devsim()
+        _clear()
+
+
+@pytest.mark.parametrize(("depth", "pitch"), [(305.0, 75.5), (50.0, 25.0), (300.0, 20.0)])
+def test_the_cells_of_a_row_leave_the_tolerance_at_its_ends(depth: float, pitch: float) -> None:
+    from raser.core.field.solver_section import WEIGHTING_TOLERANCE, cells_to_fall_off
+
+    def left(cells: int) -> float:
+        # what reaches the end of the row, doubled by its reflection there
+        return 2 * math.exp(-math.pi * cells * pitch / depth)
+
+    cells = cells_to_fall_off(depth, pitch)
+
+    assert left(cells) <= WEIGHTING_TOLERANCE < left(cells - 1)
+
+
+@pytest.mark.devsim
+def test_what_is_left_of_a_potential_is_looked_for_in_the_two_end_cells() -> None:
+    import devsim
+
+    from raser.core.field.create_mesh import DevsimMesh
+    from raser.core.field.solver_section import left_at_the_ends
+
+    try:
+        DevsimMesh(_strips(1), WEIGHTING, cells_either_side=2).createRowOfCells()
+        across = _nodes()[:, 1]  # five cells of 4 um
+        potential = np.select([across < 4, across > 16, abs(across - 10) <= 2], [0.3, 0.2, 1.0], 0.7)
+        devsim.node_solution(device="slab", region="slab", name="Potential")
+        devsim.set_node_values(device="slab", region="slab", name="Potential", values=potential.tolist())
+
+        assert left_at_the_ends("slab", "slab", 4e-4) == pytest.approx(0.3)
+    finally:
+        _clear()
