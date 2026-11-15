@@ -9,6 +9,7 @@ from raser.core.metrics.reconstruction import get_CFD50
 from raser.core.metrics.reconstruction import get_CoG
 from raser.core.metrics.reconstruction import net_pulse
 from raser.core.metrics.reconstruction import pulse_polarity
+from raser.core.metrics.resolution import core_width
 
 from .files import job_file
 from .files import slice_file
@@ -78,3 +79,29 @@ def event_times(jobs, threshold, amplitude_threshold):
         )
     table = np.array(rows, dtype="float64").reshape(len(rows), len(names))
     return len(events), polarity, {name: table[:, k] for k, name in enumerate(names)}
+
+
+def point_resolution(jobs, threshold, amplitude_threshold):
+    """Time resolution of one point: for every time of `event_times`, the
+    width of the core of time - truth over the events above the amplitude
+    threshold.
+
+    Returns a dict:
+        events    number of events
+        selected  number of them above the amplitude threshold
+        polarity  sign of the pulses, +1 or -1
+        times     for ToA, CoG, CFD10 ... CFD90 what `core_width` gives [s],
+                  and `missing`: the selected events that have no such time
+    """
+    count, polarity, times = event_times(jobs, threshold, amplitude_threshold)
+    widths = {}
+    for name in ["ToA", "CoG"] + [f"CFD{round(100 * part)}" for part in CFD_FRACTIONS]:
+        difference = times[name] - times["truth"]
+        found = ~np.isnan(difference)
+        widths[name] = {**core_width(difference[found]), "missing": int(np.sum(~found))}
+    return {
+        "events": count,
+        "selected": len(times["truth"]),
+        "polarity": polarity,
+        "times": widths,
+    }
