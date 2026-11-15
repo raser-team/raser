@@ -80,14 +80,14 @@ def test_a_cell_laid_side_by_side_is_the_mesh_of_the_row_with_the_listed_electro
         DevsimMesh(_strips(1), WEIGHTING, cells_either_side=1).createRowOfCells()
         row = _nodes()
         contacts = set(devsim.get_contact_list(device="slab"))
-        read_out, neighbours, back = _nodes("top"), _nodes("neighbours"), _nodes("bot")
+        read_out, neighbours, back = _nodes("top"), _nodes("neighbour1"), _nodes("bot")
     finally:
         _clear()
 
     # the nodes two cells share are there once
     assert len(row) == len(whole)
     assert {tuple(place) for place in row} == whole
-    assert contacts == {"top", "neighbours", "bot"}
+    assert contacts == {"top", "neighbour1", "bot"}
     assert sorted(read_out[:, 1]) == [5.0, 6.0, 7.0]
     assert sorted(neighbours[:, 1]) == [1.0, 2.0, 3.0, 9.0, 10.0, 11.0]
     assert sorted(back[:, 1]) == list(np.arange(0.0, 13.0))
@@ -136,3 +136,15 @@ def test_what_is_left_of_a_potential_is_looked_for_in_the_two_end_cells() -> Non
         assert left_at_the_ends("slab", "slab", 4e-4) == pytest.approx(0.3)
     finally:
         _clear()
+
+
+def test_neighbours_are_coupled_as_far_as_they_hold_a_hundredth_of_the_capacitance() -> None:
+    from raser.core.field.solver_section import neighbours_coupled
+
+    # of 100 in all, the third pair of neighbours holds one and the fourth less
+    to_others = {"bot": 24.5, "neighbour1": 55.0, "neighbour2": 19.0, "neighbour3": 1.0,
+                 "neighbour4": 0.4, "neighbour5": 0.1}  # fmt: skip
+
+    assert neighbours_coupled(to_others) == 3
+    # a pair further away that holds more again is past the first that does not
+    assert neighbours_coupled({**to_others, "neighbour5": 5.0, "bot": 19.6}) == 3

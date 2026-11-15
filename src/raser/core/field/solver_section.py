@@ -8,6 +8,7 @@
 @Version :   1.0
 '''
 
+import json
 import math
 import os
 import time
@@ -18,6 +19,7 @@ import numpy as np
 if __name__ == "__main__":
     __package__ = "raser.core.field"
 
+from ..current.model import Material
 from ..device.build_device import Detector
 from .create_mesh import DevsimMesh
 from .create_mesh import mesh_axes
@@ -124,6 +126,36 @@ def left_at_the_ends(device, region, pitch):
     potential = np.array(devsim.get_node_model_values(device=device, region=region, name="Potential"))
     ends = (across < across.min() + pitch) | (across > across.max() - pitch)
     return float(np.abs(potential[ends]).max())
+
+
+# The part of the capacitance of an electrode that the neighbours a distance
+# away must hold for a signal to be carried over to them.
+CROSSTALK_TOLERANCE = 1e-2
+
+
+def capacitances(device, electrode, relative_permittivity):
+    """Capacitance in F/cm from `electrode` to every other one, in a solved
+    weighting field: `electrode` is at 1 V, the others at 0 V and the charge
+    on each is what it holds. The weighting field is solved in a dielectric
+    of the permittivity of vacuum, so that of the material is put back.
+    """
+    return {
+        name: abs(devsim.get_contact_charge(device=device, contact=name, equation="PotentialEquation"))
+        * relative_permittivity
+        for name in devsim.get_contact_list(device=device)
+        if name != electrode
+    }
+
+
+def neighbours_coupled(to_others):
+    """How far along the row an electrode carries a signal over: the number
+    of "neighbour<n>" electrodes, from the nearest, each of which holds at
+    least CROSSTALK_TOLERANCE of the capacitance `to_others` adds up to."""
+    total = sum(to_others.values())
+    coupled = 0
+    while to_others.get("neighbour{}".format(coupled + 1), 0.0) >= CROSSTALK_TOLERANCE * total:
+        coupled += 1
+    return coupled
 
 
 def _empty_devsim():
@@ -278,6 +310,19 @@ def main (kwargs):
 
             # Stored as the weighting field of the bias, as Potential_<bias>V.pkl.
             save_milestone.save_milestone(device=device, v=float(v_goal), path=folder_path,dimension=default_dimension,contact_name=contact,is_wf=is_wf,cells_either_side=cells_either_side or None,)
+            if cells_either_side:
+                to_others = capacitances(device, contact, Material(MyDetector.material).permittivity)
+                stored = {
+                    "unit": "F/cm",
+                    "of": contact,
+                    "total": sum(to_others.values()),
+                    "to": to_others,
+                    "neighbours_coupled": neighbours_coupled(to_others),
+                }
+                with open(
+                    field_pickle_path(os.path.join(folder_path, contact), "Capacitance", float(v_goal)).with_suffix(".json"), "w"
+                ) as stream:
+                    json.dump(stored, stream, indent=1)
             save_milestone.save_solved(path, "weighting", float(v_goal))
             devsim.write_devices(file=os.path.join(folder_path,"weightingfield.dat"), type="tecplot")
             

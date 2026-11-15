@@ -145,9 +145,10 @@ class DevsimMesh:
 
         The electrodes of the middle cell keep their names, and so do the
         electrodes that are not read out, which become one over all the cells.
-        The read-out electrodes of the other cells are one electrode,
-        "neighbours". The cell has to be one pitch wide, with the same nodes
-        on its two faces.
+        The read-out electrodes of the two cells that are as many cells
+        from the middle one are one electrode, "neighbour1" for the nearest.
+        The cell has to be one pitch wide, with the same nodes on its two
+        faces.
         """
         if self.dimension != 2 or self.device_dict.get("mesh", {}).get("plugin", False):
             raise ValueError(
@@ -196,14 +197,16 @@ class DevsimMesh:
                 "the cells of {} do not fit side by side: its two faces, one pitch apart, "
                 "must hold the same nodes".format(self.det_name)
             )
-        names = [self.region] + list(edges) + ["neighbours"]
+        names = [self.region] + list(edges) + [
+            "neighbour{}".format(apart) for apart in range(1, self.cells_either_side + 1)
+        ]
         elements = []
         for number in range(copies):
             for triangle in node[number][triangles]:
                 elements += [2, 0, *triangle]
             for contact, of_contact in edges.items():
-                apart = contact in read_out and number != self.cells_either_side
-                name = names.index("neighbours" if apart else contact)
+                apart = abs(number - self.cells_either_side) if contact in read_out else 0
+                name = names.index("neighbour{}".format(apart) if apart else contact)
                 for edge in node[number][of_contact]:
                     elements += [1, name, *edge]
         coordinates = np.column_stack([row * grain, np.zeros(len(row))]).ravel()
