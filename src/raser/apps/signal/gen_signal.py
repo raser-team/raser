@@ -22,6 +22,7 @@ from raser.core.field.solved import solved_field
 from raser.core.frontend.circuit import named_chain
 from raser.core.frontend.device_circuit import device_sensor
 from raser.core.frontend.job import write_waveforms
+from raser.core.interaction.simulate_deposits import tilted
 from raser.core.interaction.simulate_deposits import write_simulated_deposits
 from raser.core.interaction.view_geometry import view_geometry
 
@@ -41,6 +42,7 @@ def deposits(kwargs):
     """The source in the g4setup, or the device alone: deposits_<job>.h5."""
     files = kwargs["_files"]
     my_d = bdv.Detector(kwargs["det_name"], files["device"])
+    source = tilted(files["source"], kwargs.get("tilt"), my_d.l_z)
     if kwargs.get("g4_vis"):
         # Only the Geant4 geometry and the tracks are drawn: the job ends here.
         driver = kwargs["g4_vis_driver"]
@@ -49,7 +51,7 @@ def deposits(kwargs):
             picture = os.path.join(kwargs["_run_path"], "g4_geometry")
         view_geometry(
             my_d,
-            files["source"],
+            source,
             files.get("g4setup"),
             int(kwargs["events_per_job"]),
             kwargs["seed"],
@@ -60,7 +62,7 @@ def deposits(kwargs):
     write_simulated_deposits(
         output(kwargs, "deposits"),
         my_d,
-        files["source"],
+        source,
         files.get("g4setup"),
         int(kwargs["events_per_job"]),
         kwargs["seed"],

@@ -4,6 +4,7 @@ import pytest
 
 from raser.core.interaction.simulate_deposits import simulate_deposits
 from raser.core.interaction.simulate_deposits import g4_configuration
+from raser.core.interaction.simulate_deposits import tilted
 
 SOURCE = {
     "name": "pion",
@@ -55,3 +56,13 @@ def test_toy_mip_takes_the_step_limit_of_the_g4setup() -> None:
 
     assert len(alone.events[0].e) == 150
     assert len(coarse.events[0].e) == 6
+
+
+def test_tilt_turns_the_source_about_the_centre_of_the_device() -> None:
+    # 50 um thick: the centre is at z = 25 um; the source comes down along -z
+    turned = tilted(SOURCE, 90, 50.0)
+    assert turned["par_in"] == pytest.approx([975, 0, 25])
+    assert turned["par_out"] == pytest.approx([-1025, 0, 25])
+    assert SOURCE["par_in"] == [0, 0, 1000]
+    with pytest.raises(ValueError, match="toy_mip"):
+        tilted({"kind": "toy_mip"}, 30, 50.0)

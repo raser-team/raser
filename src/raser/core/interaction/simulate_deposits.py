@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import math
 
 from .deposits import Deposits
 from .deposits import write_deposits
@@ -46,6 +47,30 @@ def g4_configuration(
     configuration["edep_min"] = edep_min
     configuration["edep_max"] = edep_max
     return configuration
+
+
+def tilted(source: dict, angle: float | None, l_z: float) -> dict:
+    """`source` as the device tilted by `angle` [degree] sees it.
+
+    The device does not move in Geant4: the points par_in and par_out [um]
+    of the source are turned by `angle` about the axis along y through the
+    centre of the device, (0, 0, l_z / 2). A source along +z comes, tilted by
+    a positive angle, with a component along +x. The spread par_randx and
+    par_randy stays along x and y.
+    """
+    if not angle:
+        return source
+    if "par_in" not in source or "par_out" not in source:
+        raise ValueError(
+            f"a source of kind {source.get('kind')!r} has no par_in and par_out to tilt"
+        )
+    cos, sin = math.cos(math.radians(angle)), math.sin(math.radians(angle))
+    turned = copy.deepcopy(source)
+    for key in ("par_in", "par_out"):
+        x, y, z = source[key]
+        z -= l_z / 2
+        turned[key] = [x * cos + z * sin, y, -x * sin + z * cos + l_z / 2]
+    return turned
 
 
 def simulate_deposits(
