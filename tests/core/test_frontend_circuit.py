@@ -7,6 +7,7 @@ from raser.core.frontend.circuit import read_subcircuit
 from raser.core.frontend.circuit import spice_number
 from raser.core.frontend.circuit import subcircuit
 from raser.core.frontend.planar_sensor import planar_sensor
+from raser.core.frontend.spice import output_noise_spectrum
 from raser.core.frontend.spice import solve
 from raser.supports.paths import component_path
 
@@ -299,3 +300,33 @@ def test_chain_by_the_names_of_its_stages_among_the_components(tmp_path, monkeyp
     assert chain == read_chain(
         [files["across"], files["series"], files["series"], files["load"]]
     )
+
+
+def test_noiseless_resistor_loads_the_circuit_and_adds_no_noise(tmp_path):
+    # 50 Ohm without noise across the line, then the 50 Ohm load at 300.15 K:
+    # the load alone makes the noise, halved by the two in parallel
+    path = tmp_path / "quiet.cir"
+    path.write_text(
+        ".subckt quiet in out\nR1 in 0 50 noisy=0\nR2 in out 1u\n.ends quiet\n"
+    )
+    load = {
+        "ports": {"in": "a"},
+        "elements": {"R1": {"between": ["a", "0"], "ohm": 50.0}},
+    }
+    stage = read_subcircuit(path)
+
+    _, density = output_noise_spectrum(
+        {"stages": {"quiet": stage}, "load": load},
+        ["top"],
+        planar_sensor("top", 1e-12),
+        1e3,
+        1e6,
+    )
+
+    assert stage["elements"]["R1"] == {
+        "between": ["in", "0"],
+        "ohm": 50.0,
+        "noiseless": True,
+    }
+    thermal = np.sqrt(4 * 1.380649e-23 * 300.15 * 50.0)
+    assert density[0] == pytest.approx(thermal / 2, rel=1e-3)

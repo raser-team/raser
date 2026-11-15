@@ -76,6 +76,12 @@ def read_subcircuit(path):
                 "follows": words[3:5],
                 "gain": spice_number(words[5]),
             }
+        elif letter == "R" and len(words) == 5 and words[4].lower() == "noisy=0":
+            elements[words[0]] = {
+                "between": words[1:3],
+                "ohm": spice_number(words[3]),
+                "noiseless": True,
+            }
         elif letter in QUANTITIES and len(words) >= 4:
             # a voltage source may say "dc" before its value
             elements[words[0]] = {
@@ -143,6 +149,10 @@ def subcircuit(name, stage):
     for a stage that has one. Ground is node "0".
     stage["elements"] holds the elements under their designators:
         {"between": [node, node], "ohm": R}       resistor [Ohm]
+        {"between": [node, node], "ohm": R, "noiseless": True}
+                                                  resistance without thermal
+                                                  noise, "noisy=0" in SPICE: an
+                                                  impedance that feedback makes
         {"between": [node, node], "farad": C}     capacitor [F]
         {"between": [node, node], "henry": L}     inductor [H]
         {"between": [plus, minus], "volt": V}     DC voltage source [V]
@@ -183,8 +193,14 @@ def subcircuit(name, stage):
             )
         (quantity,) = quantities
         first, second = element["between"]
+        noise = " noisy=0" if element.get("noiseless") else ""
+        if noise and quantity != "ohm":
+            raise ValueError(
+                f"Element {designator} of {name} is noiseless: only a resistor can be"
+            )
         lines.append(
-            f"{KINDS[quantity]}_{designator} {first} {second} {element[quantity]:.9g}"
+            f"{KINDS[quantity]}_{designator} {first} {second} "
+            f"{element[quantity]:.9g}{noise}"
         )
     lines.append(f".ends {name}")
     return "\n".join(lines) + "\n"
