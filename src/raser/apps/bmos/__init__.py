@@ -16,8 +16,13 @@ def register(subparsers):
     histogram_signal.add_argument("det_name", help="sensor or BMOS detector config")
     histogram_signal.set_defaults(_project="det_name")
     Workflow(name="bmos histogram_signal", job=run).attach(histogram_signal)
-    actions.add_parser("one_histogram", help="draw one BMOS histogram")
-    actions.add_parser("all_histogram", help="draw all BMOS histograms")
+    for action, text in (
+        ("one_histogram", "draw one BMOS histogram"),
+        ("all_histogram", "draw all BMOS histograms"),
+    ):
+        histogram = actions.add_parser(action, help=text)
+        histogram.add_argument("det_name", help="sensor or BMOS detector config")
+        histogram.set_defaults(_project="det_name")
     parser.set_defaults(_run=run)
 
 
