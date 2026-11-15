@@ -23,6 +23,7 @@ import numpy
 
 from raser.core.device import build_device as bdv
 from raser.core.field import devsim_field as devfield
+from raser.core.field.solved import solved_field
 from raser.core.current import cal_current as ccrt
 from raser.core.frontend.set_pwl_input import set_pwl_input as pwlin
 from raser.supports.output import output
@@ -41,13 +42,15 @@ def get_signal(sensor):
 
     my_d = bdv.Detector(det_name)
     
-    voltage = my_d.voltage
-    amplifier = my_d.amplifier
-
-#     print(my_d.device)
-#     print(voltage)
-    
-    my_f = devfield.DevsimField(my_d.device, voltage, my_d.read_out_contact, irradiation_flux=my_d.irradiation_flux, bounds=my_d.bound,)
+    my_f = devfield.DevsimField(
+        my_d.device,
+        my_d.voltage,
+        my_d.read_out_contact,
+        irradiation_flux=my_d.irradiation_flux,
+        bounds=my_d.bound,
+        field_directory=solved_field(my_d, my_d.voltage, my_d.irradiation_flux),
+        interpolation_bins=my_d.device_dict.get("field_interpolation_bins"),
+    )
 
     my_g4 = bmos.bmosG4Interaction(my_d)
 
