@@ -27,7 +27,6 @@
 
     "avalanche_model": "vanOverstraeten",
     "enable_gain": true,
-    "gain_algorithm": "local_path",
     "gain_pair_threshold": 0.05,
     "gain_max_carriers": 50000,
     "local_gain_emit_slices": 4,
@@ -52,7 +51,6 @@
         "y": 80,
         "z": 80
     },
-    "vector_collection_weighting_epsilon": 0.005,
 
     "mesh": {
         "mesher": "sde"

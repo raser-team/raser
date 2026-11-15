@@ -78,3 +78,19 @@ def planar_sensor(
         sources={electrode: (back_of_depleted, pad)},
         outputs={electrode: output},
     )
+
+
+def side_by_side(sensors):
+    """SensorCircuit of the electrodes of several sensors with nothing
+    between them: the charge induced on one reaches no other."""
+    lines: list[str] = []
+    sources: dict = {}
+    outputs: dict = {}
+    for sensor in sensors:
+        twice = sorted(set(sources) & set(sensor.sources))
+        if twice:
+            raise ValueError(f"The electrodes {twice} stand in two sensors")
+        lines.extend(sensor.lines)
+        sources.update(sensor.sources)
+        outputs.update(sensor.outputs)
+    return SensorCircuit(lines=tuple(lines), sources=sources, outputs=outputs)

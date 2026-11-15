@@ -99,7 +99,7 @@ def _run(netlist_text, raw, dt, bins):
 
 def _chain(chain, electrodes, sensor):
     """Lines of the stages and the load behind each output of the sensor, with
-    the sensor itself, and the node ``out<k>`` of each electrode."""
+    the sensor itself, and the node of the load of each electrode."""
     stages = chain["stages"]
     if "load" in stages:
         raise ValueError('A stage cannot be named "load"')
@@ -114,14 +114,16 @@ def _chain(chain, electrodes, sensor):
     lines.append(subcircuit("load", chain["load"]).rstrip())
     outputs = []
     for k, electrode in enumerate(electrodes, start=1):
-        # the output of a stage is the input of the next one
+        # the output of a stage is the input of the next one; without a
+        # stage the load is on the sensor itself
         nodes = [sensor.outputs[electrode]]
-        nodes.extend(f"in{k}_{j}" for j in range(2, len(stages) + 1))
-        nodes.append(f"out{k}")
+        if stages:
+            nodes.extend(f"in{k}_{j}" for j in range(2, len(stages) + 1))
+            nodes.append(f"out{k}")
         for j, name in enumerate(stages):
             lines.append(f"X{k}_{j + 1} {nodes[j]} {nodes[j + 1]} {name}")
-        lines.append(f"Xload{k} out{k} load")
-        outputs.append(f"out{k}")
+        lines.append(f"Xload{k} {nodes[-1]} load")
+        outputs.append(nodes[-1])
     lines.extend(sensor.lines)
     return lines, outputs
 
@@ -137,7 +139,8 @@ def write_netlist(chain, electrodes, dt, currents, sensor, raw):
     The models a stage or the load brings stand once in the netlist.
     The first stage of the k-th electrode (from 1) reads the output node the
     sensor gives for it; ``out<k>`` is the output of its last stage and the
-    input of its load. Ground is node 0.
+    input of its load. A chain without stages has the load on the output node
+    of the sensor. Ground is node 0.
 
     electrodes : names of the electrodes, in the order of the rows of
         currents. They have to be the electrodes of the sensor.
@@ -146,7 +149,7 @@ def write_netlist(chain, electrodes, dt, currents, sensor, raw):
         mean current in its bin. A positive current flows through the source
         from the first to the second node the sensor gives for the electrode.
     sensor : SensorCircuit.
-    raw : file ngspice writes the ``v(out<k>)`` to.
+    raw : file ngspice writes the voltages on the loads to.
 
     The run starts one bin before the first bin, with the circuit at rest and
     no current in that bin, and lasts to the end of the last bin, with the

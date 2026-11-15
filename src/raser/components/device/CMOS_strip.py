@@ -24,8 +24,8 @@ P2 = geo.addPoint(0.4e-4, 75.5e-4, 0, lp)
 P3 = geo.addPoint(150e-4, 75.5e-4, 0, lc_bottom)
 P4 = geo.addPoint(150e-4, 0, 0, lc_bottom)
 
-P17 = geo.addPoint(147e-4, 75.5e-4, 0, lc_bottom_mid)
-P18 = geo.addPoint(147e-4, 0, 0, lc_bottom_mid)
+P17 = geo.addPoint(148e-4, 75.5e-4, 0, lc_bottom_mid)
+P18 = geo.addPoint(148e-4, 0, 0, lc_bottom_mid)
 
 P1701 = geo.addPoint(149e-4, 75.5e-4, 0, lc_bottom_mid_2)
 P1801 = geo.addPoint(149e-4, 0, 0, lc_bottom_mid_2)

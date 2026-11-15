@@ -17,17 +17,18 @@ from pathlib import Path
 import ROOT
 
 from raser.core.current import cal_current as ccrt
+from raser.core.current.cal_current import write_induced_currents
 from raser.core.current.currents import EventCurrents, append_currents
 from raser.core.device import build_device as bdv
 from raser.core.field import devsim_field as devfield
 from raser.core.field.solved import solved_field
 from raser.core.frontend.toy_readout import Amplifier
 from raser.core.interaction.deposits import write_deposits
-from raser.core.interaction.ionization import ionized_pairs
 from raser.core.interaction.simulate_deposits import simulate_deposits
+from raser.core.interaction.simulate_deposits import write_simulated_deposits
 from raser.core.interaction.view_geometry import view_geometry
 
-from .draw_save import draw_drift_path
+from raser.core.current.draw_drift_path import draw_drift_path
 
 ROOT.gROOT.SetBatch(True)
 
@@ -57,8 +58,8 @@ def run_events(my_d, my_f, deposits, amplifier, batch_path, job, plots, plot_pat
     for count, record in enumerate(deposits.events):
         print("run events number:%s" % (record.event))
         drawn = count < plots
-        pairs, positions = ionized_pairs(record, my_d.material)
-        my_current = ccrt.CalCurrent(my_d, my_f, pairs, positions, keep_drift_paths=drawn)
+        positions = [list(point) for point in zip(record.x, record.y, record.z, record.t)]
+        my_current = ccrt.CalCurrent(my_d, my_f, record.pairs, positions, keep_drift_paths=drawn)
         append_currents(
             currents_path,
             my_current.electrodes,
@@ -141,4 +142,59 @@ def main(kwargs):
         job,
         int(kwargs["plots"]),
         os.path.join(kwargs["_run_path"], "plots", "job_%s" % (job)),
+    )
+
+
+# The slices of a signal job. Each takes what its stage needs out of the
+# run.json of the seed folder and calls the entry of the module that owns
+# the stage; the files of a job are in batch/ of the seed folder.
+
+
+def _job(kwargs):
+    return kwargs.get("job_index") or 0
+
+
+def _file(kwargs, name):
+    return os.path.join(kwargs["_run_batch_path"], "%s_%s.h5" % (name, _job(kwargs)))
+
+
+def deposits(kwargs):
+    """The source in the g4setup, or the device alone: deposits_<job>.h5."""
+    files = kwargs["_files"]
+    write_simulated_deposits(
+        _file(kwargs, "deposits"),
+        bdv.Detector(kwargs["det_name"], files["device"]),
+        files["source"],
+        files.get("g4setup"),
+        int(kwargs["events_per_job"]),
+        kwargs["seed"],
+        kwargs.get("edep_min"),
+        kwargs.get("edep_max"),
+    )
+
+
+def currents(kwargs):
+    """The deposits drifted in the solved field of the device: currents_<job>.h5,
+    and the pictures of the first `plots` events in plots/job_<job>."""
+    my_d = bdv.Detector(kwargs["det_name"], kwargs["_files"]["device"])
+    # The flux is of the field the run takes, not of the device.
+    flux = my_d.irradiation_flux
+    if kwargs.get("irradiation") is not None:
+        flux = float(kwargs["irradiation"])
+    my_f = devfield.DevsimField(
+        my_d.device,
+        my_d.voltage,
+        my_d.read_out_contact,
+        irradiation_flux=flux,
+        bounds=my_d.bound,
+        field_directory=solved_field(my_d, my_d.voltage, flux),
+        interpolation_bins=my_d.device_dict.get("field_interpolation_bins"),
+    )
+    write_induced_currents(
+        _file(kwargs, "deposits"),
+        _file(kwargs, "currents"),
+        my_d,
+        my_f,
+        int(kwargs["plots"]),
+        os.path.join(kwargs["_run_path"], "plots", "job_%s" % _job(kwargs)),
     )

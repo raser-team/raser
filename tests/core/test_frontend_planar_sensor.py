@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from raser.core.frontend.planar_sensor import planar_sensor
+from raser.core.frontend.planar_sensor import side_by_side
 from raser.core.frontend.planar_sensor import undepleted_layer
 from raser.core.frontend.spice import short_circuit_currents
 from raser.core.frontend.spice import solve
@@ -104,3 +105,27 @@ def test_bias_resistance_lies_between_the_electrode_and_ground():
     expected = 1e-6 * 25.0 * (1 - np.exp(-after / (25.0 * 10e-12)))
     off_the_jump = (times < 0) | (times > DT_S)
     assert voltage[0][off_the_jump] == pytest.approx(expected[off_the_jump], abs=2.5e-8)
+
+
+def test_electrodes_side_by_side_each_answer_with_their_own_sensor():
+    # a step on the electrode of 10 pF, read through 1 nF beside 1 MOhm: the
+    # 1 nF carries 1000 / 1010 of it into the short; twice the step on its
+    # neighbour of 40 pF, read as it is: all of it
+    times, step = _step()
+    sensor = side_by_side(
+        [
+            planar_sensor("near", 10e-12, None, 1e6, 1e-9),
+            planar_sensor("far", 40e-12),
+        ]
+    )
+
+    into_short = short_circuit_currents(["far", "near"], DT_S, [2 * step, step], sensor)
+
+    off_the_jump = (times < 0) | (times > DT_S)
+    expected = np.where(times > 0, 1e-6, 0.0)[off_the_jump]
+    assert into_short[0][off_the_jump] == pytest.approx(2 * expected, abs=2e-9)
+    assert into_short[1][off_the_jump] == pytest.approx(
+        expected * 1000 / 1010, abs=2e-9
+    )
+    with pytest.raises(ValueError, match="near"):
+        side_by_side([planar_sensor("near", 1e-12), planar_sensor("near", 2e-12)])

@@ -1,10 +1,12 @@
-"""The entry of the energy-deposition stage: one job in, its Deposits out."""
+"""The energy-deposition stage: the Deposits of one job, and their file."""
 
 from __future__ import annotations
 
 import copy
 
 from .deposits import Deposits
+from .deposits import write_deposits
+from .ionization import ionized_pairs
 from .mip_track import mip_deposits
 
 # Kinds of source that Geant4 simulates.
@@ -55,7 +57,8 @@ def simulate_deposits(
     edep_min: float | None = None,
     edep_max: float | None = None,
 ) -> Deposits:
-    """Deposits of `events` generated events of `source` in the device.
+    """Deposits of `events` generated events of `source` in the device,
+    each with the electron-hole pairs it created in the material of the device.
 
     source and g4setup are the contents of the component files; g4setup
     None is the device alone in vacuum. edep_min and edep_max [MeV] bound
@@ -63,6 +66,13 @@ def simulate_deposits(
     A toy MIP takes only the step limit from the g4setup and does not use
     g4_seed.
     """
+    deposits = _energy_deposits(my_d, source, g4setup, events, g4_seed, edep_min, edep_max)
+    for event in deposits.events:
+        event.pairs, _ = ionized_pairs(event, my_d.material)
+    return deposits
+
+
+def _energy_deposits(my_d, source, g4setup, events, g4_seed, edep_min, edep_max) -> Deposits:
     kind = source.get("kind")
     if kind == "toy_mip":
         max_step = (DEVICE_ALONE if g4setup is None else g4setup)["maxstep"]
@@ -74,7 +84,7 @@ def simulate_deposits(
         )
     # g4ppyy creates the Geant4 managers when imported; sources that do
     # not need Geant4 must not pay for it.
-    from .interaction import GeneralG4Interaction
+    from .geant4.interaction import GeneralG4Interaction
 
     my_g4 = GeneralG4Interaction(
         my_d, g4_configuration(source, g4setup, events, edep_min, edep_max), g4_seed
@@ -83,3 +93,19 @@ def simulate_deposits(
         return my_g4.deposits()
     finally:
         my_g4.close()
+
+
+def write_simulated_deposits(
+    deposits_path,
+    my_d,
+    source: dict,
+    g4setup: dict | None,
+    events: int,
+    g4_seed: int,
+    edep_min: float | None = None,
+    edep_max: float | None = None,
+) -> None:
+    """simulate_deposits, written to the deposits file; a file an earlier
+    start left there is replaced."""
+    deposits = simulate_deposits(my_d, source, g4setup, events, g4_seed, edep_min, edep_max)
+    write_deposits(deposits_path, deposits)

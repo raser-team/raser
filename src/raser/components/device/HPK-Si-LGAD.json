@@ -22,7 +22,6 @@
     "field_source" : "devsim",
     "field_dimension" : 1,
     
-    "avalanche_bond" : 3.0,
     "avalanche_model" : "vanOverstraeten",
     "enable_gain" : true,
 

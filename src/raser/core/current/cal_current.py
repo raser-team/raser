@@ -19,8 +19,11 @@ ROOT.gROOT.SetBatch(True)
 from .model import Material
 from .drift import Drifted, drift, induced_charges, surviving
 from . import draw
+from .draw_drift_path import draw_drift_path
+from .currents import EventCurrents, append_currents
 
 from ..interaction.carrier_list import CarrierListFromG4P
+from ..interaction.deposits import read_deposits
 from ..interaction.toy_mip import ToyMIPLineSource
 from raser.supports.output import output
 
@@ -375,25 +378,25 @@ class CalCurrentGain(CalCurrent):
             fill_histogram(self.negative_cu[i], self.electron_bins[i])
 
     def _build_planar_gain_carriers(self, my_d, my_f, my_current, gain_starts, gain_pairs):
-        if my_d.avalanche_bond is None:
-            raise ValueError("planar_integral gain algorithm requires `avalanche_bond` in detector settings")
-        gain_rate = my_f.planar_gain(my_d)
-        logger.info("gain_rate=%s", gain_rate)
+        logger.info("gain_rate=%s", my_f.planar_gain(my_d))
 
-        if my_d.voltage < 0:  # p layer at d=0: holes multiply into electrons
+        # the carriers that drift from the bulk into the gain layer
+        if my_f.planar_gain_carrier(my_d) > 0:
             source_system = my_current.hole_system
-        else:  # n layer at d=0: electrons multiply into holes
+        else:
             source_system = my_current.electron_system
 
         if source_system is None:
             logger.warning("No carrier system found for planar gain calculation.")
             return
 
-        # each cluster multiplies where it stops: its pairs start at the gain layer at that time
+        # each cluster multiplies where it stops: its pairs start at the gain
+        # layer at that time, as many as the depth it was made at gives
+        gain_depth = my_f.planar_gain_depth(my_d)
         for charge, path in zip(source_system.charges, source_system.paths):
             x, y, _, t = path[-1]
-            gain_starts.append((x, y, my_d.avalanche_bond, t))
-            gain_pairs.append(abs(charge) * gain_rate)
+            gain_starts.append((x, y, gain_depth, t))
+            gain_pairs.append(abs(charge) * my_f.planar_gain_at(my_d, path[0][2]))
 
     def _build_local_gain_carriers(self, my_d, my_f, my_current, gain_starts, gain_pairs):
         cal_coefficient = Material(my_d.material, avalanche_model=my_d.avalanche_model).cal_coefficient
@@ -565,3 +568,66 @@ class CalCurrentLaser(CalCurrent):
             currents[:] = currents @ pulse
             for i in range(self.read_ele_num):
                 fill_histogram(histograms[i], np.pad(currents[i], 1))
+
+
+def write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, plot_path=None):
+    """Drift the pairs of every event of the deposits file in the field and
+    write the currents they induce to the currents file, event by event.
+
+    A currents file an earlier start left there is replaced. The first `plots`
+    events are also drawn, each in plot_path/event_<number>: the drift paths
+    with the deposits, and the currents.
+    """
+    deposits = read_deposits(deposits_path)
+    if not deposits.events:
+        raise ValueError(f"{deposits_path} holds no event: there is no current to write")
+    if os.path.exists(currents_path):
+        os.remove(currents_path)
+    for count, record in enumerate(deposits.events):
+        drawn = count < plots
+        positions = [list(point) for point in zip(record.x, record.y, record.z, record.t)]
+        my_current = CalCurrent(my_d, my_f, record.pairs, positions, keep_drift_paths=drawn)
+        append_currents(
+            currents_path,
+            my_current.electrodes,
+            my_current.t_bin,
+            EventCurrents(
+                record.event,
+                my_current.t_start,
+                my_current.current,
+                my_current.charge,
+                my_current.pairs,
+            ),
+        )
+        if drawn:
+            path = os.path.join(plot_path, "event_%s" % (record.event))
+            os.makedirs(path, exist_ok=True)
+            draw_drift_path(my_d, list(zip(record.x, record.y, record.z)), my_f, my_current, path)
+            my_current.draw_currents(path)
+            if my_d.is_strip:
+                my_current.charge_collection_strip(path)
+            if my_d.is_pixel:
+                my_current.charge_collection_pixel(path)
+
+
+def write_laser_currents(currents_path, my_d, my_f, my_l, plot_path=None):
+    """Drift the pairs of one laser pulse in the field, without diffusion, and
+    write the currents they induce to the currents file as its event 0.
+
+    A currents file an earlier start left there is replaced. With plot_path
+    the currents are also drawn there.
+    """
+    if os.path.exists(currents_path):
+        os.remove(currents_path)
+    my_current = CalCurrentLaser(my_d, my_f, my_l, diffusion=False)
+    append_currents(
+        currents_path,
+        my_current.electrodes,
+        my_current.t_bin,
+        EventCurrents(
+            0, my_current.t_start, my_current.current, my_current.charge, my_current.pairs
+        ),
+    )
+    if plot_path is not None:
+        os.makedirs(plot_path, exist_ok=True)
+        my_current.draw_currents(plot_path)

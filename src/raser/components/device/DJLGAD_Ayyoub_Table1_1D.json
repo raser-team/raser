@@ -20,7 +20,6 @@
 
     "temperature" : 300.0,
 
-    "avalanche_bond" : 5.5,
     "avalanche_model" : "vanOverstraeten",
     "enable_gain" : true,
 

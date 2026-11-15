@@ -5,7 +5,7 @@ Description:  detector_construction.py
 @version    : 2.0
 """
 
-from raser.core.interaction.geant4 import g4b
+from raser.core.interaction.geant4.g4ppyy_runtime import g4b
 
 g4b.include("G4VUserDetectorConstruction.hh")
 g4b.include("G4UserLimits.hh")
