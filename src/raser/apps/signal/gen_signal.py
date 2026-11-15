@@ -4,7 +4,9 @@ Each takes what its stage needs out of the run.json of the seed folder
 (kwargs["_files"], the folders, the job) and calls the entry of the module
 that owns the stage. Nothing is written onto the device.
 
-Written into batch/ of the seed folder, one file per job and slice:
+Written into batch/ of the seed folder that holds the slice, which is the
+one of another point when the slice does not read what makes this point
+differ; one file per job and slice:
     deposits_<job>.h5    energy deposits and pairs of the recorded events
     currents_<job>.h5    induced current of every electrode, event by event
     waveforms_<job>.h5   output voltage of the electronics, event by event
@@ -28,8 +30,11 @@ def _job(kwargs):
     return kwargs.get("job_index") or 0
 
 
-def _file(kwargs, name):
-    return os.path.join(kwargs["_run_batch_path"], "%s_%s.h5" % (name, _job(kwargs)))
+def output(kwargs, name):
+    """The file of the slice `name` of this job, in the point that holds the slice."""
+    return os.path.join(
+        kwargs["_slice_batch_paths"][name], "%s_%s.h5" % (name, _job(kwargs))
+    )
 
 
 def deposits(kwargs):
@@ -53,7 +58,7 @@ def deposits(kwargs):
         )
         raise SystemExit
     write_simulated_deposits(
-        _file(kwargs, "deposits"),
+        output(kwargs, "deposits"),
         my_d,
         files["source"],
         files.get("g4setup"),
@@ -64,15 +69,13 @@ def deposits(kwargs):
     )
 
 
-def currents(kwargs):
-    """The deposits drifted in the solved field of the device: currents_<job>.h5,
-    and the pictures of the first `plots` events in plots/job_<job>."""
-    my_d = bdv.Detector(kwargs["det_name"], kwargs["_files"]["device"])
-    # The flux is of the field the run takes, not of the device.
+def solved(my_d, kwargs):
+    """The solved field of the device at its bias; the flux is of the field
+    the run takes, not of the device."""
     flux = my_d.irradiation_flux
     if kwargs.get("irradiation") is not None:
         flux = float(kwargs["irradiation"])
-    my_f = devfield.DevsimField(
+    return devfield.DevsimField(
         my_d.device,
         my_d.voltage,
         my_d.read_out_contact,
@@ -81,28 +84,38 @@ def currents(kwargs):
         field_directory=solved_field(my_d, my_d.voltage, flux),
         interpolation_bins=my_d.device_dict.get("field_interpolation_bins"),
     )
+
+
+def currents(kwargs):
+    """The deposits drifted in the solved field of the device: currents_<job>.h5,
+    and the pictures of the first `plots` events in plots/job_<job>."""
+    my_d = bdv.Detector(kwargs["det_name"], kwargs["_files"]["device"])
     write_induced_currents(
-        _file(kwargs, "deposits"),
-        _file(kwargs, "currents"),
+        output(kwargs, "deposits"),
+        output(kwargs, "currents"),
         my_d,
-        my_f,
+        solved(my_d, kwargs),
         int(kwargs["plots"]),
-        os.path.join(kwargs["_run_path"], "plots", "job_%s" % _job(kwargs)),
+        os.path.join(
+            os.path.dirname(kwargs["_slice_batch_paths"]["currents"]),
+            "plots",
+            "job_%s" % _job(kwargs),
+        ),
     )
 
 
 def waveforms(kwargs):
     """The currents through the sensor circuit of the device and the chain the
     amplifier names: waveforms_<job>.h5. The noise of the circuit is drawn
-    with the seed of the job."""
+    with the seed lifecycle gives the slice; a run without seeds has no noise."""
     my_d = bdv.Detector(kwargs["det_name"], kwargs["_files"]["device"])
     sensor, _ = device_sensor(
         my_d, electrode_names(my_d.read_out_contact, my_d.read_ele_num)
     )
     write_waveforms(
-        _file(kwargs, "currents"),
-        _file(kwargs, "waveforms"),
+        output(kwargs, "currents"),
+        output(kwargs, "waveforms"),
         named_chain(str(kwargs["amplifier"])),
         sensor,
-        kwargs["seed"],
+        kwargs.get("seed"),
     )
