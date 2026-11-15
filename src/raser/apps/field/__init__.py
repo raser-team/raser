@@ -7,19 +7,16 @@ when any of that has changed.
 """
 
 import copy
-import importlib.util
 import json
 import os
 from pathlib import Path
 
 from raser.core.device.build_device import Detector
 from raser.core.field.reading import changed
+from raser.core.field.solved import DEFAULT_SOLUTION
+from raser.core.field.solved import HAS_DEVSIM
 from raser.lifecycle.workflow import Workflow
 from raser.lifecycle.workflow import execute
-
-# The full and the semi_fast solution are solved with devsim. Where it is not
-# installed the solution of a field is the fast one, unless another is asked.
-HAS_DEVSIM = importlib.util.find_spec("devsim") is not None
 
 
 def _solver(kwargs):
@@ -225,7 +222,7 @@ WORKFLOW = Workflow(
     job=solve,
     command=job_command,
     keys=("irradiation_flux", "solution"),
-    defaults={"irradiation_flux": None, "solution": "full" if HAS_DEVSIM else "fast"},
+    defaults={"irradiation_flux": None, "solution": DEFAULT_SOLUTION},
     seeds=False,
     outdated=outdated,
 )
