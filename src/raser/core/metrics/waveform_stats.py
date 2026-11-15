@@ -7,17 +7,10 @@ Description:  wavefrom_stats.py
 
 
 import os
-import re
-import json
 from array import array
 from pathlib import Path
 
 import ROOT
-
-from raser.core.device import build_device as bdv
-from raser.supports.output import output
-from raser.supports.paths import component_path
-from raser.supports.paths import project_path
 
 CFD = 0.5 # partition
 CFD_LABEL = "CFD50"
@@ -321,52 +314,6 @@ class WaveformStatistics:
         self.amplitude_threshold = amplitude_threshold
         self.data = {}
         self.waveforms = [[] for i in range(my_d.read_ele_num)]
-
-    @classmethod
-    def from_batch(
-        cls,
-        input_path,
-        my_d,
-        threshold,
-        amplitude_threshold,
-        vis=False,
-    ):
-        statistics = cls(my_d, threshold, amplitude_threshold)
-        statistics.read_batch(input_path, vis=vis)
-        return statistics
-
-    def read_batch(self, input_path, vis=False):
-        input_path = Path(input_path)
-        files = sorted(input_path.glob("*.root"))
-        if not files:
-            raise FileNotFoundError("No waveform ROOT files found in {}".format(input_path))
-
-        for path in files:
-            file_pointer = ROOT.TFile(str(path), "READ")
-            if file_pointer is None or file_pointer.IsZombie():
-                raise OSError("Cannot open waveform ROOT file {}".format(path))
-            tree = file_pointer.Get("tree")
-            if tree is None:
-                file_pointer.Close()
-                raise ValueError("Missing tree TTree in {}".format(path))
-            n = tree.GetEntries()
-            for i in range(n):
-                tree.GetEntry(i) 
-                iw = InputWaveform(
-                    tree,
-                    self.threshold,
-                    self.amplitude_threshold,
-                    self.detector.read_ele_num,
-                    self.pitch_x,
-                    self.pitch_y,
-                )
-                self.fill_data(iw.data)
-                if vis == True:
-                    for j in range(self.detector.read_ele_num):
-                        self.waveforms[j].append(iw.waveforms[j])
-
-            print("read {n} events from {file}".format(n=n, file=path.name))
-            file_pointer.Close()
 
     def draw(self, output_path, tag, vis=False):
         if tag is None:
@@ -721,38 +668,3 @@ class WaveformStatistics:
         c1.SaveAs(self.output_path+'/'+tag+"_"+model+".pdf")
         c1.SaveAs(self.output_path+'/'+tag+"_"+model+".C")
 
-
-def main(kwargs):
-    det_name = kwargs['det_name']
-    my_d = bdv.Detector(det_name)
-    if kwargs['voltage'] != None:
-        my_d.voltage = kwargs['voltage']
-    if kwargs['irradiation'] != None:
-        my_d.irradiation_flux = float(kwargs['irradiation'])
-    if kwargs['g4experiment'] != None:
-        my_d.g4experiment = kwargs['g4experiment']
-    if kwargs['amplifier'] != None:
-        my_d.amplifier = kwargs['amplifier']
-    if kwargs['daq'] != None:
-        my_d.daq = kwargs['daq']
-   
-    daq_json = component_path("adc", my_d.daq + ".json")
-    with open(daq_json) as f:
-        daq_dict = json.load(f)
-        threshold = daq_dict['threshold']
-        amplitude_threshold = daq_dict['amplitude_threshold']
-
-    tct = kwargs['tct']
-    if tct != None:
-        input_path = project_path("tct", tct)
-    elif kwargs.get("_run_batch_path"):
-        input_path = kwargs["_run_batch_path"]
-    else:
-        signal_label = kwargs.get("signal_output_label") or "cce"
-        signal_source = Path(str(kwargs.get("signal_source") or kwargs.get("source") or "Am241")).stem
-        input_path = project_path("signal", signal_label, signal_source, "batch")
-
-    output_path = output(__file__, det_name)
-    tag = ( str(my_d.voltage)+str(my_d.irradiation_flux)+str(my_d.g4experiment)+str(my_d.amplifier))
-    statistics = WaveformStatistics.from_batch(input_path, my_d, threshold, amplitude_threshold)
-    statistics.draw(output_path, tag)
