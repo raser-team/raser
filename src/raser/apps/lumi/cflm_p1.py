@@ -5,6 +5,7 @@ import array
 import ROOT
 from raser.core.interaction.geant4.g4ppyy_runtime import g4b
 g4b.include("G4VUserDetectorConstruction.hh")
+g4b.include("G4UserLimits.hh")
 g4b.include("G4VUserActionInitialization.hh")
 g4b.include("G4VUserPrimaryGeneratorAction.hh")
 g4b.include("G4UserRunAction.hh")
@@ -120,7 +121,10 @@ class cflmPixelG4Particles:
 
             physicsList = g4b.FTFP_BERT()
             physicsList.SetVerboseLevel(0)
-            physicsList.RegisterPhysics(g4b.G4StepLimiterPhysics())
+            # the physics list deletes what is registered in it: python must not
+            stepLimiterPhysics = g4b.G4StepLimiterPhysics()
+            stepLimiterPhysics.__python_owns__ = False
+            physicsList.RegisterPhysics(stepLimiterPhysics)
             runManager.SetUserInitialization(physicsList)
 
             detConstruction = cflmDetectorConstruction(g4_dic)
@@ -151,7 +155,7 @@ class cflmPixelG4Particles:
 class cflmDetectorConstruction(g4b.G4VUserDetectorConstruction):
 
     def __init__(self,g4_dic):
-        g4b.G4VUserDetectorConstruction.__init__(self)
+        super().__init__()
         self.solid = {}
         self.logical = {}
         self.physical = {}
@@ -189,11 +193,11 @@ class cflmDetectorConstruction(g4b.G4VUserDetectorConstruction):
         self.logical['world'] = g4b.G4LogicalVolume(self.solid['world'],
                                                     material,
                                                     "world")
-        self.physical['world'] = g4b.G4PVPlacement(None,
+        self.physical['world'] = g4b.G4PVPlacement(g4b.cppyy.nullptr,
                                                    g4b.G4ThreeVector(0,0,0),
                                                    self.logical['world'],
                                                    "world", 
-                                                   None, 
+                                                   g4b.cppyy.nullptr, 
                                                    False,
                                                    0,
                                                    self.checkOverlaps)
@@ -237,7 +241,7 @@ class cflmDetectorConstruction(g4b.G4VUserDetectorConstruction):
     def create_vacuum(self, object):
 
         vacuum_name = object['name']
-        material_type = g4b.G4Material("Galactic", z=1, a=1.01*g4b.g/g4b.mole, density=g4b.universe_mean_density, state=g4b.kStateGas, temp=2.73*g4b.kelvin, pressure=3e-18*g4b.pascal)
+        material_type = self.nist.FindOrBuildMaterial("G4_Galactic")
 
         translation = g4b.G4ThreeVector(object['position_x']*g4b.mm, object['position_y']*g4b.mm, object['position_z']*g4b.mm)
         visual = g4b.G4VisAttributes(g4b.G4Color(object['colour'][0],object['colour'][1],object['colour'][2]))
@@ -388,15 +392,15 @@ class cflmaEventAction(g4b.G4UserEventAction):
         printModulo = g4b.G4RunManager.GetRunManager().GetPrintProgress()
         if printModulo > 0 and eventID % printModulo == 0:
             print("---> End of event:", eventID)
-            print("Pipe: total energy:", g4b.G4BestUnit(self.fEnergyPipe, "Energy"))
+            print("Pipe: total energy:", self.fEnergyPipe / g4b.MeV, "MeV")
             for k in ('I', 'II'):
                 for i in pixelAreaYIndex:
                     for j in pixelAreaZIndex:
                         detectorID.append([k,[i, j]])
                         pixelAreaEdep.append(self.edepPixelArea[f'detector_{k}'][f'{i}_{j}'])
                         self.totalDetectEdep += self.edepPixelArea[f'detector_{k}'][f'{i}_{j}']
-                        print(f"Detector_{k}_{i}_{j}: total energy:", g4b.G4BestUnit(self.edepPixelArea[f'detector_{k}'][f'{i}_{j}'], "Energy"))
-            print('total energy deposition of detect area:', g4b.G4BestUnit(self.totalDetectEdep, "Energy"))
+                        print(f"Detector_{k}_{i}_{j}: total energy:", self.edepPixelArea[f'detector_{k}'][f'{i}_{j}'] / g4b.MeV, "MeV")
+            print('total energy deposition of detect area:', self.totalDetectEdep / g4b.MeV, "MeV")
 
     def AddPipe(self, de):
         self.fEnergyPipe += de
@@ -449,15 +453,19 @@ class cflmaActionInitialization(g4b.G4VUserActionInitialization):
     def BuildForMaster(self):
         self.SetUserAction(cflmRunAction())
     def Build(self):
-        self.SetUserAction(cflmPrimaryGeneratorAction(self.par_in,
-                                                      self.par_direct,
-                                                      self.par_type,
-                                                      self.par_energy,
-                                                      self.numofgun))
-        self.SetUserAction(cflmRunAction())
-        eventAction = cflmaEventAction()
-        self.SetUserAction(eventAction)
-        self.SetUserAction(cflmaSteppingAction(self.fDetConstruction, eventAction))
+        # Geant4 holds bare pointers to the actions: they are kept here
+        self.actions = [
+            cflmPrimaryGeneratorAction(self.par_in,
+                                       self.par_direct,
+                                       self.par_type,
+                                       self.par_energy,
+                                       self.numofgun),
+            cflmRunAction(),
+            cflmaEventAction(),
+        ]
+        self.actions.append(cflmaSteppingAction(self.fDetConstruction, self.actions[2]))
+        for action in self.actions:
+            self.SetUserAction(action)
 
 def save_geant4_events(eventID,edep_device,p_step,energy_step, i, j, k):
     key = f'{i}_{j}'
