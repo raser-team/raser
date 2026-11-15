@@ -12,7 +12,6 @@
         "Acceptors" :"6.64e12*(step(178e-4-x)-step(2e-4-x))+5.0e18*(step(180e-4-x)-step(179e-4-x))"
     },
 
-    "avalanche_bond" : 175.0,
     "avalanche_model" : "vanOverstraeten",
     "enable_gain" : true,
 

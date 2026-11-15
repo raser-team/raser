@@ -127,7 +127,6 @@ class Detector:
             self.read_ele_num = 1
 
         self.avalanche_model = self.device_dict.get('avalanche_model')
-        self.avalanche_bond = self.device_dict.get('avalanche_bond')
         # The gain layer is on only when the json says so.
         enable_gain = bool(self.device_dict.get('enable_gain', False))
         if enable_gain and self.avalanche_model is None:
