@@ -169,4 +169,5 @@ def test_inside_an_experiment_folder_the_command_and_device_come_from_its_config
     ]
     submitted.clear()
     assert main(["-bb", "-s", "2", "--seed", "3"]) == 0
-    assert submitted == [(["cce", "HPK-Si-PiN"], True, 2)] * 2
+    every = ["--job-slices", "deposits,currents,waveforms"]  # each voltage is measured anew
+    assert submitted == [(["cce", "HPK-Si-PiN", *every], True, 2)] * 2
