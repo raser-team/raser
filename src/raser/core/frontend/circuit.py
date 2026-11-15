@@ -100,7 +100,7 @@ def read_subcircuit(path):
 def read_chain(paths):
     """Chain, as spice.solve takes it, of the stages in the SPICE files paths,
     from the sensor to the load: each stage on the output of the one before,
-    the last file the load.
+    the last file the load. The load alone is the sensor read out as it is.
 
     A stage is known in the chain by the name of its file; where the same
     file stands in the chain again, by its name and which of them it is:
@@ -123,8 +123,6 @@ def read_chain(paths):
             f"{load_path} is the last of the chain and has to be a load, with "
             "the node in alone"
         )
-    if not stages:
-        raise ValueError("A chain needs at least one stage before its load")
     return {"stages": stages, "load": load}
 
 
