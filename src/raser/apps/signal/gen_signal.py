@@ -26,7 +26,7 @@ from raser.core.interaction.deposits import write_deposits
 from raser.core.interaction.simulate_deposits import simulate_deposits
 from raser.core.interaction.view_geometry import view_geometry
 
-from .draw_save import draw_drift_path
+from raser.core.current.draw_drift_path import draw_drift_path
 
 ROOT.gROOT.SetBatch(True)
 
