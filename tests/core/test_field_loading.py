@@ -72,3 +72,38 @@ def test_a_position_conducts_when_every_node_of_its_cell_does(
     assert not field.get_conductive(0.0, 0.0, 45.0)
     assert field.get_conductive(0.0, 0.0, -3.0)
     assert not field.get_conductive(0.0, 0.0, 58.0)
+
+
+def _along_x(folder: Path, name: str, cells: int) -> None:
+    """A stored quantity on a mesh of depth and x, 50 um deep and `cells`
+    cells of 100 um wide, whose value is the place along x in um."""
+    across = [0.0025 * step for step in range(4 * cells + 1)]
+    stored = {
+        "points": [[depth, x] for depth in (0.0, 0.0025, 0.005) for x in across],
+        "values": [x * 1e4 for _ in range(3) for x in across],
+        "metadata": {"dimension": 2},
+    }
+    (folder / name).write_bytes(pickle.dumps(stored))
+
+
+@pytest.mark.parametrize("cells_of_the_field", [1, 3])
+def test_the_electric_field_of_a_row_is_read_in_one_cell(
+    tmp_path: Path, cells_of_the_field: int
+) -> None:
+    _solved(tmp_path, ["z", "x"])
+    for name in FILES:
+        _along_x(tmp_path, name, 3 if "weightingfield" in name else cells_of_the_field)
+    field = DevsimField(
+        "device",
+        57,
+        [{"name": "top", "x_span": 1, "y_span": 0}],
+        bounds={"x": [0.0, 1000.0], "z": [0.0, 50.0]},
+        field_directory=tmp_path,
+    )
+
+    # ten cells of 100 um: a place is read as far into the cell of the field
+    # as it is into its own, the middle one where the field holds three
+    first = 100.0 * (cells_of_the_field // 2)
+    assert field.get_potential(30.0, 0.0, 25.0) == pytest.approx(first + 30.0)
+    assert field.get_potential(250.0, 0.0, 25.0) == pytest.approx(first + 50.0)
+    assert field.get_potential(970.0, 0.0, 25.0) == pytest.approx(first + 70.0)

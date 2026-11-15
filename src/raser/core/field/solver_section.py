@@ -8,14 +8,18 @@
 @Version :   1.0
 '''
 
+import json
+import math
 import os
 import time
 
 import devsim 
+import numpy as np
 
 if __name__ == "__main__":
     __package__ = "raser.core.field"
 
+from ..current.model import Material
 from ..device.build_device import Detector
 from .create_mesh import DevsimMesh
 from .create_mesh import mesh_axes
@@ -98,6 +102,75 @@ def _legacy_solver_parameters(configuration, *, weightfield):
         "weightfield": bool(weightfield),
     }
 
+# What may be left of the weighting potential of an electrode at the ends of
+# the row of cells it is solved on.
+WEIGHTING_TOLERANCE = 1e-3
+
+
+def cells_to_fall_off(depth, pitch):
+    """Cells on either side of an electrode for its weighting potential to
+    fall to WEIGHTING_TOLERANCE in a fully depleted device.
+
+    Far from the electrode the potential falls as exp(-pi * distance / depth)
+    between the plane of the electrodes and the back. A device that is not
+    fully depleted is thinner than that. The end of the row reflects what
+    reaches it, which doubles it there.
+    """
+    return math.ceil(depth / (math.pi * pitch) * math.log(2 / WEIGHTING_TOLERANCE))
+
+
+def left_at_the_ends(device, region, pitch):
+    """The largest weighting potential in the two end cells of a row, whose
+    cells are `pitch` cm wide."""
+    across = np.array(devsim.get_node_model_values(device=device, region=region, name="y"))
+    potential = np.array(devsim.get_node_model_values(device=device, region=region, name="Potential"))
+    ends = (across < across.min() + pitch) | (across > across.max() - pitch)
+    return float(np.abs(potential[ends]).max())
+
+
+# The part of the capacitance of an electrode that the neighbours a distance
+# away must hold for a signal to be carried over to them.
+CROSSTALK_TOLERANCE = 1e-2
+
+
+def capacitances(device, electrode, relative_permittivity):
+    """Capacitance in F/cm from `electrode` to every other one, in a solved
+    weighting field: `electrode` is at 1 V, the others at 0 V and the charge
+    on each is what it holds. The weighting field is solved in a dielectric
+    of the permittivity of vacuum, so that of the material is put back.
+    """
+    return {
+        name: abs(devsim.get_contact_charge(device=device, contact=name, equation="PotentialEquation"))
+        * relative_permittivity
+        for name in devsim.get_contact_list(device=device)
+        if name != electrode
+    }
+
+
+def neighbours_coupled(to_others):
+    """How far along the row an electrode carries a signal over: the number
+    of "neighbour<n>" electrodes, from the nearest, each of which holds at
+    least CROSSTALK_TOLERANCE of the capacitance `to_others` adds up to."""
+    total = sum(to_others.values())
+    coupled = 0
+    while to_others.get("neighbour{}".format(coupled + 1), 0.0) >= CROSSTALK_TOLERANCE * total:
+        coupled += 1
+    return coupled
+
+
+def _empty_devsim():
+    """devsim emptied for another solve, with the linear solver it chose when
+    it was loaded, which emptying forgets."""
+    kept = {
+        name: devsim.get_parameter(name=name)
+        for name in ("direct_solver", "solver_callback")
+        if name in devsim.get_parameter_list()
+    }
+    devsim.reset_devsim()
+    for name, value in kept.items():
+        devsim.set_parameter(name=name, value=value)
+
+
 def main (kwargs):
     simname = kwargs['target']
     is_cv = kwargs['cv']
@@ -122,10 +195,21 @@ def main (kwargs):
     device = MyDetector.device
     region = MyDetector.region
     field_directory = kwargs.get("_field_directory")
+    # A device that lists one electrode for a row of them has the mesh of one
+    # cell. Its electric field repeats from cell to cell. The weighting
+    # potential of an electrode does not, but it is the same for every
+    # electrode: it is solved once, on the cell with cells on either side.
+    listed = MyDetector.device_dict["read_out_contact"]
+    cells_either_side = 0
+    if is_wf and len(listed) == 1 and MyDetector.read_ele_num > 1:
+        cells_either_side = kwargs.get("_cells_either_side") or cells_to_fall_off(
+            MyDetector.l_z, MyDetector.p_x
+        )
     MyDevsimMesh = DevsimMesh(
         MyDetector,
         devsim_solve_paras=paras,
         output_directory=field_directory,
+        cells_either_side=cells_either_side,
     )
     MyDevsimMesh.mesh_define()
 
@@ -205,11 +289,40 @@ def main (kwargs):
                 os.makedirs(folder_path)
             
             loop.initial_solver(contact=contact,set_contact_type=None,impact_model=impact_model,irradiation_model=irradiation_model,irradiation_flux=irradiation_flux,)
-            take_conductors_into_electrodes(device, region, conductive_file)
+            take_conductors_into_electrodes(
+                device, region, conductive_file,
+                cell_width=float(MyDetector.p_x) * 1e-4 if cells_either_side else None,
+            )
             loop.loop_solver(circuit_contact=contact,v_trial=v_trial,area_factor=paras["area_factor"],)
 
+            if cells_either_side:
+                left = left_at_the_ends(device, region, float(MyDetector.p_x) * 1e-4)
+                if left > WEIGHTING_TOLERANCE:
+                    more = math.ceil(1.5 * cells_either_side)
+                    if more > 2 * cells_to_fall_off(MyDetector.l_z, MyDetector.p_x):
+                        raise ValueError(
+                            f"the weighting potential of {contact} of {simname} at {v_goal} V does not fall off "
+                            f"along the row: {left:.3g} is left {cells_either_side} cells away. "
+                            "A conductive part of the device that touches the electrodes of the row does this"
+                        )
+                    _empty_devsim()
+                    return main({**kwargs, "_cells_either_side": more})
+
             # Stored as the weighting field of the bias, as Potential_<bias>V.pkl.
-            save_milestone.save_milestone(device=device, v=float(v_goal), path=folder_path,dimension=default_dimension,contact_name=contact,is_wf=is_wf,)
+            save_milestone.save_milestone(device=device, v=float(v_goal), path=folder_path,dimension=default_dimension,contact_name=contact,is_wf=is_wf,cells_either_side=cells_either_side or None,)
+            if cells_either_side:
+                to_others = capacitances(device, contact, Material(MyDetector.material).permittivity)
+                stored = {
+                    "unit": "F/cm",
+                    "of": contact,
+                    "total": sum(to_others.values()),
+                    "to": to_others,
+                    "neighbours_coupled": neighbours_coupled(to_others),
+                }
+                with open(
+                    field_pickle_path(os.path.join(folder_path, contact), "Capacitance", float(v_goal)).with_suffix(".json"), "w"
+                ) as stream:
+                    json.dump(stored, stream, indent=1)
             save_milestone.save_solved(path, "weighting", float(v_goal))
             devsim.write_devices(file=os.path.join(folder_path,"weightingfield.dat"), type="tecplot")
             
