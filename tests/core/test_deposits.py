@@ -19,6 +19,7 @@ def test_deposits_file_returns_each_event_with_its_own_deposits(tmp_path) -> Non
                 z=[300.0, 150.0, 0.0],
                 t=[2.35e-12, 2.85e-12, 3.36e-12],
                 e=[0.03, 0.04, 0.02],
+                pairs=[8300.0, 11100.0, 5600.0],
             ),
             EventDeposits(
                 event=4,
@@ -28,6 +29,7 @@ def test_deposits_file_returns_each_event_with_its_own_deposits(tmp_path) -> Non
                 z=[30.0],
                 t=[1.0e-12],
                 e=[0.06],
+                pairs=[16700.0],
             ),
         ],
     )

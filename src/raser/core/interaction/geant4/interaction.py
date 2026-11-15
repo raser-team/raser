@@ -5,9 +5,9 @@ Description:  interaction.py
 @version    : 1.0
 """
 
-from raser.core.interaction.geant4 import g4b
+from raser.core.interaction.geant4.g4ppyy_runtime import g4b
 
-from .deposits import deposits_of_steps
+from ..deposits import deposits_of_steps
 from .detector_construction import GeneralDetectorConstruction
 from .action_initialization import GeneralActionInitialization
 

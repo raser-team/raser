@@ -19,8 +19,11 @@ ROOT.gROOT.SetBatch(True)
 from .model import Material
 from .drift import Drifted, drift, induced_charges, surviving
 from . import draw
+from .draw_drift_path import draw_drift_path
+from .currents import EventCurrents, append_currents
 
 from ..interaction.carrier_list import CarrierListFromG4P
+from ..interaction.deposits import read_deposits
 from ..interaction.toy_mip import ToyMIPLineSource
 from raser.supports.output import output
 
@@ -565,3 +568,66 @@ class CalCurrentLaser(CalCurrent):
             currents[:] = currents @ pulse
             for i in range(self.read_ele_num):
                 fill_histogram(histograms[i], np.pad(currents[i], 1))
+
+
+def write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, plot_path=None):
+    """Drift the pairs of every event of the deposits file in the field and
+    write the currents they induce to the currents file, event by event.
+
+    A currents file an earlier start left there is replaced. The first `plots`
+    events are also drawn, each in plot_path/event_<number>: the drift paths
+    with the deposits, and the currents.
+    """
+    deposits = read_deposits(deposits_path)
+    if not deposits.events:
+        raise ValueError(f"{deposits_path} holds no event: there is no current to write")
+    if os.path.exists(currents_path):
+        os.remove(currents_path)
+    for count, record in enumerate(deposits.events):
+        drawn = count < plots
+        positions = [list(point) for point in zip(record.x, record.y, record.z, record.t)]
+        my_current = CalCurrent(my_d, my_f, record.pairs, positions, keep_drift_paths=drawn)
+        append_currents(
+            currents_path,
+            my_current.electrodes,
+            my_current.t_bin,
+            EventCurrents(
+                record.event,
+                my_current.t_start,
+                my_current.current,
+                my_current.charge,
+                my_current.pairs,
+            ),
+        )
+        if drawn:
+            path = os.path.join(plot_path, "event_%s" % (record.event))
+            os.makedirs(path, exist_ok=True)
+            draw_drift_path(my_d, list(zip(record.x, record.y, record.z)), my_f, my_current, path)
+            my_current.draw_currents(path)
+            if my_d.is_strip:
+                my_current.charge_collection_strip(path)
+            if my_d.is_pixel:
+                my_current.charge_collection_pixel(path)
+
+
+def write_laser_currents(currents_path, my_d, my_f, my_l, plot_path=None):
+    """Drift the pairs of one laser pulse in the field, without diffusion, and
+    write the currents they induce to the currents file as its event 0.
+
+    A currents file an earlier start left there is replaced. With plot_path
+    the currents are also drawn there.
+    """
+    if os.path.exists(currents_path):
+        os.remove(currents_path)
+    my_current = CalCurrentLaser(my_d, my_f, my_l, diffusion=False)
+    append_currents(
+        currents_path,
+        my_current.electrodes,
+        my_current.t_bin,
+        EventCurrents(
+            0, my_current.t_start, my_current.current, my_current.charge, my_current.pairs
+        ),
+    )
+    if plot_path is not None:
+        os.makedirs(plot_path, exist_ok=True)
+        my_current.draw_currents(plot_path)
