@@ -113,3 +113,10 @@ def test_results_of_a_point_are_in_its_own_folder_and_a_point_without_jobs_is_re
         result = json.loads((root / point / "ana" / "scope" / "result.json").read_text())
         assert result["timing"]["selected"] == 100
     assert not (root / "voltage_200").exists()
+    # one row per point that ran, with the option that differs between them
+    rows = json.loads((root / "ana" / "scope" / "points.json").read_text())
+    assert [(row["point"], row["voltage"], row["events"]) for row in rows] == [("", 300.0, 100), ("voltage_100", 100.0, 100)]
+    assert "plots" not in rows[0]
+    half = json.loads((root / "voltage_100" / "ana" / "scope" / "result.json").read_text())["timing"]["times"]["CFD50"]
+    assert rows[1]["CFD50"] == {key: half[key] for key in ("sigma68", "sigma", "sigma_error")}
+    assert rows[1]["efficiency"] == pytest.approx(0.9)
