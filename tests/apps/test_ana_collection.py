@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 import pytest
 
@@ -11,8 +13,16 @@ from raser.core.interaction.deposits import write_deposits
 E = 1.602176634e-19
 
 
+def _alone(folder):
+    """The seed folder of an experiment without points: it holds its slices."""
+    folder.mkdir(parents=True, exist_ok=True)
+    held = {"deposits": "", "currents": "", "waveforms": ""}
+    (folder / "run.json").write_text(json.dumps({"point": "", "held_in": held}))
+
+
 def _job(folder, index, efficiencies):
     """A job whose events have 1000 pairs each and these efficiencies."""
+    _alone(folder)
     batch = folder / "batch"
     batch.mkdir(parents=True, exist_ok=True)
     for number, efficiency in enumerate(efficiencies):
@@ -26,6 +36,7 @@ def _job(folder, index, efficiencies):
 
 
 def _empty_job(folder, index, events):
+    _alone(folder)
     batch = folder / "batch"
     batch.mkdir(parents=True, exist_ok=True)
     write_deposits(str(batch / f"deposits_{index}.h5"), Deposits(50, None, None, events))

@@ -3,11 +3,16 @@
 import numpy as np
 
 from raser.core.frontend.waveforms import read_waveforms
+from raser.core.interaction.deposits import read_deposits
 from raser.core.metrics.reconstruction import InputWaveform
 from raser.core.metrics.reconstruction import get_CFD50
 from raser.core.metrics.reconstruction import get_CoG
+from raser.core.metrics.reconstruction import net_pulse
+from raser.core.metrics.reconstruction import pulse_polarity
+from raser.core.metrics.resolution import core_width
 
 from .files import job_file
+from .files import slice_file
 
 
 CFD_FRACTIONS = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9)
@@ -19,17 +24,23 @@ def event_times(jobs, threshold, amplitude_threshold):
     jobs : (seed folder, job index) pairs, as lifecycle hands them out.
     threshold, amplitude_threshold : in the unit of the waveforms [V]
 
-    Returns the number of events and, for those above the amplitude
-    threshold, one array per quantity:
+    Every waveform is taken without its baseline and with its pulse turned
+    positive; the thresholds and the amplitude are above the baseline. The
+    sign of the pulses is one for the point, taken from all its events.
+
+    Returns the number of events, the sign of the pulses (+1 or -1) and, for
+    the events above the amplitude threshold, one array per quantity:
         ToA         time of arrival [s]
         ToT         time over threshold [s]
         amplitude   [V]
+        baseline    mean of the samples before the pulse [V]
+        noise       their standard deviation [V]
+        truth       time of the earliest deposit of the event [s]
         CoG         centre of gravity in time of the part above the threshold [s]
         CFD10 ... CFD90   constant-fraction time at 10 % ... 90 % of the amplitude [s]
     """
-    count = 0
-    names = ["ToA", "ToT", "amplitude", "CoG"] + [f"CFD{round(100 * part)}" for part in CFD_FRACTIONS]
-    rows = []
+    names = ["ToA", "ToT", "amplitude", "baseline", "noise", "truth", "CoG"] + [f"CFD{round(100 * part)}" for part in CFD_FRACTIONS]
+    events = []
     for folder, index in jobs:
         path = job_file(folder, index, "waveforms")
         if path is None:
@@ -40,20 +51,57 @@ def event_times(jobs, threshold, amplitude_threshold):
                 f"{path}: {len(waveforms.electrodes)} electrodes; "
                 "the time of an event with several electrodes is not settled"
             )
+        deposits = read_deposits(str(slice_file(folder, index, "deposits")))
+        earliest = {event.event: min(event.t) for event in deposits.events}
         for event in waveforms.events:
-            count += 1
-            one = InputWaveform(
-                event.voltage, event.t0, waveforms.dt, None, threshold, amplitude_threshold, None, None
+            if event.event not in earliest:
+                raise ValueError(f"{path}: event {event.event} is not among the deposits of the job")
+            events.append(
+                (event.t0, waveforms.dt, earliest[event.event], *net_pulse(event.voltage[0]))
             )
-            if one.data["amplitude"] is None:
-                continue
-            fractions = [
-                get_CFD50(one.times, one.waveforms[0], part, one.peak_time[0])
-                for part in CFD_FRACTIONS
-            ]
-            center = get_CoG(one.times, one.waveforms[0], threshold, one.peak_time[0])
-            rows.append(
-                [one.data["ToA"], one.data["ToT"], one.data["amplitude"], center, *fractions]
-            )
+    if not events:
+        raise ValueError("the jobs recorded no event")
+    polarity = pulse_polarity([net for _, _, _, net, _, _ in events])
+    rows = []
+    for t0, dt, truth, net, baseline, noise in events:
+        one = InputWaveform(
+            [polarity * net], t0, dt, None, threshold, amplitude_threshold, None, None
+        )
+        if one.data["amplitude"] is None:
+            continue
+        fractions = [
+            get_CFD50(one.times, one.waveforms[0], part, one.peak_time[0])
+            for part in CFD_FRACTIONS
+        ]
+        center = get_CoG(one.times, one.waveforms[0], threshold, one.peak_time[0])
+        rows.append(
+            [one.data["ToA"], one.data["ToT"], one.data["amplitude"], baseline, noise, truth, center, *fractions]
+        )
     table = np.array(rows, dtype="float64").reshape(len(rows), len(names))
-    return count, {name: table[:, k] for k, name in enumerate(names)}
+    return len(events), polarity, {name: table[:, k] for k, name in enumerate(names)}
+
+
+def point_resolution(jobs, threshold, amplitude_threshold):
+    """Time resolution of one point: for every time of `event_times`, the
+    width of the core of time - truth over the events above the amplitude
+    threshold.
+
+    Returns a dict:
+        events    number of events
+        selected  number of them above the amplitude threshold
+        polarity  sign of the pulses, +1 or -1
+        times     for ToA, CoG, CFD10 ... CFD90 what `core_width` gives [s],
+                  and `missing`: the selected events that have no such time
+    """
+    count, polarity, times = event_times(jobs, threshold, amplitude_threshold)
+    widths = {}
+    for name in ["ToA", "CoG"] + [f"CFD{round(100 * part)}" for part in CFD_FRACTIONS]:
+        difference = times[name] - times["truth"]
+        found = ~np.isnan(difference)
+        widths[name] = {**core_width(difference[found]), "missing": int(np.sum(~found))}
+    return {
+        "events": count,
+        "selected": len(times["truth"]),
+        "polarity": polarity,
+        "times": widths,
+    }
