@@ -1,8 +1,5 @@
 #!/usr/bin/env python3 
-import os
 import math
-import array
-import ROOT
 from raser.core.interaction.geant4.g4ppyy_runtime import g4b
 g4b.include("G4VUserDetectorConstruction.hh")
 g4b.include("G4UserLimits.hh")
@@ -11,9 +8,6 @@ g4b.include("G4VUserPrimaryGeneratorAction.hh")
 g4b.include("G4UserRunAction.hh")
 g4b.include("G4UserEventAction.hh")
 g4b.include("G4UserSteppingAction.hh")
-import json
-from raser.supports.paths import app_file_path
-from raser.supports.output import output
 
 pixelAreaZIndex = []
 for i in range(2):
@@ -21,88 +15,6 @@ for i in range(2):
 pixelAreaYIndex = []
 for y in range(-3, 3):
     pixelAreaYIndex.append(y) 
-
-output_path = output(__file__, "N0_3_4")
-
-class cflmPixelG4Particles:
-
-    def __init__(self, my_d, i, j, l):
-
-        self.geant4_model = "cflm"
-
-        json_s_p_steps_path = os.path.join(output_path, "s_p_steps.json")                        
-        json_s_energy_steps_path = os.path.join(output_path, "s_energy_steps.json")           
-        json_s_edep_devices_path = os.path.join(output_path, "s_edep_devices.json")          
-                                        
-        if os.path.exists(json_s_p_steps_path) and os.path.exists(json_s_energy_steps_path) and os.path.exists(json_s_edep_devices_path):
-           if l=='I':
-              with open(json_s_p_steps_path, 'r') as step_file:
-                   step = json.load(step_file)
-                   self.p_steps = step['detector_I'][f'{i}_{j}']
-              with open(json_s_energy_steps_path, 'r') as step_energy_file:
-                   step_energy = json.load(step_energy_file)
-                   self.energy_steps = step_energy['detector_I'][f'{i}_{j}']
-              with open(json_s_edep_devices_path, 'r') as edep_device_file: 
-                   edep_device = json.load(edep_device_file)
-                   self.edep_devices = edep_device['detector_I'][f'{i}_{j}']
-                
-              self.init_tz_device = -31
-              if i>=0:
-                 y_position = (i * 5 + 2.5)
-              elif i<0:
-                 y_position = ((i + 1) * 5 - 2.5)
-                    
-              z_position = (j * 5 + 2.5 + 225)
-
-              self.HitFlag = 0  
-              if len(self.p_steps[0]) != 1:
-                 self.HitFlag = 1
-                    
-              self.p_steps_current=[[[my_d.l_x/2 - single_step[1] + y_position*1000,   ### *1000: mm---->um
-                                      my_d.l_y/2 + single_step[2] - z_position*1000,
-                                      self.init_tz_device*1000 - single_step[0]]\
-                              for single_step in p_step] for p_step in self.p_steps]
-           elif l=='II':
-              with open(json_s_p_steps_path, 'r') as step_file:
-                   step = json.load(step_file)
-                   self.p_steps = step['detector_II'][f'{i}_{j}']
-              with open(json_s_energy_steps_path, 'r') as step_energy_file:
-                   step_energy = json.load(step_energy_file)
-                   self.energy_steps = step_energy['detector_II'][f'{i}_{j}']
-              with open(json_s_edep_devices_path, 'r') as edep_device_file:
-                   edep_device = json.load(edep_device_file)
-                   self.edep_devices = edep_device['detector_II'][f'{i}_{j}']
-                
-              self.init_tz_device = 31
-              if i>=0:
-                 y_position = (i * 5 + 2.5)
-              elif i<0:
-                 y_position = ((i + 1) * 5 - 2.5)
-                    
-              z_position = (j * 5 + 2.5 + 225)
-                    
-              self.HitFlag = 0  
-              if len(self.p_steps[0]) != 1:
-                 self.HitFlag = 1
-
-              self.p_steps_current=[[[my_d.l_x/2 - single_step[1] + y_position*1000,   ### *1000: mm---->um
-                                      my_d.l_y/2 + single_step[2] - z_position*1000,
-                                      single_step[0] - self.init_tz_device*1000]\
-                              for single_step in p_step] for p_step in self.p_steps]
-        
-        else:       
-            geant4_json = app_file_path("lumi", "cflm_p1.json")
-            with open(geant4_json) as f:
-                g4_dic = json.load(f)
-
-            s_p_steps, s_energy_steps, s_edep_devices = simulate_bunches(g4_dic, g4_dic['seed'])
-
-            SaveJson(s_p_steps, json_s_p_steps_path)
-            SaveJson(s_energy_steps, json_s_energy_steps_path)
-            SaveJson(s_edep_devices, json_s_edep_devices_path)
-        def __del__(self):
-            pass
-
 
 def simulate_bunches(g4_dic, seed):
     """Shoot the bunches of g4_dic and give the steps in every pad.
@@ -115,8 +27,6 @@ def simulate_bunches(g4_dic, seed):
     global s_eventIDs,s_edep_devices,s_p_steps,s_energy_steps
     s_eventIDs,s_edep_devices,s_p_steps,s_energy_steps = {}, {}, {}, {}
 
-    global detectorID, pixelAreaEdep
-    detectorID, pixelAreaEdep = [], []
 
     for k  in ('I', 'II'):
         s_eventIDs[f'detector_{k}'] = {}
@@ -414,8 +324,6 @@ class cflmaEventAction(g4b.G4UserEventAction):
             for k in ('I', 'II'):
                 for i in pixelAreaYIndex:
                     for j in pixelAreaZIndex:
-                        detectorID.append([k,[i, j]])
-                        pixelAreaEdep.append(self.edepPixelArea[f'detector_{k}'][f'{i}_{j}'])
                         self.totalDetectEdep += self.edepPixelArea[f'detector_{k}'][f'{i}_{j}']
                         print(f"Detector_{k}_{i}_{j}: total energy:", self.edepPixelArea[f'detector_{k}'][f'{i}_{j}'] / g4b.MeV, "MeV")
             print('total energy deposition of detect area:', self.totalDetectEdep / g4b.MeV, "MeV")
@@ -455,7 +363,6 @@ class cflmRunAction(g4b.G4UserRunAction):
         else:
             print("End of run for the local thread \n")
 
-        dividedAreaEdep(detectorID, pixelAreaEdep)
 
 class cflmaActionInitialization(g4b.G4VUserActionInitialization):
 
@@ -497,85 +404,3 @@ def save_geant4_events(eventID,edep_device,p_step,energy_step, i, j, k):
         s_edep_devices[f'detector_{k}'][key].append(edep_device)
         s_p_steps[f'detector_{k}'][key].append([[0,0,0]])
         s_energy_steps[f'detector_{k}'][key].append([0]) 
-
-def dividedAreaEdep(detectorID, pixelAreaEdep): 
-   
-    i_value, j_value, valueEdep = array.array('d',[999.]), array.array('d',[999.]), array.array('d',[999.])
-    
-    file_I = ROOT.TFile(os.path.join(output_path, " detector_I_pixelEdep.root"), "RECREATE") 
-    tree_I = ROOT.TTree("DetectorID", "DetectorID")
-    file_II = ROOT.TFile(os.path.join(output_path, " detector_II_pixelEdep.root"), "RECREATE")
-    tree_II = ROOT.TTree("DetectorID", "DetectorID")
-
-    tree_I.Branch("i", i_value, 'i/D')
-    tree_I.Branch("j", j_value, 'j/D')
-    tree_I.Branch("Edep", valueEdep, 'valueEdep/D')
-    tree_II.Branch("i", i_value, 'i/D')
-    tree_II.Branch("j", j_value, 'j/D')
-    tree_II.Branch("Edep", valueEdep, 'valueEdep/D')
-    for m in range(len(detectorID)):      
-        if detectorID[m][0]=='I':
-            i_value[0] = float(detectorID[m][1][0])
-            j_value[0] = float(detectorID[m][1][1])
-            valueEdep[0] = float(pixelAreaEdep[m])
-            tree_I.Fill()
-        elif detectorID[m][0]=='II':
-            i_value[0] = float(detectorID[m][1][0])
-            j_value[0] = float(detectorID[m][1][1])
-            valueEdep[0] = float(pixelAreaEdep[m])
-            tree_II.Fill()
-
-    file_I.Write()
-    file_I.Close()
-    file_II.Write()
-    file_II.Close()
-
-def SaveJson(dic, dicFile):
-    with open(dicFile, 'w') as dic_file:
-        json.dump(dic, dic_file)
-    print(f'{dicFile} has been created successfully!')
-
-def main():
-        
-    geant4_json = app_file_path("lumi", "cflm_p1.json")
-    with open(geant4_json) as f:
-         g4_dic = json.load(f)
-    
-    if g4_dic['vis']:
-        runManager = g4b.G4RunManager.GetRunManager() or g4b.G4RunManager()
-
-        physicsList = g4b.FTFP_BERT()
-        physicsList.RegisterPhysics(g4b.G4StepLimiterPhysics())
-        runManager.SetUserInitialization(physicsList)
-
-        detConstruction = cflmDetectorConstruction(g4_dic)
-        runManager.SetUserInitialization(detConstruction)
-
-        visManager = g4b.G4VisExecutive()
-        visManager.Initialize()
-        UImanager = g4b.G4UImanager.GetUIpointer()
-
-        UImanager.ApplyCommand("/control/execute {}".format(component_path("g4macro", "init_vis.mac")))
-        UImanager.ApplyCommand('/run/initialize')
-        UImanager.ApplyCommand('/tracking/verbose 0')
-        UImanager.ApplyCommand("/vis/viewer/set/background 1 1 1")
-        
-        UImanager.ApplyCommand('/vis/ogl/set/printMode vectored')
-        UImanager.ApplyCommand('/vis/ogl/export')
-
-        for i in range(1000):
-            UImanager.ApplyCommand("/vis/viewer/refresh") 
-    else:
-        
-        from raser.core.device import build_device as bdv
-        detector_json = component_path('device', g4_dic['DetModule'])
-        with open(detector_json) as q:
-             det_dic = json.load(q)
-
-        det_name = det_dic['det_name']
-        my_d = bdv.Detector(det_name)
-   
-        my_g4p = cflmPixelG4Particles(my_d, i=0, j=0, l="I")  
-
-if __name__ == '__main__':
-    main()       
