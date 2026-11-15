@@ -1,0 +1,33 @@
+* ChargeSensitiveCremat: Cremat CR-110-R2.2 charge sensitive preamplifier, by
+* its maker (application guide of July 2023, and the LTspice model CR-110-R2
+* of the Cremat web site for the way it is built):
+*   two stages: a charge sensitive one of gain -3000 with the feedback
+*   Cf = 1.4 pF beside Rf = 100 MOhm, then one of gain +2; output 50 Ohm
+*   gain 1.4 V/pC with the output unloaded; decay 140 us
+*   time to 90 percent: 3 ns + 0.22 ns per pF at the input
+*   noise 200 electrons rms with the input unconnected, 3.8 electrons more
+*   per pF at the input, behind a Gaussian shaping of 1 us
+* Ports: in, out. Ground is node 0.
+*
+* Rp and Cp are the one pole of the first stage and Cin its input
+* capacitance: together they give the time to 90 percent, 1.19 GHz of gain
+* bandwidth and 12.2 pF. Rs is no part: its thermal noise is the voltage
+* noise of the input, the one that gives the 3.8 electrons per pF.
+*
+* Not in this file: 109 of the 200 electrons with the input unconnected. Rf
+* and Rs give 91; the maker says nothing of where the rest is from, and his
+* model has no noise in its amplifiers. With 20 pF at the input the circuit
+* gives 148 electrons.
+
+.subckt ChargeSensitiveCremat in out
+Cin in 0 12.24p
+Rs in g 43.1
+E1 a 0 g 0 -3000
+Rp a b 1k noisy=0
+Cp b 0 401.3p
+E2 c 0 b 0 1
+Cf in c 1.4p
+Rf in c 100MEG
+E3 d 0 c 0 2
+Rout d out 50
+.ends ChargeSensitiveCremat
