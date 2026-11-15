@@ -478,9 +478,9 @@ def draw_charge(my_charge):
     c.SaveAs(path+"/Pixel_charge.pdf")
     c.SaveAs(path+"/Pixel_charge.root")
 
-def main(seed):
+def main(seed, events):
     my_d = Detector("TAICHU3") #remain the same
-    my_g4 = TelescopeG4Interaction(my_d, "telescope", seed) #remove my_f
+    my_g4 = TelescopeG4Interaction(my_d, "telescope", seed, events) #remove my_f
     my_hit_charge = CalCurrentDiffuse(my_d,my_g4)
     draw_charge(my_hit_charge)
     my_telescope_charge = Telescope(my_d,my_g4,my_hit_charge) 

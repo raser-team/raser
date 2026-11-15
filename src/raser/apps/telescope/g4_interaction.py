@@ -39,7 +39,7 @@ flag = 0
 # Geant4 main process
 class TelescopeG4Interaction(GeneralG4Interaction):
     def __init__(
-        self, my_d, g4experiment, g4_seed, g4_vis=False
+        self, my_d, g4experiment, g4_seed, events, g4_vis=False
     ):
         """
         Description:
@@ -59,6 +59,7 @@ class TelescopeG4Interaction(GeneralG4Interaction):
         geant4_json = app_file_path("telescope", g4experiment + ".json")
         with open(geant4_json) as f:
             g4_dic = json.load(f)
+        g4_dic["total_events"] = events
         # my_g4d = PixelDetectorConstruction(g4_dic,g4_dic['maxstep'])
 
         devicenames, localpositions = [], []
