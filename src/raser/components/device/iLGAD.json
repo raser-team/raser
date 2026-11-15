@@ -25,48 +25,29 @@
 
 
     "area_factor" : 1,
-    "default_dimension" : 2,
+    "default_dimension" : 1,
     "read_out_contact" : [{"x_span":0, "y_span":0, "name":"top"}],
 
     "mesh" : {
-        "tcad_mesh" : {
-            "file" : "./work/iLGAD/field/default/-300.0V.tdr"
-        },
-        "2D_mesh" : {
+        "1D_mesh" : {
             "mesh_line" : [
-                {"dir" : "x", "pos" : -1e-8,       "ps" : 1e-8},
-                {"dir" : "x", "pos" : 0,           "ps" : 5e-6},
-                {"dir" : "x", "pos" : 1e-4,        "ps" : 5e-6},
-                {"dir" : "x", "pos" : 3e-4,        "ps" : 2e-5},
-                {"dir" : "x", "pos" : 10e-4,       "ps" : 1e-4},
-                {"dir" : "x", "pos" : 180e-4,       "ps" : 1e-4},
-                {"dir" : "x", "pos" : 180.0001e-4,  "ps" : 1e-8},
-                {"dir" : "y", "pos" : 0,           "ps" : 2e-4},
-                {"dir" : "y", "pos" : 1.8e-2,      "ps" : 2e-4}
+                {"pos" : 0,      "ps" : 5e-6, "tag" : "top"},
+                {"pos" : 1e-4,   "ps" : 5e-6, "tag" : "n_plus"},
+                {"pos" : 3e-4,   "ps" : 2e-5, "tag" : "n_layer"},
+                {"pos" : 10e-4,  "ps" : 1e-4, "tag" : "bulk"},
+                {"pos" : 180e-4, "ps" : 1e-4, "tag" : "bot"}
             ],
             "region" : [
                 {
                     "material" : "Silicon", 
-                    "region" : "iLGAD"
-                },
-                {
-                    "material" : "air",
-                    "region" : "air1",
-                    "xl" : -1e-8,
-                    "xh" : 0
-                },
-                {
-                    "material" : "air",
-                    "region" : "air2",
-                    "xl" : 180e-4,
-                    "xh" : 180.0001e-4
+                    "region" : "iLGAD", 
+                    "tag1" : "top", 
+                    "tag2" : "bot"
                 }
             ],
             "contact" : [
-                {"name" : "top",  "material" : "metal", "region" : "iLGAD",
-                 "xl" : 0,     "xh" : 0,       "bloat" : 1e-10},
-                {"name" : "bot",  "material" : "metal", "region" : "iLGAD",
-                 "xl" : 1.8e-2, "xh" : 1.8e-2, "bloat" : 1e-10}
+                {"name" : "top", "tag" : "top", "material" : "metal"},
+                {"name" : "bot", "tag" : "bot", "material" : "metal"}
             ]
         }
     }
