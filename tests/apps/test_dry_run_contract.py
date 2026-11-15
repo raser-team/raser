@@ -21,9 +21,12 @@ def test_dry_run_names_the_seed_folder_of_every_point_and_writes_nothing(
     lines = capsys.readouterr().out.splitlines()
 
     experiment = work_root / "HPK-Si-PiN" / "cce"
+    slices = [f"  {name:<12}jobs [0, 1]" for name in ("deposits", "currents", "waveforms")]
     assert lines == [
         f"{experiment / 'seed_42'}: jobs [0, 1]",
+        *slices,
         f"{experiment / 'voltage_300' / 'seed_42'}: jobs [0, 1]",
+        *slices,
     ]
     assert not work_root.exists()
 

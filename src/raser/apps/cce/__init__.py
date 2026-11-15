@@ -9,10 +9,6 @@ from raser.lifecycle.workflow import Workflow
 DEFAULTS = json.loads((Path(__file__).parent / "charge_collection.json").read_text("utf-8"))
 
 
-def _job(kwargs):
-    signal.run_job(kwargs)
-
-
 WORKFLOW = Workflow(
     name="cce",
     keys=signal.KEYS + ("g4setup",),
@@ -25,7 +21,7 @@ WORKFLOW = Workflow(
     },
     components={**signal.COMPONENTS, "g4setup": "g4setup"},
     in_file=signal.IN_FILE,
-    job=_job,
+    slices=signal.SLICES,
     command=signal.job_command,
 )
 

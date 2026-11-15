@@ -8,6 +8,7 @@ Description:  signal/__init__.py
 import json
 from pathlib import Path
 
+from raser.lifecycle.slices import Slice
 from raser.lifecycle.workflow import Workflow
 
 DEFAULTS = json.loads((Path(__file__).parent / "signal.json").read_text("utf-8"))
@@ -21,7 +22,7 @@ KEYS = (
     "irradiation",
     "amplifier",
 )
-COMPONENTS = {"source": "source", "afe": "amplifier"}  # kind of file -> option
+COMPONENTS = {"source": "source"}  # kind of file -> option
 IN_FILE = {"voltage": "device.bias.voltage"}  # option -> where it sits in a file
 
 
@@ -59,11 +60,36 @@ def job_command(kwargs):
     return []
 
 
-def run_job(kwargs):
-    """One signal job inside its seed folder."""
+def _deposits(kwargs):
     from . import gen_signal
 
-    gen_signal.main(kwargs)
+    gen_signal.deposits(kwargs)
+
+
+def _currents(kwargs):
+    from . import gen_signal
+
+    gen_signal.currents(kwargs)
+
+
+def _waveforms(kwargs):
+    from . import gen_signal
+
+    gen_signal.waveforms(kwargs)
+
+
+# A slice is named by the file it writes; its keys and kinds of file are what
+# it reads and no slice before it does.
+SLICES = (
+    Slice(
+        "deposits",
+        _deposits,
+        keys=("source", "g4setup", "events_per_job", "edep_min", "edep_max"),
+        kinds=("source", "g4setup"),
+    ),
+    Slice("currents", _currents, keys=("voltage", "irradiation", "plots")),
+    Slice("waveforms", _waveforms, keys=("amplifier",)),
+)
 
 
 WORKFLOW = Workflow(
@@ -77,7 +103,7 @@ WORKFLOW = Workflow(
     },
     components=COMPONENTS,
     in_file=IN_FILE,
-    job=run_job,
+    slices=SLICES,
     command=job_command,
 )
 
