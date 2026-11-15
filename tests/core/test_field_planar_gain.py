@@ -110,6 +110,18 @@ def test_a_layer_at_the_back_multiplies_the_carriers_that_drift_to_the_back() ->
     assert field.planar_gain(DEVICE) == pytest.approx(_closed_form(-3.0e5, 1.0), rel=1e-6)
 
 
+def test_a_pair_made_in_front_of_the_layer_has_the_gain_of_the_other_carrier() -> None:
+    # the field is along the depth: behind the layer the electrons drift through it,
+    # in front of it the holes do
+    field = _field([0.0, 1.0, 2.0, 50.0], [1.0e4, 3.0e5, 1.0e4])
+    electrons, holes = _closed_form(3.0e5, 1.0), _closed_form(-3.0e5, 1.0)
+
+    assert field.planar_gain_at(DEVICE, 25.0) == pytest.approx(electrons, rel=1e-6)
+    assert field.planar_gain_at(DEVICE, 0.5) == pytest.approx(holes, rel=1e-6)
+    assert holes < 0.5 * electrons
+    assert holes < field.planar_gain_at(DEVICE, 1.5) < electrons
+
+
 def test_a_layer_beyond_breakdown_is_refused() -> None:
     with pytest.raises(ValueError, match="breaks down at 100.0 V"):
         _field([0.0, 3.0], [5.0e5]).planar_gain(DEVICE)
