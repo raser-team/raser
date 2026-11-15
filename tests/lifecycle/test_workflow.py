@@ -1156,3 +1156,28 @@ def test_a_slice_that_ends_the_job_leaves_it_done_and_the_later_slices_unrun_in_
     # a job that did record events is not held back by the one that ended
     assert slices.run(chain[1:], here, 1, {}, ["currents", "waveforms"], lambda piece: None)
     assert ran == ["deposits", "currents", "waveforms"]
+
+
+def test_a_file_read_by_a_function_of_the_app_is_judged_and_handed_to_the_job_as_it_was_read(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], ran: list[tuple[str, Any]]
+) -> None:
+    circuit = {"R1": {"ohm": 470.0}}  # what the SPICE file of the amplifier holds
+    handed: list[Any] = []
+
+    def waveforms(options: dict[str, Any]) -> None:
+        ran.append(("waveforms", options["amplifier"]))
+        handed.append(options["_files"]["afe"])
+
+    chain = _chain(ran)
+    last = replace(chain.slices[2], run=waveforms)
+    workflow = replace(
+        chain, slices=(*chain.slices[:2], last), readers={"afe": lambda name: {"name": name, **circuit}}
+    )
+
+    execute(workflow, _chain_kwargs())
+    execute(workflow, _chain_kwargs())
+    circuit["R1"] = {"ohm": 499.0}  # the file is edited
+    execute(workflow, _chain_kwargs())
+
+    assert ran == [("deposits", "beta"), ("currents", 200.0), ("waveforms", "standard"), ("waveforms", "standard")]
+    assert handed == [{"name": "standard", "R1": {"ohm": 470.0}}, {"name": "standard", "R1": {"ohm": 499.0}}]
