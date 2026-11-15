@@ -660,6 +660,29 @@ def test_without_seeds_the_job_of_every_point_runs_in_the_point_folder_at_every_
             workflow_module.finished(workflow, _plain(), experiment)] == [("", 1), ("x_2", 1)]
 
 
+def test_a_workflow_that_names_its_folder_has_its_experiment_there_wherever_the_command_is_run(
+    started: list[Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    received: list[dict[str, Any]] = []
+    workflow = Workflow(
+        name="toy", job=received.append, keys=("x",), defaults={"x": 1},
+        device=False, seeds=False, folder=lambda kwargs: Path(kwargs["inside"]) / "toy",
+    )
+    here = tmp_path / "another toy"
+    here.mkdir()
+    (here / "config.json").write_text(json.dumps({"workflow": "toy", "set": {"x": 5}}))
+    monkeypatch.chdir(here)
+
+    execute(workflow, _plain(inside=str(tmp_path / "first")))
+    execute(workflow, _plain(inside=str(tmp_path / "second"), x=2))
+
+    assert [(options["_run_path"], options["x"]) for options in received] == [
+        (str(tmp_path / "first" / "toy"), 1),
+        (str(tmp_path / "second" / "toy"), 2),
+    ]
+    assert json.loads((tmp_path / "second" / "toy" / "config.json").read_text())["set"] == {"x": 2}
+
+
 def test_without_seeds_a_point_run_with_another_record_is_run_again_in_its_place(
     started: list[Any], tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
