@@ -51,7 +51,10 @@ class bmosG4Interaction:
 
         physicsList = g4b.FTFP_BERT()
         physicsList.SetVerboseLevel(1)
-        physicsList.RegisterPhysics(g4b.G4StepLimiterPhysics())
+        # the physics list deletes what is registered in it: python must not
+        stepLimiterPhysics = g4b.G4StepLimiterPhysics()
+        stepLimiterPhysics.__python_owns__ = False
+        physicsList.RegisterPhysics(stepLimiterPhysics)
         runManager.SetUserInitialization(physicsList)
 
         detConstruction = DetectorConstruction(g4_dic)
@@ -102,6 +105,7 @@ class DetectorConstruction(g4b.G4VUserDetectorConstruction):
         self.solid = {}
         self.logical = {}
         self.physical = {}
+        self.material = {}  # held here: the logical volumes only point at them
         self.checkOverlaps = True
         self.create_world(g4_dic["world_type"], g4_dic["world_size"])
 
@@ -184,6 +188,7 @@ class DetectorConstruction(g4b.G4VUserDetectorConstruction):
         compound = g4b.G4Material(object["compound_name"], material_density, 2)
         compound.AddElement(material_1, object["natoms_1"] * g4b.perCent)
         compound.AddElement(material_2, object["natoms_2"] * g4b.perCent)
+        self.material[name] = compound
         translation = g4b.G4ThreeVector(
             object["position_x"] * g4b.um,
             object["position_y"] * g4b.um,
@@ -244,21 +249,23 @@ class ActionInitialization(g4b.G4VUserActionInitialization):
         self.par_out = [0, 0, 0]
 
     def Build(self):
-        self.SetUserAction(
-            PrimaryGeneratorAction(
-                self.par_in,
-                self.par_direction,
-                self.par_type,
-                self.par_energy,
-                self.par_num,
-            )
+        myPGA = PrimaryGeneratorAction(
+            self.par_in,
+            self.par_direction,
+            self.par_type,
+            self.par_energy,
+            self.par_num,
         )
+        self.SetUserAction(myPGA)
 
         myRA_action = MyRunAction()
         self.SetUserAction(myRA_action)
         myEA = EventAction(myRA_action, self.par_in, self.par_out)
         self.SetUserAction(myEA)
-        self.SetUserAction(MySteppingAction(myEA))
+        mySA = MySteppingAction(myEA)
+        self.SetUserAction(mySA)
+        # held here: Geant4 only points at its user actions
+        self.actions = [myPGA, myRA_action, myEA, mySA]
 
 
 class PrimaryGeneratorAction(g4b.G4VUserPrimaryGeneratorAction):
