@@ -162,6 +162,11 @@ def simulate_bunches(g4_dic, seed):
 
     runManager.BeamOn(int(g4_dic['BeamOn']))
 
+    # g4ppyy ends the detector with the run manager: an action that Geant4 deletes
+    # later must not be the last to hold it
+    actionInitialization.fDetConstruction = None
+    actionInitialization.actions[3].fDetConstruction = None
+
     return s_p_steps, s_energy_steps, s_edep_devices
 
 
