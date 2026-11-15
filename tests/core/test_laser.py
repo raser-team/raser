@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from raser.core.interaction.laser import LaserInjection
+from raser.core.interaction.laser import LaserInjection, absorption_coefficient
 from raser.supports.paths import component_path
 
 
@@ -58,3 +58,34 @@ def test_rayleigh_length_follows_from_the_spot_when_the_file_gives_none() -> Non
     laser = _tpa_laser(60e-15, rayleigh=None)
 
     assert laser.l_Rayleigh == pytest.approx(5.132, rel=1e-3)
+
+
+def _spa_laser(material: str, **changes) -> LaserInjection:
+    with open(component_path("laser", "SPA_top_Si_IR.json")) as file:
+        laser = json.load(file)
+    laser.update(changes)
+    detector = SimpleNamespace(l_x=50.0, l_y=50.0, l_z=50.0, material=material)
+    return LaserInjection(detector, laser)
+
+
+def test_absorption_of_silicon_between_two_rows_of_the_table() -> None:
+    # Green 2008: 11.1 /cm at 1060 nm and 8.00 /cm at 1070 nm; at 1064 nm
+    # 11.1 * (8.00 / 11.1)^0.4 = 9.74 /cm
+    assert absorption_coefficient("Si", 1.064) == pytest.approx(974.0, rel=1e-3)  # 1/m
+
+
+def test_silicon_does_not_absorb_band_to_band_beyond_the_table() -> None:
+    assert absorption_coefficient("Si", 1.55) == 0.0
+
+
+def test_laser_without_alpha_takes_the_absorption_of_the_material() -> None:
+    assert _spa_laser("Si").alpha == pytest.approx(974.0, rel=1e-3)
+
+
+def test_alpha_of_the_laser_file_replaces_the_table() -> None:
+    assert _spa_laser("Si", alpha=5000.0).alpha == 5000.0
+
+
+def test_material_without_a_table_needs_alpha_in_the_laser_file() -> None:
+    with pytest.raises(ValueError, match="give alpha"):
+        _spa_laser("Diamond")

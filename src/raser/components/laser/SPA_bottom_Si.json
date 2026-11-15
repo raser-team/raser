@@ -3,7 +3,6 @@
     "direction" : "bottom",
     "laser_model" : "SPA_bottom_Si",
     
-    "alpha" : 300000,
     "refractionIndex" : 3.51,
 
     "wavelength" : 660,

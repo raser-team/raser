@@ -12,6 +12,30 @@ ROOT.gROOT.SetBatch(True)
 import numpy as np
 
 from raser.core.device.build_device import Detector
+from raser.supports.paths import optional_component_path
+
+
+def absorption_coefficient(material: str, wavelength: float) -> float:
+    """Band-to-band absorption coefficient [1/m] at 300 K of light of this
+    wavelength [um], from the table components/laser/absorption/<material>.txt.
+
+    Between the rows the logarithm of the coefficient is interpolated. Light of
+    a longer wavelength than the table reaches is not absorbed band to band.
+    """
+    path = optional_component_path("laser", "absorption", material + ".txt")
+    if path is None:
+        raise ValueError(
+            f"no absorption table of {material}: give alpha [1/m] in the laser file"
+        )
+    nm, per_cm = np.loadtxt(path, unpack=True)
+    if wavelength * 1e3 < nm[0]:
+        raise ValueError(
+            f"the absorption table of {material} starts at {nm[0]:.0f} nm, "
+            f"the laser has {wavelength * 1e3:.0f} nm: give alpha [1/m] in the laser file"
+        )
+    if wavelength * 1e3 > nm[-1]:
+        return 0.0
+    return 100.0 * float(np.exp(np.interp(wavelength * 1e3, nm, np.log(per_cm))))
 
 class LaserInjection:
     """
@@ -38,12 +62,16 @@ class LaserInjection:
         self.direction = laser_dic["direction"]
         #material parameters to certain wavelength of the beam
         self.refractionIndex = laser_dic["refractionIndex"]
-        if self.tech == "SPA":
-            self.alpha = laser_dic["alpha"] # m^-1
         if self.tech == "TPA":
             self.beta_2 = laser_dic["beta_2"]
         #laser parameters
         self.wavelength = laser_dic["wavelength"]*1e-3 #um
+        if self.tech == "SPA":
+            # m^-1; the laser file may give the one of its sample
+            if "alpha" in laser_dic:
+                self.alpha = laser_dic["alpha"]
+            else:
+                self.alpha = absorption_coefficient(my_d.material, self.wavelength)
         self.temporal_FWHM = laser_dic["temporal_FWHM"]
         self.pulse_energy = laser_dic["pulse_energy"]
         # TODO: Rename spacial_FWHM to spatial_FWHM.

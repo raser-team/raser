@@ -3,7 +3,6 @@
     "direction" : "edge",
     "laser_model" : "SPA_edge_Si",
     
-    "alpha" : 987,
     "refractionIndex" : 3.51,
 
     "wavelength" : 1064,
