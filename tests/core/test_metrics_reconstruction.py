@@ -5,6 +5,7 @@ from raser.core.metrics.reconstruction import InputWaveform
 from raser.core.metrics.reconstruction import get_amplitude
 from raser.core.metrics.reconstruction import get_CFD50
 from raser.core.metrics.reconstruction import get_charge
+from raser.core.metrics.reconstruction import get_CoG
 from raser.core.metrics.reconstruction import get_ToA
 from raser.core.metrics.reconstruction import get_ToT
 
@@ -50,3 +51,13 @@ def test_cluster_of_three_strips_weighs_the_strips_by_amplitude() -> None:
     assert event.data["gravity_center_amplitude"] == pytest.approx((1 * 10 + 2 * 5) / 15)
     # the track is at 80 / 80 = 1 strip
     assert event.data["gravity_center_amplitude_error"] == pytest.approx(1 / 3)
+
+
+def test_centre_of_gravity_weighs_the_bins_above_the_threshold() -> None:
+    # 1 is below the threshold 3: only 4, 10, 6, 4 at 1.5, 2.5, 3.5, 4.5 ns count
+    samples = np.array([-1.0, -4, -10, -6, -4, -1, -8])
+    times = (np.arange(len(samples)) + 0.5) * 1.0e-9
+
+    center = get_CoG(times, samples, 3.0, 2)
+
+    assert center == pytest.approx((1.5 * 4 + 2.5 * 10 + 3.5 * 6 + 4.5 * 4) / 24 * 1.0e-9)

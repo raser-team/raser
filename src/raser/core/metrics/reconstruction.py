@@ -23,6 +23,7 @@ class InputWaveform:
     def __init__(self, voltage, t0, dt, original_x, threshold, amplitude_threshold, pitch_x, pitch_y, CFD=CFD,):
         read_ele_num = len(voltage)
         times = t0 + (np.arange(len(voltage[0])) + 0.5) * dt
+        self.times = times # centres of the time bins
         self.waveforms = [None for _ in range(read_ele_num)]
         self.read_ele_num = read_ele_num
         self.pitch_x = pitch_x
@@ -170,6 +171,18 @@ def get_CFD50(times, samples, CFD, peak):
             fraction = (target - previous_content) / (content - previous_content)
             return times[i - 1] + fraction * (times[i] - times[i - 1])
     return None
+
+def get_CoG(times, samples, threshold, peak):
+    """Centre of gravity in time of the pulse: the centres of the bins above
+    the threshold around the bin `peak`, weighted by their absolute values."""
+    first = peak
+    while first > 0 and abs(samples[first - 1]) >= threshold:
+        first -= 1
+    last = peak
+    while last < len(samples) - 1 and abs(samples[last + 1]) >= threshold:
+        last += 1
+    weights = np.abs(samples[first:last + 1])
+    return np.sum(times[first:last + 1] * weights) / np.sum(weights)
 
 def get_conjoined_time(time_list, amplitude_list=None):
     # TODO: conjoint measurement

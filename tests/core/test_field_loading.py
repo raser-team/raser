@@ -54,7 +54,7 @@ def test_a_field_stored_in_fewer_dimensions_than_its_axes_is_not_loaded(
         _field(tmp_path)
 
 
-def test_a_position_conducts_as_its_nearest_node_does_outside_the_mesh_too(
+def test_a_position_conducts_when_every_node_of_its_cell_does(
     tmp_path: Path,
 ) -> None:
     _solved(tmp_path, ["z"])
@@ -65,8 +65,9 @@ def test_a_position_conducts_as_its_nearest_node_does_outside_the_mesh_too(
     field = _field(tmp_path)
 
     # nodes at 0, 10, 40 and 50 um: the first two conduct
-    assert field.get_conductive(0.0, 0.0, 12.0)
-    assert field.get_conductive(0.0, 0.0, 24.0)
+    assert field.get_conductive(0.0, 0.0, 5.0)
+    # the interval from 10 to 40 um has one node that does not conduct
+    assert not field.get_conductive(0.0, 0.0, 12.0)
     assert not field.get_conductive(0.0, 0.0, 26.0)
     assert not field.get_conductive(0.0, 0.0, 45.0)
     assert field.get_conductive(0.0, 0.0, -3.0)

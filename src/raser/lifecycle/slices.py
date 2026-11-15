@@ -15,6 +15,12 @@ class Slice:
     run: Callable  # runs the slice of one job; receives the options as a dict
     keys: tuple = ()  # the options that change what it writes
     kinds: tuple = ()  # the kinds of json file that change what it writes
+    # A scanned option of it makes each point a measurement of its own, with
+    # its own events: the point runs the slices before this one itself. False
+    # for a slice that only works on what was measured, such as electronics:
+    # its points all read the same earlier slices. A run with same_seeds
+    # shares the earlier slices in either case.
+    new_events: bool = True
 
 
 def mark(folder, index, name="job") -> Path:
@@ -56,13 +62,24 @@ def forget(slices, folder) -> None:
             path.unlink()
 
 
-def run(slices, folder, index, options, until) -> bool:
-    """Run the slices of one job that have no mark, in order; False when the
-    job stopped after the slice `until` and is not finished."""
-    for piece in slices:
-        if not mark(folder, index, piece.name).exists():
-            piece.run(options)
-            mark(folder, index, piece.name).touch()
-        if piece.name == until:
-            return False
-    return True
+def run(slices, folders, index, options, wanted, before) -> bool:
+    """Run the `wanted` slices of one job that have no mark, in order; True
+    when every slice of the job is done.
+
+    `folders` gives each slice the seed folder that holds its mark, which is
+    another point's when the slice does not read what makes this point
+    differ. A slice starts only when the ones before it are done there.
+    `before` is called with a slice before it runs."""
+    for k, piece in enumerate(slices):
+        if piece.name not in wanted or mark(folders[piece.name], index, piece.name).exists():
+            continue
+        for earlier in slices[:k]:
+            if not mark(folders[earlier.name], index, earlier.name).exists():
+                raise RuntimeError(
+                    f"{piece.name} of job {index} needs {earlier.name}, "
+                    f"which is not done in {folders[earlier.name]}"
+                )
+        before(piece)
+        piece.run(options)
+        mark(folders[piece.name], index, piece.name).touch()
+    return all(mark(folders[piece.name], index, piece.name).exists() for piece in slices)

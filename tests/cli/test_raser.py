@@ -137,7 +137,8 @@ def test_global_test_before_a_command_with_jobs_is_its_dry_run(
     assert main(["-t", "-b", "cce", "HPK-Si-PiN", "-s", "2", "--seed", "1"]) == 0
 
     folder = work_root / "HPK-Si-PiN" / "cce" / "seed_1"
-    assert capsys.readouterr().out == f"{folder}: jobs [0, 1]\n"
+    slices = [f"  {name:<12}jobs [0, 1]" for name in ("deposits", "currents", "waveforms")]
+    assert capsys.readouterr().out.splitlines() == [f"{folder}: jobs [0, 1]", *slices]
     assert not work_root.exists()
 
 
@@ -159,9 +160,12 @@ def test_inside_an_experiment_folder_the_command_and_device_come_from_its_config
     capsys.readouterr()
 
     assert main(["-s", "2", "--seed", "2", "--dry-run"]) == 0
+    slices = [f"  {name:<12}jobs [0, 1]" for name in ("deposits", "currents", "waveforms")]
     assert capsys.readouterr().out.splitlines() == [
         f"{experiment / 'seed_2'}: jobs [0, 1]",
+        *slices,
         f"{experiment / 'voltage_300' / 'seed_2'}: jobs [0, 1]",
+        *slices,
     ]
     submitted.clear()
     assert main(["-bb", "-s", "2", "--seed", "3"]) == 0
