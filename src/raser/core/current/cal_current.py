@@ -375,25 +375,25 @@ class CalCurrentGain(CalCurrent):
             fill_histogram(self.negative_cu[i], self.electron_bins[i])
 
     def _build_planar_gain_carriers(self, my_d, my_f, my_current, gain_starts, gain_pairs):
-        if my_d.avalanche_bond is None:
-            raise ValueError("planar_integral gain algorithm requires `avalanche_bond` in detector settings")
-        gain_rate = my_f.planar_gain(my_d)
-        logger.info("gain_rate=%s", gain_rate)
+        logger.info("gain_rate=%s", my_f.planar_gain(my_d))
 
-        if my_d.voltage < 0:  # p layer at d=0: holes multiply into electrons
+        # the carriers that drift from the bulk into the gain layer
+        if my_f.planar_gain_carrier(my_d) > 0:
             source_system = my_current.hole_system
-        else:  # n layer at d=0: electrons multiply into holes
+        else:
             source_system = my_current.electron_system
 
         if source_system is None:
             logger.warning("No carrier system found for planar gain calculation.")
             return
 
-        # each cluster multiplies where it stops: its pairs start at the gain layer at that time
+        # each cluster multiplies where it stops: its pairs start at the gain
+        # layer at that time, as many as the depth it was made at gives
+        gain_depth = my_f.planar_gain_depth(my_d)
         for charge, path in zip(source_system.charges, source_system.paths):
             x, y, _, t = path[-1]
-            gain_starts.append((x, y, my_d.avalanche_bond, t))
-            gain_pairs.append(abs(charge) * gain_rate)
+            gain_starts.append((x, y, gain_depth, t))
+            gain_pairs.append(abs(charge) * my_f.planar_gain_at(my_d, path[0][2]))
 
     def _build_local_gain_carriers(self, my_d, my_f, my_current, gain_starts, gain_pairs):
         cal_coefficient = Material(my_d.material, avalanche_model=my_d.avalanche_model).cal_coefficient
