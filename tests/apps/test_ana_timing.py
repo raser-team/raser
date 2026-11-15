@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 import pytest
 
@@ -12,8 +14,16 @@ TRIANGLE = 1.0e-3 * np.array([0.0, 0, -2, -4, -6, -8, -10, -8, -6, -4, -2, 0, 0]
 DT = 1.0e-9  # with a 3 mV threshold the arrival is 2.5 ns and the half height 4 ns after t0
 
 
+def _alone(folder):
+    """The seed folder of an experiment without points: it holds its slices."""
+    folder.mkdir(parents=True, exist_ok=True)
+    held = {"deposits": "", "currents": "", "waveforms": ""}
+    (folder / "run.json").write_text(json.dumps({"point": "", "held_in": held}))
+
+
 def _job(folder, index, events, electrodes=("top",)):
     """A job with one event per (t0, scale): the triangle, scaled, starting at t0."""
+    _alone(folder)
     batch = folder / "batch"
     batch.mkdir(parents=True, exist_ok=True)
     for number, (t0, scale) in enumerate(events):
