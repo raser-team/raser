@@ -480,7 +480,7 @@ def draw_charge(my_charge):
 
 def main(seed):
     my_d = Detector("TAICHU3") #remain the same
-    my_g4 = TelescopeG4Interaction(my_d, my_d.g4experiment, seed) #remove my_f
+    my_g4 = TelescopeG4Interaction(my_d, "telescope", seed) #remove my_f
     my_hit_charge = CalCurrentDiffuse(my_d,my_g4)
     draw_charge(my_hit_charge)
     my_telescope_charge = Telescope(my_d,my_g4,my_hit_charge) 
