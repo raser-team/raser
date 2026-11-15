@@ -1,5 +1,7 @@
 """One event: from the waveforms of its electrodes to its quantities."""
 
+import numpy as np
+
 CFD = 0.5 # partition
 CFD_LABEL = "CFD50"
 #TODO: get threshold and CFD from electronics setting
@@ -11,8 +13,16 @@ class InputWaveform:
     amplitude : peak amplitude for charge sensitive preamp
     charge : total charge for current sensitive preamp
     CFD50 : time at 50% constant-fraction discriminator crossing
+
+    voltage : (electrodes, bins), the value of each electrode at the centre
+        of each time bin; the thresholds are in its unit
+    t0 : left edge of the first time bin [s]
+    dt : width of a time bin [s]
+    original_x : x of the track, in the unit of pitch_x
     """
-    def __init__(self, input_entry, threshold, amplitude_threshold, read_ele_num, pitch_x, pitch_y, CFD=CFD,):
+    def __init__(self, voltage, t0, dt, original_x, threshold, amplitude_threshold, pitch_x, pitch_y, CFD=CFD,):
+        read_ele_num = len(voltage)
+        times = t0 + (np.arange(len(voltage[0])) + 0.5) * dt
         self.waveforms = [None for _ in range(read_ele_num)]
         self.read_ele_num = read_ele_num
         self.pitch_x = pitch_x
@@ -27,13 +37,11 @@ class InputWaveform:
         self.threshold = threshold
         self.amplitude_threshold = amplitude_threshold
 
-        par_in = input_entry.par_in
-        par_out = input_entry.par_out
-        self.original_x = (par_in[0]+par_out[0])/2
+        self.original_x = original_x
 
         for i in range(read_ele_num):
             # only available for strip detector
-            self.waveforms[i] = eval(f"input_entry.amplified_waveform_{i}")
+            self.waveforms[i] = voltage[i]
             self.amplitude[i], self.peak_time[i] = get_amplitude(self.waveforms[i])
             if self.amplitude[i] < self.threshold:
                 self.amplitude[i] = 0
@@ -42,10 +50,10 @@ class InputWaveform:
                 self.charge[i] = 0
                 self.CFD50[i] = None
             else:
-                self.ToA[i] = get_ToA(self.waveforms[i], self.threshold, self.peak_time[i])
-                self.ToT[i] = get_ToT(self.waveforms[i], self.threshold, self.peak_time[i])
+                self.ToA[i] = get_ToA(times, self.waveforms[i], self.threshold, self.peak_time[i])
+                self.ToT[i] = get_ToT(times, self.waveforms[i], self.threshold, self.peak_time[i])
                 self.charge[i] = get_charge(self.waveforms[i])
-                self.CFD50[i] = get_CFD50(self.waveforms[i], CFD, self.peak_time[i])
+                self.CFD50[i] = get_CFD50(times, self.waveforms[i], CFD, self.peak_time[i])
 
         self.get_total_data()
 
@@ -113,63 +121,54 @@ class InputWaveform:
 
         self.data["original_x"] = self.original_x
 
-def get_ToA(hist, threshold, peak_time_bin):
-    for i in range(peak_time_bin, 0, -1):
-        content = hist.GetBinContent(i)
-        if abs(content) < threshold:
-            return hist.GetBinCenter(i)
+def get_ToA(times, samples, threshold, peak):
+    """Centre of the first bin below the threshold, going back from the bin `peak`."""
+    for i in range(peak, -1, -1):
+        if abs(samples[i]) < threshold:
+            return times[i]
     return None
 
-def get_ToT(hist, threshold, peak_time_bin):
+def get_ToT(times, samples, threshold, peak):
+    """From the first bin below the threshold before the bin `peak` to the first after it."""
     start = None
-    for i in range(peak_time_bin, 0, -1):
-        content = abs(hist.GetBinContent(i))
-        if content < threshold:
-            start = hist.GetBinCenter(i)
+    for i in range(peak, -1, -1):
+        if abs(samples[i]) < threshold:
+            start = times[i]
             break
     if start is None:
         return 0.0
     end = None
-    for i in range(peak_time_bin, hist.GetNbinsX() + 1):
-        content = abs(hist.GetBinContent(i))
-        if content < threshold:
-            end = hist.GetBinCenter(i)
+    for i in range(peak, len(samples)):
+        if abs(samples[i]) < threshold:
+            end = times[i]
             break
     if end is None:
         return 0.0
     return end - start
 
-def get_amplitude(hist):
-    max_val = 0.0
-    peak_bin = 0
-    for i in range(1, hist.GetNbinsX() + 1):
-        content = abs(hist.GetBinContent(i))
-        if content > max_val:
-            max_val = content
-            peak_bin = i
-    return max_val, peak_bin
+def get_amplitude(samples):
+    """Largest absolute value and the bin it is in."""
+    peak = int(np.argmax(np.abs(samples)))
+    return abs(samples[peak]), peak
 
-def get_charge(hist):
-    charge = 0.0
-    for i in range(1, hist.GetNbinsX() + 1):
-        charge += abs(hist.GetBinContent(i))
-    return charge
+def get_charge(samples):
+    return np.sum(np.abs(samples))
 
-def get_CFD50(hist, CFD, peak_time_bin):
-    amplitude = abs(hist.GetBinContent(peak_time_bin))
+def get_CFD50(times, samples, CFD, peak):
+    """Where the rising edge crosses the fraction CFD of the value in the bin
+    `peak`, on the line between the two bin centres around it."""
+    amplitude = abs(samples[peak])
     target = amplitude * CFD
     if amplitude <= 0:
         return None
-    for i in range(peak_time_bin, 1, -1):
-        previous_content = abs(hist.GetBinContent(i - 1))
-        content = abs(hist.GetBinContent(i))
+    for i in range(peak, 0, -1):
+        previous_content = abs(samples[i - 1])
+        content = abs(samples[i])
         if previous_content <= target <= content:
-            previous_time = hist.GetBinCenter(i - 1)
-            time = hist.GetBinCenter(i)
             if content == previous_content:
-                return previous_time
+                return times[i - 1]
             fraction = (target - previous_content) / (content - previous_content)
-            return previous_time + fraction * (time - previous_time)
+            return times[i - 1] + fraction * (times[i] - times[i - 1])
     return None
 
 def get_conjoined_time(time_list, amplitude_list=None):
