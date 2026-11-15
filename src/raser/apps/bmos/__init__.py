@@ -13,9 +13,9 @@ def register(subparsers):
     histogram_signal = actions.add_parser(
         "histogram_signal", help="generate BMOS histogram signal"
     )
-    Workflow(name="bmos histogram_signal", job=run, device=False).attach(
-        histogram_signal
-    )
+    histogram_signal.add_argument("det_name", help="sensor or BMOS detector config")
+    histogram_signal.set_defaults(_project="det_name")
+    Workflow(name="bmos histogram_signal", job=run).attach(histogram_signal)
     actions.add_parser("one_histogram", help="draw one BMOS histogram")
     actions.add_parser("all_histogram", help="draw all BMOS histograms")
     parser.set_defaults(_run=run)
@@ -30,7 +30,7 @@ def run(kwargs):
     if action == "histogram_signal":
         from .histogram_signal import get_signal
 
-        return get_signal()
+        return get_signal(kwargs["det_name"])
     from .histogram import main
 
     return main({"one_histogram": "one", "all_histogram": "all"}[action])

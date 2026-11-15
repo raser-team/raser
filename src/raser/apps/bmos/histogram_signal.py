@@ -21,11 +21,13 @@ import numpy
 
 from raser.core.device import build_device as bdv
 from raser.core.field import devsim_field as devfield
+from raser.core.field.solved import solved_field
 from raser.core.current import cal_current as ccrt
 from raser.core.frontend.set_pwl_input import set_pwl_input as pwlin
+from raser.core.interaction.deposits import EventDeposits
+from raser.core.interaction.ionization import ionized_pairs
 from raser.supports.output import output
 from raser.supports.paths import app_file_path
-from raser.supports.paths import component_path
 from . import bmos
 
 def mkdir(folder_name):
@@ -34,26 +36,26 @@ def mkdir(folder_name):
     except Exception as e:
             pass
     
-def get_signal():
+def get_signal(det_name):
     signal = []
 
     geant4_json = app_file_path("bmos", "bmos.json")
     with open(geant4_json) as f:
          g4_dic = json.load(f)
 
-    detector_json = component_path("device")
-    with open(os.path.join(detector_json , g4_dic['DetModule'])) as q:
-         det_dic = json.load(q)
-
     start = time.time()
 
-    det_name = det_dic['det_name']
     my_d = bdv.Detector(det_name)
-    
-    voltage = det_dic['bias']['voltage']
-    amplifier = det_dic['amplifier']
-    
-    my_f = devfield.DevsimField(my_d.device, voltage, my_d.read_out_contact, irradiation_flux=my_d.irradiation_flux, bounds=my_d.bound,)
+
+    my_f = devfield.DevsimField(
+        my_d.device,
+        my_d.voltage,
+        my_d.read_out_contact,
+        irradiation_flux=my_d.irradiation_flux,
+        bounds=my_d.bound,
+        field_directory=solved_field(my_d, my_d.voltage, my_d.irradiation_flux),
+        interpolation_bins=my_d.device_dict.get("field_interpolation_bins"),
+    )
 
     my_g4 = bmos.bmosG4Interaction(my_d)
 
@@ -65,7 +67,11 @@ def get_signal():
     filename_after_ngspice = f"UCSC_output_{tag}.raw"
     
     for i in range(len(my_g4.p_steps_current)):
-        my_current = ccrt.CalCurrentG4P(my_d, my_f, my_g4, i)
+        if not any(energy > 0 for energy in my_g4.energy_steps[i]):
+            # the bunch missed the detector: no current, a pulse of no height
+            signal.append(0.0)
+            continue
+        my_current = ccrt.CalCurrent(my_d, my_f, *event_pairs(my_d, my_g4, i))
 
         save_current(my_current, output_path, root_name, pwl_name, 1)
 
@@ -90,6 +96,26 @@ def get_signal():
 
     end = time.time()
     print("total_time:%s"%(end - start))
+
+def event_pairs(my_d, my_g4, number):
+    """Pairs and [x, y, z, t] of the deposits of one event.
+
+    The steps carry no time: every deposit is at t = 0.
+    """
+    steps = my_g4.p_steps_current[number]
+    energies = my_g4.energy_steps[number]
+    kept = [k for k, energy in enumerate(energies) if energy > 0]
+    event = EventDeposits(
+        number,
+        ["Device"] * len(kept),
+        [steps[k][0] for k in kept],
+        [steps[k][1] for k in kept],
+        [steps[k][2] for k in kept],
+        [0.0] * len(kept),
+        [energies[k] for k in kept],
+    )
+    return ionized_pairs(event, my_d.material)
+
 
 def save_current(my_current, output_path, root_name, pwl_name, read_ele_num):
     time = array.array('d', [999.0])
