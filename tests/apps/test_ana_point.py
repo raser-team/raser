@@ -1,5 +1,6 @@
 import json
 
+import h5py
 import numpy as np
 import pytest
 
@@ -73,6 +74,11 @@ def test_thresholds_of_the_digitizer_are_in_millivolt(tmp_path) -> None:
     assert half["mean"] == pytest.approx(4.0e-9, abs=5 * half["mean_error"])
     assert half["sigma"] == pytest.approx(3.0e-11, abs=5 * half["sigma_error"])
     assert half["sigma_error"] < 5.0e-12
+    # one row per selected event: those of the first job
+    with h5py.File(tmp_path / "out" / "events.h5", "r") as file:
+        assert list(file["job"][:]) == [0] * 300
+        assert list(file["event"][:]) == list(range(300))
+        assert file["amplitude"][:] == pytest.approx(np.full(300, 10.0e-3))
 
 
 def test_point_with_too_few_selected_events_keeps_its_efficiency_and_tells_why(tmp_path) -> None:

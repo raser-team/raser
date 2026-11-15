@@ -66,6 +66,9 @@ def test_point_takes_the_quantities_of_the_events_above_the_amplitude_threshold(
     assert count == 4
     # the 12 mV above the baseline are not the pulse of the second event
     assert polarity == -1.0
+    # the event below the amplitude threshold is the only one of the second job; the last is event 0 of the third
+    assert list(times["job"]) == [0, 0, 2]
+    assert list(times["event"]) == [0, 1, 0]
     assert times["ToA"] == pytest.approx(np.array([3.0e-9, 3.1e-9, 2.15e-9]))
     assert times["ToT"] == pytest.approx(np.array([7.0e-9, 7.0e-9, 8.5e-9]))
     assert times["amplitude"] == pytest.approx(np.array([10.0e-3, 10.0e-3, 20.0e-3]))
