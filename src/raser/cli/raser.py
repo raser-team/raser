@@ -19,6 +19,7 @@ from raser.supports.paths import work_root
 VERSION = "5.0"
 
 APPLICATIONS = (
+    "ana",
     "bmos",
     "cce",
     "field",

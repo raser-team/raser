@@ -17,8 +17,9 @@ from .primary_generator_action import GeneralPrimaryGeneratorAction
 
 class GeneralActionInitialization(g4b.G4VUserActionInitialization):
     def __init__(self, par_in, par_out, par_randx, par_randy, par_type, par_energy,
-                 eventIDs, edep_devices, p_steps, energy_steps, time_steps, events_angles, edep_window, geant4_model,):
+                 eventIDs, edep_devices, p_steps, energy_steps, time_steps, events_angles, edep_window, geant4_model, particles=None,):
         super().__init__()
+        self.particles = particles
         self.par_in = par_in
         self.par_out = par_out
         self.par_type = par_type
@@ -44,7 +45,8 @@ class GeneralActionInitialization(g4b.G4VUserActionInitialization):
                                                     self.par_randy,
                                                     self.par_type,
                                                     self.par_energy,
-                                                    self.geant4_model,)
+                                                    self.geant4_model,
+                                                    self.particles,)
         self.actions.append(primary_action)
         self.SetUserAction(primary_action)
         # global myRA_action

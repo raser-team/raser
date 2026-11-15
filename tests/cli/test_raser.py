@@ -9,8 +9,8 @@ import pytest
 
 from raser.cli import raser
 from raser.cli.raser import main
+from raser.apps import ana
 from raser.apps import field
-from raser.apps import tct
 from raser.lifecycle import jobs
 from raser.lifecycle import process
 
@@ -100,12 +100,12 @@ def test_global_batch_submits_the_command_without_the_global_options(
         ),
     )
     monkeypatch.setattr(
-        tct, "run_position_scan_draw", lambda kwargs: pytest.fail("ran in this process")
+        ana, "collect", lambda kwargs: pytest.fail("ran in this process")
     )
 
-    main(["-t", "-bb", "tct", "position_scan_draw", "HPK-Si-PiN", "SPA_top_Si"])
+    main(["-t", "-bb", "ana", "work/HPK-Si-PiN/cce"])
 
-    assert submitted == [["tct", "position_scan_draw", "HPK-Si-PiN", "SPA_top_Si"]]
+    assert submitted == [["ana", "work/HPK-Si-PiN/cce"]]
 
 
 def test_global_batch_before_a_command_with_jobs_submits_each_job_itself(
