@@ -1,17 +1,18 @@
 """Schematic of a stage, drawn from its SPICE file.
 
-The file says what is connected to what; where an element is drawn stands
-behind it, after the ";" that SPICE reads as the start of a comment:
+The file says what is connected to what, and arrange tells from that where
+each element is drawn. What cannot be told, or is wanted otherwise, stands
+behind the element, after the ";" that SPICE reads as the start of a comment:
 
-    C1 in 3 3.3n ; right
-    R2 4 5 3k    ; right 2
-    C2 4 5 3.3n  ; right 2, shift up 1
     x1 5 3 0 BFR840L3RHESD ; npn
+    C2 4 5 3.3n  ; right 2, shift up 1
 
 "right", "left", "up", "down" is the way from the first node of the element
 to its second, over that many grid steps, 2 where none is given. "shift" moves
 the whole element aside, a wire joining it to its nodes. "npn" is a transistor
-with the nodes collector, base, emitter, its base on the left.
+with the nodes collector, base, emitter, its base on the left. "amp" is a
+source that follows a voltage to ground, drawn as an amplifier from the node
+it follows to its output.
 """
 
 import math
@@ -84,28 +85,30 @@ def _wire(start, end, along):
 
 
 def layout(stage, hints):
-    """Where the elements of a stage are drawn, on a grid.
+    """Where the elements of a stage that have a hint are drawn, on a grid.
 
     Returns (nodes, placed): nodes gives the point (x, y) of each node, the
-    input at (0, 0); placed gives, under each designator, "ends", the points
-    of the element from its first node to its last, and "wires", the lines
-    that join them to the points of their nodes. An end on ground has no
-    wire: it carries its own ground sign.
+    input at (0, 0); placed gives, under each designator, "nodes", the nodes
+    the element is drawn between, "ends", their points on the element, and
+    "wires", the lines that join them to the points of their nodes. An end on
+    ground has no wire: it carries its own ground sign.
 
-    An element is put down once one of its nodes has a point; a node gets
-    its point from the first element that reaches it.
+    The elements are put down in the order of the hints, each once one of its
+    nodes has a point; a node gets its point from the first element that
+    reaches it.
     """
     elements = stage["elements"]
-    missing = [name for name in elements if name not in hints]
-    if missing:
-        raise ValueError(f"No drawing hint, behind a ';', for the elements {missing}")
+    unknown = [name for name in hints if name not in elements]
+    if unknown:
+        raise ValueError(f"The drawing hints {unknown} are of no element of the stage")
     nodes = {stage["ports"]["in"]: (0.0, 0.0)}
     placed: dict = {}
-    while len(placed) < len(elements):
+    while len(placed) < len(hints):
         before = len(placed)
-        for name, element in elements.items():
+        for name in hints:
             if name in placed:
                 continue
+            element = elements[name]
             parts = [part.split() for part in hints[name].split(",")]
             shift = (0.0, 0.0)
             for part in parts[1:]:
@@ -129,8 +132,12 @@ def layout(stage, hints):
                 ends = [start, _add(start, COLLECTOR), _add(start, EMITTER)]
                 ways = [(-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)]
             else:
-                step = _step(parts[0], name)
-                names = element["between"]
+                if parts[0] == ["amp"]:
+                    names = _amplifier(name, element)
+                    step = (2.0, 0.0)
+                else:
+                    names = element["between"]
+                    step = _step(parts[0], name)
                 if names[0] in nodes:
                     start = _add(nodes[names[0]], shift)
                 elif names[1] in nodes:
@@ -149,9 +156,9 @@ def layout(stage, hints):
                 wire = _wire(end, nodes[node], way)
                 if wire:
                     wires.append(wire)
-            placed[name] = {"ends": ends, "wires": wires}
+            placed[name] = {"nodes": names, "ends": ends, "wires": wires}
         if len(placed) == before:
-            left = [name for name in elements if name not in placed]
+            left = [name for name in hints if name not in placed]
             raise ValueError(
                 f"The elements {left} hang on no node that the input reaches: "
                 "they cannot be drawn"
@@ -159,10 +166,249 @@ def layout(stage, hints):
     return nodes, placed
 
 
+def _amplifier(name, element):
+    """[input, output] of a source drawn as an amplifier."""
+    if (
+        "gain" not in element
+        or GROUND
+        not in (
+            element["follows"][1],
+            element["between"][1],
+        )
+        or element["follows"][1] != element["between"][1]
+    ):
+        raise ValueError(
+            f"{name} can only be drawn as 'amp' where it is a source that "
+            "follows a voltage to ground and gives one to ground"
+        )
+    return [element["follows"][0], element["between"][0]]
+
+
+def _lines(placed):
+    """The level and upright lines that the placed elements take up, each
+    with whether it is an element, a wire otherwise."""
+    lines = []
+    for place in placed.values():
+        ends = place["ends"]
+        if len(ends) == 3:
+            lines.append((ends[0], (ends[1][0], ends[0][1]), True))
+            lines.append((ends[1], ends[2], True))
+        else:
+            lines.append((ends[0], ends[1], True))
+        for wire in place["wires"]:
+            lines += [(first, last, False) for first, last in zip(wire[:-1], wire[1:])]
+    return lines
+
+
+def _taken(lines, start, end):
+    """Whether the level or upright way from start to end runs along one of
+    the lines, or across the sign in the middle of an element. Crossing a
+    wire or the lead of an element is no hindrance."""
+    along = 0 if start[1] == end[1] else 1
+    across = 1 - along
+    low, high = sorted((start[along], end[along]))
+    for first, last, element in lines:
+        if first[across] == last[across] == start[across]:
+            # on the same line: taken where they share more than a point
+            if min(high, max(first[along], last[along])) > max(
+                low, min(first[along], last[along])
+            ):
+                return True
+        elif element and first[along] == last[along]:
+            # an element across: taken where the way meets its sign
+            middle = (first[across] + last[across]) / 2
+            if low < first[along] < high and abs(start[across] - middle) < 0.5:
+                return True
+    return False
+
+
+def _main_path(stage, links):
+    """The links from the input to the output that pass the most amplifying
+    elements and, among those, the fewest others."""
+    ports = stage["ports"]
+    if "out" not in ports:
+        return []
+    best: list = []
+    best_score = None
+
+    def walk(node, path, seen):
+        nonlocal best, best_score
+        if node == ports["out"]:
+            score = (sum(link[3] for link in path), -len(path))
+            if best_score is None or score > best_score:
+                best, best_score = list(path), score
+            return
+        for link in links:
+            name, first, second, active = link
+            if first == node:
+                target = second
+            elif second == node and not active:
+                target = first
+            else:
+                continue
+            if target in seen:
+                continue
+            walk(target, path + [(name, node, target, active)], seen | {target})
+
+    walk(ports["in"], [], {ports["in"]})
+    if best_score is None:
+        raise ValueError("No way leads from the input of the stage to its output")
+    return best
+
+
+def arrange(stage, given=None):
+    """Drawing hints of all elements of a stage, in the order layout is to
+    put them down. given holds the hints the file itself has: they stand.
+
+    The way from the input to the output runs to the right. Elements to
+    ground hang down from their node, side by side. An element between two
+    nodes that have a point runs level above what is already between them.
+    The first element of any other branch goes up from the way, above all
+    there is, and the branch runs on to the right.
+    """
+    given = given or {}
+    elements = stage["elements"]
+    links = []  # (designator, from, to, whether it amplifies)
+    grounded: dict = {}
+    for name, element in elements.items():
+        if "model" in element:
+            if name not in given:
+                raise ValueError(
+                    f"What {name}, an instance of {element['model']}, is cannot be "
+                    "told from its nodes: say it behind the element, as in '; npn'"
+                )
+            collector, base, _ = element["nodes"]
+            links.append((name, base, collector, True))
+        elif "gain" in element:
+            links.append((name, *_amplifier(name, element), True))
+        elif GROUND in element["between"]:
+            (node,) = [node for node in element["between"] if node != GROUND]
+            grounded.setdefault(node, []).append(name)
+        else:
+            links.append((name, *element["between"], False))
+    path = _main_path(stage, links)
+    on_path = {stage["ports"]["in"]} | {link[2] for link in path}
+    path_names = {link[0] for link in path}
+    # the branches: elements off the way that share a node off the way
+    branch: dict = {}
+    for name, first, second, _ in links:
+        if name not in path_names:
+            for node in (first, second):
+                if node not in on_path:
+                    branch.setdefault(node, node)
+    for name, first, second, _ in links:
+        if name not in path_names and first in branch and second in branch:
+            old, new = branch[first], branch[second]
+            branch = {
+                node: new if root == old else root for node, root in branch.items()
+            }
+    touching: dict = {}
+    for name, first, second, _ in links:
+        if name not in path_names:
+            for here, there in ((first, second), (second, first)):
+                if here in on_path and there in branch:
+                    touching.setdefault(here, set()).add(branch[there])
+
+    def room(node):
+        # steps to the right that what hangs on a node takes up
+        beside = max(len(grounded.get(node, ())), len(touching.get(node, ())))
+        return 2 * max(beside - 1, 0)
+
+    hints: dict = {}
+    nodes, placed = layout(stage, hints)
+
+    def put(name, hint):
+        nonlocal nodes, placed
+        hints[name] = given.get(name, hint)
+        nodes, placed = layout(stage, hints)
+
+    def shifted(hint, way, steps):
+        return f"{hint}, shift {way} {steps:g}" if steps else hint
+
+    for name, first, _, _ in path:
+        element = elements[name]
+        if "model" in element:
+            hint = given[name]
+        elif "gain" in element:
+            hint = "amp"
+        else:
+            hint = "right" if element["between"][0] == first else "left"
+        put(name, shifted(hint, "right", room(first)))
+    while len(hints) < len(elements):
+        before = len(hints)
+        for name, element in elements.items():
+            if name in hints:
+                continue
+            if "model" in element or "gain" in element:
+                continue
+            first, second = element["between"]
+            known = [node for node in (first, second) if node in nodes]
+            if not known:
+                continue
+            if name in given:
+                put(name, given[name])
+            elif GROUND in (first, second):
+                beside = sum(other in hints for other in grounded[known[0]])
+                put(
+                    name,
+                    shifted("down" if second == GROUND else "up", "right", 2 * beside),
+                )
+            elif len(known) == 2:
+                start, end = nodes[first], nodes[second]
+                along = 0 if start[0] != end[0] else 1
+                reach = end[along] - start[along]
+                way = (("left", "right"), ("down", "up"))[along][reach > 0]
+                aside = 0.0
+                step = (0.0, 1.5) if along == 0 else (1.5, 0.0)
+                lines = _lines(placed)
+                while _taken(
+                    lines,
+                    (
+                        start[0] + aside * step[0] / 1.5,
+                        start[1] + aside * step[1] / 1.5,
+                    ),
+                    (
+                        start[0] + aside * step[0] / 1.5 + (reach if along == 0 else 0),
+                        start[1] + aside * step[1] / 1.5 + (reach if along == 1 else 0),
+                    ),
+                ):
+                    aside += 1.5
+                put(
+                    name,
+                    shifted(
+                        f"{way} {abs(reach):g}", "up" if along == 0 else "right", aside
+                    ),
+                )
+            elif known[0] in on_path:
+                here = nodes[known[0]]
+                lines = _lines(placed)
+                top = math.ceil(max(max(line[0][1], line[1][1]) for line in lines)) + 1
+                aside = 0
+                while _taken(lines, (here[0] + aside, here[1]), (here[0] + aside, top)):
+                    aside += 1
+                if aside > room(known[0]):
+                    raise ValueError(
+                        f"There is no free place for {name} to go up from the node "
+                        f"{known[0]}: say behind it where to draw it"
+                    )
+                way = "up" if first == known[0] else "down"
+                put(name, shifted(f"{way} {top - here[1]:g}", "right", aside))
+            else:
+                way = "right" if first == known[0] else "left"
+                put(name, shifted(way, "right", room(known[0])))
+        if len(hints) == before:
+            left = [name for name in elements if name not in hints]
+            raise ValueError(
+                f"Where to draw the elements {left} cannot be told from the "
+                "stage: say it behind them"
+            )
+    return hints
+
+
 def value_text(element):
-    """Value of an element as a schematic carries it: 3.3 nF, 475 Ω, x -3000."""
+    """Value of an element as a schematic carries it: 3.3 nF, 475 Ω, × -3000."""
     if "gain" in element:
-        return f"x {element['gain']:g}"
+        return f"× {element['gain']:g}"
     if "model" in element:
         return element["model"]
     (quantity,) = [quantity for quantity in UNITS if quantity in element]
@@ -171,7 +417,8 @@ def value_text(element):
     scale, prefix = next(
         (pair for pair in PREFIXES if abs(value) >= pair[0] * (1 - 1e-9)), PREFIXES[-1]
     )
-    return f"{value / scale:.4g} {prefix}{UNITS[quantity]}"
+    text = f"{value / scale:.4g} {prefix}{UNITS[quantity]}"
+    return f"{text}\nno noise" if element.get("noiseless") else text
 
 
 def _symbol(axis, element, start, end):
@@ -259,6 +506,20 @@ def _ground(axis, point, way):
         )
 
 
+def _triangle(axis, start, end):
+    """Amplifier from its input to its output, to the right."""
+    y = start[1]
+    left, right = start[0] + 0.5, end[0] - 0.5
+    axis.plot([start[0], left], [y, y], color="black", lw=1.2)
+    axis.plot([right, end[0]], [y, y], color="black", lw=1.2)
+    axis.plot(
+        [left, left, right, left],
+        [y - 0.55, y + 0.55, y, y - 0.55],
+        color="black",
+        lw=1.2,
+    )
+
+
 def _npn(axis, base, collector, emitter):
     bar_x = base[0] + 1.3
     axis.plot([base[0], bar_x], [base[1], base[1]], color="black", lw=1.2)
@@ -283,7 +544,7 @@ def draw(path, figure_path):
     """Draw the schematic of the stage in the SPICE file path into figure_path."""
     path = Path(path)
     stage = read_subcircuit(path)
-    nodes, placed = layout(stage, read_hints(path))
+    nodes, placed = layout(stage, arrange(stage, read_hints(path)))
     figure, axis = plt.subplots()
     segments = []
     for name, place in placed.items():
@@ -293,17 +554,19 @@ def draw(path, figure_path):
             _npn(axis, *ends)
             label_at = (ends[0][0] + 2.15, ends[0][1])
             aligned = ("left", "center")
-            collector, base, emitter = element["nodes"]
-            terminals = [(base, ends[0]), (collector, ends[1]), (emitter, ends[2])]
             ways = [(-1.0, 0.0), (0.0, 1.0), (0.0, -1.0)]
             segments += [(end, end) for end in ends]
         else:
-            _symbol(axis, element, *ends)
+            if place["nodes"] == element["between"]:
+                _symbol(axis, element, *ends)
+            else:
+                _triangle(axis, *ends)
             mid = ((ends[0][0] + ends[1][0]) / 2, (ends[0][1] + ends[1][1]) / 2)
             upright = ends[0][0] == ends[1][0]
             label_at = (mid[0] + 0.45, mid[1]) if upright else (mid[0], mid[1] + 0.42)
             aligned = ("left", "center") if upright else ("center", "bottom")
-            terminals = list(zip(element["between"], ends))
+            if place["nodes"] != element["between"]:
+                label_at = (mid[0], mid[1] + 0.7)
             step = (ends[1][0] - ends[0][0], ends[1][1] - ends[0][1])
             size = max(abs(step[0]), abs(step[1]))
             ways = [
@@ -318,7 +581,7 @@ def draw(path, figure_path):
             ha=aligned[0],
             va=aligned[1],
         )
-        for (node, end), way in zip(terminals, ways):
+        for node, end, way in zip(place["nodes"], ends, ways):
             if node == GROUND:
                 _ground(axis, end, way)
         for wire in place["wires"]:
@@ -345,6 +608,6 @@ def draw(path, figure_path):
     width = axis.get_xlim()[1] - axis.get_xlim()[0]
     height = axis.get_ylim()[1] - axis.get_ylim()[0]
     figure.set_size_inches(0.75 * width + 1, 0.75 * height + 1)
-    axis.set_title(path.stem, fontsize=11, pad=16)
+    axis.set_title(path.stem, fontsize=11, pad=30)
     figure.savefig(figure_path, dpi=160, bbox_inches="tight")
     plt.close(figure)
