@@ -95,6 +95,37 @@ def read_subcircuit(path):
     return description
 
 
+def read_chain(paths):
+    """Chain, as spice.solve takes it, of the stages in the SPICE files paths,
+    from the sensor to the load: each stage on the output of the one before,
+    the last file the load.
+
+    A stage is known in the chain by the name of its file; where the same
+    file stands in the chain again, by its name and which of them it is:
+    Gali52, then Gali52_2.
+    """
+    *stage_paths, load_path = [Path(path) for path in paths]
+    stages: dict = {}
+    for place, path in enumerate(stage_paths, start=1):
+        stage = read_subcircuit(path)
+        if "out" not in stage["ports"]:
+            raise ValueError(
+                f"{path} has no output: it can only be the load, the last of "
+                f"the chain, not its part {place} of {len(paths)}"
+            )
+        before = stage_paths[: place - 1].count(path)
+        stages[f"{path.stem}_{before + 1}" if before else path.stem] = stage
+    load = read_subcircuit(load_path)
+    if "out" in load["ports"]:
+        raise ValueError(
+            f"{load_path} is the last of the chain and has to be a load, with "
+            "the node in alone"
+        )
+    if not stages:
+        raise ValueError("A chain needs at least one stage before its load")
+    return {"stages": stages, "load": load}
+
+
 def subcircuit(name, stage):
     """SPICE text of ``.subckt <name> <ports>``.
 

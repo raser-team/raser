@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from raser.core.frontend.circuit import read_chain
 from raser.core.frontend.circuit import read_subcircuit
 from raser.core.frontend.circuit import spice_number
 from raser.core.frontend.circuit import subcircuit
@@ -230,3 +231,58 @@ def test_gali52_has_the_gain_its_maker_gives(frequency_hz, gain_db):
     if frequency_hz == 100e6:
         # at low frequency the output is the opposite of the input
         assert np.mean(settled * sine[2000:]) < -0.45 * amplitude
+
+
+def _chain_files(folder):
+    (folder / "series.cir").write_text(
+        ".subckt series in out\nR1 in out 100\n.ends series\n"
+    )
+    (folder / "across.cir").write_text(
+        ".subckt across in out\nR1 in 0 100\nR2 in out 1u\n.ends across\n"
+    )
+    (folder / "load.cir").write_text(".subckt load in\nR1 in 0 300\n.ends load\n")
+    return {name: folder / f"{name}.cir" for name in ("series", "across", "load")}
+
+
+def _step_response(chain):
+    times = -1e-9 + (np.arange(1000) + 0.5) * DT_S
+    step = np.where(times > 0, 1e-6, 0.0)
+    voltage = solve(chain, ["top"], DT_S, [step], planar_sensor("top", 10e-12))
+    off_the_jump = (times < 0) | (times > DT_S)
+    return np.clip(times, 0, None)[off_the_jump], voltage[0][off_the_jump]
+
+
+def test_chain_of_stages_in_the_order_of_their_files(tmp_path):
+    # 100 Ohm in series, then 100 Ohm across the line, then the 300 Ohm load:
+    # the 10 pF sensor sees 175 Ohm, the load the voltage on the 75 Ohm
+    files = _chain_files(tmp_path)
+
+    chain = read_chain([files["series"], files["across"], files["load"]])
+    after, voltage = _step_response(chain)
+
+    assert list(chain["stages"]) == ["series", "across"]
+    expected = 1e-6 * 75.0 * (1 - np.exp(-after / (175.0 * 10e-12)))
+    assert voltage == pytest.approx(expected, abs=5e-8)
+
+
+def test_chain_with_the_same_stage_twice(tmp_path):
+    files = _chain_files(tmp_path)
+
+    chain = read_chain(
+        [files["across"], files["series"], files["series"], files["load"]]
+    )
+    after, voltage = _step_response(chain)
+
+    assert list(chain["stages"]) == ["across", "series", "series_2"]
+    # 100 Ohm across the line, beside the 500 Ohm of the rest
+    expected = 1e-6 * 50.0 * (1 - np.exp(-after / (500.0 / 6 * 10e-12)))
+    assert voltage == pytest.approx(expected, abs=5e-8)
+
+
+def test_chain_that_does_not_end_in_its_only_load_is_refused(tmp_path):
+    files = _chain_files(tmp_path)
+
+    with pytest.raises(ValueError, match="load.cir has no output"):
+        read_chain([files["load"], files["series"], files["load"]])
+    with pytest.raises(ValueError, match="across.cir is the last of the chain"):
+        read_chain([files["series"], files["across"]])
