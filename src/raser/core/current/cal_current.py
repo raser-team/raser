@@ -263,25 +263,29 @@ class CalCurrent:
                     ends[reason] = ends.get(reason, 0) + 1
         return ends
 
-    def electrodes_near(self, x, y, my_d):
+    def electrodes_near(self, x, y, my_d, my_f):
         """The electrodes a cluster starting at x, y may induce charge on.
 
         For each: its number among the currents, its number in the field,
         and the offset `induced_charges` takes. A device that lists every
-        electrode gives them all. Where one listed electrode repeats, the
-        field holds the weighting potential of the electrode at the centre
-        of the device, in the coordinates of the device, and the electrodes
-        within x_span and y_span of the one above the start are given.
+        electrode gives them all. Where one listed electrode repeats, its
+        weighting potential is the same for every electrode: the field holds
+        it once, on a row of cells that starts at 0 with the electrode in
+        the middle one, and the offset moves an electrode onto that cell.
+        The electrodes of the cells the potential is on are given, counted
+        from the one above the start: further away it is left out as nothing.
         """
         if len(self.read_out_contact) != 1:
             return [(number, number, (0.0, 0.0)) for number in range(len(self.read_out_contact))]
         x_num, y_num = self.electrode_under(x, y, my_d)
-        x_span = self.read_out_contact[0]['x_span']
-        y_span = self.read_out_contact[0]['y_span']
+        x_span = my_f.cells_either_side
+        y_span = self.read_out_contact[0].get('y_span', 0)
+        x_first = (my_d.l_x - my_d.x_ele_num * my_d.p_x) / 2
+        y_first = (my_d.l_y - my_d.y_ele_num * my_d.p_y) / 2
         near = []
         for i in range(max(x_num - x_span, 0), min(x_num + x_span, my_d.x_ele_num - 1) + 1):
             for j in range(max(y_num - y_span, 0), min(y_num + y_span, my_d.y_ele_num - 1) + 1):
-                offset = ((i - my_d.x_ele_num // 2) * my_d.p_x, (j - my_d.y_ele_num // 2) * my_d.p_y)
+                offset = (x_first + (i - x_span) * my_d.p_x, y_first + (j - y_span) * my_d.p_y)
                 near.append((i * my_d.y_ele_num + j, 0, offset))
         return near
 
@@ -301,7 +305,7 @@ class CalCurrent:
                 continue
             if my_d.irradiation_model is not None:
                 charge = surviving(path, charge, my_f)
-            for number, in_field, offset in self.electrodes_near(path[0][0], path[0][1], my_d):
+            for number, in_field, offset in self.electrodes_near(path[0][0], path[0][1], my_d, my_f):
                 induced = induced_charges(path, charge, my_f, in_field, offset)
                 for value, t_from, t_to in zip(induced, path[:-1, 3], path[1:, 3]):
                     spread_over_bins(
