@@ -81,6 +81,17 @@ def event_times(jobs, threshold, amplitude_threshold):
     return len(events), polarity, {name: table[:, k] for k, name in enumerate(names)}
 
 
+def time_widths(times):
+    """For ToA, CoG, CFD10 ... CFD90 of `event_times` what `core_width` gives
+    for time - truth [s], and `missing`: the events that have no such time."""
+    widths = {}
+    for name in ["ToA", "CoG"] + [f"CFD{round(100 * part)}" for part in CFD_FRACTIONS]:
+        difference = times[name] - times["truth"]
+        found = ~np.isnan(difference)
+        widths[name] = {**core_width(difference[found]), "missing": int(np.sum(~found))}
+    return widths
+
+
 def point_resolution(jobs, threshold, amplitude_threshold):
     """Time resolution of one point: for every time of `event_times`, the
     width of the core of time - truth over the events above the amplitude
@@ -90,18 +101,12 @@ def point_resolution(jobs, threshold, amplitude_threshold):
         events    number of events
         selected  number of them above the amplitude threshold
         polarity  sign of the pulses, +1 or -1
-        times     for ToA, CoG, CFD10 ... CFD90 what `core_width` gives [s],
-                  and `missing`: the selected events that have no such time
+        times     what `time_widths` gives for the selected events
     """
     count, polarity, times = event_times(jobs, threshold, amplitude_threshold)
-    widths = {}
-    for name in ["ToA", "CoG"] + [f"CFD{round(100 * part)}" for part in CFD_FRACTIONS]:
-        difference = times[name] - times["truth"]
-        found = ~np.isnan(difference)
-        widths[name] = {**core_width(difference[found]), "missing": int(np.sum(~found))}
     return {
         "events": count,
         "selected": len(times["truth"]),
         "polarity": polarity,
-        "times": widths,
+        "times": time_widths(times),
     }
