@@ -8,13 +8,15 @@ from raser.core.metrics.reconstruction import get_charge
 from raser.core.metrics.reconstruction import get_CoG
 from raser.core.metrics.reconstruction import get_ToA
 from raser.core.metrics.reconstruction import get_ToT
+from raser.core.metrics.reconstruction import net_pulse
+from raser.core.metrics.reconstruction import pulse_polarity
 
-# a negative triangle: 2 per bin up to 10 in bin 6, then down again
-TRIANGLE = np.array([0.0, 0, -2, -4, -6, -8, -10, -8, -6, -4, -2, 0, 0])
+# a triangle: 2 per bin up to 10 in bin 6, then down again
+TRIANGLE = np.array([0.0, 0, 2, 4, 6, 8, 10, 8, 6, 4, 2, 0, 0])
 T0, DT = 3.0e-9, 1.0e-9  # bin i is centred at (3.5 + i) ns
 
 
-def test_quantities_of_a_negative_triangle() -> None:
+def test_quantities_of_a_triangle() -> None:
     times = T0 + (np.arange(len(TRIANGLE)) + 0.5) * DT
 
     amplitude, peak = get_amplitude(TRIANGLE)
@@ -55,9 +57,48 @@ def test_cluster_of_three_strips_weighs_the_strips_by_amplitude() -> None:
 
 def test_centre_of_gravity_weighs_the_bins_above_the_threshold() -> None:
     # 1 is below the threshold 3: only 4, 10, 6, 4 at 1.5, 2.5, 3.5, 4.5 ns count
-    samples = np.array([-1.0, -4, -10, -6, -4, -1, -8])
+    samples = np.array([1.0, 4, 10, 6, 4, 1, 8])
     times = (np.arange(len(samples)) + 0.5) * 1.0e-9
 
     center = get_CoG(times, samples, 3.0, 2)
 
     assert center == pytest.approx((1.5 * 4 + 2.5 * 10 + 3.5 * 6 + 4.5 * 4) / 24 * 1.0e-9)
+
+
+def test_samples_below_the_baseline_do_not_count_as_pulse() -> None:
+    # a dip to -12 right before the edge is farther from zero than the peak
+    samples = np.array([0.0, -12, 4, 6, 8, 10, 8, 6, 4, 2, 0])
+    times = (np.arange(len(samples)) + 0.5) * 1.0e-9
+
+    amplitude, peak = get_amplitude(samples)
+
+    assert (amplitude, peak) == (10.0, 5)
+    # the dip is below the threshold 3: the pulse starts after it
+    assert get_ToA(times, samples, 3.0, peak) == pytest.approx(1.5e-9)
+    assert get_ToT(times, samples, 3.0, peak) == pytest.approx(8.0e-9)
+
+
+def test_net_pulse_is_the_samples_about_the_mean_of_the_first_ones() -> None:
+    # 200 samples at 5 +- 1 before a pulse that reaches 20 below them
+    before = 5.0 + np.tile([1.0, -1.0], 100)
+    samples = np.concatenate([before, [5.0, -5.0, -15.0, -5.0, 5.0]])
+
+    net, baseline, noise = net_pulse(samples)
+
+    assert (baseline, noise) == pytest.approx((5.0, 1.0))
+    assert net[200:] == pytest.approx(np.array([0.0, -10.0, -20.0, -10.0, 0.0]))
+
+
+def test_waveform_without_samples_after_the_baseline_is_an_error() -> None:
+    with pytest.raises(ValueError, match="200 samples, not more than the 200"):
+        net_pulse(np.zeros(200))
+
+
+def test_polarity_is_of_the_events_together_not_of_the_most_events() -> None:
+    # two events with a pulse of -10; in three small ones of -2 the noise
+    # reaches +3: most events have their farthest sample above the baseline
+    large = np.array([0.0, 1.0, -10.0, -1.0])
+    small = np.array([0.0, 3.0, -2.0, 0.0])
+
+    assert pulse_polarity([large, small, small, large, small]) == -1.0
+    assert pulse_polarity([-large, -small, -small, -large, -small]) == 1.0

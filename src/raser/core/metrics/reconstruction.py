@@ -4,6 +4,7 @@ import numpy as np
 
 CFD = 0.5 # partition
 CFD_LABEL = "CFD50"
+BASELINE_POINTS = 200 # samples before the pulse
 #TODO: get threshold and CFD from electronics setting
 
 class InputWaveform:
@@ -15,7 +16,8 @@ class InputWaveform:
     CFD50 : time at 50% constant-fraction discriminator crossing
 
     voltage : (electrodes, bins), the value of each electrode at the centre
-        of each time bin; the thresholds are in its unit
+        of each time bin, above its baseline and with the pulse positive;
+        the thresholds are in its unit
     t0 : left edge of the first time bin [s]
     dt : width of a time bin [s]
     original_x : x of the track, in the unit of pitch_x
@@ -122,10 +124,40 @@ class InputWaveform:
 
         self.data["original_x"] = self.original_x
 
+def net_pulse(samples, baseline_points=BASELINE_POINTS):
+    """The samples without their baseline.
+
+    The baseline is the mean of the first `baseline_points` samples, which
+    lie before the pulse, and the noise their standard deviation about it.
+
+    Returns (net, baseline, noise); net = samples - baseline.
+    """
+    samples = np.asarray(samples, dtype="float64")
+    if len(samples) <= baseline_points:
+        raise ValueError(
+            f"{len(samples)} samples, not more than the {baseline_points} of the baseline"
+        )
+    baseline = samples[:baseline_points].mean()
+    noise = samples[:baseline_points].std()
+    return samples - baseline, baseline, noise
+
+def pulse_polarity(nets):
+    """Sign of the pulses of one electrode over many events, +1 or -1: the
+    sign of the sum of the sample farthest from the baseline of each event.
+    One event alone does not tell it when its pulse is not far above the
+    noise: there the farthest sample is often noise of the other sign.
+
+    nets : one array of samples without baseline per event
+    """
+    farthest = sum(net[np.argmax(np.abs(net))] for net in nets)
+    if farthest == 0:
+        raise ValueError("the farthest samples of the events cancel: no polarity")
+    return 1.0 if farthest > 0 else -1.0
+
 def get_ToA(times, samples, threshold, peak):
     """Centre of the first bin below the threshold, going back from the bin `peak`."""
     for i in range(peak, -1, -1):
-        if abs(samples[i]) < threshold:
+        if samples[i] < threshold:
             return times[i]
     return None
 
@@ -133,14 +165,14 @@ def get_ToT(times, samples, threshold, peak):
     """From the first bin below the threshold before the bin `peak` to the first after it."""
     start = None
     for i in range(peak, -1, -1):
-        if abs(samples[i]) < threshold:
+        if samples[i] < threshold:
             start = times[i]
             break
     if start is None:
         return 0.0
     end = None
     for i in range(peak, len(samples)):
-        if abs(samples[i]) < threshold:
+        if samples[i] < threshold:
             end = times[i]
             break
     if end is None:
@@ -148,9 +180,9 @@ def get_ToT(times, samples, threshold, peak):
     return end - start
 
 def get_amplitude(samples):
-    """Largest absolute value and the bin it is in."""
-    peak = int(np.argmax(np.abs(samples)))
-    return abs(samples[peak]), peak
+    """Largest value and the bin it is in."""
+    peak = int(np.argmax(samples))
+    return samples[peak], peak
 
 def get_charge(samples):
     return np.sum(np.abs(samples))
@@ -158,13 +190,13 @@ def get_charge(samples):
 def get_CFD50(times, samples, CFD, peak):
     """Where the rising edge crosses the fraction CFD of the value in the bin
     `peak`, on the line between the two bin centres around it."""
-    amplitude = abs(samples[peak])
+    amplitude = samples[peak]
     target = amplitude * CFD
     if amplitude <= 0:
         return None
     for i in range(peak, 0, -1):
-        previous_content = abs(samples[i - 1])
-        content = abs(samples[i])
+        previous_content = samples[i - 1]
+        content = samples[i]
         if previous_content <= target <= content:
             if content == previous_content:
                 return times[i - 1]
@@ -174,14 +206,14 @@ def get_CFD50(times, samples, CFD, peak):
 
 def get_CoG(times, samples, threshold, peak):
     """Centre of gravity in time of the pulse: the centres of the bins above
-    the threshold around the bin `peak`, weighted by their absolute values."""
+    the threshold around the bin `peak`, weighted by their values."""
     first = peak
-    while first > 0 and abs(samples[first - 1]) >= threshold:
+    while first > 0 and samples[first - 1] >= threshold:
         first -= 1
     last = peak
-    while last < len(samples) - 1 and abs(samples[last + 1]) >= threshold:
+    while last < len(samples) - 1 and samples[last + 1] >= threshold:
         last += 1
-    weights = np.abs(samples[first:last + 1])
+    weights = samples[first:last + 1]
     return np.sum(times[first:last + 1] * weights) / np.sum(weights)
 
 def get_conjoined_time(time_list, amplitude_list=None):

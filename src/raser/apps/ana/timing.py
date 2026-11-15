@@ -6,6 +6,8 @@ from raser.core.frontend.waveforms import read_waveforms
 from raser.core.metrics.reconstruction import InputWaveform
 from raser.core.metrics.reconstruction import get_CFD50
 from raser.core.metrics.reconstruction import get_CoG
+from raser.core.metrics.reconstruction import net_pulse
+from raser.core.metrics.reconstruction import pulse_polarity
 
 from .files import job_file
 
@@ -19,17 +21,22 @@ def event_times(jobs, threshold, amplitude_threshold):
     jobs : (seed folder, job index) pairs, as lifecycle hands them out.
     threshold, amplitude_threshold : in the unit of the waveforms [V]
 
-    Returns the number of events and, for those above the amplitude
-    threshold, one array per quantity:
+    Every waveform is taken without its baseline and with its pulse turned
+    positive; the thresholds and the amplitude are above the baseline. The
+    sign of the pulses is one for the point, taken from all its events.
+
+    Returns the number of events, the sign of the pulses (+1 or -1) and, for
+    the events above the amplitude threshold, one array per quantity:
         ToA         time of arrival [s]
         ToT         time over threshold [s]
         amplitude   [V]
+        baseline    mean of the samples before the pulse [V]
+        noise       their standard deviation [V]
         CoG         centre of gravity in time of the part above the threshold [s]
         CFD10 ... CFD90   constant-fraction time at 10 % ... 90 % of the amplitude [s]
     """
-    count = 0
-    names = ["ToA", "ToT", "amplitude", "CoG"] + [f"CFD{round(100 * part)}" for part in CFD_FRACTIONS]
-    rows = []
+    names = ["ToA", "ToT", "amplitude", "baseline", "noise", "CoG"] + [f"CFD{round(100 * part)}" for part in CFD_FRACTIONS]
+    events = []
     for folder, index in jobs:
         path = job_file(folder, index, "waveforms")
         if path is None:
@@ -41,19 +48,24 @@ def event_times(jobs, threshold, amplitude_threshold):
                 "the time of an event with several electrodes is not settled"
             )
         for event in waveforms.events:
-            count += 1
-            one = InputWaveform(
-                event.voltage, event.t0, waveforms.dt, None, threshold, amplitude_threshold, None, None
-            )
-            if one.data["amplitude"] is None:
-                continue
-            fractions = [
-                get_CFD50(one.times, one.waveforms[0], part, one.peak_time[0])
-                for part in CFD_FRACTIONS
-            ]
-            center = get_CoG(one.times, one.waveforms[0], threshold, one.peak_time[0])
-            rows.append(
-                [one.data["ToA"], one.data["ToT"], one.data["amplitude"], center, *fractions]
-            )
+            events.append((event.t0, waveforms.dt, *net_pulse(event.voltage[0])))
+    if not events:
+        raise ValueError("the jobs recorded no event")
+    polarity = pulse_polarity([net for _, _, net, _, _ in events])
+    rows = []
+    for t0, dt, net, baseline, noise in events:
+        one = InputWaveform(
+            [polarity * net], t0, dt, None, threshold, amplitude_threshold, None, None
+        )
+        if one.data["amplitude"] is None:
+            continue
+        fractions = [
+            get_CFD50(one.times, one.waveforms[0], part, one.peak_time[0])
+            for part in CFD_FRACTIONS
+        ]
+        center = get_CoG(one.times, one.waveforms[0], threshold, one.peak_time[0])
+        rows.append(
+            [one.data["ToA"], one.data["ToT"], one.data["amplitude"], baseline, noise, center, *fractions]
+        )
     table = np.array(rows, dtype="float64").reshape(len(rows), len(names))
-    return count, {name: table[:, k] for k, name in enumerate(names)}
+    return len(events), polarity, {name: table[:, k] for k, name in enumerate(names)}

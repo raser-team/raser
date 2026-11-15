@@ -12,6 +12,8 @@ from raser.core.interaction.deposits import write_deposits
 # a negative triangle [V]: 2 mV per bin up to 10 mV in bin 6, then down again
 TRIANGLE = 1.0e-3 * np.array([0.0, 0, -2, -4, -6, -8, -10, -8, -6, -4, -2, 0, 0])
 DT = 1.0e-9  # with a 3 mV threshold the arrival is 2.5 ns and the half height 4 ns after t0
+BEFORE = 200  # bins before the triangle
+OFFSET = 2.0e-3  # of the baseline [V]
 
 
 def _alone(folder):
@@ -22,14 +24,19 @@ def _alone(folder):
 
 
 def _job(folder, index, events, electrodes=("top",)):
-    """A job with one event per (t0, scale): the triangle, scaled, starting at t0."""
+    """A job with one event per (t0, scale): the triangle, scaled, starting at
+    t0, on a baseline 2 mV above zero that starts 200 bins earlier. The last
+    bin of the second event of a job is 12 mV above the baseline."""
     _alone(folder)
     batch = folder / "batch"
     batch.mkdir(parents=True, exist_ok=True)
     for number, (t0, scale) in enumerate(events):
-        voltage = np.array([scale * TRIANGLE] * len(electrodes))
+        samples = OFFSET + np.concatenate([np.zeros(BEFORE), scale * TRIANGLE])
+        if number == 1:
+            samples[-1] += 12.0e-3
+        voltage = np.array([samples] * len(electrodes))
         append_waveforms(
-            batch / f"waveforms_{index}.h5", list(electrodes), DT, EventWaveforms(number, t0, voltage)
+            batch / f"waveforms_{index}.h5", list(electrodes), DT, EventWaveforms(number, t0 - BEFORE * DT, voltage)
         )
 
 
@@ -42,12 +49,15 @@ def test_point_takes_the_quantities_of_the_events_above_the_amplitude_threshold(
     (second / "batch").mkdir(exist_ok=True)
     write_deposits(str(second / "batch" / "deposits_1.h5"), Deposits(50, None, None, []))
 
-    count, times = event_times([(first, 0), (first, 1), (second, 0), (second, 1)], 3.0e-3, 5.0e-3)
+    count, polarity, times = event_times([(first, 0), (first, 1), (second, 0), (second, 1)], 3.0e-3, 5.0e-3)
 
     assert count == 4
+    # the 12 mV above the baseline are not the pulse of the second event
+    assert polarity == -1.0
     assert times["ToA"] == pytest.approx(np.array([2.5e-9, 2.6e-9, 1.4e-9]))
     assert times["ToT"] == pytest.approx(np.array([8.0e-9, 8.0e-9, 10.0e-9]))
     assert times["amplitude"] == pytest.approx(np.array([10.0e-3, 10.0e-3, 20.0e-3]))
+    assert times["baseline"] == pytest.approx(np.full(3, OFFSET))
     starts = np.array([0.0, 1.0e-10, -1.0e-10])
     # the triangle is symmetric about the centre of bin 6
     assert times["CoG"] == pytest.approx(starts + 6.5e-9)
