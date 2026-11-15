@@ -31,7 +31,7 @@ def test_dry_run_names_the_seed_folder_of_every_point_and_writes_nothing(
     assert not work_root.exists()
 
 
-def test_tct_dry_run_names_the_point_folders_under_the_tct_signal_experiment(
+def test_tct_dry_run_names_the_point_folders_under_the_tct_experiment(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -39,12 +39,12 @@ def test_tct_dry_run_names_the_point_folders_under_the_tct_signal_experiment(
     work_root = tmp_path / "work"
     monkeypatch.setenv("RASER_WORK_PATH", str(work_root))
     monkeypatch.delenv("RASER_PROJECT_PATH", raising=False)
-    command = "tct signal HPK-Si-PiN SPA_top_Si_IR --scan voltage=200,300"
+    command = "tct HPK-Si-PiN SPA_top_Si_IR --scan voltage=200,300"
 
     assert main([*command.split(), "--dry-run"]) == 0
     lines = capsys.readouterr().out.splitlines()
 
-    experiment = work_root / "HPK-Si-PiN" / "tct" / "signal"
+    experiment = work_root / "HPK-Si-PiN" / "tct"
     slices = [f"  {name:<12}jobs [0]" for name in ("currents", "waveforms")]
     assert lines == [
         f"{experiment}: jobs [0]",
@@ -64,6 +64,6 @@ def test_global_batch_test_keeps_commands_structured_and_scheduler_idle(
     monkeypatch.setenv("RASER_WORK_PATH", str(work_root))
     monkeypatch.delenv("RASER_PROJECT_PATH", raising=False)
 
-    assert main(["-t", "-b", "tct", "position_scan_draw", "HPK-Si-PiN", "SPA_top_Si"]) == 0
+    assert main(["-t", "-b", "bmos", "one_histogram", "HPK-Si-PiN"]) == 0
     assert "hep_sub" in capsys.readouterr().out
     assert not work_root.exists()

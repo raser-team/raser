@@ -1,5 +1,6 @@
 {
     "name" : "transient_current",
     "output_label" : "tct",
+    "laser" : "SPA_top_Si_IR",
     "amplifier" : "SantaCruz+Gali52+Termination50"
 }
