@@ -54,11 +54,6 @@ class Workflow:
     # and so do uncommitted changes of the code.
     outdated: Callable | None = None
     command: Callable | None = None  # extra words of the job command
-    extract: Callable | None = None  # (point folder, [(seed folder, job)]) -> a summary row
-    # TODO(ana): nothing calls extract yet. A separate `raser ana` command is to
-    # collect the results of an experiment folder: it takes the points and jobs
-    # from `finished` and hands them to the analysis. Until it exists, cce and
-    # timeres have no command that writes their summary.
 
     @property
     def words(self):
