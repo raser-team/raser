@@ -54,6 +54,9 @@ class Workflow:
     # and so do uncommitted changes of the code.
     outdated: Callable | None = None
     command: Callable | None = None  # extra words of the job command
+    # the options of a command -> its experiment folder, for an experiment that
+    # is not at work/<device>/<words>, such as one inside another experiment
+    folder: Callable | None = None
 
     @property
     def words(self):
@@ -87,9 +90,9 @@ def execute(workflow, kwargs):
     identity = {"workflow": workflow.name}
     if workflow.device:
         identity["device"] = kwargs["det_name"]
-    root = Path.cwd()
+    root = Path(workflow.folder(kwargs)) if workflow.folder else Path.cwd()
     config = _read(root / "config.json")
-    if any(config.get(key) != value for key, value in identity.items()):
+    if not workflow.folder and any(config.get(key) != value for key, value in identity.items()):
         root = Path(project_path(*workflow.words))
         config = _read(root / "config.json")
     given = {key: kwargs[key] for key in workflow.keys if kwargs.get(key) is not None}
