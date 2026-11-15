@@ -7,6 +7,8 @@ address: plain numbers under the names of the elements.
 import re
 from pathlib import Path
 
+from raser.supports.paths import component_path
+
 # what an element is, by the quantity it carries: the letter SPICE knows it by
 KINDS = {"ohm": "R", "farad": "C", "henry": "L", "volt": "V"}
 QUANTITIES = {letter: quantity for quantity, letter in KINDS.items()}
@@ -74,6 +76,12 @@ def read_subcircuit(path):
                 "follows": words[3:5],
                 "gain": spice_number(words[5]),
             }
+        elif letter == "R" and len(words) == 5 and words[4].lower() == "noisy=0":
+            elements[words[0]] = {
+                "between": words[1:3],
+                "ohm": spice_number(words[3]),
+                "noiseless": True,
+            }
         elif letter in QUANTITIES and len(words) >= 4:
             # a voltage source may say "dc" before its value
             elements[words[0]] = {
@@ -95,6 +103,45 @@ def read_subcircuit(path):
     return description
 
 
+def read_chain(paths):
+    """Chain, as spice.solve takes it, of the stages in the SPICE files paths,
+    from the sensor to the load: each stage on the output of the one before,
+    the last file the load. The load alone is the sensor read out as it is.
+
+    A stage is known in the chain by the name of its file; where the same
+    file stands in the chain again, by its name and which of them it is:
+    Gali52, then Gali52_2.
+    """
+    *stage_paths, load_path = [Path(path) for path in paths]
+    stages: dict = {}
+    for place, path in enumerate(stage_paths, start=1):
+        stage = read_subcircuit(path)
+        if "out" not in stage["ports"]:
+            raise ValueError(
+                f"{path} has no output: it can only be the load, the last of "
+                f"the chain, not its part {place} of {len(paths)}"
+            )
+        before = stage_paths[: place - 1].count(path)
+        stages[f"{path.stem}_{before + 1}" if before else path.stem] = stage
+    load = read_subcircuit(load_path)
+    if "out" in load["ports"]:
+        raise ValueError(
+            f"{load_path} is the last of the chain and has to be a load, with "
+            "the node in alone"
+        )
+    return {"stages": stages, "load": load}
+
+
+def named_chain(name):
+    """Chain, as spice.solve takes it, that a name puts together: the names
+    of its stages from the sensor to the load, joined by "+", the last one the
+    load, such as Gali52+Gali52+Termination50. Each is a SPICE file among the
+    afe components."""
+    return read_chain(
+        [component_path("afe", f"{part}.cir") for part in name.split("+")]
+    )
+
+
 def subcircuit(name, stage):
     """SPICE text of ``.subckt <name> <ports>``.
 
@@ -102,6 +149,10 @@ def subcircuit(name, stage):
     for a stage that has one. Ground is node "0".
     stage["elements"] holds the elements under their designators:
         {"between": [node, node], "ohm": R}       resistor [Ohm]
+        {"between": [node, node], "ohm": R, "noiseless": True}
+                                                  resistance without thermal
+                                                  noise, "noisy=0" in SPICE: an
+                                                  impedance that feedback makes
         {"between": [node, node], "farad": C}     capacitor [F]
         {"between": [node, node], "henry": L}     inductor [H]
         {"between": [plus, minus], "volt": V}     DC voltage source [V]
@@ -142,8 +193,14 @@ def subcircuit(name, stage):
             )
         (quantity,) = quantities
         first, second = element["between"]
+        noise = " noisy=0" if element.get("noiseless") else ""
+        if noise and quantity != "ohm":
+            raise ValueError(
+                f"Element {designator} of {name} is noiseless: only a resistor can be"
+            )
         lines.append(
-            f"{KINDS[quantity]}_{designator} {first} {second} {element[quantity]:.9g}"
+            f"{KINDS[quantity]}_{designator} {first} {second} "
+            f"{element[quantity]:.9g}{noise}"
         )
     lines.append(f".ends {name}")
     return "\n".join(lines) + "\n"

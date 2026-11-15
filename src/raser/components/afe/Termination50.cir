@@ -1,0 +1,7 @@
+* Termination50: a 50 Ohm input, as of an oscilloscope or of the next
+* instrument, without any bandwidth of its own.
+* Port: in. Ground is node 0.
+
+.subckt Termination50 in
+R1 in 0 50
+.ends Termination50

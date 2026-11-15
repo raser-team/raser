@@ -1,10 +1,13 @@
 import numpy as np
 import pytest
 
+from raser.core.frontend.circuit import named_chain
+from raser.core.frontend.circuit import read_chain
 from raser.core.frontend.circuit import read_subcircuit
 from raser.core.frontend.circuit import spice_number
 from raser.core.frontend.circuit import subcircuit
 from raser.core.frontend.planar_sensor import planar_sensor
+from raser.core.frontend.spice import output_noise_spectrum
 from raser.core.frontend.spice import solve
 from raser.supports.paths import component_path
 
@@ -230,3 +233,152 @@ def test_gali52_has_the_gain_its_maker_gives(frequency_hz, gain_db):
     if frequency_hz == 100e6:
         # at low frequency the output is the opposite of the input
         assert np.mean(settled * sine[2000:]) < -0.45 * amplitude
+
+
+def _chain_files(folder):
+    (folder / "series.cir").write_text(
+        ".subckt series in out\nR1 in out 100\n.ends series\n"
+    )
+    (folder / "across.cir").write_text(
+        ".subckt across in out\nR1 in 0 100\nR2 in out 1u\n.ends across\n"
+    )
+    (folder / "load.cir").write_text(".subckt load in\nR1 in 0 300\n.ends load\n")
+    return {name: folder / f"{name}.cir" for name in ("series", "across", "load")}
+
+
+def _step_response(chain):
+    times = -1e-9 + (np.arange(1000) + 0.5) * DT_S
+    step = np.where(times > 0, 1e-6, 0.0)
+    voltage = solve(chain, ["top"], DT_S, [step], planar_sensor("top", 10e-12))
+    off_the_jump = (times < 0) | (times > DT_S)
+    return np.clip(times, 0, None)[off_the_jump], voltage[0][off_the_jump]
+
+
+def test_chain_of_stages_in_the_order_of_their_files(tmp_path):
+    # 100 Ohm in series, then 100 Ohm across the line, then the 300 Ohm load:
+    # the 10 pF sensor sees 175 Ohm, the load the voltage on the 75 Ohm
+    files = _chain_files(tmp_path)
+
+    chain = read_chain([files["series"], files["across"], files["load"]])
+    after, voltage = _step_response(chain)
+
+    assert list(chain["stages"]) == ["series", "across"]
+    expected = 1e-6 * 75.0 * (1 - np.exp(-after / (175.0 * 10e-12)))
+    assert voltage == pytest.approx(expected, abs=5e-8)
+
+
+def test_chain_with_the_same_stage_twice(tmp_path):
+    files = _chain_files(tmp_path)
+
+    chain = read_chain(
+        [files["across"], files["series"], files["series"], files["load"]]
+    )
+    after, voltage = _step_response(chain)
+
+    assert list(chain["stages"]) == ["across", "series", "series_2"]
+    # 100 Ohm across the line, beside the 500 Ohm of the rest
+    expected = 1e-6 * 50.0 * (1 - np.exp(-after / (500.0 / 6 * 10e-12)))
+    assert voltage == pytest.approx(expected, abs=5e-8)
+
+
+def test_chain_that_does_not_end_in_its_only_load_is_refused(tmp_path):
+    files = _chain_files(tmp_path)
+
+    with pytest.raises(ValueError, match="load.cir has no output"):
+        read_chain([files["load"], files["series"], files["load"]])
+    with pytest.raises(ValueError, match="across.cir is the last of the chain"):
+        read_chain([files["series"], files["across"]])
+
+
+def test_chain_by_the_names_of_its_stages_among_the_components(tmp_path, monkeypatch):
+    (tmp_path / "afe").mkdir()
+    files = _chain_files(tmp_path / "afe")
+    monkeypatch.setenv("RASER_COMPONENT_PATH", str(tmp_path))
+
+    chain = named_chain("across+series+series+load")
+
+    assert chain == read_chain(
+        [files["across"], files["series"], files["series"], files["load"]]
+    )
+
+
+def test_noiseless_resistor_loads_the_circuit_and_adds_no_noise(tmp_path):
+    # 50 Ohm without noise across the line, then the 50 Ohm load at 300.15 K:
+    # the load alone makes the noise, halved by the two in parallel
+    path = tmp_path / "quiet.cir"
+    path.write_text(
+        ".subckt quiet in out\nR1 in 0 50 noisy=0\nR2 in out 1u\n.ends quiet\n"
+    )
+    load = {
+        "ports": {"in": "a"},
+        "elements": {"R1": {"between": ["a", "0"], "ohm": 50.0}},
+    }
+    stage = read_subcircuit(path)
+
+    _, density = output_noise_spectrum(
+        {"stages": {"quiet": stage}, "load": load},
+        ["top"],
+        planar_sensor("top", 1e-12),
+        1e3,
+        1e6,
+    )
+
+    assert stage["elements"]["R1"] == {
+        "between": ["in", "0"],
+        "ohm": 50.0,
+        "noiseless": True,
+    }
+    thermal = np.sqrt(4 * 1.380649e-23 * 300.15 * 50.0)
+    assert density[0] == pytest.approx(thermal / 2, rel=1e-3)
+
+
+@pytest.mark.parametrize(("frequency_hz", "gain_db"), [(100e6, 40.0), (2e9, 37.0)])
+def test_broad_band_cividec_has_the_gain_its_maker_gives(frequency_hz, gain_db):
+    # behind a source of 50 Ohm, on a 50 Ohm load, as Gali52 above: 40 dB,
+    # 3 dB less at the 2 GHz of its bandwidth
+    source = {
+        "ports": {"in": "a", "out": "b"},
+        "elements": {
+            "R": {"between": ["a", "0"], "ohm": 50.0},
+            "wire": {"between": ["a", "b"], "ohm": 1e-6},
+        },
+    }
+    load = {
+        "ports": {"in": "a"},
+        "elements": {"R": {"between": ["a", "0"], "ohm": 50.0}},
+    }
+    chain = {
+        "stages": {
+            "source": source,
+            "BroadBandCividec": read_subcircuit(
+                component_path("afe", "BroadBandCividec.cir")
+            ),
+        },
+        "load": load,
+    }
+    dt = 1 / frequency_hz / 100
+    times = (np.arange(3000) + 0.5) * dt
+    sine = np.sin(2 * np.pi * frequency_hz * times)
+
+    voltage = solve(chain, ["top"], dt, [1e-6 * sine], planar_sensor("top", 1e-15))
+
+    settled = voltage[0][2000:]
+    amplitude = (settled.max() - settled.min()) / 2
+    assert 20 * np.log10(amplitude / 25e-6) == pytest.approx(gain_db, abs=0.25)
+    if frequency_hz == 100e6:
+        # it does not invert
+        assert np.mean(settled * sine[2000:]) > 0.45 * amplitude
+
+
+def test_broad_band_cividec_has_the_input_noise_its_maker_gives():
+    # with nothing at its input: 0.4 uA rms, through the 50 Ohm of the input
+    # and the gain of 100
+    chain = named_chain("BroadBandCividec+Termination50")
+
+    frequencies, density = output_noise_spectrum(
+        chain, ["top"], planar_sensor("top", 1e-18), 1e3, 1e12
+    )
+
+    power = density[0] ** 2
+    rms = np.sqrt(np.sum((power[1:] + power[:-1]) / 2 * np.diff(frequencies)))
+    assert rms / (50.0 * 100.0) == pytest.approx(0.4e-6, rel=0.08)
