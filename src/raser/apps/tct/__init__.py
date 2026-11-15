@@ -8,13 +8,14 @@ Description:  tct/__init__.py
 import json
 from pathlib import Path
 
+from raser.lifecycle.slices import Slice
 from raser.lifecycle.workflow import Workflow
 
 DEFAULTS = json.loads(
     (Path(__file__).parent / "transient_current.json").read_text("utf-8")
 )
 KEYS = ("laser", "voltage", "amplifier")
-COMPONENTS = {"laser": "laser", "afe": "amplifier"}  # kind of file -> option
+COMPONENTS = {"laser": "laser"}  # kind of file -> option
 IN_FILE = {"voltage": "device.bias.voltage"}  # option -> where it sits in a file
 
 
@@ -42,10 +43,16 @@ def register(subparsers):
     position_scan_draw.set_defaults(_run=run_position_scan_draw)
 
 
-def _signal_job(kwargs):
+def _currents(kwargs):
     from . import tct_signal
 
-    tct_signal.main(kwargs)
+    tct_signal.currents(kwargs)
+
+
+def _waveforms(kwargs):
+    from . import tct_signal
+
+    tct_signal.waveforms(kwargs)
 
 
 SIGNAL = Workflow(
@@ -54,7 +61,10 @@ SIGNAL = Workflow(
     defaults={"amplifier": DEFAULTS["amplifier"]},
     components=COMPONENTS,
     in_file=IN_FILE,
-    job=_signal_job,
+    slices=(
+        Slice("currents", _currents, keys=("laser", "voltage"), kinds=("laser",)),
+        Slice("waveforms", _waveforms, keys=("amplifier",), new_events=False),
+    ),
     seeds=False,
 )
 

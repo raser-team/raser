@@ -45,9 +45,12 @@ def test_tct_dry_run_names_the_point_folders_under_the_tct_signal_experiment(
     lines = capsys.readouterr().out.splitlines()
 
     experiment = work_root / "HPK-Si-PiN" / "tct" / "signal"
+    slices = [f"  {name:<12}jobs [0]" for name in ("currents", "waveforms")]
     assert lines == [
         f"{experiment}: jobs [0]",
+        *slices,
         f"{experiment / 'voltage_300'}: jobs [0]",
+        *slices,
     ]
     assert not work_root.exists()
 
