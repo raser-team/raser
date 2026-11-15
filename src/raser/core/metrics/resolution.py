@@ -3,7 +3,7 @@
 import math
 
 import numpy as np
-import ROOT
+from scipy.optimize import minimize
 
 ROUNDS = 6
 MINIMUM_EVENTS = 20
@@ -21,7 +21,7 @@ def truncated_gaussian(values, low, high):
     scale = float(np.std(values))
     if scale == 0:
         raise ValueError("all values in the window are equal")
-    # Minuit loses its steps on numbers far from 1
+    # in units of their spread the values, the steps and the widths are near 1
     x = np.asarray(values, dtype="float64") / scale
     a, b = low / scale, high / scale
     n = len(x)
@@ -35,23 +35,33 @@ def truncated_gaussian(values, low, high):
         )
         return float(0.5 * np.dot(z, z) + n * (parameters[1] + math.log(inside)))
 
-    minimizer = ROOT.Math.Factory.CreateMinimizer("Minuit2", "Migrad")
-    function = ROOT.Math.Functor(negative_log_likelihood, 2)
-    minimizer.SetFunction(function)
-    minimizer.SetErrorDef(0.5)
-    minimizer.SetPrintLevel(0)
     # the mean stays inside the window, or the fit runs off to a tail
-    minimizer.SetLimitedVariable(0, "mean", float(x.mean()), 0.1, a, b)
-    minimizer.SetVariable(1, "ln_sigma", 0.0, 0.05)
-    if not minimizer.Minimize():
-        raise ArithmeticError(f"the fit in [{low}, {high}] did not converge")
-    minimizer.Hesse()
-    mean, sigma = minimizer.X()[0], math.exp(minimizer.X()[1])
+    fit = minimize(
+        negative_log_likelihood,
+        [float(x.mean()), 0.0],
+        method="L-BFGS-B",
+        bounds=[(a, b), (None, None)],
+    )
+    if not fit.success:
+        raise ArithmeticError(f"the fit in [{low}, {high}] did not converge: {fit.message}")
+    # the errors are from the curvature of the likelihood at its minimum
+    step = 1e-4
+    curvature = np.empty((2, 2))
+    for i, j in ((0, 0), (0, 1), (1, 1)):
+        di, dj = step * np.eye(2)[i], step * np.eye(2)[j]
+        curvature[i, j] = curvature[j, i] = (
+            negative_log_likelihood(fit.x + di + dj)
+            - negative_log_likelihood(fit.x + di - dj)
+            - negative_log_likelihood(fit.x - di + dj)
+            + negative_log_likelihood(fit.x - di - dj)
+        ) / (4 * step**2)
+    mean_error, ln_sigma_error = np.sqrt(np.diag(np.linalg.inv(curvature)))
+    mean, sigma = fit.x[0], math.exp(fit.x[1])
     return (
         mean * scale,
-        minimizer.Errors()[0] * scale,
+        mean_error * scale,
         sigma * scale,
-        sigma * minimizer.Errors()[1] * scale,
+        sigma * ln_sigma_error * scale,
     )
 
 
