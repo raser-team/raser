@@ -608,3 +608,26 @@ def write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, pl
                 my_current.charge_collection_strip(path)
             if my_d.is_pixel:
                 my_current.charge_collection_pixel(path)
+
+
+def write_laser_currents(currents_path, my_d, my_f, my_l, plot_path=None):
+    """Drift the pairs of one laser pulse in the field, without diffusion, and
+    write the currents they induce to the currents file as its event 0.
+
+    A currents file an earlier start left there is replaced. With plot_path
+    the currents are also drawn there.
+    """
+    if os.path.exists(currents_path):
+        os.remove(currents_path)
+    my_current = CalCurrentLaser(my_d, my_f, my_l, diffusion=False)
+    append_currents(
+        currents_path,
+        my_current.electrodes,
+        my_current.t_bin,
+        EventCurrents(
+            0, my_current.t_start, my_current.current, my_current.charge, my_current.pairs
+        ),
+    )
+    if plot_path is not None:
+        os.makedirs(plot_path, exist_ok=True)
+        my_current.draw_currents(plot_path)
