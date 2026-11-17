@@ -17,6 +17,54 @@ from .waveforms import append_waveforms
 LOWEST_NOISE_HZ = 1e3
 
 
+# an output whose largest swing is less than this of the largest of its
+# event is not stored; and a part of the circuit is wide enough when
+# widening it moves no stored output by as much as this of that largest
+PART_EDGE = 1e-3
+
+
+def _solve(chain, currents, event, circuit):
+    """The voltages of the outputs of a circuit for an event, by the names
+    of the outputs; the electrodes of the circuit are some of the currents."""
+    row_of = {name: k for k, name in enumerate(currents.electrodes)}
+    electrodes = list(circuit.sources)
+    solved = solve(
+        chain,
+        electrodes,
+        currents.dt,
+        event.current[[row_of[name] for name in electrodes]],
+        circuit,
+    )
+    return dict(zip(circuit.outputs, solved, strict=True))
+
+
+def _solve_part(chain, currents, event, part_of, hit):
+    """The voltages of the outputs of the part of the circuit around the
+    electrodes `hit` that is wide enough, by their names: the part with a
+    margin of one is widened, its margin doubled each time, until widening
+    it moves no output that is stored by PART_EDGE of the largest one, a
+    new one counting as moved from zero, or it grows no more."""
+    margin = 1
+    part = part_of(hit, margin)
+    before = _solve(chain, currents, event, part)
+    while True:
+        margin *= 2
+        wider = part_of(hit, margin)
+        if list(wider.outputs) == list(part.outputs):
+            return before
+        after = _solve(chain, currents, event, wider)
+        swing = {name: np.abs(voltage).max() for name, voltage in after.items()}
+        largest = max(swing.values())
+        moved = max(
+            np.abs(voltage - before.get(name, 0.0)).max()
+            for name, voltage in after.items()
+            if swing[name] >= PART_EDGE * largest
+        )
+        part, before = wider, after
+        if moved < PART_EDGE * largest:
+            return after
+
+
 def noise_spectra(chain, circuit, lowest_hz, highest_hz):
     """Noise spectrum of every output of the circuit, as
     spice.output_noise_spectrum gives it, shape (outputs, frequencies) in
@@ -46,6 +94,7 @@ def write_waveforms(
     noise_seed,
     circuit_values=None,
     pulse_edge=None,
+    part_of=None,
 ):
     """Solve the chain for every event of the currents file and write the
     output voltages to the waveforms file, event by event.
@@ -57,39 +106,76 @@ def write_waveforms(
 
     noise_seed : None for waveforms without noise. Otherwise the seed of the
         noise of the circuit, which ngspice calculates once for the chain
-        with the device and the load: every output of every event gets its
-        own noise, in one sequence that the seed fixes. The noise of two
-        outputs has nothing in common. Spectra are as noise_spectra gives
-        them.
+        with the device and the load: every output stored of every event
+        gets its own noise, drawn from the seed, the number of the event and
+        the place of the output among all outputs alone, whatever else is
+        stored. The noise of two outputs has nothing in common. Spectra are
+        as noise_spectra gives them.
     circuit_values : None, or the values the circuit is made of and where each
         is from, as device_circuit gives them: they are written to the file.
     pulse_edge : None, or the way the pulse of each output goes, as
         pulse_edge.pulse_edges gives it: it is written to the file.
+    part_of : None to solve the whole circuit for every event. Otherwise a
+        function that gives, for the names of the electrodes with a current
+        in an event and a margin, the part of the circuit around
+        them that is solved: a circuit of some of the electrodes and
+        outputs, by the same names, wider with a wider margin. The part
+        is widened as _solve_part says.
+
+    Of each event only the outputs whose largest swing is at least
+    PART_EDGE of the largest of the event are stored, each with its noise:
+    those the event hit, its charge or the crosstalk of it. An event without
+    current stores none, and no noise.
     """
     currents = read_currents(currents_path)
     if os.path.exists(waveforms_path):
         os.remove(waveforms_path)
     if noise_seed is not None:
-        generator = np.random.default_rng(noise_seed)
         frequencies, densities = noise_spectra(
             chain, circuit, LOWEST_NOISE_HZ, 0.5 / currents.dt
         )
+    outputs = list(circuit.outputs)
+    place = {name: k for k, name in enumerate(outputs)}
     for event in currents.events:
-        voltage = solve(chain, currents.electrodes, currents.dt, event.current, circuit)
-        if noise_seed is not None:
+        hit = [
+            name
+            for name, current in zip(currents.electrodes, event.current, strict=True)
+            if np.any(current)
+        ]
+        if not hit:
+            solved = {}
+        elif part_of is None:
+            solved = _solve(chain, currents, event, circuit)
+        else:
+            solved = _solve_part(chain, currents, event, part_of, hit)
+        swing = {name: np.abs(voltage).max() for name, voltage in solved.items()}
+        largest = max(swing.values(), default=0.0)
+        names = [
+            name
+            for name in outputs
+            if name in solved and largest > 0 and swing[name] >= PART_EDGE * largest
+        ]
+        voltage = np.array([solved[name] for name in names]).reshape(
+            len(names), event.current.shape[1]
+        )
+        if noise_seed is not None and names:
             voltage = voltage + np.array(
                 [
                     noise_from_spectrum(
-                        frequencies, density, voltage.shape[1], currents.dt, generator
+                        frequencies,
+                        densities[place[name]],
+                        voltage.shape[1],
+                        currents.dt,
+                        np.random.default_rng([noise_seed, event.event, place[name]]),
                     )
-                    for density in densities
+                    for name in names
                 ]
             )
         append_waveforms(
             waveforms_path,
-            list(circuit.outputs),
+            outputs,
             currents.dt,
-            EventWaveforms(event.event, event.t0, voltage),
+            EventWaveforms(event.event, event.t0, voltage, names),
             circuit_values,
             pulse_edge,
         )

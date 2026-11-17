@@ -54,7 +54,7 @@ def _job(folder, index, scale, count, seed, amplitude_threshold=5, jitter=3.0e-1
             ["top"],
             DT,
             EventWaveforms(number, starts[number] - BEFORE * DT, np.array([samples])),
-            pulse_edge=["rising"],
+            pulse_edge=["falling"],
         )
     write_deposits(str(batch / f"deposit_{index}.h5"), Deposits(50, None, None, deposits))
     if count:
@@ -75,7 +75,7 @@ def test_point_takes_its_events_from_the_reconstruction_tables(tmp_path) -> None
 
     assert error is None
     result = json.loads((tmp_path / "out" / "result.json").read_text())
-    assert result["reconstruction"] == {"threshold": 3.0, "amplitude_threshold": 5.0, "fractions": [0.2, 0.5, 0.8], "edge": "falling"}
+    assert result["reconstruction"] == {"threshold": 3.0, "amplitude_threshold": 5.0, "fractions": [0.2, 0.5, 0.8], "edge": ["falling"]}
     assert set(result["timing"]["times"]) == {"ToA", "CoG", "CFD20", "CFD50", "CFD80"}
     assert result["collection"]["events"] == 600
     assert result["collection"]["mean"] == pytest.approx(0.9)

@@ -1,10 +1,14 @@
 """Output waveforms of a batch of events, and their file.
 
-The file is HDF5 and grows event by event. The bins of all events lie one
-after another; ``count`` cuts them into events.
+The file is HDF5 and grows event by event. An event holds the waveforms of
+the electrodes it has a signal on, its traces, which may be some of the
+electrodes of the file only: the strips of a row the charge of the event
+reaches; the others are not stored. As the currents file: ``stored`` cuts
+``index`` into events, and every stored electrode has the ``count`` bins
+of its event in ``voltage``, one stored electrode after another.
 
 Attributes of the file:
-    electrodes  names of the electrodes, in the order of the columns
+    electrodes  names of all the electrodes it may hold traces of
     dt          width of a time bin [s]
     pulse_edge  for each electrode, in their order, "rising" or "falling":
                 which way its pulse goes, as the device and the chain make
@@ -15,9 +19,13 @@ Attributes of the file:
 Datasets, one row per event:
     event       Geant4 event number
     t0          left edge of the first time bin of the event [s]
-    count       number of time bins of the event
-Dataset, one row per time bin:
-    voltage     output voltage of each electrode at the centre of the bin [V]
+    count       number of time bins of each trace of the event
+    stored      number of electrodes of the event that are stored; 0 for an
+                event with no signal
+Dataset, one value per stored electrode:
+    index       its place among the electrodes, from 0
+Dataset, one value per time bin of a stored electrode:
+    voltage     output voltage at the centre of the bin [V]
 """
 
 import json
@@ -32,7 +40,10 @@ import numpy as np
 class EventWaveforms:
     event: int
     t0: float
-    voltage: np.ndarray  # (electrodes, bins) [V]
+    voltage: np.ndarray  # (electrodes of the event, bins) [V]
+    # names of the electrodes of the rows of voltage; None, in writing, for
+    # all the electrodes of the file
+    electrodes: list[str] | None = None
 
 
 @dataclass
@@ -43,21 +54,45 @@ class Waveforms:
     pulse_edge: list[str]
 
 
+# the datasets of a file of this layout
+DATASETS = ("event", "t0", "count", "stored", "index", "voltage")
+
+
+def _check_layout(file, path):
+    """Refuse a file of another layout, before anything is read or added."""
+    missing = [name for name in DATASETS if name not in file]
+    if missing or file["voltage"].ndim != 1:
+        raise ValueError(
+            f"{path} is a readout file of an older layout (no {missing or ['one-row voltage']}): "
+            "run the readout again"
+        )
+
+
 def append_waveforms(
     path, electrodes, dt, record, circuit_values=None, pulse_edge=None
 ):
     """Add one event to the file, which is created with the first event.
 
+    electrodes : all the electrodes the file may hold traces of.
+    record : EventWaveforms; its electrodes, some of electrodes or None for
+        all of them, name the rows of its voltage.
     pulse_edge : what is written as ``pulse_edge`` when the file is created,
         one of "rising" and "falling" for each electrode; None writes none.
-
-    circuit_values : what is written as ``device_circuit`` when the file is created;
-        None writes none.
+    circuit_values : what is written as ``device_circuit`` when the file is
+        created; None writes none.
     """
-    voltage = np.asarray(record.voltage, dtype="float64")
-    if voltage.ndim != 2 or voltage.shape[0] != len(electrodes):
+    electrodes = list(electrodes)
+    names = electrodes if record.electrodes is None else list(record.electrodes)
+    unknown = sorted(set(names) - set(electrodes))
+    if unknown or len(set(names)) != len(names):
         raise ValueError(
-            f"voltage has shape {voltage.shape}, expected ({len(electrodes)}, bins)"
+            f"the event {record.event} has traces of {names}, not each once of "
+            f"the electrodes {electrodes}"
+        )
+    voltage = np.asarray(record.voltage, dtype="float64")
+    if voltage.ndim != 2 or voltage.shape[0] != len(names):
+        raise ValueError(
+            f"voltage has shape {voltage.shape}, expected ({len(names)}, bins)"
         )
 
     if pulse_edge is not None and (
@@ -66,12 +101,12 @@ def append_waveforms(
     ):
         raise ValueError(
             f"pulse_edge {list(pulse_edge)} is not one of rising and falling "
-            f"for each of the electrodes {list(electrodes)}"
+            f"for each of the electrodes {electrodes}"
         )
     new = not os.path.exists(path)
     with h5py.File(str(path), "a") as file:
         if new:
-            file.attrs.create("electrodes", list(electrodes), dtype=h5py.string_dtype())
+            file.attrs.create("electrodes", electrodes, dtype=h5py.string_dtype())
             file.attrs["dt"] = float(dt)
             if circuit_values is not None:
                 file.attrs["device_circuit"] = json.dumps(circuit_values)
@@ -83,28 +118,35 @@ def append_waveforms(
                 ("event", "int64"),
                 ("t0", "float64"),
                 ("count", "int64"),
+                ("stored", "int64"),
+                ("index", "int64"),
             ):
                 file.create_dataset(name, shape=(0,), maxshape=(None,), dtype=kind)
             file.create_dataset(
                 "voltage",
-                shape=(0, len(electrodes)),
-                maxshape=(None, len(electrodes)),
+                shape=(0,),
+                maxshape=(None,),
                 dtype="float64",
                 compression="gzip",
             )
         else:
+            _check_layout(file, path)
             in_file = file.attrs["electrodes"].tolist()
-            if in_file != list(electrodes) or float(file.attrs["dt"]) != float(dt):
+            if in_file != electrodes or float(file.attrs["dt"]) != float(dt):
                 raise ValueError(
                     f"{path} holds waveforms of electrodes {in_file} with dt "
-                    f"{float(file.attrs['dt'])} s, not of {list(electrodes)} with "
+                    f"{float(file.attrs['dt'])} s, not of {electrodes} with "
                     f"dt {dt} s"
                 )
         rows = {
             "event": np.array([int(record.event)]),
             "t0": np.array([float(record.t0)]),
             "count": np.array([voltage.shape[1]]),
-            "voltage": voltage.T,
+            "stored": np.array([len(names)]),
+            "index": np.array(
+                [electrodes.index(name) for name in names], dtype="int64"
+            ),
+            "voltage": voltage.reshape(-1),
         }
         for name, values in rows.items():
             dataset = file[name]
@@ -114,8 +156,9 @@ def append_waveforms(
 
 
 def read_waveforms(path):
-    """Waveforms of the file."""
+    """Waveforms of the file, each event with the names of its traces."""
     with h5py.File(str(path), "r") as file:
+        _check_layout(file, path)
         electrodes = file.attrs["electrodes"].tolist()
         dt = float(file.attrs["dt"])
         if "pulse_edge" not in file.attrs:
@@ -127,13 +170,22 @@ def read_waveforms(path):
         numbers = file["event"][()]
         starts = file["t0"][()]
         counts = file["count"][()]
+        stored = file["stored"][()]
+        index = file["index"][()]
         voltage = file["voltage"][()]
     events = []
-    first = 0
-    for number, start, count in zip(numbers, starts, counts, strict=True):
-        last = first + int(count)
-        events.append(EventWaveforms(int(number), float(start), voltage[first:last].T))
-        first = last
+    trace, sample = 0, 0
+    for number, start, count, many in zip(numbers, starts, counts, stored, strict=True):
+        size = int(many) * int(count)
+        events.append(
+            EventWaveforms(
+                int(number),
+                float(start),
+                voltage[sample : sample + size].reshape(int(many), int(count)),
+                [electrodes[k] for k in index[trace : trace + int(many)]],
+            )
+        )
+        trace, sample = trace + int(many), sample + size
     return Waveforms(electrodes, dt, events, pulse_edge)
 
 

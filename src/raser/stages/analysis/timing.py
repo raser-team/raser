@@ -32,7 +32,7 @@ def point_tables(jobs):
 
 def table_setting(table):
     """Thresholds [mV], fractions and edge of a table, as one hashable value."""
-    return (round(table.threshold / 1.0e-3, 9), round(table.amplitude_threshold / 1.0e-3, 9), table.fractions, table.edge)
+    return (round(table.threshold / 1.0e-3, 9), round(table.amplitude_threshold / 1.0e-3, 9), table.fractions, tuple(table.edges))
 
 
 def event_times(tables):
@@ -82,7 +82,7 @@ def event_times(tables):
         for k, part in enumerate(table.fractions):
             columns.setdefault(f"CFD{round(100 * part)}", []).append(rows["CFD"][chosen, 0, k])
     count = sum(len(table) for *_, table in tables)
-    return count, EDGE_SIGN[tables[0][3].edge], {name: np.concatenate(values) for name, values in columns.items()}
+    return count, EDGE_SIGN[tables[0][3].edges[0]], {name: np.concatenate(values) for name, values in columns.items()}
 
 
 def time_widths(times):

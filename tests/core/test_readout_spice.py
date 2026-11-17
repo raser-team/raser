@@ -5,6 +5,7 @@ from raser.core.field.device_circuit import DeviceCircuit
 from raser.core.readout.spice import output_noise_spectrum
 from raser.core.readout.spice import short_circuit_currents
 from raser.core.readout.spice import solve
+from raser.core.readout.spice import write_netlist
 
 pytestmark = pytest.mark.ngspice
 
@@ -194,3 +195,19 @@ def test_chain_without_a_stage_has_the_load_on_the_sensor():
     voltage = solve({"stages": {}, "load": LOAD}, ["top"], DT_S, [step], FULLY_DEPLETED)
 
     assert voltage[0] == pytest.approx(_rc_step_response(times, 1e-6), abs=5e-8)
+
+
+def test_a_run_keeps_only_the_outputs_it_writes(tmp_path):
+    # ngspice keeps every node of every step unless told which: a row of some
+    # hundred strips does not fit
+    circuit = DeviceCircuit(
+        lines=("C1 a 0 10p", "C2 b 0 20p"),
+        sources={"left": ("a", "0"), "right": ("b", "0")},
+        outputs={"left": "a", "right": "b"},
+    )
+    netlist = write_netlist(
+        ON_THE_LOAD, ["left", "right"], DT_S, np.zeros((2, 10)), circuit, tmp_path / "x"
+    )
+
+    saved = [line for line in netlist.splitlines() if line.startswith(".save")]
+    assert saved == [".save v(out1) v(out2)"]
