@@ -10,9 +10,9 @@ import os
 from raser.core.current.cal_current import write_laser_currents
 from raser.core.device import build_device as bdv
 from raser.core.deposit.laser import LaserInjection
-from raser.stages import current
-from raser.stages import files
 from raser.stages import readout
+from raser.stages.current import solved
+from raser.stages.files import output
 
 
 def currents(kwargs):
@@ -23,9 +23,9 @@ def currents(kwargs):
     my_l = LaserInjection(my_d, dict(files["laser"]))
     path = os.path.join(os.path.dirname(kwargs["_slice_batch_paths"]["currents"]), "plots")
     write_laser_currents(
-        files.output(kwargs, "currents"),
+        output(kwargs, "currents"),
         my_d,
-        current.solved(my_d, kwargs),
+        solved(my_d, kwargs),
         my_l,
         path,
     )
