@@ -150,3 +150,15 @@ def test_area_is_of_the_lobe_that_holds_the_peak(tmp_path) -> None:
     rows = _run(tmp_path, 50, 100).columns
 
     assert rows["area"][0, 0] == pytest.approx(120.0e-3 * DT, rel=0.01)
+
+
+def test_fraction_outside_zero_to_one_is_refused(tmp_path) -> None:
+    _job(tmp_path, [[1.0]], 1, seed=11)
+    kwargs = {
+        "_slice_batch_paths": {"readout": str(tmp_path / "batch"), "reconstruction": str(tmp_path / "batch")},
+        "threshold": 3, "amplitude_threshold": 5, "fractions": (0.5, 1.2), "edge": "falling",
+    }
+
+    with pytest.raises(ValueError, match=r"fractions \[1.2\]: a constant fraction lies between 0 and 1"):
+        reconstruction.run(kwargs)
+    assert not (tmp_path / "batch" / "reconstruction_0.h5").exists()

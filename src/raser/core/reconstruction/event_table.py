@@ -135,6 +135,9 @@ def event_table(waveforms, threshold, amplitude_threshold, fractions, edge):
             "rising (positive pulses) or falling (negative pulses)"
         )
     polarity = EDGE_SIGN[edge]
+    wrong = [part for part in fractions if not 0 < part < 1]
+    if wrong:
+        raise ValueError(f"fractions {wrong}: a constant fraction lies between 0 and 1")
     if not waveforms.events:
         raise ValueError("the readout holds no event")
     nets = [[net_pulse(samples) for samples in record.voltage] for record in waveforms.events]
