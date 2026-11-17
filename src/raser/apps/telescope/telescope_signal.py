@@ -8,6 +8,7 @@ Description:
 """
 
 import json
+import math
 import time
 import os
 from types import SimpleNamespace
@@ -24,7 +25,8 @@ from raser.core.current.currents import EventCurrents, append_currents
 from raser.core.current.diffusion import ELEMENTARY_CHARGE, collect_by_diffusion
 from raser.core.interaction.deposits import Deposits, EventDeposits
 from raser.core.interaction.deposits import read_deposits, write_deposits
-from raser.core.interaction.ionization import ionized_pairs
+from raser.core.interaction.ionization import PAIR_ENERGY_EV, ionized_pairs
+from raser.core.interaction.mip_track import PAIRS_PER_UM
 from raser.supports.output import output
 from raser.supports.paths import app_file_path
 
@@ -476,14 +478,81 @@ def _file(kwargs, name):
     return os.path.join(batch, "%s_%s.h5" % (name, kwargs.get("job_index") or 0))
 
 
+SPEED_OF_LIGHT = 2.99792458e14  # um/s
+
+
+def straight_tracks(my_d, setup, events):
+    """Deposits of `events` straight tracks of the beam of `setup` through its layers.
+
+    A track starts at par_in and its slopes are drawn like the directions of
+    the beam. In every layer it leaves the energy of a MIP, in pieces no
+    longer than maxstep [um] along z: no scattering, no fluctuation of the
+    energy, no secondaries. The layers must not be rotated.
+    """
+    start, end = setup["par_in"], setup["par_out"]
+    energy = PAIRS_PER_UM[my_d.material] * PAIR_ENERGY_EV[my_d.material] * 1.0e-6  # MeV/um
+    pieces = math.ceil(my_d.l_z / setup["maxstep"])
+    piece = my_d.l_z / pieces
+    layers = list(setup["object"]["layer"].values())
+    for layer in layers:
+        if any(layer["rotation_xyz"]):
+            raise ValueError(
+                f"{layer['name']} is rotated: the fast solution has straight tracks "
+                "through layers that face the beam only"
+            )
+    generator = stream("telescope_straight_tracks")
+    records = []
+    for number in range(int(events)):
+        slope_x = (end[0] - start[0] + generator.Uniform(-setup["par_randx"], setup["par_randx"])) / (end[2] - start[2])
+        slope_y = (end[1] - start[1] + generator.Uniform(-setup["par_randy"], setup["par_randy"])) / (end[2] - start[2])
+        record = EventDeposits(number, [], [], [], [], [], [])
+        for layer in layers:
+            for k in range(pieces):
+                in_layer = (k + 0.5) * piece
+                along = layer["position_z"] - my_d.l_z / 2 + in_layer - start[2]
+                record.detector.append(layer["name"])
+                record.x.append(start[0] + slope_x * along - layer["position_x"] + my_d.l_x / 2)
+                record.y.append(start[1] + slope_y * along - layer["position_y"] + my_d.l_y / 2)
+                record.z.append(in_layer)
+                record.t.append(along / SPEED_OF_LIGHT)
+                record.e.append(energy * piece)
+        records.append(record)
+    return records
+
+
+def collect_under(my_d, pairs, positions, step):
+    """The charge of one event when every deposit is collected at once by the
+    pixel it lies in; a deposit outside the pixels is lost. Parameters and
+    returns as collect_by_diffusion, without the window."""
+    t0 = min((position[3] for position in positions), default=0.0)
+    last = max((position[3] for position in positions), default=0.0)
+    electrons = np.zeros((my_d.x_ele_num * my_d.y_ele_num, round((last - t0) / step) + 1))
+    for n_pairs, (x, y, z, t) in zip(pairs, positions, strict=True):
+        i, j = int(x // my_d.p_x), int(y // my_d.p_y)
+        if 0 <= i < my_d.x_ele_num and 0 <= j < my_d.y_ele_num and 0 <= z <= my_d.l_z:
+            electrons[i * my_d.y_ele_num + j, round((t - t0) / step)] += n_pairs
+    charge = -ELEMENTARY_CHARGE * electrons.sum(axis=1)
+    return t0, -ELEMENTARY_CHARGE * electrons / step, charge
+
+
 def deposits(kwargs):
     """The beam through the layers of telescope.json: deposits_<job>.h5.
 
-    Every generated event is recorded, also one that left nothing. The
-    detector of a deposit is the name of its layer; x, y, z are in the
-    coordinates of that layer, from its corner and its lower face.
+    The solution full is Geant4, fast is straight_tracks. Every generated
+    event is recorded, also one that left nothing. The detector of a deposit
+    is the name of its layer; x, y, z are in the coordinates of that layer,
+    from its corner and its lower face.
     """
     my_d = Detector("TAICHU3")
+    if kwargs["solution"] == "fast":
+        events = straight_tracks(my_d, _setup(), kwargs["events_per_job"])
+        for record in events:
+            record.pairs, _ = ionized_pairs(record, my_d.material)
+        write_deposits(
+            _file(kwargs, "deposits"),
+            Deposits(int(kwargs["events_per_job"]), None, None, events),
+        )
+        return
     my_g4 = TelescopeG4Interaction(
         my_d, "telescope", kwargs["seed"], int(kwargs["events_per_job"])
     )
@@ -514,8 +583,9 @@ def deposits(kwargs):
 
 
 class DiffusedCharge:
-    """The electrons every pixel of every layer collects by diffusion, written
-    layer by layer to `paths` as the currents of that layer.
+    """The electrons every pixel of every layer collects, written layer by
+    layer to `paths` as the currents of that layer. `collect` gives the
+    charge of one layer and event: (pairs, positions) -> (t0, current, charge).
 
     An event without a deposit in a layer has no row in the file of that layer.
 
@@ -524,7 +594,7 @@ class DiffusedCharge:
     last : (x_ele_num, y_ele_num) array, the electrons of the last layer of
         the last event
     """
-    def __init__(self, my_d, events, paths, window):
+    def __init__(self, my_d, events, paths, collect):
         names = electrode_names(my_d.read_out_contact, my_d.x_ele_num * my_d.y_ele_num)
         self.event = [{} for _ in events]
         for number, (layer, path) in enumerate(paths.items()):
@@ -534,9 +604,7 @@ class DiffusedCharge:
                 mine = [k for k, name in enumerate(record.detector) if name == layer]
                 pairs = [record.pairs[k] for k in mine]
                 positions = [[record.x[k], record.y[k], record.z[k], record.t[k]] for k in mine]
-                t0, current, charge = collect_by_diffusion(
-                    my_d, pairs, positions, window, DIFFUSION_STEP
-                )
+                t0, current, charge = collect(pairs, positions)
                 if mine:
                     append_currents(
                         path,
@@ -554,8 +622,9 @@ class DiffusedCharge:
 
 
 def currents(kwargs):
-    """The deposits of every layer collected by diffusion: currents.<layer>_<job>.h5,
-    one file per layer. The charge of the last layer of the last event and the
+    """The deposits of every layer collected by its pixels: currents.<layer>_<job>.h5,
+    one file per layer. The solution full is collect_by_diffusion, fast is
+    collect_under. The charge of the last layer of the last event and the
     residuals of every layer are drawn in plots/job_<job>.
 
     The hits, clusters and residuals are still made here, from the charges
@@ -567,11 +636,16 @@ def currents(kwargs):
     paths = {
         layer: _file(kwargs, "currents." + layer) for layer in setup["object"]["layer"]
     }
+    if kwargs["solution"] == "fast":
+        def collect(pairs, positions):
+            return collect_under(my_d, pairs, positions, DIFFUSION_STEP)
+    else:
+        def collect(pairs, positions):
+            return collect_by_diffusion(
+                my_d, pairs, positions, setup["collection_window_s"], DIFFUSION_STEP
+            )
     my_hit_charge = DiffusedCharge(
-        my_d,
-        read_deposits(_file(kwargs, "deposits")).events,
-        paths,
-        setup["collection_window_s"],
+        my_d, read_deposits(_file(kwargs, "deposits")).events, paths, collect
     )
     plots = os.path.join(
         os.path.dirname(kwargs["_slice_batch_paths"]["currents"]),
