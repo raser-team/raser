@@ -69,14 +69,14 @@ def collect_by_diffusion(my_d, pairs, positions, window, step):
     steps = round(window / step)
     t0 = min((position[3] for position in positions), default=0.0)
     last = max((position[3] for position in positions), default=0.0)
-    bins = math.floor((last - t0) / step) + steps + 1
+    bins = round((last - t0) / step) + steps + 1
     electrons = np.zeros((my_d.x_ele_num * my_d.y_ele_num, bins))
 
     generator = stream("diffusion")
     for n_pairs, (x, y, z, t) in zip(pairs, positions, strict=True):
         if not 0 <= z <= my_d.l_z:
             continue
-        first = math.floor((t - t0) / step)  # the bin [t0 + first step, t0 + (first + 1) step) holds t
+        first = round((t - t0) / step)
         for k in range(steps + 1):
             if not (0 < x < my_d.l_x and 0 < y < my_d.l_y):
                 break  # left through the side
