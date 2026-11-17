@@ -21,10 +21,11 @@ def _pixels(**changes):
 
 
 def test_pixels_narrower_than_the_device_collect_where_they_are_centred() -> None:
-    # two pixels of 10 um centred on a device 40 um wide: their middles at 15 and 25 um
+    # 2 by 2 pixels of 10 um centred on a device 40 by 30 um: their middles at
+    # x = 15 and 25 um, y = 10 and 20 um
     seeding.seed_generators(1)
-    device = _pixels(l_x=40.0, l_y=10.0, p_x=10.0, p_y=10.0, x_ele_num=2, y_ele_num=1, e_width_x=4.0, e_width_y=4.0)
+    device = _pixels(l_x=40.0, l_y=30.0, p_x=10.0, p_y=10.0, e_width_x=4.0, e_width_y=4.0)
 
-    _, _, charge = collect_by_diffusion(device, [1.0], [[25.0, 5.0, 5.0, 0.0]], 1e-12, 1e-12)
+    _, _, charge = collect_by_diffusion(device, [1.0], [[25.0, 20.0, 5.0, 0.0]], 1e-12, 1e-12)
 
-    assert charge / -ELEMENTARY_CHARGE == pytest.approx([0.0, 1.0])
+    assert charge / -ELEMENTARY_CHARGE == pytest.approx([0.0, 0.0, 0.0, 1.0])
