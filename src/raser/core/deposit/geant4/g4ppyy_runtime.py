@@ -1,8 +1,18 @@
 """The Geant4 runtime: g4ppyy and the release of its global managers."""
 
-import g4ppyy as g4b
-
 from raser.supports import process
+from raser.supports.dependency import MissingDependency
+
+try:
+    import g4ppyy as g4b
+except ModuleNotFoundError as error:
+    if error.name != "g4ppyy":
+        raise
+    raise MissingDependency(
+        "Geant4's Python bindings, g4ppyy, are not installed in this Python",
+        "Install them with uv pip install -r env/uv.txt, and Geant4 with "
+        "env/install_conda.sh or by setting RASER_GEANT4_INSTALL to a Geant4 installation",
+    ) from error
 
 
 def _release():
