@@ -8,13 +8,28 @@ from pathlib import Path
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
-REPO_ROOT = PACKAGE_ROOT.parents[1]
+
+
+def source_tree(package_root=PACKAGE_ROOT):
+    """The source tree raser runs from, <tree>/src/raser beside <tree>/pyproject.toml,
+    as from a checkout or after pip install -e; None when it is installed as a package."""
+    tree = package_root.parents[1]
+    return tree if package_root.parent.name == "src" and (tree / "pyproject.toml").is_file() else None
+
+
+REPO_ROOT = source_tree()
 DEFAULT_COMPONENT_ROOT = PACKAGE_ROOT / "components"
-DEFAULT_WORK_ROOT = REPO_ROOT / "work"
+
+
+def default_work_root(tree=REPO_ROOT, cwd=None):
+    """work/ of the source tree; installed as a package, work/ of the current
+    folder: never the folder the package is installed in."""
+    return tree / "work" if tree is not None else Path(cwd or Path.cwd()) / "work"
 
 
 def work_root():
-    return Path(os.environ.get("RASER_WORK_PATH", DEFAULT_WORK_ROOT))
+    given = os.environ.get("RASER_WORK_PATH")
+    return Path(given) if given is not None else default_work_root()
 
 
 def project_root():

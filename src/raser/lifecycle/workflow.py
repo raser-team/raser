@@ -6,8 +6,10 @@ import argparse
 import errno
 import fcntl
 import hashlib
+import importlib.metadata
 import itertools
 import json
+import os
 import re
 import secrets
 import subprocess
@@ -24,6 +26,7 @@ from typing import Callable, Mapping
 from raser.components import load_component
 from raser.core.device.build_device import device_json
 from raser.lifecycle import jobs
+from raser.lifecycle import scheduler
 from raser.lifecycle import slices
 from raser.supports.paths import REPO_ROOT
 from raser.supports.paths import project_path
@@ -98,6 +101,11 @@ class Workflow:
     # out the others of its group from the layers below; two of a group in
     # one layer are an error.
     exclusive: tuple = ()
+    # More than one device: name -> (its device, None for the one the command
+    # names; the positions it takes). Each device file is files[name]["device"],
+    # its options at the addresses <name>.device.... One device is the one the
+    # command names, in files["device"].
+    devices: Mapping = field(default_factory=dict)
 
     def __post_init__(self):
         _one_of_each_group(self.exclusive, self.defaults, f"the defaults of {self.name}")
@@ -124,6 +132,9 @@ def run_arguments(parser, seeds=True):
         parser.add_argument("-s", "--jobs", type=int)
         parser.add_argument("--seed", type=int)
         parser.add_argument("--same-seeds", action="store_true")
+        # A job on the cluster that starts the command again goes on in the seed
+        # folder of the command, whatever names it, not in a new one.
+        parser.add_argument("--seed-folder", help=argparse.SUPPRESS)
     parser.add_argument("-b", "--batch", action="store_true")
     parser.add_argument("-mem", type=int, default=1)
     parser.add_argument("--dry-run", action="store_true")
@@ -172,6 +183,8 @@ def execute(workflow, kwargs, register=True):
     # Without seeds the point folder itself holds the run, and its one job.
     if not workflow.seeds:
         label, seed = "", None
+    elif kwargs.get("seed_folder"):
+        label, seed = kwargs["seed_folder"], _seed_of(root, kwargs["seed_folder"])
     elif kwargs["seed"] is None:
         label, seed = time.strftime("%Y_%m%d_%H%M%S"), secrets.randbits(31)
     else:
@@ -308,7 +321,14 @@ def execute(workflow, kwargs, register=True):
                 # The most jobs the seed folder was asked for, for raser status;
                 # it does not make a run out of date: -s 5 after -s 3 adds two.
                 record["jobs"] = max(record.get("jobs", 0), kwargs.get("jobs") or 1)
+                if kwargs["batch"]:
+                    # What a job on the cluster starts again when it is done.
+                    record["command"] = _without_seed_folder(kwargs.get("_argv") or [])
+                    record["cwd"] = os.getcwd()
+                    left = _not_submitted(folder, left, names.split(",") if workflow.slices else ["job"])
                 _write(folder / "run.json", record)
+                if not left:
+                    continue
                 try:
                     _start(workflow, {**kwargs, "job_slices": names}, folder, left, alone=len(todo) == 1)
                 except Exception as error:
@@ -482,7 +502,10 @@ def _point(workflow, kwargs, options) -> tuple[dict, dict]:
 
     # The json files the run uses: the device, and the files its options name.
     files = {}
-    if workflow.device:
+    if workflow.device and len(workflow.devices) > 1:
+        for name, (device, _) in workflow.devices.items():
+            files[name] = {"device": device_json(kwargs["det_name"] if device is None else device)}
+    elif workflow.device:
         files["device"] = device_json(kwargs["det_name"])
     for kind, key in workflow.components.items():
         read = workflow.readers.get(kind)
@@ -544,6 +567,12 @@ def _start(workflow, kwargs, folder, left, alone) -> None:
     if single:  # one point among several: a process of its own, as on the cluster
         _own_process(workflow, kwargs, [*kwargs["_entry_command_prefix"], *tail, "--job-dir", str(folder)])
         return
+    names = kwargs["job_slices"].split(",") if kwargs.get("job_slices") else ["job"]
+    if kwargs["batch"] and os.environ.get("RASER_SUBMIT_QUEUE"):
+        print(
+            "the jobs go to the queue the host submits: a job that waits for others is not "
+            "started again by itself; run the command again when those are done"
+        )
     jobs.run_indexed_jobs(
         kwargs["_entry_command_prefix"],
         [*tail, "--job-dir", str(folder)],
@@ -553,6 +582,7 @@ def _start(workflow, kwargs, folder, left, alone) -> None:
         destination=workflow.words[0],
         indices=left,
         log_folder=None if kwargs["batch"] else Path(folder) / "batch",
+        submitted=(lambda index, job: _note_submitted(folder, index, names, job)) if kwargs["batch"] else None,
     )
 
 
@@ -643,6 +673,8 @@ def _run_one_job(workflow, kwargs, folder, index):
             seed()
         workflow.job(options)
         _done(folder, index).touch()
+        _submitted(folder, index, "job").unlink(missing_ok=True)
+        _start_again(workflow, record, folder, progress=True)
         return
     # The seed folder of each slice: the one of this run in the point that holds it.
     root = folder.parent if workflow.seeds else folder
@@ -656,8 +688,111 @@ def _run_one_job(workflow, kwargs, folder, index):
         if workflow.seeds:
             seed(piece.name)
 
+    marked = {name for name in wanted if slices.mark(folders[name], index, name).exists()}
     if slices.run(workflow.slices, folders, index, options, wanted, before):
         _done(folder, index).touch()
+    now = {name for name in wanted if slices.mark(folders[name], index, name).exists()}
+    for name in now:
+        _submitted(folder, index, name).unlink(missing_ok=True)
+    _start_again(workflow, record, folder, progress=bool(now - marked))
+
+
+def _submitted(folder, index, name) -> Path:
+    """The record that the slice `name` of a job was submitted to the cluster."""
+    return Path(folder) / "batch" / f"{name}_{index}.submitted"
+
+
+def _note_submitted(folder, index, names, job) -> None:
+    """Record that a job was submitted for its slices `names`: what the
+    scheduler named it and when. A job queued for the host has no name yet:
+    nothing is recorded, and nothing starts the command again for it."""
+    if job is None:
+        return
+    for name in names:
+        try:
+            handle = os.open(_submitted(folder, index, name), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            continue
+        with os.fdopen(handle, "w") as file:
+            file.write(json.dumps({"job": job, "time": time.strftime("%Y-%m-%d %H:%M:%S")}) + "\n")
+
+
+def _not_submitted(folder, left, names) -> list[int]:
+    """The jobs of `left` to submit: not those already submitted for a slice
+    they would run. On the login node the scheduler is asked about each: one
+    it no more holds failed, its record goes and it is submitted again; one
+    it cannot be asked about stays as it is. A job on the cluster that
+    starts the command again submits only the jobs never submitted."""
+    on_cluster = bool(os.environ.get("RASER_CLUSTER_JOB"))
+    asked: dict = {}
+    kept = []
+    for index in left:
+        records = [path for name in names if (path := _submitted(folder, index, name)).is_file()]
+        if not records:
+            kept.append(index)
+            continue
+        if on_cluster:
+            continue
+        job = json.loads(records[0].read_text())["job"]
+        if job not in asked:
+            asked[job] = scheduler.job_alive(job)
+        if asked[job] is False:
+            print(f"{folder}: job {index} ({job}) is no more on the cluster: it failed and is submitted again")
+            for path in records:
+                path.unlink(missing_ok=True)
+            kept.append(index)
+        elif asked[job] is None:
+            print(f"{folder}: job {index} ({job}): the scheduler cannot be asked; left as it is")
+    if len(kept) < len(left):
+        print(f"{folder}: jobs {sorted(set(left) - set(kept))} are submitted already")
+    return kept
+
+
+def _start_again(workflow, record, folder, progress) -> None:
+    """On the cluster, after a job that wrote a mark it had not: the command
+    of the run again, in the same seed folder, so that the jobs that wait
+    for this one are submitted. As many starts deep as the chain has slices,
+    no more."""
+    if not os.environ.get("RASER_CLUSTER_JOB") or not progress or not record.get("command"):
+        return
+    depth = int(os.environ.get("RASER_RESUBMIT_DEPTH", "0"))
+    if depth >= max(1, len(workflow.slices)):
+        print(f"not starting the command again: {depth} starts deep, as many as the slices of the chain")
+        return
+    words = [*record["command"], *(["--seed-folder", folder.name] if workflow.seeds else [])]
+    print("starting the command again: raser " + " ".join(words))
+    environment = {**os.environ, "RASER_RESUBMIT_DEPTH": str(depth + 1)}
+    # Another job that ended at the same time may hold the folders: try again a few times.
+    for attempt in range(_STARTS):
+        if attempt:
+            time.sleep(_PAUSE)
+        started = subprocess.run([sys.executable, "-m", "raser.cli.raser", *words], cwd=record["cwd"], env=environment, check=False)
+        if getattr(started, "returncode", 0) == 0:
+            return
+    print(f"the command did not start again in {_STARTS} tries: give it again when the jobs it waits for are done")
+
+
+_STARTS, _PAUSE = 4, 30  # tries to start a command again on the cluster, and seconds between
+
+
+def _without_seed_folder(argv) -> list[str]:
+    """The words of a command without --seed-folder and its folder."""
+    words, skip = [], False
+    for word in argv:
+        if skip:
+            skip = False
+        elif word == "--seed-folder":
+            skip = True
+        elif not word.startswith("--seed-folder="):
+            words.append(word)
+    return words
+
+
+def _seed_of(root, label) -> int:
+    """The seed of the seed folder `label` of the experiment in `root`."""
+    for path in sorted(Path(root).glob(f"**/{label}/run.json")):
+        return int(json.loads(path.read_text())["seed"])
+    raise ValueError(f"{root}: no seed folder {label} to go on in")
 
 
 def _done(folder, index) -> Path:
@@ -727,7 +862,13 @@ def _write(path, content) -> None:
 
 
 def _commit() -> str:
-    """The commit of the code; +dirty when files differ from it or it is unknown."""
+    """The commit of the code; +dirty when files differ from it or it is unknown.
+    Installed as a package, raser has no commit: the version of the package."""
+    if REPO_ROOT is None:
+        try:
+            return f"raser {importlib.metadata.version('raser')}"
+        except importlib.metadata.PackageNotFoundError:
+            return "unknown+dirty"
 
     def git(*words):
         command = ["git", "-C", str(REPO_ROOT), *words]
