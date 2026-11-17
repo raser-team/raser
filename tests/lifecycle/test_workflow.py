@@ -1727,5 +1727,5 @@ def test_a_setting_of_the_command_line_that_changed_makes_the_run_out_of_date_wh
     old = _record(tmp_path / "toy")
     del old["settings"]  # written before the settings were recorded
     (tmp_path / "toy" / "run.json").write_text(json.dumps(old))
-    execute(solver, _plain(umf=False))
-    assert "replaced" not in capsys.readouterr().out
+    execute(solver, _plain(umf=True))
+    assert "replaced: other settings of the command line" in capsys.readouterr().out

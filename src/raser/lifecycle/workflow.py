@@ -570,8 +570,8 @@ def finished_in(root) -> list[tuple[str, dict, list[tuple[Path, int]]]]:
 
 def _outdated(workflow, old, record) -> str | None:
     """What makes the run that wrote `old` out of date for `record`, or None."""
-    # A run recorded before its settings were is taken as made with these.
-    if "settings" in old and old["settings"] != record.get("settings"):
+    # A run recorded without its settings has no known ones: it is out of date.
+    if old.get("settings") != record.get("settings"):
         return "other settings of the command line"
     if workflow.outdated:
         return workflow.outdated(old, record)
