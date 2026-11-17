@@ -480,6 +480,12 @@ def _points(workflow, kwargs, config, given) -> tuple[dict, dict]:
         options, files = _point(workflow, kwargs, given_here)
         changed = [key for key in values if options[key] != base.get(key)]
         name = "_".join(f"{label[key]}_{_text(options[key])}" for key in changed)
+        if name in points and any(points[name][0].get(key) != options.get(key) for key in scan):
+            other = {key: points[name][0].get(key) for key in scan}
+            raise ValueError(
+                f"{other} and {({key: options.get(key) for key in scan})} would both be the folder {name!r}; "
+                "scan values that do not hold the names of other scanned options"
+            )
         if name not in points:
             points[name] = (options, files, given_here, held_in := [])
             for k in range(len(workflow.slices)):

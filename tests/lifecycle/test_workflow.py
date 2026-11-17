@@ -437,6 +437,18 @@ def test_two_scanned_options_give_every_combination_named_by_what_differs(
     ]
 
 
+def test_two_combinations_that_would_name_one_folder_stop_the_command_before_any_job(
+    started: list[Any], tmp_path: Path
+) -> None:
+    scan = ["gain=7_width_2,7", "width=1.0,2.0"]
+
+    with pytest.raises(ValueError, match="gain_7_width_2"):
+        execute(GAIN, _kwargs(gain=None, width=None, scan=scan, jobs=2))
+
+    assert started == []
+    assert not (tmp_path / "toy").exists()
+
+
 def test_a_value_given_for_an_option_the_config_scans_runs_only_that_value(
     started: list[Any], tmp_path: Path
 ) -> None:
