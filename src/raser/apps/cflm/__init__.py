@@ -8,9 +8,6 @@ time resolution study of the same SiC PIN (Yang et al., Front. Phys. 10
 (2022) 718071), on the UCSC board with a broadband amplifier.
 """
 
-from functools import partial
-
-from raser.lifecycle.slices import Slice
 from raser.lifecycle.workflow import Workflow
 from raser.stages import chain
 
@@ -24,30 +21,10 @@ def _deposits(kwargs):
     deposits.deposits(kwargs)
 
 
-def _currents(pad, kwargs):
-    from . import signals
-
-    return signals.currents(kwargs, pad)
-
-
-def _waveforms(pad, kwargs):
-    from . import signals
-
-    return signals.waveforms(kwargs, pad)
-
-
-SLICES = (
-    Slice("deposit", _deposits),
-    *(
-        Slice(f"current.{pad}", partial(_currents, pad), keys=("voltage", "irradiation", "plots"))
-        for pad in PADS
-    ),
-    # The electronics works on what was measured: its points read the same currents.
-    *(
-        Slice(f"readout.{pad}", partial(_waveforms, pad), keys=("amplifier",), new_events=False)
-        for pad in PADS
-    ),
-)
+# One device, the device of the command, in 24 positions: the pads.
+DEVICES = {"pad": (None, list(PADS))}
+# Its own deposits until the Geant4 world scripts place the pads.
+SLICES = chain.expand(DEVICES, deposit=_deposits)
 
 WORKFLOW = Workflow(
     name="cflm",
@@ -55,6 +32,7 @@ WORKFLOW = Workflow(
     defaults={**chain.READOUT_DEFAULTS, "plots": 0},
     in_file=chain.IN_FILE,
     slices=SLICES,
+    devices=DEVICES,
 )
 
 
