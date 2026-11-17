@@ -20,6 +20,7 @@ except ImportError:
 from raser.supports.output import output
 
 from .impact_ionization import VAN_OVERSTRAETEN
+from .impact_ionization import hatakeyama
 
 # Relative permittivity. Si: Sze and Ng, Physics of Semiconductor Devices,
 # 3rd ed. (2007), appendix G; 4H-SiC: 9.76, along the c axis; diamond: 5.7.
@@ -308,38 +309,12 @@ class Material:
                 coefficient = 0.
 
         if(self.avalanche_model == 'Hatakeyama'):
-            '''
-            The Hatakeyama avalanche model describes the anisotropic behavior in 4H-SiC power devices. 
-            The impact ionization coefficient is obtained according to the Chynoweth law.
-            '''
-            hbarOmega = 0.19 # eV
-            _theta =1 # 1
-            T0 = 300.0 # K
-            k_T0 = 0.0257 # eV
-
+            # The drift takes the field along <0001>: no anisotropy.
             if( charges < 0):
-                a_0001 = 1.76e8 # cm-1
-                a_1120 = 2.10e7 # cm-1
-                b_0001 = 3.30e7 # V/cm 
-                b_1120 = 1.70e7 # V/cm
-                 
+                coefficient = hatakeyama("electron", 0.0).value(E=E, T=T)
             if (charges > 0):
-                a_0001 = 3.41e8 # cm-1
-                a_1120 = 2.96e7 # cm-1
-                b_0001 = 2.50e7 # V/cm 
-                b_1120 = 1.60e7 # V/cm 
+                coefficient = hatakeyama("hole", 0.0).value(E=E, T=T)
 
-            _gamma = math.tanh(hbarOmega/(2*k_T0))/math.tanh(hbarOmega/(2*k_T0*T/T0))
-
-            # only consider the <0001> direction multiplication, no anisotropy now!
-            a = a_0001
-            b = b_0001
-            
-            if(E>1.0e04):
-                coefficient = _gamma*a*math.exp(-(_gamma*b/E))
-            else:
-                coefficient = 0.
-                
         return coefficient
 
 

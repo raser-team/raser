@@ -10,6 +10,9 @@ Description:  physics_drift_diffusion.py
 '''
 
 from devsim import *
+
+from raser.core.model.recombination import SRH
+
 from .model_create import *
 from .physics_avalanche import CreateImpactGeneration
 from .physics_irradiation import CreateIrradiation
@@ -187,7 +190,7 @@ def PrintCurrents(device, contact):
 
 
 def CreateSRH(device, region, irradiation_model):
-    USRH="(Electrons*Holes - n_i^2)/(taup*(Electrons + n1) + taun*(Holes + p1))"
+    USRH = SRH.devsim(n="Electrons", p="Holes", n_i="n_i", n1="n1", p1="p1", tau_n="taun", tau_p="taup")
     Gn = "-ElectronCharge * (USRH+U_const)"
     Gp = "+ElectronCharge * (USRH+U_const)"
 
