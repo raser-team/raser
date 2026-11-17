@@ -27,6 +27,8 @@ VAN_OVERSTRAETEN = {
         **_VAN_OVERSTRAETEN_TEMPERATURE,
         a_low=7.03e5,
         a_high=7.03e5,
+        # The paper gives b = 1.231e6 V/cm for electrons; 1.232e6 is the
+        # value RASER has used, kept: 0.34% lower alpha at 3e5 V/cm.
         b_low=1.232e6,
         b_high=1.232e6,
     ),
