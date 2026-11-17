@@ -14,6 +14,7 @@ WORKFLOW = Workflow(
     keys=chain.KEYS,
     defaults={**chain.DEFAULTS, **DEFAULTS, "events_per_job": 10000, "plots": 0},
     components=chain.COMPONENTS,
+    readers=chain.READERS,
     in_file=chain.IN_FILE,
     slices=chain.SLICES,
     command=chain.job_command,

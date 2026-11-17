@@ -6,6 +6,7 @@ slices import their stage when they run.
 
 from functools import partial
 
+from raser.components.loader import read_g4setup
 from raser.lifecycle.slices import Shared
 from raser.lifecycle.slices import Slice
 from raser.stages import field
@@ -23,6 +24,7 @@ KEYS = (
     "amplifier",
 )
 COMPONENTS = {"source": "source", "g4setup": "g4setup"}  # kind of file -> option
+READERS = {"g4setup": read_g4setup}  # kind of file -> what reads the file its option names
 IN_FILE = {"voltage": "device.bias.voltage"}  # option -> where it sits in a file
 
 

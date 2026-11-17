@@ -13,6 +13,7 @@ WORKFLOW = Workflow(
     keys=chain.KEYS,
     defaults={**chain.DEFAULTS, "source": "bunch", "plots": 0},
     components=chain.COMPONENTS,
+    readers=chain.READERS,
     in_file=chain.IN_FILE,
     slices=chain.SLICES,
     command=chain.job_command,
