@@ -14,6 +14,7 @@ WORKFLOW = Workflow(
     keys=signal.KEYS,
     defaults={
         "source": DEFAULTS["source"],
+        "fano": True,
         "events_per_job": 10000,
         "plots": 0,
         "amplifier": DEFAULTS["afe"],

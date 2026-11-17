@@ -41,6 +41,22 @@ class GeneralDetectorConstruction(g4b.G4VUserDetectorConstruction):
             }
             self.create_elemental(detector)
 
+        if detector_material == "Diamond":
+            # Diamond is carbon at 3.52 g/cm3; NIST's G4_C is graphite (2.0 g/cm3).
+            self.nist.BuildMaterialWithNewDensity("Diamond", "G4_C", 3.52 * g4b.g / g4b.cm3)
+            detector = {
+                "name": "Device",
+                "material": "Diamond",
+                "side_x": my_d.l_x,
+                "side_y": my_d.l_y,
+                "side_z": my_d.l_z,
+                "colour": [1, 0, 0],
+                "position_x": 0,
+                "position_y": 0,
+                "position_z": my_d.l_z / 2.0,
+            }
+            self.create_elemental(detector)
+
         if detector_material == "SiC":
             detector = {
                 "name": "Device",

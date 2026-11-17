@@ -68,6 +68,7 @@ def deposits(kwargs):
         kwargs["seed"],
         kwargs.get("edep_min"),
         kwargs.get("edep_max"),
+        kwargs["fano"],
     )
     if not recorded:
         # the file keeps the number of generated events; nothing is left to drift

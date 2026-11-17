@@ -18,6 +18,7 @@ KEYS = (
     "events_per_job",
     "edep_min",
     "edep_max",
+    "fano",
     "plots",
     "voltage",
     "irradiation",
@@ -86,7 +87,7 @@ SLICES = (
     Slice(
         "deposits",
         _deposits,
-        keys=("source", "g4setup", "events_per_job", "edep_min", "edep_max"),
+        keys=("source", "g4setup", "events_per_job", "edep_min", "edep_max", "fano"),
         kinds=("source", "g4setup"),
     ),
     Slice("currents", _currents, keys=("voltage", "irradiation", "plots")),
@@ -101,6 +102,7 @@ WORKFLOW = Workflow(
     defaults={
         "source": DEFAULTS["source"],
         "g4setup": "device_alone",
+        "fano": True,
         "amplifier": DEFAULTS["afe"],
         "events_per_job": 1,
         "plots": 100,
