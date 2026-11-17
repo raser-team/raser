@@ -25,6 +25,19 @@ ELEMENTARY_CHARGE = 1.602176634e-19  # C
 BOLTZMANN = 8.617385e-5  # eV/K
 
 
+def time_bin(t, t0, step):
+    """The number k of the time bin [t0 + k step, t0 + (k + 1) step) that
+    holds the time t [s]: t0 is the left edge of the first bin. A quotient
+    that floating point puts on the wrong side of an edge, as 28.999999999999996
+    for 29 steps, is set right."""
+    k = math.floor((t - t0) / step)
+    if t0 + (k + 1) * step <= t:
+        k += 1
+    elif t0 + k * step > t:
+        k -= 1
+    return k
+
+
 def collect_by_diffusion(my_d, pairs, positions, window, step):
     """The charge the pixels of `my_d` collect from one event.
 
@@ -69,14 +82,14 @@ def collect_by_diffusion(my_d, pairs, positions, window, step):
     steps = round(window / step)
     t0 = min((position[3] for position in positions), default=0.0)
     last = max((position[3] for position in positions), default=0.0)
-    bins = round((last - t0) / step) + steps + 1
+    bins = time_bin(last, t0, step) + steps + 1
     electrons = np.zeros((my_d.x_ele_num * my_d.y_ele_num, bins))
 
     generator = stream("diffusion")
     for n_pairs, (x, y, z, t) in zip(pairs, positions, strict=True):
         if not 0 <= z <= my_d.l_z:
             continue
-        first = round((t - t0) / step)
+        first = time_bin(t, t0, step)
         for k in range(steps + 1):
             if not (0 < x < my_d.l_x and 0 < y < my_d.l_y):
                 break  # left through the side
