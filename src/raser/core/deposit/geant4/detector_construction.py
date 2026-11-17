@@ -7,11 +7,10 @@ Description:  detector_construction.py
 
 from raser.core.deposit.geant4.g4ppyy_runtime import g4b
 
+from ..simulate_deposits import world_half_side
+
 g4b.include("G4VUserDetectorConstruction.hh")
 g4b.include("G4UserLimits.hh")
-
-world_size = 25000
-# TODO: move this to setting
 
 
 class GeneralDetectorConstruction(g4b.G4VUserDetectorConstruction):
@@ -24,7 +23,7 @@ class GeneralDetectorConstruction(g4b.G4VUserDetectorConstruction):
         self.physical = {}
         self.compound_materials = {}
         self.checkOverlaps = True
-        self.create_world(g4_dic["world"])
+        self.create_world(g4_dic["world"], world_half_side(my_d, g4_dic))
         self.geant4_model = g4_dic["geant4_model"]
 
         if detector_material == "Si":
@@ -95,12 +94,13 @@ class GeneralDetectorConstruction(g4b.G4VUserDetectorConstruction):
 
         self.logical["Device"].SetUserLimits(self.fStepLimit)
 
-    def create_world(self, world_type):
+    def create_world(self, world_type, half_side):
+        """The world: a cube of world_type, half_side [um] from the centre."""
 
         self.nist = g4b.G4NistManager.Instance()
         material = self.nist.FindOrBuildMaterial(world_type)
         self.solid["world"] = g4b.G4Box(
-            "world", world_size * g4b.um, world_size * g4b.um, world_size * g4b.um
+            "world", half_side * g4b.um, half_side * g4b.um, half_side * g4b.um
         )
         self.logical["world"] = g4b.G4LogicalVolume(
             self.solid["world"], material, "world"

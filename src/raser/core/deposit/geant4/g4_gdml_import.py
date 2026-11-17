@@ -10,6 +10,7 @@ import xml.etree.ElementTree as ET
 
 from raser.core.deposit.geant4.g4ppyy_runtime import g4b
 
+from ..simulate_deposits import world_half_side
 from .detector_construction import GeneralDetectorConstruction
 from raser.supports.paths import component_candidates
 
@@ -174,7 +175,7 @@ class GDMLDetectorConstruction(GeneralDetectorConstruction):
         if _gdml_has_wrapper_world(self.gdml_path):
             self._use_imported_world_as_world()
         else:
-            self.create_world(g4_dic['world'])
+            self.create_world(g4_dic['world'], world_half_side(my_d, g4_dic))
             if 'world_half_size_um' in g4_dic:
                 half_size = float(g4_dic['world_half_size_um']) * g4b.um
                 self.solid['world'].SetXHalfLength(half_size)

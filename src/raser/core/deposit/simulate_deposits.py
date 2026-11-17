@@ -22,6 +22,9 @@ DEVICE_ALONE = {
     "g4_vis": False,
 }
 
+# Half the side of the Geant4 world [um] when nothing reaches farther.
+WORLD_HALF_SIDE = 25000
+
 _DESCRIPTIVE_KEYS = ("name", "kind", "description")
 _PARTICLE_KEYS = ("par_in", "par_out", "par_randx", "par_randy", "par_type", "par_energy")
 
@@ -56,6 +59,29 @@ def g4_configuration(
     configuration["edep_min"] = edep_min
     configuration["edep_max"] = edep_max
     return configuration
+
+
+def world_half_side(my_d, configuration: dict) -> float:
+    """Half the side [um] of the cube of the Geant4 world, centred where
+    the device's face z = 0 has its middle.
+
+    It is WORLD_HALF_SIDE, unless the device, an object of the
+    configuration or a point the source starts from (par_in, of every
+    particle, widened by par_radius) reaches farther along x, y or z: then
+    it is twice that reach, so that the world holds them with room around.
+    """
+    reach = max(my_d.l_x / 2, my_d.l_y / 2, my_d.l_z)
+    for objects in (configuration.get("object") or {}).values():
+        for one in objects.values():
+            reach = max(
+                reach,
+                *(abs(one["position_" + axis]) + one["side_" + axis] / 2 for axis in "xyz"),
+            )
+    radius = configuration.get("par_radius", 0)
+    for one in (configuration, *configuration.get("particles", ())):
+        if "par_in" in one:
+            reach = max(reach, *(abs(c) + radius for c in one["par_in"]))
+    return WORLD_HALF_SIDE if reach <= WORLD_HALF_SIDE else 2 * reach
 
 
 def tilted(source: dict, l_z: float) -> dict:

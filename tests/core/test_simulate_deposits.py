@@ -6,6 +6,8 @@ import pytest
 from raser.core.deposit.simulate_deposits import simulate_deposits
 from raser.core.deposit.simulate_deposits import g4_configuration
 from raser.core.deposit.simulate_deposits import tilted
+from raser.core.deposit.simulate_deposits import world_half_side
+from raser.core.deposit.simulate_deposits import WORLD_HALF_SIDE
 
 SOURCE = {
     "name": "pion",
@@ -86,3 +88,25 @@ def test_every_particle_takes_from_the_source_what_it_does_not_give() -> None:
     # par_angle turns the points of the particles with those of the source
     turned = tilted({**source, "par_angle": 90}, 50.0)["particles"][1]
     assert turned["par_in"] == pytest.approx([950, 0, 20])
+
+
+def _box(position_x, side_x):
+    return {
+        "position_x": position_x, "position_y": 0, "position_z": 0,
+        "side_x": side_x, "side_y": 10, "side_z": 10,
+    }
+
+
+def test_world_holds_the_device_the_objects_and_the_source() -> None:
+    small = SimpleNamespace(l_x=1300, l_y=1300, l_z=50)
+    wide = SimpleNamespace(l_x=96791, l_y=48000, l_z=305)  # ITk-Si-strip
+
+    # what fits stays in the world it always had
+    assert world_half_side(small, {**SOURCE, "par_in": [0, 0, 17000], "par_radius": 2500}) == WORLD_HALF_SIDE
+    # a device wider than the world: its edge is inside, with room around
+    assert world_half_side(wide, SOURCE) == 96791
+    # an object and a source that start beyond the world
+    assert world_half_side(small, {"object": {"elemental": {"far": _box(29000, 2000)}}}) == 60000
+    assert world_half_side(small, {"particles": [{"par_in": [0, -26000, 0]}]}) == 52000
+    # a disk of a source reaches by its radius
+    assert world_half_side(small, {"par_in": [24000, 0, 0], "par_radius": 2000}) == 52000
