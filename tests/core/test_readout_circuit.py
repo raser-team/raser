@@ -281,6 +281,22 @@ def test_chain_with_the_same_stage_twice(tmp_path):
     assert voltage == pytest.approx(expected, abs=5e-8)
 
 
+def test_chain_with_two_stages_of_one_name_from_two_folders(tmp_path):
+    # the 100 Ohm in series, then a stage of the same name that lies across
+    # the line: as the series and the across stages of the first test
+    files = _chain_files(tmp_path)
+    (tmp_path / "other").mkdir()
+    other = tmp_path / "other" / "series.cir"
+    other.write_text(".subckt series in out\nR1 in 0 100\nR2 in out 1u\n.ends series\n")
+
+    chain = read_chain([files["series"], other, files["load"]])
+    after, voltage = _step_response(chain)
+
+    assert list(chain["stages"]) == ["series", "series_2"]
+    expected = 1e-6 * 75.0 * (1 - np.exp(-after / (175.0 * 10e-12)))
+    assert voltage == pytest.approx(expected, abs=5e-8)
+
+
 def test_chain_that_does_not_end_in_its_only_load_is_refused(tmp_path):
     files = _chain_files(tmp_path)
 

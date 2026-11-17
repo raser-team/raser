@@ -108,9 +108,9 @@ def read_chain(paths):
     from the sensor to the load: each stage on the output of the one before,
     the last file the load. The load alone is the sensor read out as it is.
 
-    A stage is known in the chain by the name of its file; where the same
-    file stands in the chain again, by its name and which of them it is:
-    Gali52, then Gali52_2.
+    A stage is known in the chain by the name of its file; where a file of
+    the same name stands in the chain again, by its name and which of them
+    it is: Gali52, then Gali52_2.
     """
     *stage_paths, load_path = [Path(path) for path in paths]
     stages: dict = {}
@@ -121,7 +121,7 @@ def read_chain(paths):
                 f"{path} has no output: it can only be the load, the last of "
                 f"the chain, not its part {place} of {len(paths)}"
             )
-        before = stage_paths[: place - 1].count(path)
+        before = [earlier.stem for earlier in stage_paths[: place - 1]].count(path.stem)
         stages[f"{path.stem}_{before + 1}" if before else path.stem] = stage
     load = read_subcircuit(load_path)
     if "out" in load["ports"]:
