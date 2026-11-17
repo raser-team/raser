@@ -139,8 +139,8 @@ def test_an_installed_raser_records_its_version_and_runs_its_workers_in_the_fold
     from raser.lifecycle import workflow
 
     monkeypatch.setattr(workflow, "REPO_ROOT", None)
-    monkeypatch.setattr(workflow.importlib.metadata, "version", lambda name: "5.0")
-    assert workflow._commit() == "raser 5.0"
+    monkeypatch.setattr(workflow.raser, "__version__", "9.9")
+    assert workflow._commit() == "raser 9.9"
 
     monkeypatch.setattr(scheduler, "REPO_ROOT", None)
     monkeypatch.chdir(tmp_path)

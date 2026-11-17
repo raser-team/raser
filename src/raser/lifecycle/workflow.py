@@ -6,7 +6,6 @@ import argparse
 import errno
 import fcntl
 import hashlib
-import importlib.metadata
 import itertools
 import json
 import os
@@ -23,6 +22,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Callable, Mapping
 
+import raser
 from raser.components import load_component
 from raser.core.device.build_device import device_json
 from raser.lifecycle import jobs
@@ -1097,10 +1097,7 @@ def _commit() -> str:
     """The commit of the code; +dirty when files differ from it or it is unknown.
     Installed as a package, raser has no commit: the version of the package."""
     if REPO_ROOT is None:
-        try:
-            return f"raser {importlib.metadata.version('raser')}"
-        except importlib.metadata.PackageNotFoundError:
-            return "unknown+dirty"
+        return f"raser {raser.__version__}"
 
     def git(*words):
         command = ["git", "-C", str(REPO_ROOT), *words]
