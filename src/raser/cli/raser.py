@@ -23,6 +23,7 @@ APPLICATIONS = {  # command -> the module that registers it
     "deposit": "raser.stages.stage_commands",
     "current": "raser.stages.stage_commands",
     "readout": "raser.stages.stage_commands",
+    "reconstruction": "raser.stages.stage_commands",
     "status": "raser.lifecycle.status",
     "bmos": "raser.apps.bmos",
     "cce": "raser.bench.cce",

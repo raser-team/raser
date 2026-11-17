@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import json
 from pathlib import Path
 
 import pytest
@@ -146,3 +147,17 @@ def test_inside_an_experiment_folder_the_command_and_device_come_from_its_config
     assert main(["-bb", "-s", "2", "--seed", "3"]) == 0
     every = ["--job-slices", "deposit,field,current,readout,reconstruction"]  # each voltage is measured anew
     assert submitted == [(["cce", "HPK-Si-PiN", *every], True, 2)] * 2
+
+
+@pytest.mark.parametrize("command", ["reconstruction", "reco"])
+def test_a_stage_command_given_inside_an_experiment_folder_is_not_taken_for_its_options(
+    work_root: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture, command: str
+) -> None:
+    experiment = work_root / "HPK-Si-PiN" / "signal"
+    experiment.mkdir(parents=True)
+    (experiment / "config.json").write_text(json.dumps({"workflow": "signal", "device": "HPK-Si-PiN"}))
+    monkeypatch.chdir(experiment)
+
+    assert main([command, str(experiment), "--seed", "1", "--dry-run"]) == 0
+
+    assert capsys.readouterr().out.splitlines()[0].startswith(f"{experiment / 'seed_1'}: ")
