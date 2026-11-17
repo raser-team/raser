@@ -32,7 +32,7 @@ SLICES = (
 def register(subparsers):
     parser = subparsers.add_parser("telescope", help="telescope")
     setups = parser.add_subparsers(dest="telescope_setup", required=True)
-    for setup in ("taichu_v1", "taichu_v2", "acts_v1"):
+    for setup in ("taichu_v1", "taichu_v2"):
         setup_parser = setups.add_parser(setup)
         command = None
         keys = ()
@@ -71,11 +71,6 @@ def _variant(kwargs):
 
 
 def run(kwargs):
-    setup = kwargs["telescope_setup"]
-    if setup == "taichu_v2":
-        from .telescope_signal import taichu_v2
+    from .telescope_signal import taichu_v2
 
-        return taichu_v2(kwargs["variant"])
-    from .telescope_acts import main
-
-    return main(kwargs["seed"])
+    return taichu_v2(kwargs["variant"])
