@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from raser.core.frontend.waveforms import read_waveforms
+from raser.core.readout.waveforms import read_waveforms
 from raser.core.interaction.deposits import read_deposits
 from raser.core.metrics.reconstruction import InputWaveform
 from raser.core.metrics.reconstruction import get_CFD50

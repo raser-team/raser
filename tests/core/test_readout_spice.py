@@ -1,10 +1,10 @@
 import numpy as np
 import pytest
 
-from raser.core.frontend.spice import SensorCircuit
-from raser.core.frontend.spice import output_noise_spectrum
-from raser.core.frontend.spice import short_circuit_currents
-from raser.core.frontend.spice import solve
+from raser.core.field.sensor_spice import SensorCircuit
+from raser.core.readout.spice import output_noise_spectrum
+from raser.core.readout.spice import short_circuit_currents
+from raser.core.readout.spice import solve
 
 pytestmark = pytest.mark.ngspice
 

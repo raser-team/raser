@@ -1,9 +1,9 @@
 import numpy as np
 import pytest
 
-from raser.core.frontend.waveforms import EventWaveforms
-from raser.core.frontend.waveforms import append_waveforms
-from raser.core.frontend.waveforms import read_waveforms
+from raser.core.readout.waveforms import EventWaveforms
+from raser.core.readout.waveforms import append_waveforms
+from raser.core.readout.waveforms import read_waveforms
 
 
 def test_waveforms_file_returns_each_event_with_its_own_bins(tmp_path):

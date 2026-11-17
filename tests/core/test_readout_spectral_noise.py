@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from raser.core.frontend.spectral_noise import noise_from_spectrum
+from raser.core.readout.spectral_noise import noise_from_spectrum
 
 DT_S = 1e-11
 BINS = 200  # a 2 ns waveform

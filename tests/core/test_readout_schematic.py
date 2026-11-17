@@ -1,11 +1,11 @@
 import pytest
 
-from raser.core.frontend.circuit import read_subcircuit
-from raser.core.frontend.schematic import _taken
-from raser.core.frontend.schematic import arrange
-from raser.core.frontend.schematic import layout
-from raser.core.frontend.schematic import read_hints
-from raser.core.frontend.schematic import value_text
+from raser.core.readout.circuit import read_subcircuit
+from raser.core.readout.schematic import _taken
+from raser.core.readout.schematic import arrange
+from raser.core.readout.schematic import layout
+from raser.core.readout.schematic import read_hints
+from raser.core.readout.schematic import value_text
 from raser.supports.paths import component_path
 
 

@@ -19,9 +19,9 @@ from raser.core.current.cal_current import write_induced_currents
 from raser.core.device import build_device as bdv
 from raser.core.field import devsim_field as devfield
 from raser.core.field.solved import solved_field
-from raser.core.frontend.circuit import named_chain
-from raser.core.frontend.device_circuit import device_sensor
-from raser.core.frontend.job import write_waveforms
+from raser.core.readout.circuit import named_chain
+from raser.core.field.circuit_parameters import device_sensor
+from raser.core.readout.job import write_waveforms
 from raser.core.interaction.simulate_deposits import write_simulated_deposits
 from raser.core.interaction.view_geometry import view_geometry
 from raser.lifecycle.slices import Ended

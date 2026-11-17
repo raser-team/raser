@@ -1,14 +1,14 @@
 import numpy as np
 import pytest
 
-from raser.core.frontend.circuit import named_chain
-from raser.core.frontend.circuit import read_chain
-from raser.core.frontend.circuit import read_subcircuit
-from raser.core.frontend.circuit import spice_number
-from raser.core.frontend.circuit import subcircuit
-from raser.core.frontend.planar_sensor import planar_sensor
-from raser.core.frontend.spice import output_noise_spectrum
-from raser.core.frontend.spice import solve
+from raser.core.readout.circuit import named_chain
+from raser.core.readout.circuit import read_chain
+from raser.core.readout.circuit import read_subcircuit
+from raser.core.readout.circuit import spice_number
+from raser.core.readout.circuit import subcircuit
+from raser.core.field.sensor_spice import planar_sensor
+from raser.core.readout.spice import output_noise_spectrum
+from raser.core.readout.spice import solve
 from raser.supports.paths import component_path
 
 pytestmark = pytest.mark.ngspice

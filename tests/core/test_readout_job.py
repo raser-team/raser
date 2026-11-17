@@ -3,10 +3,10 @@ import pytest
 
 from raser.core.current.currents import EventCurrents
 from raser.core.current.currents import append_currents
-from raser.core.frontend.job import write_waveforms
-from raser.core.frontend.planar_sensor import planar_sensor
-from raser.core.frontend.waveforms import read_sensor_values
-from raser.core.frontend.waveforms import read_waveforms
+from raser.core.readout.job import write_waveforms
+from raser.core.field.sensor_spice import planar_sensor
+from raser.core.readout.waveforms import read_sensor_values
+from raser.core.readout.waveforms import read_waveforms
 
 pytestmark = pytest.mark.ngspice
 

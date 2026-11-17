@@ -14,9 +14,9 @@ from raser.apps.signal.gen_signal import solved
 from raser.core.current.cal_current import electrode_names
 from raser.core.current.cal_current import write_induced_currents
 from raser.core.device import build_device as bdv
-from raser.core.frontend.circuit import named_chain
-from raser.core.frontend.device_circuit import device_sensor
-from raser.core.frontend.job import write_waveforms
+from raser.core.readout.circuit import named_chain
+from raser.core.field.circuit_parameters import device_sensor
+from raser.core.readout.job import write_waveforms
 from raser.core.interaction.deposits import read_deposits
 
 

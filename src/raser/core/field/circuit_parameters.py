@@ -1,8 +1,8 @@
 """Circuit of a sensor and its values, taken from its device and its field."""
 
-from .planar_sensor import planar_sensor
-from .planar_sensor import row_of_electrodes
-from .planar_sensor import side_by_side
+from .sensor_spice import planar_sensor
+from .sensor_spice import row_of_electrodes
+from .sensor_spice import side_by_side
 
 
 def junction_capacitance(my_d, solved_f=None):

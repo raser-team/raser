@@ -9,8 +9,8 @@ from raser.lifecycle import workflow
 from raser.apps.ana.point import write_point
 from raser.core.current.currents import EventCurrents
 from raser.core.current.currents import append_currents
-from raser.core.frontend.waveforms import EventWaveforms
-from raser.core.frontend.waveforms import append_waveforms
+from raser.core.readout.waveforms import EventWaveforms
+from raser.core.readout.waveforms import append_waveforms
 from raser.core.interaction.deposits import Deposits
 from raser.core.interaction.deposits import EventDeposits
 from raser.core.interaction.deposits import write_deposits

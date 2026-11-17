@@ -5,9 +5,9 @@ import pytest
 
 from raser.core.device.build_device import Detector
 from raser.core.device.build_device import device_file
-from raser.core.frontend.device_circuit import device_sensor
-from raser.core.frontend.device_circuit import junction_capacitance
-from raser.core.frontend.spice import solve
+from raser.core.field.circuit_parameters import device_sensor
+from raser.core.field.circuit_parameters import junction_capacitance
+from raser.core.readout.spice import solve
 
 
 def _device(**keys):

@@ -1,11 +1,11 @@
 import numpy as np
 import pytest
 
-from raser.core.frontend.planar_sensor import planar_sensor
-from raser.core.frontend.planar_sensor import side_by_side
-from raser.core.frontend.planar_sensor import undepleted_layer
-from raser.core.frontend.spice import short_circuit_currents
-from raser.core.frontend.spice import solve
+from raser.core.field.sensor_spice import planar_sensor
+from raser.core.field.sensor_spice import side_by_side
+from raser.core.field.sensor_spice import undepleted_layer
+from raser.core.readout.spice import short_circuit_currents
+from raser.core.readout.spice import solve
 
 pytestmark = pytest.mark.ngspice
 

@@ -2,30 +2,11 @@
 
 import subprocess
 import tempfile
-from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 
 from .circuit import subcircuit
-
-
-@dataclass(frozen=True)
-class SensorCircuit:
-    """The sensor as it stands in the netlist: once, for all electrodes.
-
-    lines : SPICE lines of its elements. Ground is node 0.
-    sources : for each electrode, by its name, the two nodes (from, to) of
-        its induced current source.
-    outputs : for each electrode, by its name, the node its first amplifier
-        stage reads.
-
-    The node names ``in<k>_<j>`` and ``out<k>`` belong to the stages.
-    """
-
-    lines: tuple[str, ...]
-    sources: dict[str, tuple[str, str]]
-    outputs: dict[str, str]
 
 
 def _bin_centres(dt, bins):
