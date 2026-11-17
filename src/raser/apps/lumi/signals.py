@@ -1,17 +1,22 @@
-"""The currents of one pad: currents.<pad>_<job>.h5.
+"""The currents and the waveforms of one pad: currents.<pad>_<job>.h5 and
+waveforms.<pad>_<job>.h5.
 
 Every pad is a device of its own, of the device file of the command: its
 currents are those of its own deposits in the deposits file. A pad that
-got no deposit in any bunch of the job has no file; its slice leaves
-{"events": 0} with its mark.
+got no deposit in any bunch of the job has neither file; its two slices
+leave {"events": 0} with their marks.
 """
 
 import os
 
 from raser.apps.signal.gen_signal import output
 from raser.apps.signal.gen_signal import solved
+from raser.core.current.cal_current import electrode_names
 from raser.core.current.cal_current import write_induced_currents
 from raser.core.device import build_device as bdv
+from raser.core.frontend.circuit import named_chain
+from raser.core.frontend.device_circuit import device_sensor
+from raser.core.frontend.job import write_waveforms
 from raser.core.interaction.deposits import read_deposits
 
 
@@ -36,3 +41,19 @@ def currents(kwargs, pad):
     )
     return None
 
+
+def waveforms(kwargs, pad):
+    currents_path = output(kwargs, f"currents.{pad}")
+    if not os.path.exists(currents_path):
+        return {"events": 0}
+    my_d = bdv.Detector(kwargs["det_name"], kwargs["_files"]["device"])
+    sensor, values = device_sensor(my_d, electrode_names(my_d.read_out_contact, my_d.read_ele_num))
+    write_waveforms(
+        currents_path,
+        output(kwargs, f"waveforms.{pad}"),
+        named_chain(str(kwargs["amplifier"])),
+        sensor,
+        kwargs.get("seed"),
+        sensor_values=values,
+    )
+    return None
