@@ -99,12 +99,12 @@ def CreateImpactModel_vanOvenstraeten(device, region):
 
     return Ion_coeff_n, Ion_coeff_p
 
-def CreateImpactModel_Hatakeyama(device, region, cutoff_angle = 4):
+def CreateImpactModel_Hatakeyama(device, region):
     """
-    Hatakeyama Model for cutoff angle of 4°
+    Hatakeyama Model at the off-axis angle of core/model
     """
-    Ion_coeff_n = hatakeyama("electron", cutoff_angle).devsim(EDGE_FIELD_IN_THRESHOLDS, E=EDGE_FIELD, T="T")
-    Ion_coeff_p = hatakeyama("hole", cutoff_angle).devsim(EDGE_FIELD_IN_THRESHOLDS, E=EDGE_FIELD, T="T")
+    Ion_coeff_n = hatakeyama("electron").devsim(EDGE_FIELD_IN_THRESHOLDS, E=EDGE_FIELD, T="T")
+    Ion_coeff_p = hatakeyama("hole").devsim(EDGE_FIELD_IN_THRESHOLDS, E=EDGE_FIELD, T="T")
 
     return Ion_coeff_n, Ion_coeff_p
 

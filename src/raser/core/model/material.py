@@ -309,11 +309,10 @@ class Material:
                 coefficient = 0.
 
         if(self.avalanche_model == 'Hatakeyama'):
-            # The drift takes the field along <0001>: no anisotropy.
             if( charges < 0):
-                coefficient = hatakeyama("electron", 0.0).value(E=E, T=T)
+                coefficient = hatakeyama("electron").value(E=E, T=T)
             if (charges > 0):
-                coefficient = hatakeyama("hole", 0.0).value(E=E, T=T)
+                coefficient = hatakeyama("hole").value(E=E, T=T)
 
         return coefficient
 

@@ -63,8 +63,8 @@ def test_hatakeyama_between_the_two_axes(angle: float) -> None:
 
 
 @pytest.mark.parametrize("field", [5e3, 2e6, 3e6])
-def test_the_drift_takes_hatakeyama_along_0001(field: float) -> None:
+def test_the_drift_takes_hatakeyama_at_four_degrees_as_the_solver(field: float) -> None:
     coefficient = Material("SiC").cal_coefficient
 
-    assert coefficient(field, -1, 254.0) == pytest.approx(_hatakeyama("n", field, 0.0, 254.0), rel=1e-12)
-    assert coefficient(field, +1, 254.0) == pytest.approx(_hatakeyama("p", field, 0.0, 254.0), rel=1e-12)
+    assert coefficient(field, -1, 254.0) == pytest.approx(_hatakeyama("n", field, 4.0, 254.0), rel=1e-12)
+    assert coefficient(field, +1, 254.0) == pytest.approx(_hatakeyama("p", field, 4.0, 254.0), rel=1e-12)
