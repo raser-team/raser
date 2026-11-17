@@ -38,11 +38,14 @@ DOPANTS = {
     # Review, arXiv:2410.06798, section 10.2 and table "Changing ionization
     # energy of donors with doping" (N: Schoener et al. 1994; P: the fit of
     # that review). Al: 225 meV at low doping, the value the measurements
-    # agree on (section 10.2.1).
+    # agree on (section 10.2.1). B: the shallow level, 311 meV, the fit of
+    # that review to all measurements (285-332 meV, section 10.2.2); the
+    # deep D-center of boron (495-630 meV) is a trap, not a dopant level.
     "SiC": {
         "N": _donor((0.0533, 0.5), (0.0996, 0.5)),
         "P": _donor((0.057, 0.5), (0.113, 0.5)),
         "Al": _acceptor((0.225, 1.0)),
+        "B": _acceptor((0.311, 1.0)),
     },
     # Diamond. B: Collins and Williams, J. Phys. C 4 (1971) 1789; N, the
     # substitutional deep donor: Farrer, Solid State Commun. 7 (1969) 685.
