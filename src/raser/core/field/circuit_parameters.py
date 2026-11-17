@@ -144,6 +144,22 @@ def field_circuit(folder, my_d):
     return row, capacitance, undepleted
 
 
+def part_of_row(my_d, electrodes, hit, margin, solved_f=None, row=None):
+    """The circuit of a part of a row of strips around the strips `hit`, as
+    device_circuit builds it for those strips alone: from the first to the
+    last strip hit, numbers in electrodes, and `margin` strips more on each
+    side, as far as the row goes.
+
+    The strips at the ends of the part lack their neighbours outside it,
+    whose capacitance is on ground.
+    """
+    first = max(min(hit) - margin, 0)
+    last = min(max(hit) + margin, len(electrodes) - 1)
+    names = list(electrodes[first : last + 1])
+    circuit, _ = device_circuit(my_d, names, solved_f, row=row)
+    return circuit
+
+
 def device_circuit(my_d, electrodes, solved_f=None, row=None, solved_undepleted=None):
     """DeviceCircuit of the read-out electrodes of a device, and the values it
     is made of, for the record of the run.

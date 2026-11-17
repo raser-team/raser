@@ -6,6 +6,7 @@ import pytest
 from raser.core.current.currents import EventCurrents, append_currents
 from raser.core.device.build_device import Detector, device_file
 from raser.core.field.circuit_parameters import device_circuit
+from raser.core.field.circuit_parameters import part_of_row
 from raser.core.field.device_circuit import planar_circuit, side_by_side
 from raser.core.readout import job
 from raser.core.readout.circuit import named_chain
@@ -191,3 +192,68 @@ def test_every_strip_draws_noise_of_its_own(tmp_path):
         axis=1,
     )
     assert voltage.std(axis=(0, 2)) == pytest.approx(np.sqrt(power), rel=0.2)
+
+
+def _row_of(count):
+    """A row of `count` strips 1 cm long of ITk-Si-strip, coupled one place
+    away: 1 pF in all, 0.6 pF to the nearest two, per cm."""
+    content = json.loads(device_file("ITk-Si-strip").read_text(encoding="utf-8"))
+    my_d = Detector("ITk-Si-strip", {**content, "read_ele_num": count, "l_y": 10000})
+    row = {
+        "unit": "F/cm",
+        "of": "top",
+        "total": 1.0e-12,
+        "to": {"neighbour1": 0.6e-12, "bot": 0.4e-12},
+        "neighbours_coupled": 1,
+    }
+    return my_d, [f"top{k}" for k in range(1, count + 1)], row
+
+
+def test_part_of_a_row_is_the_strips_hit_and_its_margin_as_far_as_the_row_goes():
+    my_d, names, row = _row_of(15)
+
+    assert list(part_of_row(my_d, names, [7], 2, row=row).outputs) == names[5:10]
+    # two strips hit, one near an end: up to the end, and all between
+    assert list(part_of_row(my_d, names, [1, 9], 2, row=row).outputs) == names[0:12]
+
+
+def test_row_solved_in_its_part_that_the_charge_reaches_is_as_the_whole(tmp_path):
+    # 1 fC on the middle one of 41 strips; the part grows from one strip on
+    # each side until what reaches its ends is below a thousandth
+    my_d, names, row = _row_of(41)
+    circuit, _ = device_circuit(my_d, names, row=row)
+    current = np.zeros((41, 600))
+    current[20, 20:40] = 1e-15 / (20 * DT_S)
+    currents_path = tmp_path / "currents_0.h5"
+    append_currents(
+        currents_path,
+        names,
+        DT_S,
+        EventCurrents(0, 0.0, current, current.sum(axis=1) * DT_S, 0.0),
+    )
+
+    def read(path, **part):
+        write_waveforms(
+            currents_path,
+            path,
+            CHAIN,
+            circuit,
+            None,
+            pulse_edge=["rising"] * 41,
+            **part,
+        )
+        return read_waveforms(path).events[0].voltage
+
+    whole = read(tmp_path / "whole.h5")
+    part = read(
+        tmp_path / "part.h5",
+        part_of=lambda hit, margin: part_of_row(my_d, names, hit, margin, row=row),
+    )
+
+    peak = np.abs(whole[20]).max()
+    solved = np.flatnonzero(np.abs(part).max(axis=1))
+    # a part, not the row, and the strip hit not the only one in it
+    assert 20 in solved and 3 <= len(solved) < 41
+    assert np.abs(part[19]).max() > 0.05 * peak
+    # inside the part as the whole row, outside little
+    assert np.abs(part - whole).max() < 1e-3 * peak

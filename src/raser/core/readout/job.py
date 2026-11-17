@@ -17,6 +17,41 @@ from .waveforms import append_waveforms
 LOWEST_NOISE_HZ = 1e3
 
 
+# the outputs at the ends of a part of the circuit hold less than this of
+# its largest output, or the part grows
+PART_EDGE = 1e-3
+
+
+def _solve_part(chain, currents, event, outputs, part_of):
+    """Output voltages of an event, shape (outputs, bins), with the part of
+    the circuit part_of gives for its electrodes with a current solved, as
+    wide as write_waveforms says, and the other outputs on zero."""
+    voltage = np.zeros((len(outputs), event.current.shape[1]))
+    hit = [k for k, current in enumerate(event.current) if np.any(current)]
+    if not hit:
+        return voltage
+    row_of = {name: k for k, name in enumerate(currents.electrodes)}
+    margin, before = 1, None
+    while True:
+        part = part_of(hit, margin)
+        electrodes = list(part.sources)
+        solved = solve(
+            chain,
+            electrodes,
+            currents.dt,
+            event.current[[row_of[name] for name in electrodes]],
+            part,
+        )
+        peaks = np.abs(solved).max(axis=1)
+        if electrodes == before or max(peaks[0], peaks[-1]) < PART_EDGE * peaks.max():
+            break
+        margin, before = 2 * margin, electrodes
+    place = {name: k for k, name in enumerate(outputs)}
+    for name, output in zip(part.outputs, solved):
+        voltage[place[name]] = output
+    return voltage
+
+
 def noise_spectra(chain, circuit, lowest_hz, highest_hz):
     """Noise spectrum of every output of the circuit, as
     spice.output_noise_spectrum gives it, shape (outputs, frequencies) in
@@ -46,6 +81,7 @@ def write_waveforms(
     noise_seed,
     circuit_values=None,
     pulse_edge=None,
+    part_of=None,
 ):
     """Solve the chain for every event of the currents file and write the
     output voltages to the waveforms file, event by event.
@@ -65,6 +101,14 @@ def write_waveforms(
         is from, as device_circuit gives them: they are written to the file.
     pulse_edge : None, or the way the pulse of each output goes, as
         pulse_edge.pulse_edges gives it: it is written to the file.
+    part_of : None to solve the whole circuit for every event. Otherwise a
+        function that gives, for the numbers of the electrodes with a
+        current in an event and a margin, the part of the circuit around
+        them that is solved: a circuit of some of the electrodes and
+        outputs, by the same names, wider with a wider margin. The part
+        grows until its outputs at both ends hold less than PART_EDGE of the
+        largest output, or it grows no more. The outputs outside it get no
+        signal, only their noise; an event without current solves nothing.
     """
     currents = read_currents(currents_path)
     if os.path.exists(waveforms_path):
@@ -74,8 +118,14 @@ def write_waveforms(
         frequencies, densities = noise_spectra(
             chain, circuit, LOWEST_NOISE_HZ, 0.5 / currents.dt
         )
+    outputs = list(circuit.outputs)
     for event in currents.events:
-        voltage = solve(chain, currents.electrodes, currents.dt, event.current, circuit)
+        if part_of is None:
+            voltage = solve(
+                chain, currents.electrodes, currents.dt, event.current, circuit
+            )
+        else:
+            voltage = _solve_part(chain, currents, event, outputs, part_of)
         if noise_seed is not None:
             voltage = voltage + np.array(
                 [
