@@ -71,8 +71,8 @@ class Workflow:
     name: str  # command words, "cce" or "telescope taichu_v1"; folder work/<device>/<words>
     job: Callable | None = None  # runs one job; receives the options as a dict
     # Instead of `job`: the Slices of slices.py that a job runs one after
-    # another. A slice is run again when what it or a slice before it reads
-    # changed; the slices before it stay as they are.
+    # another. A slice is run again when what it or a slice it reads
+    # (Slice.needs) reads changed; the slices it does not read stay as they are.
     slices: tuple = ()
     keys: tuple = ()  # the options an experiment may set
     defaults: Mapping = field(default_factory=dict)  # their values when nobody set them
@@ -173,9 +173,11 @@ def execute(workflow, kwargs, register=True):
     commit = _commit()
     same_seeds = kwargs.get("same_seeds") or config.get("same_seeds", False)
     todo = []
-    last = len(workflow.slices)  # the slices this command runs: those before it
+    # The slices this command runs: all, or one and those it reads.
+    runs = set(range(len(workflow.slices)))
     if kwargs.get("until"):
-        last = 1 + [piece.name for piece in workflow.slices].index(kwargs["until"])
+        until = [piece.name for piece in workflow.slices].index(kwargs["until"])
+        runs = {until} | slices.upstream(workflow.slices, until)
     # A slice is held by the run of the point that differs from this one only
     # in what the slice reads: the points that hold slices of others come first.
     order = sorted(points, key=lambda name: points[name][3].index(name) if workflow.slices else 0)
@@ -185,8 +187,8 @@ def execute(workflow, kwargs, register=True):
         # The slices to run in this folder: those that an asked point has here.
         wanted = [
             piece
-            for k, piece in enumerate(workflow.slices[:last])
-            if any(points[other][3][k] == name for other in asked)
+            for k, piece in enumerate(workflow.slices)
+            if k in runs and any(points[other][3][k] == name for other in asked)
         ]
         record = {"seed": seed, "point": name, "same_seeds": same_seeds}
         if not workflow.seeds:
@@ -200,10 +202,11 @@ def execute(workflow, kwargs, register=True):
         why = _outdated(workflow, old, record) if old else None
         # With slices: when the first slice reads what it read in the old run and
         # nothing else of the record changed, the old run is not out of date;
-        # the slices from `again` on are run again in it.
-        again = slices.first_changed(workflow.slices, old, record) if old else 0
+        # the slices in `again`, those that read something else, are run again in it.
+        everything = set(range(len(workflow.slices)))
+        again = slices.to_run_again(workflow.slices, old, record) if old else everything
         rest = {key: value for key, value in record.items() if key not in SLICED}
-        if again > 0 and _outdated(workflow, {key: old.get(key) for key in rest}, rest) is None:
+        if workflow.slices and 0 not in again and _outdated(workflow, {key: old.get(key) for key in rest}, rest) is None:
             why = None
         stale = why is not None
         left = [
@@ -213,32 +216,36 @@ def execute(workflow, kwargs, register=True):
         ]
         if workflow.slices:
             to_run = slices.left(
-                workflow.slices, folder, range(kwargs.get("jobs") or 1), 0 if stale else again
+                workflow.slices, folder, range(kwargs.get("jobs") or 1), everything if stale else again
             )
             left = sorted(set().union(*(to_run[piece.name] for piece in wanted)))
         aside = "kept aside" if workflow.seeds else "replaced"
         print(f"{folder}: jobs {left}" + (f", the old run is {aside}: {why}" if stale else ""))
         for piece in wanted:
             print(f"  {piece.name:<12}" + (f"jobs {to_run[piece.name]}" if to_run[piece.name] else "reused"))
-        again = again if old and not stale else len(workflow.slices)  # nothing to run again in place
+        again = again if old and not stale else set()  # nothing to run again in place
         # What the jobs wrote into run.json themselves stays while the run is not out of date.
         if not stale:
             record = {**{key: old[key] for key in old if key not in record}, **record}
-        # The slices before the first one run here, each with the seed folder that holds it.
-        first = workflow.slices.index(wanted[0]) if wanted else 0
-        before = [
-            (piece.name, root / held_in[k] / label)
-            for k, piece in enumerate(workflow.slices[:first])
-        ]
+        # The slices that those run here read and that do not run here, each
+        # with the seed folder that holds it.
+        here = {workflow.slices.index(piece) for piece in wanted}
+        read = set().union(*(slices.upstream(workflow.slices, k) for k in here)) - here
+        before = [(workflow.slices[k].name, root / held_in[k] / label) for k in sorted(read)]
         names = ",".join(piece.name for piece in wanted)
-        # The shared slices this point reads: those before a slice it runs.
+        # The shared slices this point reads: those a slice it runs is or reads.
         shared = [
             piece
             for k, piece in enumerate(workflow.slices)
             if piece.shared
-            and any(to_run[later.name] for later in wanted if workflow.slices.index(later) >= k)
+            and any(
+                to_run[later.name]
+                for later in wanted
+                if (j := workflow.slices.index(later)) == k or k in slices.upstream(workflow.slices, j)
+            )
         ]
-        todo.append((folder, left, stale, record, workflow.slices[again:], before, names, (shared, options, files)))
+        run_again = [piece for k, piece in enumerate(workflow.slices) if k in again]
+        todo.append((folder, left, stale, record, run_again, before, names, (shared, options, files)))
     if kwargs["dry_run"]:
         return None
     if commit.endswith("+dirty"):
@@ -443,8 +450,8 @@ def _points(workflow, kwargs, config, given) -> tuple[dict, dict]:
                 read = {
                     key: v
                     for key, v in values.items()
-                    if (owner := slices.owner(workflow.slices, key)) <= k
-                    or (not same_seeds and workflow.slices[owner].new_events)
+                    if slices.reads(workflow.slices, key, k)
+                    or (not same_seeds and any(workflow.slices[j].new_events for j in slices.owners(workflow.slices, key)))
                 }
                 held_in.append(name if len(read) == len(values) else point(read))
         return name
@@ -490,11 +497,11 @@ SLICED = ("options", "files", "slices")  # the part of a record that the slices 
 
 
 def _read_by(workflow, kwargs, given, k) -> dict:
-    """The options and files that the slices up to the k-th read, when the
-    options `given` were set. The options of the later slices are not given
-    here: the files they name are left out, and a value they would write into
-    a file stays as the file has it."""
-    mine = {key for key in [*given, *workflow.keys] if slices.owner(workflow.slices, key) <= k}
+    """The options and files that the k-th slice reads, itself or through the
+    slices it reads, when the options `given` were set. The options of the
+    other slices are not given here: the files they name are left out, and a
+    value they would write into a file stays as the file has it."""
+    mine = {key for key in [*given, *workflow.keys] if slices.reads(workflow.slices, key, k)}
     named = {kind: key for kind, key in workflow.components.items() if key in mine}
     options, files = _point(
         replace(workflow, components=named),
