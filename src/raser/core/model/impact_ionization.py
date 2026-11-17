@@ -1,5 +1,6 @@
 """Impact ionization coefficients in 1/cm, of the field E in V/cm and the temperature T in K."""
 
+import functools
 import math
 
 from .formula import Formula
@@ -64,6 +65,7 @@ _HATAKEYAMA_COEFFICIENTS = {
 }
 
 
+@functools.cache
 def hatakeyama(carrier, angle_deg):
     """The Hatakeyama coefficient of `carrier` for a field `angle_deg` off <0001>."""
     c = _HATAKEYAMA_COEFFICIENTS[carrier]
