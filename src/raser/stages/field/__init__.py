@@ -8,6 +8,7 @@ when any of that has changed.
 
 import argparse
 import copy
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -276,6 +277,18 @@ def ready(options, files):
     return folder
 
 
+def stamp(options, files):
+    """What tells one solve of the field a point takes from another: a
+    digest of what its run.json records it was solved from, or None when
+    it is not ready. A solve at one more bias leaves it as it is."""
+    folder = ready(options, files)
+    if folder is None:
+        return None
+    record = json.loads((folder / "run.json").read_text())
+    made_from = {key: record.get(key) for key in ("commit", "options", "files", "read")}
+    return hashlib.sha256(json.dumps(made_from, sort_keys=True).encode()).hexdigest()[:16]
+
+
 def start(kwargs, options, files):
     """`raser field <device> -bias <bias of the point>` for a field that is
     not ready, at the flux of the point in a folder of its own when that is
@@ -309,7 +322,7 @@ def start(kwargs, options, files):
     execute(WORKFLOW, field_kwargs, register=False)
 
 
-SHARED = Shared(ready=ready, start=start)
+SHARED = Shared(ready=ready, start=start, stamp=stamp)
 
 
 def register(subparsers):

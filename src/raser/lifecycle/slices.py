@@ -21,6 +21,10 @@ class Shared:
     # (kwargs of the command, options, files) of a point: make it, in this
     # process or as jobs on the cluster when the command has -b
     start: Callable
+    # (options, files) of a point -> what tells one making of it from another,
+    # as a digest of what it was made from; None when it is not ready. The
+    # slices that read it run again when it changes.
+    stamp: Callable = lambda options, files: None
 
 
 @dataclass(frozen=True)

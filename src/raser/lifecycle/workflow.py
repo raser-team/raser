@@ -228,6 +228,7 @@ def execute(workflow, kwargs, register=True):
         for k, piece in enumerate(workflow.slices):
             record.setdefault("slices", {})[piece.name] = _read_by(workflow, kwargs, given_here, k)
             record.setdefault("held_in", {})[piece.name] = held_in[k]
+        _stamp(workflow, record, options, files)
         record = json.loads(json.dumps(record))
         old = _read(folder / "run.json")
         why = _outdated(workflow, old, record) if old else None
@@ -314,6 +315,8 @@ def execute(workflow, kwargs, register=True):
             leave_out(key)
         _write(root / "config.json", {**config, "scan": written, "set": {**kept, **fixed_here}})
     _make_shared(kwargs, [need for *_, need in todo], root)
+    for folder, left, stale, record, run_again, before, names, (shared, options, files) in todo:
+        _stamp(workflow, record, options, files)  # of what was made just now
     failed: list = []
     # No other command writes these folders while this one does.
     held = [_lock(_folder_lock(folder), folder) for folder, *_ in todo]
@@ -378,6 +381,18 @@ def execute(workflow, kwargs, register=True):
     if failed:
         raise SystemExit("\n".join([f"{len(failed)} of {len(todo)} points failed:", *failed]))
     return None
+
+
+def _stamp(workflow, record, options, files) -> None:
+    """Write into what each slice of `record` reads the stamps of the shared
+    slices it reads, itself or through others: a shared slice made again
+    runs it again."""
+    for k, piece in enumerate(workflow.slices):
+        shared = [j for j in sorted(slices.upstream(workflow.slices, k) | {k}) if workflow.slices[j].shared]
+        if shared:
+            record["slices"][piece.name]["shared"] = {
+                workflow.slices[j].name: workflow.slices[j].shared.stamp(options, files) for j in shared
+            }
 
 
 def _make_shared(kwargs, needs, root) -> None:
