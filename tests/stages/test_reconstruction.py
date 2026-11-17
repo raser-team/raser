@@ -94,5 +94,7 @@ def test_thresholds_on_the_other_edge_see_no_pulse(tmp_path) -> None:
     assert not rising["above"].any() and not rising["selected"].any()
     # turned over the falling pulse is a dip: nothing rises above the baseline
     assert rising["amplitude"][:, 0] == pytest.approx(np.zeros(3))
-    with pytest.raises(ValueError, match="edge 'down'"):
+    with pytest.raises(ValueError, match="edge 'down': .* rising .* or falling"):
         _run(tmp_path, 3, 5, "down")
+    with pytest.raises(ValueError, match="edge None"):
+        _run(tmp_path, 3, 5, None)

@@ -5,8 +5,8 @@ Needs:        readout (the waveforms)
 Options:      threshold            50 mV, of the times and the charge
               amplitude_threshold  100 mV, of the selected events
               fractions            0.1, 0.2, ..., 0.9, of the constant-fraction times
-              edge                 falling, the edge of the pulses the thresholds
-                                   are set on, as on a scope: rising or falling
+              edge                 no default: the edge of the pulses the thresholds
+                                   are set on, as on a scope, rising or falling
 Component files: none
 Random numbers:  none
 The content of the file is in raser.core.reconstruction.event_table.
@@ -22,7 +22,7 @@ DEFAULTS = {
     "threshold": 50.0,
     "amplitude_threshold": 100.0,
     "fractions": (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9),
-    "edge": "falling",
+    "edge": None,
 }
 
 
@@ -49,5 +49,5 @@ def run(kwargs, slot=None):
         float(kwargs["threshold"]),
         float(kwargs["amplitude_threshold"]),
         tuple(float(part) for part in kwargs["fractions"]),
-        str(kwargs["edge"]),
+        kwargs.get("edge"),
     )

@@ -125,6 +125,17 @@ def test_point_with_fewer_than_two_events_is_a_result_not_a_failure(tmp_path, mo
     assert f"no efficiency: {count} events in the point" in printed and f"no time resolution: {why}" in printed
 
 
+def test_analysis_without_an_edge_is_refused(tmp_path, monkeypatch) -> None:
+    root = tmp_path / "work" / "device" / "cce"
+    _job(root / "seed_1", 0, 1.0, 30, seed=4)
+    monkeypatch.setattr(ana, "finished_in", lambda folder: [("", {}, [(root / "seed_1", 0)])])
+    options = {"experiment": str(root), "_run_path": str(tmp_path / "out"), "_files": {"adc": {"threshold": 3, "amplitude_threshold": 5}}, "edge": None}
+
+    with pytest.raises(SystemExit, match="edge None: .* --set edge=rising .* --set edge=falling"):
+        ana.collect(options)
+    assert not (tmp_path / "out").exists()
+
+
 def test_every_point_of_the_analysis_holds_the_results_of_the_points_it_analyses(
     tmp_path, monkeypatch
 ) -> None:
@@ -155,7 +166,7 @@ def test_every_point_of_the_analysis_holds_the_results_of_the_points_it_analyses
 
     # the digitizer's 5 mV select the first point only; with 2 mV both are selected
     with pytest.raises(SystemExit, match="2 of 2 points failed"):
-        ana.run({**kwargs, "scan": ["amplitude_threshold=5,2"]})
+        ana.run({**kwargs, "scan": ["amplitude_threshold=5,2"], "set": ["edge=falling"]})
 
     place = root / "analysis"
     assert json.loads((place / "config.json").read_text())["scan"] == {"amplitude_threshold": [5, 2]}

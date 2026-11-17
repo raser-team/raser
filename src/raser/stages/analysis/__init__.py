@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+from raser.core.reconstruction.event_table import EDGE_SIGN
 from raser.lifecycle.workflow import Workflow
 from raser.lifecycle.workflow import execute
 from raser.lifecycle.workflow import finished_in
@@ -17,6 +18,11 @@ def collect(options):
     analysed experiment as the digitizer of this point sees them, each in the
     folder of its name inside the folder of this point, and of several of
     them side by side in the folder of this point itself."""
+    if options.get("edge") not in EDGE_SIGN:
+        raise SystemExit(
+            f"edge {options.get('edge')!r}: give the edge the thresholds are set on, "
+            "--set edge=rising (positive pulses) or --set edge=falling (negative pulses)"
+        )
     root, folder = Path(options["experiment"]), Path(options["_run_path"])
     digitizer = options["_files"]["adc"]
     points = finished_in(root)
@@ -43,7 +49,7 @@ WORKFLOW = Workflow(
     name="analysis",
     job=collect,
     keys=("adc", "threshold", "amplitude_threshold", "edge"),
-    defaults={"adc": "scope", "threshold": None, "amplitude_threshold": None, "edge": "falling"},
+    defaults={"adc": "scope", "threshold": None, "amplitude_threshold": None, "edge": None},
     components={"adc": "adc"},
     in_file={"threshold": "adc.threshold", "amplitude_threshold": "adc.amplitude_threshold"},
     device=False,

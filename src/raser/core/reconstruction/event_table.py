@@ -109,7 +109,10 @@ def event_table(waveforms, threshold, amplitude_threshold, fractions, edge):
         are set on
     """
     if edge not in EDGE_SIGN:
-        raise ValueError(f"edge {edge!r}: the thresholds are set on a rising or a falling edge")
+        raise ValueError(
+            f"edge {edge!r}: give the edge the thresholds are set on, "
+            "rising (positive pulses) or falling (negative pulses)"
+        )
     polarity = EDGE_SIGN[edge]
     if not waveforms.events:
         raise ValueError("the readout holds no event")
