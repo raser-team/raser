@@ -66,12 +66,12 @@ class LaserInjection:
             self.beta_2 = laser_dic["beta_2"]
         #laser parameters
         self.wavelength = laser_dic["wavelength"]*1e-3 #um
-        if self.tech == "SPA":
-            # m^-1; the laser file may give the one of its sample
-            if "alpha" in laser_dic:
-                self.alpha = laser_dic["alpha"]
-            else:
-                self.alpha = absorption_coefficient(my_d.material, self.wavelength)
+        # m^-1; the laser file may give the one of its sample. A two-photon
+        # laser has it too: below the gap it is what the defects absorb.
+        if "alpha" in laser_dic:
+            self.alpha = laser_dic["alpha"]
+        else:
+            self.alpha = absorption_coefficient(my_d.material, self.wavelength)
         self.temporal_FWHM = laser_dic["temporal_FWHM"]
         self.pulse_energy = laser_dic["pulse_energy"]
         # TODO: Rename spacial_FWHM to spatial_FWHM.
@@ -105,6 +105,11 @@ class LaserInjection:
             self.h_char = max(my_d.l_x, my_d.l_y, my_d.l_z)
         elif self.tech == "TPA":
             self.h_char = self.l_Rayleigh
+            if self.alpha != 0:
+                # single-photon pairs are made all along the beam, which is
+                # wider far from the focus
+                self.h_char = max(my_d.l_x, my_d.l_y, my_d.l_z)
+                self.r_char *= (1 + (self.h_char / self.l_Rayleigh) ** 2) ** 0.5
         else:
             raise NameError(self.tech)
 
@@ -219,20 +224,21 @@ class LaserInjection:
         
         h_Planck = 6.626*1e-34
         speedofLight = 2.998*1e8
+        photon_energy = h_Planck * speedofLight / (self.wavelength * 1e-6)
+        # I = I_0 * exp(-αz)
+        # dE_deposit = (αdz)dE_flux = (αdz)I*dSdt = (αI)*dVdt
+        # dN_ehpair = dE_deposit / photon energy
+        intensity = intensity * np.exp(-self.alpha * (h + depth) * 1e-6)
+        single_photon = self.alpha * intensity / photon_energy
         if self.tech == "SPA":
-            # I = I_0 * exp(-αz)
-            # dE_deposit = (αdz)dE_flux = (αdz)I*dSdt = (αI)*dVdt
-            # dN_ehpair = dE_deposit / Energy_for_each_ionized_ehpair
-            e0 = 1.60217733e-19
-            return ( self.alpha * self.wavelength * 1e-6 * intensity * np.exp(-self.alpha * (h + depth) * 1e-6) / (h_Planck * speedofLight)
-            )
+            return single_photon
         elif self.tech == "TPA":
             # dN_ehpair = β_2 * ∫I(t)^2 dt / (2 * photon energy); intensity is the
             # fluence [J/m^2], and the square of a Gaussian pulse of unit area
             # integrates to sqrt(2 ln2) / (sqrt(π) * temporal_FWHM)
             pulse_squared = (2 * np.log(2))**0.5 / (np.pi**0.5 * self.temporal_FWHM)
-            return self.beta_2 * self.wavelength * 1e-6 * intensity ** 2 * pulse_squared / (2 * h_Planck * speedofLight)
-        
+            return single_photon + self.beta_2 * intensity ** 2 * pulse_squared / (2 * photon_energy)
+
     def timePulse(self, t):
         # to reduce run time, convolute the time pulse function with the signal after the signal is calculated
         return np.exp(-4 * np.log(2) * t ** 2 / self.temporal_FWHM ** 2) / ((2*np.pi)**(1/2) * self.temporal_FWHM / (2 * (2*np.log(2))**(1/2)))

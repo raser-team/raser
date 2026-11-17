@@ -7,14 +7,18 @@ from raser.core.interaction.laser import LaserInjection, absorption_coefficient
 from raser.supports.paths import component_path
 
 
-def _tpa_laser(temporal_fwhm: float, rayleigh: float | None = 15.7) -> LaserInjection:
+def _tpa_laser(
+    temporal_fwhm: float, rayleigh: float | None = 15.7, **changes
+) -> LaserInjection:
     with open(component_path("laser", "TPA_edge_Si.json")) as file:
         laser = json.load(file)
     laser["temporal_FWHM"] = temporal_fwhm
     del laser["l_Rayleigh"]
     if rayleigh is not None:
         laser["l_Rayleigh"] = rayleigh
-    return LaserInjection(SimpleNamespace(l_x=50.0, l_y=50.0, l_z=50.0), laser)
+    laser.update(changes)
+    detector = SimpleNamespace(l_x=50.0, l_y=50.0, l_z=50.0, material="Si")
+    return LaserInjection(detector, laser)
 
 
 def test_tpa_density_at_the_focus_of_a_50_pJ_60_fs_pulse() -> None:
@@ -89,3 +93,35 @@ def test_alpha_of_the_laser_file_replaces_the_table() -> None:
 def test_material_without_a_table_needs_alpha_in_the_laser_file() -> None:
     with pytest.raises(ValueError, match="give alpha"):
         _spa_laser("Diamond")
+
+
+def test_defect_absorption_adds_pairs_linear_in_the_pulse_energy() -> None:
+    # at the entrance (focus at the surface) α F / (h ν) with α = 100 /m,
+    # F = 44.13 J/m², 1550 nm: 100 * 44.13 * 1.55e-6 / (h c) = 3.443e22 /m³
+    pure = _tpa_laser(60e-15, fx_rel=0.0).getCarrierDensity(0.0, 0.0, 0.0)
+    mixed = _tpa_laser(60e-15, fx_rel=0.0, alpha=100.0).getCarrierDensity(0.0, 0.0, 0.0)
+
+    assert mixed - pure == pytest.approx(3.443e22, rel=2e-3)
+
+
+def test_single_photon_share_grows_when_the_pulse_energy_falls() -> None:
+    # two-photon pairs go with E², single-photon pairs with E
+    def parts(energy: float) -> tuple[float, float]:
+        pure = _tpa_laser(60e-15, fx_rel=0.0, pulse_energy=energy)
+        mixed = _tpa_laser(60e-15, fx_rel=0.0, pulse_energy=energy, alpha=100.0)
+        two = pure.getCarrierDensity(0.0, 0.0, 0.0)
+        return mixed.getCarrierDensity(0.0, 0.0, 0.0) - two, two
+
+    one_high, two_high = parts(50e-12)
+    one_low, two_low = parts(5e-12)
+
+    assert one_low / two_low == pytest.approx(10.0 * one_high / two_high)
+
+
+def test_defects_absorb_their_share_of_the_photons_along_the_whole_beam() -> None:
+    # 50 pJ at 1550 nm is 3.90e8 photons; α = 100 /m over the 50 um of the
+    # sensor absorbs 0.5 % of them, wherever the focus is. The pulse is long,
+    # so that two photons make no pairs.
+    laser = _tpa_laser(1e-3, alpha=100.0, fx_rel=0.5, r_step=0.25, h_step=1.0)
+
+    assert sum(laser.ionized_pairs) == pytest.approx(0.005 * 3.90e8, rel=2e-2)
