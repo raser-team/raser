@@ -22,7 +22,7 @@ from raser.core.seeding import stream
 from raser.core.device.build_device import Detector
 from raser.core.current.cal_current import electrode_names
 from raser.core.current.currents import EventCurrents, append_currents
-from raser.core.current.diffusion import ELEMENTARY_CHARGE, collect_by_diffusion
+from raser.core.current.diffusion import ELEMENTARY_CHARGE, collect_by_diffusion, time_bin
 from raser.core.deposit.deposits import Deposits, EventDeposits
 from raser.core.deposit.deposits import read_deposits, write_deposits
 from raser.core.deposit.ionization import PAIR_ENERGY_EV, ionized_pairs
@@ -526,11 +526,11 @@ def collect_under(my_d, pairs, positions, step):
     returns as collect_by_diffusion, without the window."""
     t0 = min((position[3] for position in positions), default=0.0)
     last = max((position[3] for position in positions), default=0.0)
-    electrons = np.zeros((my_d.x_ele_num * my_d.y_ele_num, round((last - t0) / step) + 1))
+    electrons = np.zeros((my_d.x_ele_num * my_d.y_ele_num, time_bin(last, t0, step) + 1))
     for n_pairs, (x, y, z, t) in zip(pairs, positions, strict=True):
         i, j = int(x // my_d.p_x), int(y // my_d.p_y)
         if 0 <= i < my_d.x_ele_num and 0 <= j < my_d.y_ele_num and 0 <= z <= my_d.l_z:
-            electrons[i * my_d.y_ele_num + j, round((t - t0) / step)] += n_pairs
+            electrons[i * my_d.y_ele_num + j, time_bin(t, t0, step)] += n_pairs
     charge = -ELEMENTARY_CHARGE * electrons.sum(axis=1)
     return t0, -ELEMENTARY_CHARGE * electrons / step, charge
 
