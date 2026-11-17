@@ -6,8 +6,9 @@ Needs:        readout (the waveforms), readout.<position> with positions
 Options:      threshold            50 mV, of the times and the area
               amplitude_threshold  100 mV, of the selected events
               fractions            0.1, 0.2, ..., 0.9, of the constant-fraction times
-              edge                 no default: the edge of the pulses the thresholds
-                                   are set on, as on a scope, rising or falling
+              edge                 the edge of the pulses the thresholds are set on,
+                                   as on a scope, rising or falling; not given, the
+                                   edge the readout wrote its pulses with
 Component files: none
 Random numbers:  none
 The content of the file is in raser.core.reconstruction.event_table.
@@ -34,9 +35,14 @@ def reconstruct(readout_path, path, threshold, amplitude_threshold, fractions, e
 
     threshold, amplitude_threshold : [mV]
     """
-    table = event_table(
-        read_waveforms(readout_path), threshold * MILLIVOLT, amplitude_threshold * MILLIVOLT, fractions, edge
-    )
+    waveforms = read_waveforms(readout_path)
+    if edge is None:
+        edges = set(waveforms.pulse_edge)
+        if len(edges) != 1:
+            ways = ", ".join(f"{name} {way}" for name, way in zip(waveforms.electrodes, waveforms.pulse_edge))
+            raise ValueError(f"{readout_path}: the pulses go both ways ({ways}); give the edge to set the thresholds on")
+        (edge,) = edges
+    table = event_table(waveforms, threshold * MILLIVOLT, amplitude_threshold * MILLIVOLT, fractions, edge)
     write_event_table(path, table)
     return table
 

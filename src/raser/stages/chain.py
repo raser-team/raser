@@ -81,8 +81,8 @@ def readout_arguments(parser):
     )
 
 
-# The edge has no default: it is the edge of the pulses of this readout, as
-# set on a scope, and a reconstruction without it stops and says so.
+# The edge of the pulses the thresholds are set on, as on a scope; None:
+# the one the readout wrote its pulses with.
 RECONSTRUCTION_DEFAULTS = {
     "threshold": 50.0,
     "amplitude_threshold": 100.0,
@@ -94,7 +94,7 @@ RECONSTRUCTION_DEFAULTS = {
 def reconstruction_arguments(parser):
     parser.add_argument("-threshold", type=float, help="of the times and the area of the pulses [mV]")
     parser.add_argument("-amplitude_threshold", type=float, help="of the selected events [mV]")
-    parser.add_argument("--edge", choices=("rising", "falling"), help="the edge of the pulses the thresholds are set on")
+    parser.add_argument("--edge", choices=("rising", "falling"), help="the edge of the pulses the thresholds are set on; by default that of the readout")
 
 
 DEFAULTS = {**DEPOSIT_DEFAULTS, **CURRENT_DEFAULTS, **READOUT_DEFAULTS, **RECONSTRUCTION_DEFAULTS}

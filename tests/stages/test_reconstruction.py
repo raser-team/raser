@@ -97,7 +97,17 @@ def test_thresholds_on_the_other_edge_see_no_pulse(tmp_path) -> None:
     assert rising["amplitude"][:, 0] == pytest.approx(np.zeros(3))
     with pytest.raises(ValueError, match="edge 'down': .* rising .* or falling"):
         _run(tmp_path, 3, 5, "down")
-    with pytest.raises(ValueError, match="edge None"):
+    # not given, the edge is the one the readout wrote its pulses with
+    assert _run(tmp_path, 3, 5, None).edge == "falling"
+
+
+def test_without_an_edge_pulses_of_both_ways_are_refused(tmp_path) -> None:
+    batch = tmp_path / "batch"
+    batch.mkdir()
+    samples = np.zeros((2, 40))
+    append_waveforms(batch / "readout_0.h5", ["top", "back"], DT, EventWaveforms(0, 0.0, samples), pulse_edge=["falling", "rising"])
+
+    with pytest.raises(ValueError, match="top falling, back rising"):
         _run(tmp_path, 3, 5, None)
 
 
