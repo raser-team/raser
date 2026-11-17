@@ -182,11 +182,15 @@ def execute(workflow, kwargs):
             new["same_seeds"] = same_seeds
         _write(root / "config.json", new)
     elif kwargs["scan"]:
-        # A scan given to an experiment that exists joins its config as written;
-        # later commands repeat it.
+        # A scan given to an experiment that exists joins its config, under its
+        # address as _points reads it, in place of what the config scanned
+        # there; later commands repeat it.
+        address = {name: key for key, name in config.get("names", {}).items()}
         written = dict(config.get("scan", {}))
         for item in kwargs["scan"]:
             key, _, values = item.partition("=")
+            key = address.get(key, key)
+            written = {old: v for old, v in written.items() if address.get(old, old) != key}
             written[key] = [_parse(value) for value in values.split(",")]
         _write(root / "config.json", {**config, "scan": written})
     failed: list = []

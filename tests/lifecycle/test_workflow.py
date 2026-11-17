@@ -480,6 +480,23 @@ def test_a_scan_given_once_the_experiment_exists_joins_its_config(
     assert "width_2_gain_7/seed_2" in _folders(started, experiment)
 
 
+def test_a_later_scan_by_short_name_or_address_leaves_one_entry_and_the_last_values(
+    started: list[Any], tmp_path: Path
+) -> None:
+    experiment = tmp_path / "toy"
+    experiment.mkdir()
+    config = {"workflow": "toy", "set": {}, "scan": {"g": [5, 7]}, "names": {"gain": "g"}}
+    (experiment / "config.json").write_text(json.dumps(config))
+
+    execute(GAIN, _kwargs(gain=None, width=None, scan=["gain=8,9"], seed=1, jobs=2))
+    execute(GAIN, _kwargs(gain=None, width=None, scan=["g=6,7"], seed=2, jobs=2))
+    started.clear()
+    execute(GAIN, _kwargs(gain=None, width=None, seed=3, jobs=2))
+
+    assert json.loads((experiment / "config.json").read_text())["scan"] == {"gain": [6, 7]}
+    assert _folders(started, experiment) == ["g_6/seed_3", "g_7/seed_3"]
+
+
 def test_an_option_without_a_default_can_be_scanned_and_every_value_gets_a_folder(
     started: list[Any], tmp_path: Path
 ) -> None:
