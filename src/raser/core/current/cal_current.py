@@ -256,9 +256,12 @@ class CalCurrent:
         for cluster in clusters:
             while cluster.reason is None:
                 advance(cluster, my_d, my_f, mobility, self.delta_t, self.diffusion)
+            # an array as soon as it stops: the list of points takes about
+            # six times the memory, too much to keep for every cluster at once
+            cluster.path = np.array(cluster.path)
         return Drifted(
             list(charges),
-            [np.array(cluster.path) for cluster in clusters],
+            [cluster.path for cluster in clusters],
             [cluster.reason for cluster in clusters],
         )
 
