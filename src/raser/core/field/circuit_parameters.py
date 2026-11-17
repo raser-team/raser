@@ -2,9 +2,14 @@
 
 import dataclasses
 
+from . import implanted_aluminium
+from .resistive_layer import resistive_grid
+from .resistive_layer import resistive_row
 from .sensor_spice import planar_sensor
 from .sensor_spice import row_of_electrodes
 from .sensor_spice import side_by_side
+
+VACUUM_PERMITTIVITY_F_M = 8.8541878128e-12
 
 
 def junction_capacitance(my_d, solved_f=None):
@@ -171,5 +176,111 @@ def device_sensor(my_d, electrodes, solved_f=None, row=None, solved_undepleted=N
         "undepleted_layer": None
         if undepleted is None
         else {"ohm": undepleted[0], "farad": undepleted[1], "from": undepleted_from},
+    }
+    return sensor, values
+
+
+def sheet_resistance(my_d):
+    """Resistance of a square [Ohm] of the resistive layer of a device, and
+    where it is from, for the record of the run:
+
+    "device file" : sheet_resistance_ohm of resistive_layer in the device
+        file, a measured or a chosen value;
+    "implanted layer" : that of the implanted aluminium, from implanted_cm2,
+        thickness_um and anneal_c of resistive_layer, taken when the device
+        file has no sheet_resistance_ohm.
+    """
+    layer = my_d.device_dict["resistive_layer"]
+    if "sheet_resistance_ohm" in layer:
+        return float(layer["sheet_resistance_ohm"]), "device file"
+    return (
+        implanted_aluminium.sheet_resistance(
+            float(layer["implanted_cm2"]),
+            float(layer["thickness_um"]) * 1e-4,
+            float(layer["anneal_c"]),
+            float(my_d.device_dict["temperature"]),
+        ),
+        "implanted layer",
+    )
+
+
+def device_row(my_d, cells, solved_f=None):
+    """SensorCircuit of the row of strips on the resistive layer of a device,
+    and the values it is made of, for the record of the run.
+
+    cells : names of the cells of the layer, those of the currents, each as
+        wide as the pitch of the device.
+    solved_f : capacitance [F] of one cell to the back, as
+        junction_capacitance takes it.
+
+    The strips are those of resistive_layer in the device file: for each its
+    name with the numbers (from 0) of its first and last cell. Its grounded
+    contacts are given the same way.
+    """
+    farad, capacitance_from = junction_capacitance(my_d, solved_f)
+    ohm, resistance_from = sheet_resistance(my_d)
+    width_m = float(my_d.p_x) * 1e-6
+    length_m = float(my_d.l_y) * 1e-6
+    strips = {
+        name: tuple(span)
+        for name, span in my_d.device_dict["resistive_layer"]["strips"].items()
+    }
+    grounded = {
+        name: tuple(span)
+        for name, span in my_d.device_dict["resistive_layer"]
+        .get("grounded", {})
+        .items()
+    }
+    sensor = resistive_row(
+        cells, width_m, length_m, ohm, farad / (width_m * length_m), strips, grounded
+    )
+    values = {
+        "cell_capacitance": {"farad": farad, "from": capacitance_from},
+        "sheet_resistance": {"ohm": ohm, "from": resistance_from},
+    }
+    return sensor, values
+
+
+def device_grid(my_d, cells, solved_f=None):
+    """SensorCircuit of the pads on the resistive layer of a device, and the
+    values it is made of, for the record of the run.
+
+    cells : names of the cells of the layer, those of the currents, x_ele_num
+        by y_ele_num at the pitches of the device.
+    solved_f : capacitance [F] of one cell to the back, as
+        junction_capacitance takes it.
+
+    The pads and the grounded contacts are those of resistive_layer in the
+    device file. With coupling there, thickness_um and permittivity of the
+    dielectric under the pads, the pads are coupled through it.
+    """
+    layer = my_d.device_dict["resistive_layer"]
+    farad, capacitance_from = junction_capacitance(my_d, solved_f)
+    ohm, resistance_from = sheet_resistance(my_d)
+    widths_m = (float(my_d.p_x) * 1e-6, float(my_d.p_y) * 1e-6)
+    coupling = None
+    if "coupling" in layer:
+        coupling = (
+            VACUUM_PERMITTIVITY_F_M
+            * float(layer["coupling"]["permittivity"])
+            / (float(layer["coupling"]["thickness_um"]) * 1e-6)
+        )
+    sensor = resistive_grid(
+        cells,
+        (my_d.x_ele_num, my_d.y_ele_num),
+        widths_m,
+        ohm,
+        farad / (widths_m[0] * widths_m[1]),
+        {name: tuple(span) for name, span in layer["pads"].items()},
+        coupling,
+        {
+            name: [tuple(span) for span in spans]
+            for name, spans in layer.get("grounded", {}).items()
+        },
+    )
+    values = {
+        "cell_capacitance": {"farad": farad, "from": capacitance_from},
+        "sheet_resistance": {"ohm": ohm, "from": resistance_from},
+        "coupling_per_area_f_m2": coupling,
     }
     return sensor, values

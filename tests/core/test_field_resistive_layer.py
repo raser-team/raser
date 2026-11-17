@@ -1,6 +1,14 @@
+import json
+
 import numpy as np
 import pytest
 
+from raser.core.device.build_device import Detector
+from raser.core.device.build_device import device_file
+from raser.core.field import implanted_aluminium
+from raser.core.field.circuit_parameters import device_grid
+from raser.core.field.circuit_parameters import device_row
+from raser.core.field.circuit_parameters import sheet_resistance
 from raser.core.field.resistive_layer import resistive_grid
 from raser.core.field.resistive_layer import resistive_row
 from raser.core.readout.spice import solve
@@ -139,3 +147,81 @@ def test_pads_coupled_to_a_grounded_layer_carry_no_net_charge():
     assert np.abs(near).max() > 2 * np.abs(far).max()
     for pad in (near, far):
         assert abs(pad.sum()) < 0.02 * np.abs(pad).sum()
+
+
+def _rsd_strips(**layer):
+    """A device of cells 10 um wide and 1000 um long, with 12.3 fF each, and
+    the two strips of the tests above on its resistive layer."""
+    content = json.loads(device_file("SiC_LGAD_strip").read_text(encoding="utf-8"))
+    return Detector(
+        "SiC_LGAD_strip",
+        {
+            **content,
+            "p_x": 10,
+            "l_y": 1000,
+            "capacitance_pF": 0.0123,
+            "resistive_layer": {
+                "strips": {"left": [2, 4], "right": [15, 17]},
+                **layer,
+            },
+        },
+    )
+
+
+def test_strips_of_a_device_share_the_charge_through_the_layer_it_gives():
+    cells = [f"c{k}" for k in range(20)]
+    sensor, values = device_row(_rsd_strips(sheet_resistance_ohm=1000.0), cells)
+
+    assert values == {
+        "cell_capacitance": {
+            "farad": pytest.approx(12.3e-15, abs=0),
+            "from": "device file",
+        },
+        "sheet_resistance": {"ohm": 1000.0, "from": "device file"},
+    }
+    # each cell with the capacitance of the device under it
+    assert "Clayer_c8 layer_c8 0 1.23e-14" in sensor.lines
+    to_left, to_right = _charges(sensor, "c8")
+    left_ohm = _layer_ohm(85 - 50) + 50.0
+    right_ohm = _layer_ohm(150 - 85) + 50.0
+    assert to_left == pytest.approx(right_ohm / (left_ohm + right_ohm), rel=0.01)
+
+
+def test_sheet_resistance_of_the_implanted_layer_where_the_device_gives_none():
+    implanted = {"implanted_cm2": 3e15, "thickness_um": 0.3, "anneal_c": 1775.0}
+
+    ohm, source = sheet_resistance(_rsd_strips(**implanted))
+    given, _ = sheet_resistance(_rsd_strips(sheet_resistance_ohm=500.0, **implanted))
+
+    assert source == "implanted layer"
+    assert ohm == implanted_aluminium.sheet_resistance(3e15, 0.3e-4, 1775.0, 300.0)
+    assert given == 500.0
+
+
+def test_pads_of_a_device_are_coupled_through_the_dielectric_it_gives():
+    content = json.loads(device_file("SiC_LGAD_strip").read_text(encoding="utf-8"))
+    content.pop("read_ele_num")
+    device = Detector(
+        "SiC_LGAD_strip",
+        {
+            **content,
+            "electrodes": "pixel",
+            "p_x": 100,
+            "p_y": 100,
+            "x_ele_num": 2,
+            "y_ele_num": 2,
+            "capacitance_pF": 0.1,
+            "resistive_layer": {
+                "sheet_resistance_ohm": 1000.0,
+                "pads": {"pad": [0, 0, 0, 0]},
+                "grounded": {"ring": [[1, 1, 1, 1]]},
+                "coupling": {"thickness_um": 0.5, "permittivity": 3.9},
+            },
+        },
+    )
+
+    sensor, values = device_grid(device, ["a", "b", "c", "d"])
+
+    # 3.9 x 8.854e-12 F/m over 0.5 um, on a cell of 100 um x 100 um
+    assert values["coupling_per_area_f_m2"] == pytest.approx(6.906e-5, rel=1e-3)
+    assert "Cpad_a layer_a pad_pad 6.906" in "\n".join(sensor.lines)
