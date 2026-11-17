@@ -12,6 +12,9 @@ ROOT.gROOT.SetBatch(True)
 import numpy as np
 
 from raser.core.device.build_device import Detector
+from raser.core.deposit.deposits import Deposits
+from raser.core.deposit.deposits import EventDeposits
+from raser.core.deposit.ionization import PAIR_ENERGY_EV
 from raser.supports.paths import optional_component_path
 
 
@@ -36,6 +39,34 @@ def absorption_coefficient(material: str, wavelength: float) -> float:
     if wavelength * 1e3 > nm[-1]:
         return 0.0
     return 100.0 * float(np.exp(np.interp(wavelength * 1e3, nm, np.log(per_cm))))
+
+def laser_deposits(my_d, laser_dic: dict) -> Deposits:
+    """The pulse of the laser as the deposits of one event, 0, in the device:
+    a deposit for every group of pairs, at its place (x, y, z) [um], with its
+    pairs (the mean number, not drawn), its energy [MeV] (the pairs times the
+    pair energy of the material), made around central_time over the group's
+    time_FWHM. A group is a point: its step starts where it lies."""
+    laser = LaserInjection(my_d, laser_dic)
+    places = np.array(laser.track_position, dtype=float).reshape(-1, 4)
+    pairs = [float(n) for n in laser.ionized_pairs]
+    count = len(pairs)
+    x, y, z, t = (places[:, axis].tolist() for axis in range(4))
+    event = EventDeposits(
+        0,
+        ["Device"] * count,
+        x,
+        y,
+        z,
+        t,
+        [n * PAIR_ENERGY_EV[my_d.material] * 1e-6 for n in pairs],
+        pairs=pairs,
+        x_start=list(x),
+        y_start=list(y),
+        z_start=list(z),
+        t_fwhm=[float(w) for w in laser.time_FWHM],
+    )
+    return Deposits(1, None, None, [event] if count else [])
+
 
 class LaserInjection:
     """

@@ -13,6 +13,8 @@ Datasets, one value per deposit:
     x_start, y_start, z_start
               where that step starts [um]; it ends at 2 * (x, y, z) - start.
               A writer that does not know them leaves them out.
+    t_fwhm    FWHM [s] of the Gaussian spread of the times, around t, at which
+              the pairs of the deposit are made; without it they are made at t
     t         time since the primary was generated [s]
     e         deposited energy [MeV]
     pairs     electron-hole pairs the deposit created
@@ -50,6 +52,8 @@ class EventDeposits:
     x_start: list[float] | None = None
     y_start: list[float] | None = None
     z_start: list[float] | None = None
+    # FWHM [s] of the times around t at which the pairs are made; None: at t
+    t_fwhm: list[float] | None = None
 
 
 @dataclass
@@ -143,6 +147,13 @@ def write_deposits(path: str, deposits: Deposits) -> None:
         begun = [record.x_start is not None for record in events]
         if any(begun) and not all(begun):
             raise ValueError("some events know where their steps start and some do not")
+        spread = [record.t_fwhm is not None for record in events]
+        if any(spread) and not all(spread):
+            raise ValueError("some events spread the times of their pairs and some do not")
+        if events and all(spread):
+            file["t_fwhm"] = np.array(
+                [value for record in events for value in record.t_fwhm], dtype="float64"
+            )
         if events and all(begun):
             for name in _STARTS:
                 file[name] = np.array(
@@ -163,7 +174,7 @@ def read_deposits(path: str) -> Deposits:
         counts = file["count"][()]
         detector = file["detector"].asstr()[()]
         columns = {name: file[name][()] for name in (*_NUMBERS, "pairs")}
-        starts = {name: file[name][()] for name in _STARTS if name in file}
+        optional = {name: file[name][()] for name in (*_STARTS, "t_fwhm") if name in file}
     events = []
     first = 0
     for number, count in zip(numbers, counts, strict=True):
@@ -173,7 +184,7 @@ def read_deposits(path: str) -> Deposits:
                 int(number),
                 detector[first:last].tolist(),
                 *(columns[name][first:last].tolist() for name in (*_NUMBERS, "pairs")),
-                **{name: column[first:last].tolist() for name, column in starts.items()},
+                **{name: column[first:last].tolist() for name, column in optional.items()},
             )
         )
         first = last

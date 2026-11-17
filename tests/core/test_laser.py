@@ -176,3 +176,24 @@ def test_two_photon_pairs_are_made_over_a_shorter_time_than_the_pulse() -> None:
 
     assert set(np.round(widths / 60e-15, 6)) == {1.0, round(1 / math.sqrt(2), 6)}
     assert pairs[np.isclose(widths, 60e-15, rtol=1e-6, atol=0)].sum() == pytest.approx(one, rel=1e-6)
+
+
+def test_laser_pulse_is_one_event_of_deposits_with_the_spread_of_its_times(tmp_path) -> None:
+    from raser.core.deposit.deposits import read_deposits, write_deposits
+    from raser.core.deposit.laser import laser_deposits
+
+    with open(component_path("laser", "TPA1550_edge_Si.json")) as file:
+        laser = {**json.load(file), **TPA, "alpha": 100.0}
+    detector = SimpleNamespace(l_x=50.0, l_y=50.0, l_z=50.0, material="Si")
+    deposits = laser_deposits(detector, laser)
+    path = tmp_path / "deposit_0.h5"
+    write_deposits(path, deposits)
+    event = read_deposits(path).events[0]
+
+    groups = LaserInjection(detector, laser)
+    assert deposits.generated_events == 1 and len(read_deposits(path).events) == 1
+    assert sum(event.pairs) == pytest.approx(sum(groups.ionized_pairs))
+    # 3.6 eV a pair in silicon
+    assert sum(event.e) == pytest.approx(sum(groups.ionized_pairs) * 3.6e-6)
+    assert sorted(set(np.round(np.array(event.t_fwhm) / 60e-15, 6))) == [round(1 / math.sqrt(2), 6), 1.0]
+    assert event.z_start == event.z
