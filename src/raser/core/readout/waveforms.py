@@ -6,8 +6,9 @@ after another; ``count`` cuts them into events.
 Attributes of the file:
     electrodes  names of the electrodes, in the order of the columns
     dt          width of a time bin [s]
-    sensor      values the circuit of the sensor is made of and where each is
-                from, as JSON; not there when none were given
+    device_circuit
+                values the circuit of the device is made of and where each
+                is from, as JSON; not there when none were given
 Datasets, one row per event:
     event       Geant4 event number
     t0          left edge of the first time bin of the event [s]
@@ -38,10 +39,10 @@ class Waveforms:
     events: list[EventWaveforms]
 
 
-def append_waveforms(path, electrodes, dt, record, sensor_values=None):
+def append_waveforms(path, electrodes, dt, record, circuit_values=None):
     """Add one event to the file, which is created with the first event.
 
-    sensor_values : what is written as ``sensor`` when the file is created;
+    circuit_values : what is written as ``device_circuit`` when the file is created;
         None writes none.
     """
     voltage = np.asarray(record.voltage, dtype="float64")
@@ -55,8 +56,8 @@ def append_waveforms(path, electrodes, dt, record, sensor_values=None):
         if new:
             file.attrs.create("electrodes", list(electrodes), dtype=h5py.string_dtype())
             file.attrs["dt"] = float(dt)
-            if sensor_values is not None:
-                file.attrs["sensor"] = json.dumps(sensor_values)
+            if circuit_values is not None:
+                file.attrs["device_circuit"] = json.dumps(circuit_values)
             for name, kind in (
                 ("event", "int64"),
                 ("t0", "float64"),
@@ -109,9 +110,9 @@ def read_waveforms(path):
     return Waveforms(electrodes, dt, events)
 
 
-def read_sensor_values(path):
-    """``sensor`` of the file; None when it has none."""
+def read_circuit_values(path):
+    """``device_circuit`` of the file; None when it has none."""
     with h5py.File(str(path), "r") as file:
-        if "sensor" not in file.attrs:
+        if "device_circuit" not in file.attrs:
             return None
-        return json.loads(file.attrs["sensor"])
+        return json.loads(file.attrs["device_circuit"])

@@ -105,8 +105,8 @@ def read_subcircuit(path):
 
 def read_chain(paths):
     """Chain, as spice.solve takes it, of the stages in the SPICE files paths,
-    from the sensor to the load: each stage on the output of the one before,
-    the last file the load. The load alone is the sensor read out as it is.
+    from the device to the load: each stage on the output of the one before,
+    the last file the load. The load alone is the device read out as it is.
 
     A stage is known in the chain by the name of its file; where a file of
     the same name stands in the chain again, by its name and which of them
@@ -134,7 +134,7 @@ def read_chain(paths):
 
 def named_chain(name):
     """Chain, as spice.solve takes it, that a name puts together: the names
-    of its stages from the sensor to the load, joined by "+", the last one the
+    of its stages from the device to the load, joined by "+", the last one the
     load, such as Gali52+Gali52+Termination50. Each is a SPICE file among the
     afe components."""
     return read_chain(

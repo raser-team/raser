@@ -15,7 +15,7 @@ from raser.core.current.cal_current import electrode_names
 from raser.core.current.cal_current import write_induced_currents
 from raser.core.device import build_device as bdv
 from raser.core.readout.circuit import named_chain
-from raser.core.field.circuit_parameters import device_sensor
+from raser.core.field.circuit_parameters import device_circuit
 from raser.core.readout.job import write_waveforms
 from raser.core.deposit.deposits import read_deposits
 
@@ -47,13 +47,13 @@ def waveforms(kwargs, pad):
     if not os.path.exists(currents_path):
         return {"events": 0}
     my_d = bdv.Detector(kwargs["det_name"], kwargs["_files"]["device"])
-    sensor, values = device_sensor(my_d, electrode_names(my_d.read_out_contact, my_d.read_ele_num))
+    circuit, values = device_circuit(my_d, electrode_names(my_d.read_out_contact, my_d.read_ele_num))
     write_waveforms(
         currents_path,
         output(kwargs, f"readout.{pad}"),
         named_chain(str(kwargs["amplifier"])),
-        sensor,
+        circuit,
         kwargs.get("seed"),
-        sensor_values=values,
+        circuit_values=values,
     )
     return None

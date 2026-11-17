@@ -1,7 +1,7 @@
 """Circuit of a resistive layer with electrodes on it: the strips of a row,
 or the pads of a grid, read out through the layer."""
 
-from .sensor_spice import SensorCircuit
+from .device_circuit import DeviceCircuit
 
 
 def resistive_row(
@@ -13,8 +13,8 @@ def resistive_row(
     strips,
     grounded=None,
 ):
-    """SensorCircuit of a resistive layer with strips in contact with it, the
-    back of the sensor on ground.
+    """DeviceCircuit of a resistive layer with strips in contact with it, the
+    back of the device on ground.
 
     The layer is cut across the strips into cells of one width, each a node
     with the capacitance of the depleted layer under it to the back; the
@@ -84,7 +84,7 @@ def resistive_row(
             raise ValueError(
                 f"The strips on the cells {name} and {cells[number + 1]} touch"
             )
-    return SensorCircuit(
+    return DeviceCircuit(
         lines=tuple(lines),
         sources={name: ("0", node[number]) for number, name in enumerate(cells)},
         outputs={strip: f"{strip}_pad" for strip in strips},
@@ -119,8 +119,8 @@ def resistive_grid(
     coupling_per_area_f_m2=None,
     grounded=None,
 ):
-    """SensorCircuit of a resistive layer cut into a grid of cells, with pads
-    that are read out, the back of the sensor on ground.
+    """DeviceCircuit of a resistive layer cut into a grid of cells, with pads
+    that are read out, the back of the device on ground.
 
     cells : names of the cells; the cell number i along x and j along y is
         cells[i * counts[1] + j]. The current induced on a cell flows into
@@ -197,7 +197,7 @@ def resistive_grid(
                     f"R{'xy'[axis]}layer_{name} {here} {there} "
                     f"{sheet_resistance_ohm * squares:.9g}"
                 )
-    return SensorCircuit(
+    return DeviceCircuit(
         lines=tuple(lines),
         sources={
             cells[i * counts[1] + j]: ("0", node[i][j])

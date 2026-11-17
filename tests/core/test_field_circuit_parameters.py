@@ -5,7 +5,7 @@ import pytest
 
 from raser.core.device.build_device import Detector
 from raser.core.device.build_device import device_file
-from raser.core.field.circuit_parameters import device_sensor
+from raser.core.field.circuit_parameters import device_circuit
 from raser.core.field.circuit_parameters import junction_capacitance
 from raser.core.readout.spice import solve
 
@@ -52,13 +52,13 @@ def test_sensor_of_a_device_has_its_junction_capacitance_on_every_electrode():
     times = -1e-9 + (np.arange(500) + 0.5) * dt_s
     step = np.where(times > 0, 1e-6, 0.0)
 
-    sensor, values = device_sensor(_device(capacitance_pF=20.0), ["left", "right"])
+    circuit, values = device_circuit(_device(capacitance_pF=20.0), ["left", "right"])
     voltage = solve(
         {"stages": {"wire": wire}, "load": load},
         ["left", "right"],
         dt_s,
         [step, -2 * step],
-        sensor,
+        circuit,
     )
 
     assert values == {
@@ -95,14 +95,14 @@ def test_charge_through_the_coupling_capacitance_is_what_the_bias_resistance_lea
     times = -1e-9 + (np.arange(5000) + 0.5) * dt_s
     step = np.where(times > 0, 1e-6, 0.0)
 
-    sensor, values = device_sensor(
+    circuit, values = device_circuit(
         _device(
             capacitance_pF=20.0, bias_resistance_ohm=200.0, coupling_capacitance_pF=30.0
         ),
         ["pad"],
     )
     voltage = solve(
-        {"stages": {"wire": wire}, "load": load}, ["pad"], dt_s, [step], sensor
+        {"stages": {"wire": wire}, "load": load}, ["pad"], dt_s, [step], circuit
     )
 
     assert values["bias_resistance"] == {"ohm": 200.0}
@@ -132,7 +132,7 @@ def test_charge_on_a_device_not_fully_depleted_is_held_back_by_its_undepleted_la
     current[0] = 1e-9 / dt_s
     chain = {"stages": {"wire": wire}, "load": load}
 
-    from_file, values = device_sensor(
+    from_file, values = device_circuit(
         _device(
             capacitance_pF=20.0,
             undepleted_resistance_ohm=2e3,
@@ -141,7 +141,7 @@ def test_charge_on_a_device_not_fully_depleted_is_held_back_by_its_undepleted_la
         ["pad"],
         solved_undepleted=(9e3, 9e-12),
     )
-    from_field, of_field = device_sensor(
+    from_field, of_field = device_circuit(
         _device(capacitance_pF=20.0), ["pad"], solved_undepleted=(2e3, 60e-12)
     )
     voltage = solve(chain, ["pad"], dt_s, [current], from_file)[0]
@@ -165,12 +165,12 @@ def test_charge_on_a_device_not_fully_depleted_is_held_back_by_its_undepleted_la
 
 def test_undepleted_layer_with_one_of_its_two_values_is_an_error():
     with pytest.raises(ValueError, match="alone"):
-        device_sensor(_device(undepleted_resistance_ohm=2e3), ["pad"])
+        device_circuit(_device(undepleted_resistance_ohm=2e3), ["pad"])
 
 
 def test_row_of_strips_with_an_undepleted_layer_is_an_error():
     with pytest.raises(ValueError, match="undepleted"):
-        device_sensor(_strips(), ["top1"], row=ROW, solved_undepleted=(2e3, 60e-12))
+        device_circuit(_strips(), ["top1"], row=ROW, solved_undepleted=(2e3, 60e-12))
 
 
 def _strips(**keys):
@@ -214,9 +214,13 @@ def test_charge_on_one_strip_of_a_row_is_shared_by_the_capacitances_between_them
     currents = np.zeros((4, 200))
     currents[1, 10:60] = 1e-6  # 1 fC on the second strip
 
-    sensor, values = device_sensor(_strips(), electrodes, row=ROW)
+    circuit, values = device_circuit(_strips(), electrodes, row=ROW)
     voltage = solve(
-        {"stages": {"wire": wire}, "load": open_end}, electrodes, dt_s, currents, sensor
+        {"stages": {"wire": wire}, "load": open_end},
+        electrodes,
+        dt_s,
+        currents,
+        circuit,
     )
 
     assert values["junction_capacitance"] == {
@@ -245,23 +249,23 @@ def test_charge_on_one_strip_of_a_row_is_shared_by_the_capacitances_between_them
 
 def test_capacitances_of_a_row_are_not_taken_for_a_device_without_strips():
     with pytest.raises(ValueError, match="not a row of strips"):
-        device_sensor(_device(), ["top"], row=ROW)
+        device_circuit(_device(), ["top"], row=ROW)
 
 
 def test_strip_with_less_capacitance_in_all_than_to_the_other_strips_is_an_error():
     # 0.1 pF measured in all; the field gives 0.125 pF to the nearest strip
     with pytest.raises(ValueError, match="to the other strips"):
-        device_sensor(_strips(capacitance_pF=0.1), ["top1", "top2"], row=ROW)
+        device_circuit(_strips(capacitance_pF=0.1), ["top1", "top2"], row=ROW)
 
 
 def test_strips_of_a_row_have_the_bias_resistance_and_coupling_of_the_device():
-    sensor, _ = device_sensor(
+    circuit, _ = device_circuit(
         _strips(bias_resistance_ohm=1.5e6, coupling_capacitance_pF=10.0),
         ["top1", "top2"],
         row=ROW,
     )
 
-    assert "Rtop2_bias top2_pad 0 1500000" in sensor.lines
-    assert "Ctop2_coupling top2_pad top2_port 1e-11" in sensor.lines
-    assert "Ctop1_top2 top1_pad top2_pad" in " ".join(sensor.lines)
-    assert sensor.outputs == {"top1": "top1_port", "top2": "top2_port"}
+    assert "Rtop2_bias top2_pad 0 1500000" in circuit.lines
+    assert "Ctop2_coupling top2_pad top2_port 1e-11" in circuit.lines
+    assert "Ctop1_top2 top1_pad top2_pad" in " ".join(circuit.lines)
+    assert circuit.outputs == {"top1": "top1_port", "top2": "top2_port"}

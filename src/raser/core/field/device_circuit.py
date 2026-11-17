@@ -1,11 +1,11 @@
-"""The sensor in the SPICE netlist: a planar one with one read-out electrode, and several."""
+"""The circuit of a device in the SPICE netlist: a planar one with one read-out electrode, and several."""
 
 from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
-class SensorCircuit:
-    """The sensor as it stands in the netlist: once, for all electrodes.
+class DeviceCircuit:
+    """The circuit of a device as it stands in the netlist: once, for all electrodes.
 
     lines : SPICE lines of its elements. Ground is node 0.
     sources : for each electrode a current is induced on, by its name, the
@@ -27,43 +27,24 @@ class SensorCircuit:
     outputs_alike: bool = False
 
 
-def undepleted_layer(
-    area_m2, thickness_m, depleted_width_m, permittivity_f_per_m, resistivity_ohm_m
-):
-    """Resistance [Ohm] and capacitance [F] of the layer the bias does not
-    deplete: a slab of the bulk between the depleted layer and the back.
-
-    W. Riegler, NIM A 940 (2019) 453, arXiv:1812.07570, eq. 50.
-    """
-    if not 0 < depleted_width_m < thickness_m:
-        raise ValueError(
-            f"A depleted width of {depleted_width_m} m leaves no undepleted "
-            f"layer in a sensor {thickness_m} m thick"
-        )
-    undepleted_m = thickness_m - depleted_width_m
-    resistance_ohm = resistivity_ohm_m * undepleted_m / area_m2
-    capacitance_f = permittivity_f_per_m * area_m2 / undepleted_m
-    return resistance_ohm, capacitance_f
-
-
-def planar_sensor(
+def planar_circuit(
     electrode,
     depleted_capacitance_f,
     undepleted=None,
     bias_resistance_ohm=None,
     coupling_capacitance_f=None,
 ):
-    """SensorCircuit of a planar sensor with one read-out electrode, its back
+    """DeviceCircuit of a planar device with one read-out electrode, its back
     on ground.
 
     electrode : name of the read-out electrode.
     depleted_capacitance_f : capacitance of the depleted layer [F].
-    undepleted : None for a fully depleted sensor, otherwise the resistance
+    undepleted : None for a fully depleted device, otherwise the resistance
         [Ohm] and the capacitance [F] of the undepleted layer, which lie in
         parallel between the depleted layer and the back.
-    bias_resistance_ohm : resistance on the sensor from the electrode to its
+    bias_resistance_ohm : resistance on the device from the electrode to its
         bias, which is ground for the signal [Ohm]. None: there is none.
-    coupling_capacitance_f : capacitance on the sensor between the electrode
+    coupling_capacitance_f : capacitance on the device between the electrode
         and the read-out [F]. None: the electrode itself is read out. It
         needs the bias resistance, or the electrode has no DC potential.
 
@@ -97,34 +78,34 @@ def planar_sensor(
         lines.append(
             f"C{electrode}_coupling {pad} {output} {coupling_capacitance_f:.9g}"
         )
-    return SensorCircuit(
+    return DeviceCircuit(
         lines=tuple(lines),
         sources={electrode: (back_of_depleted, pad)},
         outputs={electrode: output},
     )
 
 
-def side_by_side(sensors):
-    """SensorCircuit of the electrodes of several sensors with nothing
+def side_by_side(circuits):
+    """DeviceCircuit of the electrodes of several circuits with nothing
     between them: the charge induced on one reaches no other."""
     lines: list[str] = []
     sources: dict = {}
     outputs: dict = {}
-    for sensor in sensors:
-        twice = sorted(set(sources) & set(sensor.sources))
+    for circuit in circuits:
+        twice = sorted(set(sources) & set(circuit.sources))
         if twice:
-            raise ValueError(f"The electrodes {twice} stand in two sensors")
-        lines.extend(sensor.lines)
-        sources.update(sensor.sources)
-        outputs.update(sensor.outputs)
-    return SensorCircuit(lines=tuple(lines), sources=sources, outputs=outputs)
+            raise ValueError(f"The electrodes {twice} stand in two circuits")
+        lines.extend(circuit.lines)
+        sources.update(circuit.sources)
+        outputs.update(circuit.outputs)
+    return DeviceCircuit(lines=tuple(lines), sources=sources, outputs=outputs)
 
 
-def row_of_electrodes(sensors, between_f):
-    """SensorCircuit of the electrodes of a row, each with the sensor it has
+def row_of_electrodes(circuits, between_f):
+    """DeviceCircuit of the electrodes of a row, each with the circuit it has
     by itself, and the capacitances between them.
 
-    sensors : SensorCircuit of each electrode, one electrode each, in their
+    circuits : DeviceCircuit of each electrode, one electrode each, in their
         order along the row.
     between_f : capacitance [F] between two electrodes of the row that are
         one, two, ... places apart. Electrodes further apart than it reaches
@@ -133,10 +114,10 @@ def row_of_electrodes(sensors, between_f):
     The capacitance lies between the electrodes themselves, before a coupling
     capacitance to the read-out.
     """
-    row = side_by_side(sensors)
+    row = side_by_side(circuits)
     electrodes = list(row.sources)
-    if len(electrodes) != len(sensors):
-        raise ValueError("Every sensor of a row has one electrode")
+    if len(electrodes) != len(circuits):
+        raise ValueError("Every circuit of a row has one electrode")
     lines = list(row.lines)
     for apart, farad in enumerate(between_f, start=1):
         for first, second in zip(electrodes, electrodes[apart:]):
@@ -144,4 +125,4 @@ def row_of_electrodes(sensors, between_f):
                 f"C{first}_{second} {row.sources[first][1]} "
                 f"{row.sources[second][1]} {farad:.9g}"
             )
-    return SensorCircuit(lines=tuple(lines), sources=row.sources, outputs=row.outputs)
+    return DeviceCircuit(lines=tuple(lines), sources=row.sources, outputs=row.outputs)

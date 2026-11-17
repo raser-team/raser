@@ -1,15 +1,13 @@
 import numpy as np
 import pytest
 
-from raser.core.field.sensor_spice import planar_sensor
-from raser.core.field.sensor_spice import side_by_side
-from raser.core.field.sensor_spice import undepleted_layer
-from raser.core.readout.spice import short_circuit_currents
-from raser.core.readout.spice import solve
+from raser.core.field.circuit_parameters import undepleted_layer
+from raser.core.field.device_circuit import planar_circuit, side_by_side
+from raser.core.readout.spice import short_circuit_currents, solve
 
 pytestmark = pytest.mark.ngspice
 
-# the sensor of W. Riegler, arXiv:1812.07570, section 5: silicon of 5 kOhm cm,
+# the device of W. Riegler, arXiv:1812.07570, section 5: silicon of 5 kOhm cm,
 # 300 um thick, depleted over 200 um, 1 cm2
 PERMITTIVITY_F_PER_M = 11.9 * 8.8541878128e-12
 AREA_M2 = 1e-4
@@ -35,7 +33,7 @@ def test_short_circuit_current_of_a_sensor_that_is_not_fully_depleted():
     times, step = _step()
 
     into_short = short_circuit_currents(
-        ["top"], DT_S, [step], planar_sensor("top", depleted_f, undepleted)
+        ["top"], DT_S, [step], planar_circuit("top", depleted_f, undepleted)
     )
 
     tau = PERMITTIVITY_F_PER_M * RESISTIVITY_OHM_M * THICKNESS_M / DEPLETED_M
@@ -56,7 +54,7 @@ def test_short_circuit_current_of_a_fully_depleted_sensor_is_the_induced_current
     depleted_f = PERMITTIVITY_F_PER_M * AREA_M2 / THICKNESS_M
 
     into_short = short_circuit_currents(
-        ["top"], DT_S, [step], planar_sensor("top", depleted_f)
+        ["top"], DT_S, [step], planar_circuit("top", depleted_f)
     )
 
     assert into_short[0] == pytest.approx(step, abs=1e-9)
@@ -66,12 +64,12 @@ def test_coupling_capacitance_shares_the_current_with_the_depleted_layer():
     # 10 pF depleted layer, 100 Ohm to the bias, 90 pF to the read-out, which
     # is shorted: of a step I the read-out gets I 90 / (10 + 90) at first, and
     # the bias resistance takes it over with tau = 100 Ohm (10 pF + 90 pF)
-    sensor = planar_sensor(
+    circuit = planar_circuit(
         "top", 10e-12, bias_resistance_ohm=100.0, coupling_capacitance_f=90e-12
     )
     times, step = _step()
 
-    into_short = short_circuit_currents(["top"], DT_S, [step], sensor)
+    into_short = short_circuit_currents(["top"], DT_S, [step], circuit)
 
     after = np.clip(times, 0, None)
     expected = 1e-6 * np.where(times > 0, 0.9 * np.exp(-after / 10e-9), 0.0)
@@ -96,10 +94,10 @@ def test_bias_resistance_lies_between_the_electrode_and_ground():
             "elements": {"R1": {"between": ["a", "0"], "ohm": 50.0}},
         },
     }
-    sensor = planar_sensor("top", 10e-12, bias_resistance_ohm=50.0)
+    circuit = planar_circuit("top", 10e-12, bias_resistance_ohm=50.0)
     times, step = _step()
 
-    voltage = solve(chain, ["top"], DT_S, [step], sensor)
+    voltage = solve(chain, ["top"], DT_S, [step], circuit)
 
     after = np.clip(times, 0, None)
     expected = 1e-6 * 25.0 * (1 - np.exp(-after / (25.0 * 10e-12)))
@@ -112,16 +110,18 @@ def test_electrodes_side_by_side_each_answer_with_their_own_sensor():
     # 1 nF carries 1000 / 1010 of it into the short; twice the step on its
     # neighbour of 40 pF, read as it is: all of it
     times, step = _step()
-    sensor = side_by_side(
+    circuit = side_by_side(
         [
-            planar_sensor("near", 10e-12, None, 1e6, 1e-9),
-            planar_sensor("far", 40e-12),
+            planar_circuit("near", 10e-12, None, 1e6, 1e-9),
+            planar_circuit("far", 40e-12),
         ]
     )
 
-    into_short = short_circuit_currents(["far", "near"], DT_S, [2 * step, step], sensor)
+    into_short = short_circuit_currents(
+        ["far", "near"], DT_S, [2 * step, step], circuit
+    )
 
-    # the shorts come in the order of the outputs of the sensor
+    # the shorts come in the order of the outputs of the circuit
     off_the_jump = (times < 0) | (times > DT_S)
     expected = np.where(times > 0, 1e-6, 0.0)[off_the_jump]
     assert into_short[1][off_the_jump] == pytest.approx(2 * expected, abs=2e-9)
@@ -129,4 +129,4 @@ def test_electrodes_side_by_side_each_answer_with_their_own_sensor():
         expected * 1000 / 1010, abs=2e-9
     )
     with pytest.raises(ValueError, match="near"):
-        side_by_side([planar_sensor("near", 1e-12), planar_sensor("near", 2e-12)])
+        side_by_side([planar_circuit("near", 1e-12), planar_circuit("near", 2e-12)])

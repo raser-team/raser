@@ -1,13 +1,13 @@
-"""Circuit of a sensor and its values, taken from its device and its field."""
+"""Circuit of a device and its values, taken from its device and its field."""
 
 import dataclasses
 
 from . import implanted_aluminium
 from .resistive_layer import resistive_grid
 from .resistive_layer import resistive_row
-from .sensor_spice import planar_sensor
-from .sensor_spice import row_of_electrodes
-from .sensor_spice import side_by_side
+from .device_circuit import planar_circuit
+from .device_circuit import row_of_electrodes
+from .device_circuit import side_by_side
 
 VACUUM_PERMITTIVITY_F_M = 8.8541878128e-12
 
@@ -35,10 +35,10 @@ def junction_capacitance(my_d, solved_f=None):
     return float(estimate_pf) * 1e-12, "parallel plate"
 
 
-def on_sensor(my_d):
+def bias_and_coupling(my_d):
     """Bias resistance [Ohm] and coupling capacitance [F] the device file
     gives for one read-out electrode, bias_resistance_ohm and
-    coupling_capacitance_pF. None for one the sensor does not have: its
+    coupling_capacitance_pF. None for one the device does not have: its
     electrodes are then biased, or read out, directly."""
     bias_ohm = my_d.device_dict.get("bias_resistance_ohm")
     coupling_pf = my_d.device_dict.get("coupling_capacitance_pF")
@@ -46,6 +46,25 @@ def on_sensor(my_d):
         None if bias_ohm is None else float(bias_ohm),
         None if coupling_pf is None else float(coupling_pf) * 1e-12,
     )
+
+
+def undepleted_layer(
+    area_m2, thickness_m, depleted_width_m, permittivity_f_per_m, resistivity_ohm_m
+):
+    """Resistance [Ohm] and capacitance [F] of the layer the bias does not
+    deplete: a slab of the bulk between the depleted layer and the back.
+
+    W. Riegler, NIM A 940 (2019) 453, arXiv:1812.07570, eq. 50.
+    """
+    if not 0 < depleted_width_m < thickness_m:
+        raise ValueError(
+            f"A depleted width of {depleted_width_m} m leaves no undepleted "
+            f"layer in a device {thickness_m} m thick"
+        )
+    undepleted_m = thickness_m - depleted_width_m
+    resistance_ohm = resistivity_ohm_m * undepleted_m / area_m2
+    capacitance_f = permittivity_f_per_m * area_m2 / undepleted_m
+    return resistance_ohm, capacitance_f
 
 
 def undepleted_layer_of(my_d, solved=None):
@@ -76,8 +95,8 @@ def undepleted_layer_of(my_d, solved=None):
     return None, None
 
 
-def device_sensor(my_d, electrodes, solved_f=None, row=None, solved_undepleted=None):
-    """SensorCircuit of the read-out electrodes of a device, and the values it
+def device_circuit(my_d, electrodes, solved_f=None, row=None, solved_undepleted=None):
+    """DeviceCircuit of the read-out electrodes of a device, and the values it
     is made of, for the record of the run.
 
     electrodes : names of the read-out electrodes, those of the currents, in
@@ -101,18 +120,18 @@ def device_sensor(my_d, electrodes, solved_f=None, row=None, solved_undepleted=N
     behind the depleted one of every electrode. A row has none: the layer
     under strips is not a slab under each of them.
     Every electrode has the bias resistance and the coupling capacitance of
-    the device file, as on_sensor gives them. The electrodes count as alike
+    the device file, as bias_and_coupling gives them. The electrodes count as alike
     for their noise: in a row the strips at its ends have the capacitance
     they lack to neighbours on ground, and the same in all.
     The record says what the circuit does not have.
     """
-    bias_ohm, coupling_f = on_sensor(my_d)
+    bias_ohm, coupling_f = bias_and_coupling(my_d)
     undepleted, undepleted_from = undepleted_layer_of(my_d, solved_undepleted)
     if row is None:
         farad, source = junction_capacitance(my_d, solved_f)
-        sensor = side_by_side(
+        circuit = side_by_side(
             [
-                planar_sensor(
+                planar_circuit(
                     electrode,
                     farad,
                     undepleted=undepleted,
@@ -144,7 +163,7 @@ def device_sensor(my_d, electrodes, solved_f=None, row=None, solved_undepleted=N
             0.5 * float(row["to"][f"neighbour{apart}"]) * length_cm
             for apart in range(1, int(row["neighbours_coupled"]) + 1)
         ]
-        sensors = []
+        circuits = []
         for place, electrode in enumerate(electrodes):
             to_others = sum(
                 between_f[abs(place - other) - 1]
@@ -157,17 +176,17 @@ def device_sensor(my_d, electrodes, solved_f=None, row=None, solved_undepleted=N
                     f"the {source}, and {to_others} F to the other strips, "
                     "from the field"
                 )
-            sensors.append(
-                planar_sensor(
+            circuits.append(
+                planar_circuit(
                     electrode,
                     farad - to_others,
                     bias_resistance_ohm=bias_ohm,
                     coupling_capacitance_f=coupling_f,
                 )
             )
-        sensor = row_of_electrodes(sensors, between_f)
+        circuit = row_of_electrodes(circuits, between_f)
         between = {"farad": between_f, "from": "field"}
-    sensor = dataclasses.replace(sensor, outputs_alike=True)
+    circuit = dataclasses.replace(circuit, outputs_alike=True)
     values = {
         "junction_capacitance": {"farad": farad, "from": source},
         "between_electrodes": between,
@@ -177,7 +196,7 @@ def device_sensor(my_d, electrodes, solved_f=None, row=None, solved_undepleted=N
         if undepleted is None
         else {"ohm": undepleted[0], "farad": undepleted[1], "from": undepleted_from},
     }
-    return sensor, values
+    return circuit, values
 
 
 def sheet_resistance(my_d):
@@ -205,7 +224,7 @@ def sheet_resistance(my_d):
 
 
 def device_row(my_d, cells, solved_f=None):
-    """SensorCircuit of the row of strips on the resistive layer of a device,
+    """DeviceCircuit of the row of strips on the resistive layer of a device,
     and the values it is made of, for the record of the run.
 
     cells : names of the cells of the layer, those of the currents, each as
@@ -231,18 +250,18 @@ def device_row(my_d, cells, solved_f=None):
         .get("grounded", {})
         .items()
     }
-    sensor = resistive_row(
+    circuit = resistive_row(
         cells, width_m, length_m, ohm, farad / (width_m * length_m), strips, grounded
     )
     values = {
         "cell_capacitance": {"farad": farad, "from": capacitance_from},
         "sheet_resistance": {"ohm": ohm, "from": resistance_from},
     }
-    return sensor, values
+    return circuit, values
 
 
 def device_grid(my_d, cells, solved_f=None):
-    """SensorCircuit of the pads on the resistive layer of a device, and the
+    """DeviceCircuit of the pads on the resistive layer of a device, and the
     values it is made of, for the record of the run.
 
     cells : names of the cells of the layer, those of the currents, x_ele_num
@@ -265,7 +284,7 @@ def device_grid(my_d, cells, solved_f=None):
             * float(layer["coupling"]["permittivity"])
             / (float(layer["coupling"]["thickness_um"]) * 1e-6)
         )
-    sensor = resistive_grid(
+    circuit = resistive_grid(
         cells,
         (my_d.x_ele_num, my_d.y_ele_num),
         widths_m,
@@ -283,4 +302,4 @@ def device_grid(my_d, cells, solved_f=None):
         "sheet_resistance": {"ohm": ohm, "from": resistance_from},
         "coupling_per_area_f_m2": coupling,
     }
-    return sensor, values
+    return circuit, values

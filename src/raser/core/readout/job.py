@@ -18,41 +18,41 @@ LOWEST_NOISE_HZ = 1e3
 
 
 def write_waveforms(
-    currents_path, waveforms_path, chain, sensor, noise_seed, sensor_values=None
+    currents_path, waveforms_path, chain, circuit, noise_seed, circuit_values=None
 ):
     """Solve the chain for every event of the currents file and write the
     output voltages to the waveforms file, event by event.
 
-    chain and sensor are those of spice.solve; the electrodes of the
+    chain and circuit are those of spice.solve; the electrodes of the
     currents, the bin width and the time bins of each event are those of the
-    currents file, the waveforms are those of the outputs of the sensor. A
+    currents file, the waveforms are those of the outputs of the circuit. A
     waveforms file an earlier start of the job left is replaced.
 
     noise_seed : None for waveforms without noise. Otherwise the seed of the
         noise of the circuit, which ngspice calculates once for the chain
-        with the sensor and the load: every output of every event gets its
+        with the device and the load: every output of every event gets its
         own noise, in one sequence that the seed fixes. The noise of two
-        outputs has nothing in common. Outputs the sensor gives as alike
+        outputs has nothing in common. Outputs the circuit gives as alike
         share the spectrum of the middle one.
-    sensor_values : None, or the values the sensor is made of and where each
-        is from, as device_sensor gives them: they are written to the file.
+    circuit_values : None, or the values the circuit is made of and where each
+        is from, as device_circuit gives them: they are written to the file.
     """
     currents = read_currents(currents_path)
     if os.path.exists(waveforms_path):
         os.remove(waveforms_path)
     if noise_seed is not None:
         generator = np.random.default_rng(noise_seed)
-        outputs = list(sensor.outputs)
+        outputs = list(circuit.outputs)
         frequencies, densities = output_noise_spectrum(
             chain,
-            sensor,
+            circuit,
             LOWEST_NOISE_HZ,
             0.5 / currents.dt,
-            [outputs[len(outputs) // 2]] if sensor.outputs_alike else outputs,
+            [outputs[len(outputs) // 2]] if circuit.outputs_alike else outputs,
         )
         densities = np.broadcast_to(densities, (len(outputs), densities.shape[1]))
     for event in currents.events:
-        voltage = solve(chain, currents.electrodes, currents.dt, event.current, sensor)
+        voltage = solve(chain, currents.electrodes, currents.dt, event.current, circuit)
         if noise_seed is not None:
             voltage = voltage + np.array(
                 [
@@ -64,8 +64,8 @@ def write_waveforms(
             )
         append_waveforms(
             waveforms_path,
-            list(sensor.outputs),
+            list(circuit.outputs),
             currents.dt,
             EventWaveforms(event.event, event.t0, voltage),
-            sensor_values,
+            circuit_values,
         )

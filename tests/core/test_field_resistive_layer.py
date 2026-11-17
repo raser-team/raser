@@ -40,19 +40,19 @@ def _layer_ohm(um):
     return SHEET_OHM * um * 1e-6 / LENGTH_M
 
 
-def _charges(sensor, cell):
+def _charges(circuit, cell):
     """Charge [fC] that 1 fC on a cell sends through the load of each read-out."""
-    cells = list(sensor.sources)
+    cells = list(circuit.sources)
     currents = np.zeros((len(cells), BINS))
     currents[cells.index(cell)] = PULSE
-    voltage = solve(ON_THE_LOAD, cells, DT_S, currents, sensor)
+    voltage = solve(ON_THE_LOAD, cells, DT_S, currents, circuit)
     return voltage.sum(axis=1) * DT_S / 50.0 * 1e15
 
 
 def test_charge_between_two_strips_is_shared_by_the_distances_to_them():
     # strips on the cells 2 to 4 and 15 to 17; cells beyond them end open
     cells = [f"c{k}" for k in range(20)]
-    sensor = resistive_row(
+    circuit = resistive_row(
         cells,
         CELL_M,
         LENGTH_M,
@@ -64,23 +64,23 @@ def test_charge_between_two_strips_is_shared_by_the_distances_to_them():
     # of the cell 15, from 50 to 150 um. All the charge leaves through the
     # loads, shared as a steady current would be
     for cell in (5, 8, 12, 14):
-        to_left, to_right = _charges(sensor, f"c{cell}")
+        to_left, to_right = _charges(circuit, f"c{cell}")
         centre_um = (cell + 0.5) * 10
         left_ohm = _layer_ohm(centre_um - 50) + 50.0
         right_ohm = _layer_ohm(150 - centre_um) + 50.0
         share = right_ohm / (left_ohm + right_ohm)
         assert to_left == pytest.approx(share, rel=0.01)
         assert to_right == pytest.approx(1 - share, rel=0.01)
-    assert sum(_charges(sensor, "c0")) == pytest.approx(1, rel=0.01)
+    assert sum(_charges(circuit, "c0")) == pytest.approx(1, rel=0.01)
     # a cell beyond a strip feeds the strip, which passes some of it on
-    to_left, to_right = _charges(sensor, "c18")
+    to_left, to_right = _charges(circuit, "c18")
     beyond = 50.0 / (50.0 + _layer_ohm(100) + 50.0)
     assert to_left == pytest.approx(beyond, rel=0.01)
 
 
 def test_charge_beside_a_grounded_contact_is_partly_lost_to_it():
     cells = [f"c{k}" for k in range(12)]
-    sensor = resistive_row(
+    circuit = resistive_row(
         cells,
         CELL_M,
         LENGTH_M,
@@ -91,7 +91,7 @@ def test_charge_beside_a_grounded_contact_is_partly_lost_to_it():
     )
     # from the middle of the cell 5: 35 um of layer to the strip, on its
     # load, and 45 um to the ring
-    (to_strip,) = _charges(sensor, "c5")
+    (to_strip,) = _charges(circuit, "c5")
     to_strip_ohm = _layer_ohm(35) + 50.0
     assert to_strip == pytest.approx(
         _layer_ohm(45) / (_layer_ohm(45) + to_strip_ohm), rel=0.01
@@ -128,7 +128,7 @@ def test_pads_coupled_to_a_grounded_layer_carry_no_net_charge():
     # held on ground at a corner. The charge leaves through the ground, in
     # some ns; the pads see it pass
     cells = [f"c{k}" for k in range(25)]
-    sensor = resistive_grid(
+    circuit = resistive_grid(
         cells,
         (5, 5),
         (100e-6, 100e-6),
@@ -141,7 +141,7 @@ def test_pads_coupled_to_a_grounded_layer_carry_no_net_charge():
     dt = 100e-12
     currents = np.zeros((25, BINS))
     currents[1 * 5 + 2, 0] = 1e-15 / dt  # beside the near pad
-    voltage = solve(ON_THE_LOAD, cells, dt, currents, sensor)
+    voltage = solve(ON_THE_LOAD, cells, dt, currents, circuit)
 
     near, far = voltage
     assert np.abs(near).max() > 2 * np.abs(far).max()
@@ -170,7 +170,7 @@ def _rsd_strips(**layer):
 
 def test_strips_of_a_device_share_the_charge_through_the_layer_it_gives():
     cells = [f"c{k}" for k in range(20)]
-    sensor, values = device_row(_rsd_strips(sheet_resistance_ohm=1000.0), cells)
+    circuit, values = device_row(_rsd_strips(sheet_resistance_ohm=1000.0), cells)
 
     assert values == {
         "cell_capacitance": {
@@ -180,8 +180,8 @@ def test_strips_of_a_device_share_the_charge_through_the_layer_it_gives():
         "sheet_resistance": {"ohm": 1000.0, "from": "device file"},
     }
     # each cell with the capacitance of the device under it
-    assert "Clayer_c8 layer_c8 0 1.23e-14" in sensor.lines
-    to_left, to_right = _charges(sensor, "c8")
+    assert "Clayer_c8 layer_c8 0 1.23e-14" in circuit.lines
+    to_left, to_right = _charges(circuit, "c8")
     left_ohm = _layer_ohm(85 - 50) + 50.0
     right_ohm = _layer_ohm(150 - 85) + 50.0
     assert to_left == pytest.approx(right_ohm / (left_ohm + right_ohm), rel=0.01)
@@ -220,8 +220,8 @@ def test_pads_of_a_device_are_coupled_through_the_dielectric_it_gives():
         },
     )
 
-    sensor, values = device_grid(device, ["a", "b", "c", "d"])
+    circuit, values = device_grid(device, ["a", "b", "c", "d"])
 
     # 3.9 x 8.854e-12 F/m over 0.5 um, on a cell of 100 um x 100 um
     assert values["coupling_per_area_f_m2"] == pytest.approx(6.906e-5, rel=1e-3)
-    assert "Cpad_a layer_a pad_pad 6.906" in "\n".join(sensor.lines)
+    assert "Cpad_a layer_a pad_pad 6.906" in "\n".join(circuit.lines)

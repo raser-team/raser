@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from raser.core.field.sensor_spice import SensorCircuit
+from raser.core.field.device_circuit import DeviceCircuit
 from raser.core.readout.spice import output_noise_spectrum
 from raser.core.readout.spice import short_circuit_currents
 from raser.core.readout.spice import solve
@@ -9,15 +9,15 @@ from raser.core.readout.spice import solve
 pytestmark = pytest.mark.ngspice
 
 LOAD_OHM = 50.0
-TAU_S = 10e-12 * LOAD_OHM  # 10 pF sensor on the load
+TAU_S = 10e-12 * LOAD_OHM  # 10 pF device on the load
 DT_S = 5e-12
 # the current source sits across the 10 pF, between the electrode and ground
-FULLY_DEPLETED = SensorCircuit(
+FULLY_DEPLETED = DeviceCircuit(
     lines=("C1 pad 0 10p",), sources={"top": ("pad", "0")}, outputs={"top": "pad"}
 )
 
 
-# an amplifier that is a wire, on a resistive load: the sensor sees the load
+# an amplifier that is a wire, on a resistive load: the device sees the load
 WIRE = {
     "ports": {"in": "a", "out": "b"},
     "elements": {"R1": {"between": ["a", "b"], "ohm": 1e-6}},
@@ -51,7 +51,7 @@ def test_rc_step_response_on_the_time_axis_of_the_current():
 
 def test_each_electrode_answers_its_own_current():
     # the right electrode has twice the capacitance, so twice the time constant
-    sensor = SensorCircuit(
+    circuit = DeviceCircuit(
         lines=("C1 a 0 10p", "C2 b 0 20p"),
         sources={"left": ("a", "0"), "right": ("b", "0")},
         outputs={"left": "a", "right": "b"},
@@ -60,9 +60,9 @@ def test_each_electrode_answers_its_own_current():
     step = np.where(times > 0, 1e-6, 0.0)
     after = np.clip(times, 0, None)
 
-    # the currents come in another order than the sensor names its outputs,
+    # the currents come in another order than the circuit names its outputs,
     # which give the order of the voltages
-    voltage = solve(ON_THE_LOAD, ["right", "left"], DT_S, [-2 * step, step], sensor)
+    voltage = solve(ON_THE_LOAD, ["right", "left"], DT_S, [-2 * step, step], circuit)
 
     right = 2e-6 * LOAD_OHM * (1 - np.exp(-after / (2 * TAU_S)))
     assert voltage[1] == pytest.approx(right, abs=1e-7)
@@ -74,7 +74,7 @@ def test_currents_on_cells_are_read_out_on_a_strip_they_lie_beside():
     # is under the strip, the far one 10 kOhm away from it. Each brings 1 fC;
     # all of it leaves through the 50 Ohm load of the strip, that of the far
     # cell later, after it has crossed the 10 kOhm
-    sensor = SensorCircuit(
+    circuit = DeviceCircuit(
         lines=("Cnear strip 0 1p", "Cfar far 0 1p", "Rlayer far strip 10k"),
         sources={"near": ("0", "strip"), "far": ("0", "far")},
         outputs={"strip": "strip"},
@@ -84,8 +84,8 @@ def test_currents_on_cells_are_read_out_on_a_strip_they_lie_beside():
     pulse = np.where((times > 0.1e-9) & (times < 0.2e-9), 1e-15 / 0.1e-9, 0.0)
     quiet = np.zeros(times.size)
 
-    near = solve(ON_THE_LOAD, ["near", "far"], dt, [pulse, quiet], sensor)
-    far = solve(ON_THE_LOAD, ["far", "near"], dt, [pulse, quiet], sensor)
+    near = solve(ON_THE_LOAD, ["near", "far"], dt, [pulse, quiet], circuit)
+    far = solve(ON_THE_LOAD, ["far", "near"], dt, [pulse, quiet], circuit)
 
     assert near.shape == far.shape == (1, times.size)
     for voltage in (near[0], far[0]):
@@ -96,7 +96,7 @@ def test_currents_on_cells_are_read_out_on_a_strip_they_lie_beside():
     assert arrival[0] < 1e-9
     assert arrival[1] == pytest.approx(10e-9, rel=0.1)
     with pytest.raises(ValueError, match="current sources"):
-        solve(ON_THE_LOAD, ["strip"], dt, [pulse], sensor)
+        solve(ON_THE_LOAD, ["strip"], dt, [pulse], circuit)
 
 
 def test_circuit_is_at_rest_before_a_current_that_fills_the_first_bin():
@@ -112,7 +112,7 @@ def test_circuit_is_at_rest_before_a_current_that_fills_the_first_bin():
 
 def test_stages_follow_one_another_from_the_sensor_to_the_load():
     # 100 Ohm in series, then 100 Ohm across the line, then the 100 Ohm load:
-    # the 10 pF sensor sees 150 Ohm, the load a third of its voltage
+    # the 10 pF device sees 150 Ohm, the load a third of its voltage
     series = {
         "ports": {"in": "a", "out": "b"},
         "elements": {"R1": {"between": ["a", "b"], "ohm": 100.0}},
@@ -145,7 +145,7 @@ def test_short_circuit_current_of_a_sensor_that_is_not_fully_depleted():
     # across C1, drawing the current I out of the electrode after t = 0. The
     # short then feeds I (1 - C1 / (C1 + C2) exp(-t / tau)) into the electrode,
     # tau = R2 (C1 + C2).
-    sensor = SensorCircuit(
+    circuit = DeviceCircuit(
         lines=("C1 pad inner 10p", "R2 inner 0 100", "C2 inner 0 20p"),
         sources={"top": ("pad", "inner")},
         outputs={"top": "pad"},
@@ -153,7 +153,7 @@ def test_short_circuit_current_of_a_sensor_that_is_not_fully_depleted():
     times = -1e-9 + (np.arange(2000) + 0.5) * DT_S
     step = np.where(times > 0, 1e-6, 0.0)
 
-    into_short = short_circuit_currents(["top"], DT_S, [step], sensor)
+    into_short = short_circuit_currents(["top"], DT_S, [step], circuit)
 
     after = np.clip(times, 0, None)
     expected = -1e-6 * np.where(times > 0, 1 - 10 / 30 * np.exp(-after / 3e-9), 0.0)
@@ -169,14 +169,14 @@ def test_output_noise_of_a_resistor_on_a_capacitor():
     # each electrode has its capacitance on the 50 Ohm load, at 300.15 K: the
     # noise is that of the resistor, sqrt(4 k T R), up to 1 / (2 pi R C), and
     # its rms is sqrt(k T / C) whatever the resistor
-    sensor = SensorCircuit(
+    circuit = DeviceCircuit(
         lines=("C1 a 0 10p", "C2 b 0 40p"),
         sources={"left": ("0", "a"), "right": ("0", "b")},
         outputs={"left": "a", "right": "b"},
     )
     k_t = 1.380649e-23 * 300.15
 
-    frequencies, density = output_noise_spectrum(ON_THE_LOAD, sensor, 1e3, 1e13)
+    frequencies, density = output_noise_spectrum(ON_THE_LOAD, circuit, 1e3, 1e13)
 
     assert density[:, 0] == pytest.approx(np.sqrt(4 * k_t * LOAD_OHM), rel=1e-3)
     power = density**2
