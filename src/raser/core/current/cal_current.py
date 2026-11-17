@@ -273,6 +273,7 @@ class CalCurrent:
             ):
                 if carrier_system is not None:
                     carrier_system.paths = []
+                    carrier_system.remaining = []
 
     def _is_in_sensor(self, x, y, z, my_d):
         """Whether the position is inside the detector."""
@@ -318,9 +319,7 @@ class CalCurrent:
         # the carriers not yet trapped along each path, taken once here for
         # every use: the induced current and the gain
         remaining = [
-            surviving(cluster.path, cluster.carriers, my_f)
-            if my_d.irradiation_model is not None
-            else np.full(len(cluster.path) - 1, float(cluster.carriers))
+            surviving(cluster.path, cluster.carriers, my_f) if my_d.irradiation_model is not None else None
             for cluster in clusters
         ]
         return Drifted(
@@ -388,9 +387,10 @@ class CalCurrent:
         if carrier_system is None:
             return bins
         bin_width = (self.t_end - self.t_start) / self.n_bin
-        for carriers, path in zip(carrier_system.remaining, carrier_system.paths):
+        for born, remaining, path in zip(carrier_system.carriers, carrier_system.remaining, carrier_system.paths):
             if len(path) < 2:
                 continue
+            carriers = born if remaining is None else remaining
             for number, in_field, offset in self.electrodes_near(path[0][0], path[0][1], my_d, my_f):
                 induced = induced_charges(path, carriers, my_f, in_field, offset)
                 for value, t_from, t_to in zip(induced, path[:-1, 3], path[1:, 3]):
@@ -486,7 +486,7 @@ class CalCurrentGain(CalCurrent):
         # this one is an approximation
         gain_depth = my_f.planar_gain_depth(my_d)
         for carriers, remaining, path in zip(source_system.carriers, source_system.remaining, source_system.paths):
-            arriving = remaining[-1] if len(remaining) else carriers
+            arriving = carriers if remaining is None or not len(remaining) else remaining[-1]
             x, y, _, t = path[-1]
             gain_starts.append((x, y, gain_depth, t))
             gain_pairs.append(abs(arriving) * my_f.planar_gain_at(my_d, path[0][2]))
@@ -531,7 +531,8 @@ class CalCurrentGain(CalCurrent):
                     continue
                 charge_sign = -1 if carrier_system.carriers[carrier_idx] < 0 else 1
                 # the share of the cluster not yet trapped, at the middle of each step
-                untrapped = carrier_system.remaining[carrier_idx] / carrier_system.carriers[carrier_idx]
+                remaining = carrier_system.remaining[carrier_idx]
+                untrapped = np.ones(len(path) - 1) if remaining is None else remaining / carrier_system.carriers[carrier_idx]
                 for point0, point1, share in zip(path[:-1], path[1:], untrapped):
                     x0, y0, z0, t0 = point0
                     x1, y1, z1, t1 = point1

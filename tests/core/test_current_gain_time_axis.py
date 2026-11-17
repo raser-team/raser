@@ -194,3 +194,13 @@ def test_clusters_that_find_no_field_are_counted_with_where_the_first_stopped():
     assert current.ends == {"no_field": [1, 100.0], "left_device": [1, 100.0]}
     x, y, z = current.without_field
     assert (x, y) == (50.0, 50.0) and 9.0 < z < 10.0
+
+
+def test_untrapped_carriers_are_kept_only_where_carriers_are_trapped_and_while_the_paths_are():
+    device = SimpleNamespace(**{**vars(_lgad()), "has_avalanche": False})
+    untrapped = CalCurrent(device, _UniformField(), [100.0], [[50.0, 50.0, 25.0, 0.0]], diffusion=False)
+    trapped = SimpleNamespace(**{**vars(device), "irradiation_model": "constant"})
+    dropped = CalCurrent(trapped, _Trapping(), [100.0], [[50.0, 50.0, 25.0, 0.0]], diffusion=False, keep_drift_paths=False)
+
+    assert untrapped.electron_system.remaining == [None]
+    assert dropped.electron_system.remaining == [] and dropped.electron_system.paths == []

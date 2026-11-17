@@ -21,7 +21,8 @@ class Drifted:
     paths: list  # what `drift` returns: arrays (points, 4) of x, y, z [um], t [s]
     reasons: list  # why each stopped
     # of each, the carriers not yet trapped at the middle of every step of
-    # its path, with their sign: an array (points - 1,), as `surviving` gives
+    # its path, with their sign: an array (points - 1,), as `surviving`
+    # gives; None where nothing is trapped
     remaining: list
 
 
