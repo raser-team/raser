@@ -1346,3 +1346,136 @@ def test_a_set_value_by_short_name_replaces_the_one_the_config_had_and_runs_agai
 def test_one_address_given_to_set_and_to_scan_at_once_is_refused(started: list[Any]) -> None:
     with pytest.raises(ValueError, match="gain: given to --set and to --scan at once"):
         execute(GAIN, _kwargs(gain=None, width=None, set=["gain=7"], scan=["gain=5,9"], jobs=2))
+
+
+def test_a_point_run_unregistered_leaves_the_config_and_runs_none_of_its_scans(
+    started: list[Any], tmp_path: Path
+) -> None:
+    experiment = tmp_path / "toy"
+    experiment.mkdir()
+    config = {"workflow": "toy", "set": {}, "scan": {"width": [1.0, 2.0]}}
+    (experiment / "config.json").write_text(json.dumps(config))
+
+    execute(GAIN, _kwargs(gain=None, width=None, scan=["gain=7"], jobs=2), register=False)
+
+    assert json.loads((experiment / "config.json").read_text()) == config
+    assert _folders(started, experiment) == ["gain_7/seed_42"]
+
+
+def test_a_new_experiment_made_for_an_unregistered_point_keeps_no_scan(
+    started: list[Any], tmp_path: Path
+) -> None:
+    execute(GAIN, _kwargs(gain=None, width=None, scan=["gain=7"], jobs=2), register=False)
+
+    assert json.loads((tmp_path / "toy" / "config.json").read_text())["scan"] == {}
+
+
+def test_a_job_run_in_this_process_leaves_a_log_with_what_it_printed_and_why_it_failed(
+    started: list[Any], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def job(options: dict[str, Any]) -> None:
+        print("collected 3 points")
+        raise RuntimeError("no event selected")
+
+    with pytest.raises(RuntimeError):
+        execute(Workflow(name="toy", job=job, device=False), _kwargs())
+
+    log = (tmp_path / "toy" / "seed_42" / "batch" / "job_0.log").read_text()
+    assert "collected 3 points" in capsys.readouterr().out and "collected 3 points" in log
+    assert log.rstrip().endswith("RuntimeError: no event selected")
+
+
+@pytest.mark.parametrize(
+    "given",
+    [
+        {"scan": ["gain=5*(step(x)-1)"]},
+        {"set": ["gain=5*(step(x)-1)"]},
+    ],
+)
+def test_a_value_that_cannot_name_a_folder_is_refused(started: list[Any], given: dict[str, Any]) -> None:
+    with pytest.raises(ValueError, match="holds more than letters, digits and"):
+        execute(GAIN, _kwargs(gain=None, width=None, jobs=2, **given))
+    assert started == []
+
+
+def test_two_values_that_would_name_one_folder_are_refused(started: list[Any]) -> None:
+    with pytest.raises(ValueError, match="'beam/muon' and 'other/muon' would both be the folder 'muon'"):
+        execute(GAIN, _kwargs(gain=None, width=None, scan=["gain=beam/muon,other/muon"], jobs=2))
+
+
+def _branches(ran: list[tuple[str, Any]]) -> Workflow:
+    """A first slice that nothing here changes; two slices that read no other
+    and share the option x; between them one of its own option y that reads
+    none; last one that reads the two of x."""
+
+    def piece(name: str, keys: tuple, needs: tuple) -> Slice:
+        return Slice(name, lambda options: ran.append((name, options.get("x"))), keys=keys, needs=needs)
+
+    return Workflow(
+        name="toy",
+        slices=(
+            piece("r", ("z",), ()),
+            piece("a", ("x",), ()),
+            piece("d", ("y",), ()),
+            piece("b", ("x",), ()),
+            piece("c", (), ("a", "b")),
+        ),
+        keys=("x", "y", "z"),
+        defaults={"x": 1, "y": 1, "z": 1},
+        device=False,
+    )
+
+
+def test_an_option_two_slices_read_runs_both_again_and_what_reads_them_but_not_the_rest(
+    started: list[Any], seeded: list[int], ran: list[tuple[str, Any]]
+) -> None:
+    execute(_branches(ran), _kwargs())
+    ran.clear()
+
+    execute(_branches(ran), _kwargs(x=2))
+
+    assert [name for name, _ in ran] == ["a", "b", "c"]
+
+
+def test_an_option_of_a_slice_nothing_reads_runs_that_slice_alone_again(
+    started: list[Any], seeded: list[int], ran: list[tuple[str, Any]]
+) -> None:
+    execute(_branches(ran), _kwargs())
+    ran.clear()
+
+    execute(_branches(ran), _kwargs(y=2))
+
+    assert [name for name, _ in ran] == ["d"]
+
+
+# a and b: one of them is given, a by default
+EITHER = Workflow(
+    name="toy", job=lambda options: None, keys=("a", "b"), defaults={"a": 1}, device=False, exclusive=(("a", "b"),)
+)
+
+
+def test_a_key_of_a_group_given_leaves_out_the_default_of_the_other(started: list[Any], tmp_path: Path) -> None:
+    execute(EITHER, _kwargs(b=5))
+
+    options = _options(tmp_path / "toy" / "seed_42")
+    assert options["b"] == 5 and "a" not in options
+
+
+def test_the_command_line_decides_a_group_over_the_set_of_the_config(started: list[Any], tmp_path: Path) -> None:
+    experiment = tmp_path / "toy"
+    experiment.mkdir()
+    (experiment / "config.json").write_text(json.dumps({"workflow": "toy", "set": {"b": 5}, "scan": {}}))
+
+    execute(EITHER, _kwargs())
+    assert "a" not in _options(experiment / "seed_42")  # the set's b over the default a
+
+    execute(EITHER, _kwargs(a=2, seed=43))
+    options = _options(experiment / "seed_43")
+    assert options["a"] == 2 and "b" not in options
+
+
+def test_two_keys_of_a_group_in_one_layer_are_refused(started: list[Any]) -> None:
+    with pytest.raises(ValueError, match="a and b are given at once in the command line"):
+        execute(EITHER, _kwargs(a=2, b=5))
+    with pytest.raises(ValueError, match="a and b are given at once in the defaults of toy"):
+        Workflow(name="toy", keys=("a", "b"), defaults={"a": 1, "b": 2}, exclusive=(("a", "b"),))

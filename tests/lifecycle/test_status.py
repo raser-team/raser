@@ -84,3 +84,21 @@ def test_an_experiment_inside_is_no_seed_folder_and_a_point_without_runs_is_not_
     lines = status._lines(plain, root, {"scan": []})
 
     assert lines == [f"{root}: not started", f"{root / 'x_2'}: not started"]
+
+
+def test_a_point_on_disk_that_the_config_does_not_ask_for_is_listed_as_another_experiments(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("RASER_PROJECT_PATH", str(tmp_path))
+    field = Workflow(name="toy", job=print, keys=("x",), defaults={"x": 1}, device=False, seeds=False)
+    root = tmp_path / "toy"
+    (root / "x_2" / "batch").mkdir(parents=True)
+    (root / "config.json").write_text(json.dumps({"workflow": "toy", "scan": {}}))
+    (root / "run.json").write_text(json.dumps({"point": "", "options": {"x": 1}, "files": {}}))
+    (root / "x_2" / "run.json").write_text(json.dumps({"point": "x_2", "options": {"x": 2}, "files": {}}))
+    mark(root / "x_2", 0).touch()
+
+    lines = status._lines(field, root, {"scan": []})
+
+    assert f"{root / 'x_2'}: asked for by another experiment, not in this config" in lines
+    assert lines[lines.index(f"{root / 'x_2'}: asked for by another experiment, not in this config") + 1].split()[:2] == ["job", "1/1"]
