@@ -156,3 +156,14 @@ def test_the_gain_along_a_path_multiplies_only_the_carriers_not_yet_trapped():
     )
     assert made == pytest.approx(100.0 * alpha / k * math.expm1(k * 40.0), rel=0.02)
     assert made < 0.9 * 100.0 * math.expm1(alpha * 40.0)
+
+
+def test_the_gain_pairs_are_trapped_as_they_drift_from_where_they_start():
+    current = CalCurrent(
+        _device(irradiation_model="constant"), _Trapping(), [100.0], [[50.0, 50.0, 40.0, 0.0]], diffusion=False,
+    )
+
+    gain = current.gain_current.hole_system
+    longest = max(range(len(gain.paths)), key=lambda k: gain.paths[k][-1][3] - gain.paths[k][0][3])
+    duration = gain.paths[longest][-1][3] - gain.paths[longest][0][3]
+    assert gain.remaining[longest][-1] / gain.carriers[longest] == pytest.approx(math.exp(-2.0e9 * duration), rel=0.02)

@@ -55,3 +55,15 @@ def test_pairs_made_inside_a_collection_region_arrive_in_the_bin_of_their_time()
     assert t0 == 0.0
     assert current.shape[1] == 0 + 20 + 1
     assert arrived[0] == pytest.approx(2.0)
+
+
+def test_the_window_reaches_as_far_after_the_last_deposit_as_after_the_first() -> None:
+    # deposits at 0 and 3.4 steps: the bins run to the bin of the last, 3, and
+    # the 20 steps of the window after it
+    seeding.seed_generators(1)
+    _, current, _ = collect_by_diffusion(
+        _pixels(), [1.0, 1.0], [[12.5, 12.5, 5.0, 0.0], [12.5, 12.5, 5.0, 3.4 * 50e-12]], 1e-9, 50e-12
+    )
+
+    assert current.shape[1] == 3 + 20 + 1
+    assert current[0, 3] * 50e-12 / -ELEMENTARY_CHARGE == pytest.approx(1.0)
