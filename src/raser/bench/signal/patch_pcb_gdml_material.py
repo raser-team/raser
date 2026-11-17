@@ -1,10 +1,9 @@
 import os
 import re
 import sys
-import json
 from pathlib import Path
 
-from raser.supports.paths import app_file_path
+from raser.components.loader import load_python_component
 from raser.supports.paths import project_path
 
 # TODO: Receive the Signal-owned GDML configuration path from the caller.
@@ -12,7 +11,6 @@ from raser.supports.paths import project_path
 def patch_gdml():
     raw_path = project_path('g4experiment', 'pcb_readout_raw.gdml')
     out_path = Path(raw_path).with_name('pcb_readout.gdml')
-    json_path = app_file_path('bench/signal', 'pcb_readout_gdml.json')
 
     if not os.path.exists(raw_path):
         print(f"[Error] 找不到原始文件: {raw_path}", file=sys.stderr)
@@ -107,31 +105,17 @@ def patch_gdml():
     )
 
     # ====================================================
-    # 步骤 5：处理 JSON 配置防偏移干扰
+    # 步骤 5：核对 g4setup 脚本里 GDML 的放法没有另加偏移
     # ====================================================
-    if os.path.exists(json_path):
-        print(f"[Info] 正在检查和修正 JSON 配置文件: {json_path}")
-        try:
-            with open(json_path, 'r', encoding='utf-8') as jf:
-                config = json.load(jf)
-            
-            modified = False
-            if 'gdml' in config:
-                if config['gdml'].get('position_um') != [0, 0, 0]:
-                    config['gdml']['position_um'] = [0, 0, 0]
-                    modified = True
-                if config['gdml'].get('auto_center') is not False:
-                    config['gdml']['auto_center'] = False
-                    modified = True
-            
-            if modified:
-                with open(json_path, 'w', encoding='utf-8') as jf:
-                    json.dump(config, jf, indent=4)
-                print(f"[Info] 成功将 JSON 配置文件中的偏移坐标归零。")
-            else:
-                print(f"[Info] JSON 配置文件坐标正常，无需修改。")
-        except Exception as e:
-            print(f"[Warning] 修改 JSON 配置失败: {e}")
+    setup = Path(__file__).parent / 'components' / 'g4setup' / 'pcb_readout_gdml.py'
+    gdml = load_python_component('g4setup', setup)[1].G4SETUP.get('gdml', {})
+    if gdml.get('position_um') != [0, 0, 0] or gdml.get('auto_center') is not False:
+        print(
+            "[Warning] g4setup/pcb_readout_gdml.py 的 gdml 段应当是 position_um = [0, 0, 0]、"
+            "auto_center = False（GDML 已在上面居中），现在是 "
+            f"{gdml.get('position_um')}、{gdml.get('auto_center')}",
+            file=sys.stderr,
+        )
 
     # ====================================================
     # 保存结果
