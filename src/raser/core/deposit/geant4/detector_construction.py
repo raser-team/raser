@@ -182,9 +182,13 @@ class GeneralDetectorConstruction(g4b.G4VUserDetectorConstruction):
                     f"Conflicting Geant4 material definition for {compound_name}"
                 )
         else:
+            # natoms_1 and natoms_2 are shares of the atoms; Geant4 takes a
+            # fraction given as a number as a share of the mass.
+            mass_1 = object["natoms_1"] * material_1.GetA()
+            mass_2 = object["natoms_2"] * material_2.GetA()
             compound = g4b.G4Material(compound_name, material_density, 2)
-            compound.AddElement(material_1, object["natoms_1"] * g4b.perCent)
-            compound.AddElement(material_2, object["natoms_2"] * g4b.perCent)
+            compound.AddElement(material_1, mass_1 / (mass_1 + mass_2))
+            compound.AddElement(material_2, mass_2 / (mass_1 + mass_2))
             self.compound_materials[compound_name] = (compound, compound_signature)
         translation = g4b.G4ThreeVector(
             object["position_x"] * g4b.um,
