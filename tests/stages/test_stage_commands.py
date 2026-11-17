@@ -158,3 +158,16 @@ def test_reco_runs_the_chain_up_to_the_reconstruction_of_the_waveforms(
     assert _slices(capsys.readouterr().out) == ["deposit", "field", "current", "readout", "reconstruction"]
     with pytest.raises(SystemExit):
         main(["ana", str(work_root / "HPK-Si-PiN" / "signal"), "-threshold", "30"])  # set on the reconstruction now
+
+
+def test_gen_takes_the_place_of_the_events_a_job_records_and_both_at_once_are_refused(
+    work_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(jobs, "run_indexed_jobs", lambda *a, **k: None)
+
+    assert main(["dep", "HPK-Si-PiN", "-gen", "30", "--seed", "1", "-s", "2"]) == 0
+
+    options = json.loads((work_root / "HPK-Si-PiN" / "signal" / "seed_1" / "run.json").read_text())["options"]
+    assert options["generated_per_job"] == 30 and "events_per_job" not in options
+    with pytest.raises(ValueError, match="events_per_job and generated_per_job are given at once"):
+        main(["dep", "HPK-Si-PiN", "-gen", "30", "-evt", "5", "--seed", "2", "-s", "2"])
