@@ -416,6 +416,24 @@ class CalCurrentGain(CalCurrent):
         emitted_segments = 0
         field_failures = 0
 
+        def emit(segment, pairs):
+            """Start `pairs` gain pairs along the segment (x0, y0, z0, t0,
+            x1, y1, z1, t1), in emit_slices clusters at the middles of its
+            equal parts."""
+            if max_carriers > 0 and len(gain_starts) + emit_slices > max_carriers:
+                raise ValueError(
+                    "the gain of {} makes more than gain_max_carriers = {} clusters "
+                    "of carriers: raise it in the device file".format(my_d.det_name, max_carriers)
+                )
+            x0, y0, z0, t0, x1, y1, z1, t1 = segment
+            for slice_idx in range(emit_slices):
+                fraction = (slice_idx + 0.5) / emit_slices
+                gain_starts.append((
+                    x0 + fraction * (x1 - x0), y0 + fraction * (y1 - y0), z0 + fraction * (z1 - z0),
+                    t0 + fraction * (t1 - t0),
+                ))
+                gain_pairs.append(pairs / emit_slices)
+
         for carrier_system in (my_current.electron_system, my_current.hole_system):
             if carrier_system is None:
                 continue
@@ -468,6 +486,12 @@ class CalCurrentGain(CalCurrent):
                     exponent = min(exponent, 50.0)
                     new_pairs = active_pairs * math.expm1(exponent)
                     if new_pairs <= 0:
+                        # the growth stops: what grew since the last emission
+                        # starts on the last segment it grew on
+                        if pending_pairs > 0:
+                            emit(last_growth, pending_pairs)
+                            pending_pairs = 0.0
+                            emitted_segments += 1
                         continue
                     active_pairs += new_pairs
                     pending_pairs += new_pairs
@@ -475,33 +499,14 @@ class CalCurrentGain(CalCurrent):
                     if pending_pairs < min_pairs:
                         continue
 
-                    slices = emit_slices
-                    if max_carriers > 0 and len(gain_starts) + slices > max_carriers:
-                        raise ValueError(
-                            "the gain of {} makes more than gain_max_carriers = {} clusters "
-                            "of carriers: raise it in the device file".format(my_d.det_name, max_carriers)
-                        )
-                    for slice_idx in range(slices):
-                        fraction = (slice_idx + 0.5) / slices
-                        gain_starts.append((
-                            x0 + fraction * dx, y0 + fraction * dy, z0 + fraction * dz,
-                            t0 + fraction * (t1 - t0),
-                        ))
-                        gain_pairs.append(pending_pairs / slices)
+                    emit(last_growth, pending_pairs)
                     pending_pairs = 0.0
                     emitted_segments += 1
 
-                # pairs too few to emit by the end of the path start at the
-                # middle of the last segment they grew on
+                # pairs too few to emit by the end of the path start on the
+                # last segment they grew on
                 if pending_pairs > 0:
-                    if max_carriers > 0 and len(gain_starts) >= max_carriers:
-                        raise ValueError(
-                            "the gain of {} makes more than gain_max_carriers = {} clusters "
-                            "of carriers: raise it in the device file".format(my_d.det_name, max_carriers)
-                        )
-                    x0, y0, z0, t0, x1, y1, z1, t1 = last_growth
-                    gain_starts.append(((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2, (t0 + t1) / 2))
-                    gain_pairs.append(pending_pairs)
+                    emit(last_growth, pending_pairs)
 
         logger.info("local gain emitted segments: %d", emitted_segments)
         if field_failures:

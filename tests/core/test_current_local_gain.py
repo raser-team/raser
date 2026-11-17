@@ -65,6 +65,9 @@ def test_pairs_too_few_to_emit_on_the_way_are_emitted_at_the_end_of_the_path() -
 
     assert sum(current.gain_current.hole_system.charges) == pytest.approx(expected, rel=1e-6)
     assert len(current.gain_current.hole_system.charges) == 6
+    # each path's pairs start on its last step: the electrons' near z = 0, the holes' near 50 um
+    births = sorted(float(path[0][2]) for path in current.gain_current.hole_system.paths)
+    assert max(births[:3]) < 3.0 and min(births[3:]) > 47.0
 
 
 class _ThinLayer(_Field):
@@ -92,3 +95,23 @@ def test_a_gain_that_needs_exactly_the_allowed_clusters_is_made_whole() -> None:
     births = sorted(float(path[0][2]) for path in current.gain_current.hole_system.paths)
     assert len(births) == 4
     assert births[-1] - births[0] > 0.5
+
+
+class _TwoLayers(_Field):
+    """Gain between z = 30 and 32 um and between 10 and 12 um, little elsewhere."""
+
+    def get_e_field_cached(self, x, y, z):
+        return (0.0, 0.0, FIELD if 10.0 < z < 12.0 or 30.0 < z < 32.0 else 5e4)
+
+
+def test_gain_pairs_too_few_to_emit_start_in_the_layer_they_grew_in() -> None:
+    # an electron from the top face multiplies in both layers, each time by
+    # fewer pairs than the threshold: each layer's pairs start in that layer
+    current = CalCurrent(
+        _device(gain_pair_threshold=1e30), _TwoLayers(), [1.0], [[50.0, 50.0, 50.0, 0.0]], diffusion=False
+    )
+
+    gain = current.gain_current.hole_system
+    births = sorted((float(path[0][2]), charge) for charge, path in zip(gain.charges, gain.paths))
+    assert len(births) == 2
+    assert 9.0 < births[0][0] < 12.5 and 29.0 < births[1][0] < 32.5
