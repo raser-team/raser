@@ -8,6 +8,20 @@ from pathlib import Path
 from typing import Callable
 
 
+@dataclass
+class Shared:
+    """What a slice reads that no experiment holds: several share it, such
+    as the field of a device in work/<device>/field. Whether it is done is
+    asked of it, not of the marks of the experiment."""
+
+    # (options, files) of a point -> the folder that holds it, or None when
+    # it has to be made first
+    ready: Callable
+    # (kwargs of the command, options, files) of a point: make it, in this
+    # process or as jobs on the cluster when the command has -b
+    start: Callable
+
+
 @dataclass(frozen=True)
 class Slice:
     """One stretch of a job, between two of the files it leaves behind."""
@@ -25,6 +39,9 @@ class Slice:
     # its points all read the same earlier slices. A run with same_seeds
     # shares the earlier slices in either case.
     new_events: bool = True
+    # Given: the slice reads something shared with other experiments; the
+    # command makes it first where it is not ready, and its jobs wait for it.
+    shared: Shared | None = None
 
 
 class Ended(Exception):

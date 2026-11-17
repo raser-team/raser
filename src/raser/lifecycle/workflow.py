@@ -169,7 +169,14 @@ def execute(workflow, kwargs):
             for k, piece in enumerate(workflow.slices[:first])
         ]
         names = ",".join(piece.name for piece in wanted)
-        todo.append((folder, left, stale, record, workflow.slices[again:], before, names))
+        # The shared slices this point reads: those before a slice it runs.
+        shared = [
+            piece
+            for k, piece in enumerate(workflow.slices)
+            if piece.shared
+            and any(to_run[later.name] for later in wanted if workflow.slices.index(later) >= k)
+        ]
+        todo.append((folder, left, stale, record, workflow.slices[again:], before, names, (shared, options, files)))
     if kwargs["dry_run"]:
         return None
     if commit.endswith("+dirty"):
@@ -193,17 +200,30 @@ def execute(workflow, kwargs):
             written = {old: v for old, v in written.items() if address.get(old, old) != key}
             written[key] = [_parse(value) for value in values.split(",")]
         _write(root / "config.json", {**config, "scan": written})
+    # What the points share and is not ready is made first, once for all the
+    # points that read the same of it.
+    started = set()
+    for *_, (shared, options, files) in todo:
+        for piece in shared:
+            same = json.dumps([piece.name, {key: options.get(key) for key in piece.keys}, files.get("device")])
+            if same not in started and piece.shared.ready(options, files) is None:
+                started.add(same)
+                piece.shared.start(kwargs, options, files)
     failed: list = []
-    for folder, left, stale, record, run_again, before, names in todo:
+    for folder, left, stale, record, run_again, before, names, (shared, options, files) in todo:
         slices.forget(run_again, folder)
+        unready = [piece.name for piece in shared if piece.shared.ready(options, files) is None]
         waiting = [
             i
             for i in left
-            if any(not slices.mark(place, i, piece).exists() for piece, place in before)
+            if unready or any(not slices.mark(place, i, piece).exists() for piece, place in before)
         ]
         if waiting:
             left = [i for i in left if i not in waiting]
-            needed = ", ".join(f"{piece} in {place}" for piece, place in before)
+            needed = ", ".join(
+                [f"{name}, shared with other experiments" for name in unready]
+                + [f"{piece} in {place}" for piece, place in before]
+            )
             print(f"{folder}: jobs {waiting} wait for {needed}; run the command again when it is done")
             failed.append(f"  {folder}: jobs {waiting} wait for {needed}")
         if stale and workflow.seeds:

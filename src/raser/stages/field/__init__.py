@@ -6,6 +6,7 @@ what the solve read from the device: the field is solved again from the start
 when any of that has changed.
 """
 
+import argparse
 import copy
 import json
 import os
@@ -15,6 +16,8 @@ from raser.core.device.build_device import Detector
 from raser.core.field.reading import changed
 from raser.core.field.solved import DEFAULT_MODE
 from raser.core.field.solved import HAS_DEVSIM
+from raser.core.field.solved import solved_field
+from raser.lifecycle.slices import Shared
 from raser.lifecycle.workflow import Workflow
 from raser.lifecycle.workflow import execute
 
@@ -230,6 +233,53 @@ WORKFLOW = Workflow(
 
 def run(kwargs):
     return execute(WORKFLOW, kwargs)
+
+
+def _flux_of_run(my_d, options):
+    """The flux of the field a run of the chain takes: its option, else that of the device."""
+    if options.get("irradiation") is not None:
+        return float(options["irradiation"])
+    return float(my_d.irradiation_flux)
+
+
+def ready(options, files):
+    """The folder of the field a point of the chain takes, or None when
+    `raser field` has to solve it: there is none at its flux and mode, it
+    was solved for another device or under other "field" settings, or not
+    at the bias of the point."""
+    device = files["device"]
+    my_d = Detector(device["det_name"], device)
+    try:
+        folder = solved_field(my_d, my_d.voltage, _flux_of_run(my_d, options))
+    except (FileNotFoundError, ValueError):
+        return None
+    old = json.loads((folder / "run.json").read_text())
+    if outdated(old, {"options": old["options"], "files": {"device": device}}) is not None:
+        return None
+    return folder
+
+
+def start(kwargs, options, files):
+    """`raser field <device> -bias <bias of the point>` for a field that is
+    not ready, at the flux of the point in a folder of its own when that is
+    not the device's; as jobs on the cluster when the command has -b."""
+    device = files["device"]
+    my_d = Detector(device["det_name"], device)
+    words = ["field", device["det_name"], "-bias", str(my_d.voltage)]
+    flux = _flux_of_run(my_d, options)
+    if flux != float(my_d.irradiation_flux):
+        words += ["--scan", f"irradiation_flux={flux:g}"]
+    parser = argparse.ArgumentParser(prog="raser")
+    register(parser.add_subparsers(dest="_command"))
+    field_kwargs = vars(parser.parse_args(words))
+    field_kwargs.update(
+        batch=kwargs["batch"], mem=kwargs["mem"], _argv=words, _entry_command_prefix=("field",)
+    )
+    print("the field is not ready: " + " ".join(["raser", *words]))
+    execute(WORKFLOW, field_kwargs)
+
+
+SHARED = Shared(ready=ready, start=start)
 
 
 def register(subparsers):

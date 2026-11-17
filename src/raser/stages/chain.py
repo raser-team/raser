@@ -5,6 +5,7 @@ slices import their stage when they run.
 """
 
 from raser.lifecycle.slices import Slice
+from raser.stages import field
 
 KEYS = (
     "source",
@@ -75,6 +76,17 @@ def _deposits(kwargs):
     deposit.deposits(kwargs)
 
 
+def _field(kwargs):
+    """The field the currents take: found, not solved. A command of the
+    chain solves it before the jobs start."""
+    folder = field.SHARED.ready(kwargs, kwargs["_files"])
+    if folder is None:
+        raise FileNotFoundError(
+            f"no field of {kwargs['det_name']} ready for this run: solve it with `raser field {kwargs['det_name']}`"
+        )
+    return {"field": str(folder)}
+
+
 def _currents(kwargs):
     from . import current
 
@@ -96,7 +108,10 @@ SLICES = (
         keys=("source", "g4setup", "events_per_job", "edep_min", "edep_max", "fano"),
         kinds=("source", "g4setup"),
     ),
-    Slice("currents", _currents, keys=("voltage", "irradiation", "plots")),
+    # The field is shared by the experiments of a device, in work/<device>/field;
+    # the deposits do not read it.
+    Slice("field", _field, keys=("voltage", "irradiation"), shared=field.SHARED),
+    Slice("currents", _currents, keys=("plots",)),
     # The electronics works on what was measured: its points read the same currents.
     Slice("waveforms", _waveforms, keys=("amplifier",), new_events=False),
 )

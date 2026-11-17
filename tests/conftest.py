@@ -19,6 +19,15 @@ if str(SOURCE_ROOT) not in sys.path:
 
 
 @pytest.fixture
+def fields_ready(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The field every point of the chain reads is there: commands of the
+    chain do not solve one."""
+    from raser.stages import field
+
+    monkeypatch.setattr(field.SHARED, "ready", lambda options, files: Path("field"))
+
+
+@pytest.fixture
 def device_project(tmp_path: Path) -> Path:
     project = tmp_path / "TestPad"
     project.mkdir()
