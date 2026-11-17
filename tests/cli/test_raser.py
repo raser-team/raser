@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from raser.cli.raser import main
-from raser.apps import field
+from raser.stages import field
 from raser.lifecycle import jobs
 from raser.supports import process
 

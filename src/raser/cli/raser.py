@@ -17,17 +17,17 @@ from raser.supports.paths import work_root
 
 VERSION = "5.0"
 
-APPLICATIONS = (
-    "ana",
-    "bmos",
-    "cce",
-    "field",
-    "lumi",
-    "signal",
-    "tct",
-    "telescope",
-    "timeres",
-)
+APPLICATIONS = {  # command -> the module that registers it
+    "ana": "raser.stages.ana",
+    "bmos": "raser.apps.bmos",
+    "cce": "raser.apps.cce",
+    "field": "raser.stages.field",
+    "lumi": "raser.apps.lumi",
+    "signal": "raser.apps.signal",
+    "tct": "raser.apps.tct",
+    "telescope": "raser.apps.telescope",
+    "timeres": "raser.apps.timeres",
+}
 
 
 @contextmanager
@@ -59,8 +59,8 @@ def build_parser():
     subparsers = parser.add_subparsers(
         help="sub-command help", dest="_command", metavar="command"
     )
-    for name in APPLICATIONS:
-        importlib.import_module(f"raser.apps.{name}").register(subparsers)
+    for module in APPLICATIONS.values():
+        importlib.import_module(module).register(subparsers)
 
     return parser
 

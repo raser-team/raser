@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from raser.apps import field
+from raser.stages import field
 from raser.cli.raser import build_parser
 from raser.core.device.build_device import Detector
 from raser.core.device.build_device import device_json

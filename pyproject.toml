@@ -122,10 +122,8 @@ forbidden_modules = ["raser.lifecycle", "raser.cli"]
 name = "No experiment imports another"
 type = "independence"
 modules = [
-  "raser.apps.ana",
   "raser.apps.bmos",
   "raser.apps.cce",
-  "raser.apps.field",
   "raser.apps.lumi",
   "raser.apps.signal",
   "raser.apps.tct",

@@ -4,9 +4,9 @@ import h5py
 import numpy as np
 import pytest
 
-from raser.apps import ana
+from raser.stages import ana
 from raser.lifecycle import workflow
-from raser.apps.ana.point import write_point
+from raser.stages.ana.point import write_point
 from raser.core.current.currents import EventCurrents
 from raser.core.current.currents import append_currents
 from raser.core.readout.waveforms import EventWaveforms
