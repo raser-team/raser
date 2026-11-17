@@ -15,13 +15,15 @@ from .mip_track import mip_deposits
 # Kinds of source that Geant4 simulates.
 G4_KINDS = ("beam", "decay_source")
 
-# Without a g4setup the device stands alone in vacuum.
+# Without a g4setup the device stands alone in vacuum, the source 17 mm
+# above its top face and aimed at the middle of it.
 DEVICE_ALONE = {
     "geant4_model": "device",
     "object": {},
     "world": "G4_Galactic",
     "maxstep": 2,
     "g4_vis": False,
+    "source": {"at": [0, 0, -17000], "towards": [0, 0, 0], "angle": 0},
 }
 
 # Half the side of the Geant4 world [um] when nothing reaches farther.
@@ -29,6 +31,8 @@ WORLD_HALF_SIDE = 25000
 
 _DESCRIPTIVE_KEYS = ("name", "kind", "description")
 _PARTICLE_KEYS = ("par_in", "par_out", "par_randx", "par_randy", "par_type", "par_energy")
+# Where a source sits and where it aims belong to the g4setup.
+_PLACEMENT_KEYS = ("par_in", "par_out", "par_angle")
 
 
 def g4_configuration(
@@ -40,12 +44,18 @@ def g4_configuration(
     generated: int | None = None,
     generated_limit: int = GENERATED_LIMIT,
 ) -> dict:
-    """The configuration Geant4 runs with.
+    """The configuration Geant4 runs with, in the coordinates of Geant4: the
+    device fills z = 0 to l_z, its top face is z = 0 and above it is z < 0;
+    x and y are 0 in the middle of the device.
 
-    The g4setup gives the surroundings and the step limit, the source the
-    particle. A source with "particles" fires all of them in every event:
-    each takes from the source what it does not give itself (par_in, par_out,
-    par_randx, par_randy, par_type, par_energy).
+    The g4setup gives the surroundings, the step limit and where the source
+    is: its key "source" = {"at": [x, y, z], "towards": [x, y, z], "angle"}
+    [um, degree] puts the source at `at`, aims it at `towards` (par_in and
+    par_out of the configuration) and turns it by the angle of incidence
+    `angle` (see `tilted`). The source gives what it emits, and no place or
+    direction. A source with "particles" fires all of them in every event:
+    each takes from the source what it does not give itself (par_randx,
+    par_randy, par_type, par_energy) and is moved by its "offset" [um].
     The events and the window of the energy deposited in the device [MeV]
     are of the experiment and replace whatever the two files say:
     recorded_events is `events`, None when `generated` events are asked for;
@@ -53,15 +63,43 @@ def g4_configuration(
     generated_limit.
     """
     asked(events, generated)
+    placed = sorted(
+        {key for one in (source, *source.get("particles", ())) for key in one}
+        & set(_PLACEMENT_KEYS)
+    )
+    if placed:
+        raise ValueError(
+            f"the source {source.get('name')!r} gives {placed}: where a source sits "
+            "and where it aims are of the g4setup, in its key source = "
+            "{at, towards, angle}"
+        )
     configuration = copy.deepcopy(DEVICE_ALONE if g4setup is None else g4setup)
+    placement = configuration.pop("source", None)
+    if placement is None:
+        raise ValueError(
+            f"the g4setup {configuration.get('name')!r} does not place the source: "
+            "give it source = {at, towards, angle}"
+        )
     configuration.update(copy.deepcopy(source))
     for key in _DESCRIPTIVE_KEYS:
         configuration.pop(key, None)
+    configuration["par_in"] = [float(c) for c in placement["at"]]
+    configuration["par_out"] = [float(c) for c in placement["towards"]]
+    configuration["par_angle"] = placement.get("angle", 0)
     if "particles" in configuration:
-        configuration["particles"] = [
-            {**{key: configuration[key] for key in _PARTICLE_KEYS if key in configuration}, **one}
-            for one in configuration["particles"]
-        ]
+        particles = []
+        for one in configuration["particles"]:
+            one = dict(one)
+            offset = one.pop("offset", [0, 0, 0])
+            particles.append(
+                {
+                    **{key: configuration[key] for key in _PARTICLE_KEYS if key in configuration},
+                    **one,
+                    "par_in": [a + b for a, b in zip(configuration["par_in"], offset)],
+                    "par_out": [a + b for a, b in zip(configuration["par_out"], offset)],
+                }
+            )
+        configuration["particles"] = particles
     configuration["recorded_events"] = None if events is None else int(events)
     configuration["total_events"] = int(generated_limit if generated is None else generated)
     configuration["edep_min"] = edep_min
@@ -101,7 +139,8 @@ def world_half_side(my_d, configuration: dict) -> float:
 
 
 def tilted(source: dict, l_z: float) -> dict:
-    """`source` turned by its par_angle [degree], the angle of incidence.
+    """The configuration `source` turned by its par_angle [degree], the
+    angle of incidence.
 
     The points par_in and par_out [um] of the source, and those of its
     "particles", are turned by par_angle about the axis along y through the
@@ -163,7 +202,7 @@ def simulate_deposits(
     fano draws the number of pairs of each deposit with the Fano variance;
     without, it is energy / pair energy.
     A toy MIP takes only the step limit from the g4setup and does not use
-    g4_seed. The source comes at its par_angle [degree], see `tilted`.
+    g4_seed. The g4setup places the source, see `g4_configuration`.
     """
     deposits = _energy_deposits(
         my_d, source, g4setup, events, g4_seed, edep_min, edep_max, generated, generated_limit
@@ -184,7 +223,6 @@ def _energy_deposits(
             f"known: {['toy_mip', *G4_KINDS]}"
         )
     asked(events, generated)
-    source = tilted(source, my_d.l_z)
     if kind == "toy_mip":
         max_step = (DEVICE_ALONE if g4setup is None else g4setup)["maxstep"]
         return mip_deposits(
@@ -194,13 +232,10 @@ def _energy_deposits(
     # not need Geant4 must not pay for it.
     from .geant4.interaction import GeneralG4Interaction
 
-    my_g4 = GeneralG4Interaction(
-        my_d,
-        g4_configuration(
-            source, g4setup, events, edep_min, edep_max, generated, generated_limit
-        ),
-        g4_seed,
+    configuration = g4_configuration(
+        source, g4setup, events, edep_min, edep_max, generated, generated_limit
     )
+    my_g4 = GeneralG4Interaction(my_d, tilted(configuration, my_d.l_z), g4_seed)
     try:
         return my_g4.deposits()
     finally:

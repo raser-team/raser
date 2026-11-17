@@ -4,9 +4,6 @@
     "description" : "3 GeV protons from below the device (z = -6000 um) upwards, directions spread over 300 um at the target point",
     "par_type" : "proton",
     "par_energy" : 3000,
-    "par_in" : [0, 0, -6000],
-    "par_out" : [0, 0, 1000],
-    "par_angle" : 0,
     "par_randx" : 300,
     "par_randy" : 300
 }

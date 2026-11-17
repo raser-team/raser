@@ -13,7 +13,7 @@
         "colour": [1, 0.1, 0.8],
         "position_x": 0,
         "position_y": 0,
-        "position_z": 15000
+        "position_z": -15000
       },
       "Si_main": {
         "name": "Si_main",
@@ -24,7 +24,7 @@
         "colour": [1, 1, 1],
         "position_x": 0,
         "position_y": 0,
-        "position_z": 10000
+        "position_z": -10000
       },
       "Si_sub": {
         "name": "Si_sub",
@@ -35,7 +35,7 @@
         "colour": [0, 0, 1],
         "position_x": 0,
         "position_y": 0,
-        "position_z": 9833.5
+        "position_z": -9833.5
       }
     },
     "binary_compounds": {
@@ -53,7 +53,7 @@
         "colour": [0, 0.5, 0.8],
         "position_x": 0,
         "position_y": 0,
-        "position_z": 8933.5,
+        "position_z": -8933.5,
         "tub": {"tub_radius": 500, "tub_depth": 1500}
       },
       "pcb2": {
@@ -70,11 +70,12 @@
         "colour": [0, 0.5, 0.8],
         "position_x": 0,
         "position_y": 0,
-        "position_z": -1100,
+        "position_z": 1100,
         "tub": {"tub_radius": 500, "tub_depth": 1500}
       }
     }
   },
+  "source": {"at": [0, 0, -17000], "towards": [0, 0, 0], "angle": 0},
   "world": "G4_Galactic",
   "maxstep": 2,
   "g4_vis": false

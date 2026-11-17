@@ -8,16 +8,7 @@
     "par_energy": 3000,
     "maxstep": 2,
     "g4_vis": false,
-    "par_in": [
-        0,
-        0,
-        -60000
-    ],
-    "par_out": [
-        0,
-        0,
-        10000
-    ],
+    "source": {"at": [0, 0, -60000], "towards": [0, 0, 10000], "angle": 0},
     "par_randx": 300,
     "par_randy": 300,
     "gdml": {

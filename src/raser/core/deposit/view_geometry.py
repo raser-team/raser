@@ -95,7 +95,7 @@ def view_geometry(
         session = g4b.G4UIExecutive(1, [os.getcwd()])
     my_g4 = ViewedG4Interaction(
         my_d,
-        g4_configuration(tilted(source, my_d.l_z), g4setup, None, None, None, generated=events),
+        tilted(g4_configuration(source, g4setup, None, None, None, generated=events), my_d.l_z),
         g4_seed,
     )
     try:

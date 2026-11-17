@@ -16,9 +16,9 @@ SOURCE = {
     "kind": "beam",
     "par_type": "pi-",
     "par_energy": 1000.0,
-    "par_in": [0, 0, 1000],
-    "par_out": [0, 0, -1000],
 }
+# 1 mm above the top face, aimed down through the device
+PLACEMENT = {"at": [0, 0, -1000], "towards": [0, 0, 1000], "angle": 0}
 G4SETUP = {
     "name": "time_resolution",
     "geant4_model": "time_resolution",
@@ -29,6 +29,7 @@ G4SETUP = {
     "maxstep": 2,
     "g4_vis": False,
     "par_energy": 5.0,
+    "source": PLACEMENT,
 }
 
 
@@ -49,6 +50,14 @@ def test_experiment_overrides_source_overrides_g4setup() -> None:
     assert configuration["geant4_model"] == "time_resolution"
     assert configuration["object"] == {"elemental": {}}
     assert "name" not in configuration and "kind" not in configuration
+    # where the source is and where it aims are of the g4setup
+    assert configuration["par_in"] == [0, 0, -1000] and configuration["par_out"] == [0, 0, 1000]
+    with pytest.raises(ValueError, match="par_in"):
+        g4_configuration({**SOURCE, "par_in": [0, 0, 1000]}, G4SETUP, 1, None, None)
+    with pytest.raises(ValueError, match="does not place the source"):
+        g4_configuration(
+            SOURCE, {k: v for k, v in G4SETUP.items() if k != "source"}, 1, None, None
+        )
 
 
 def test_source_of_an_unknown_kind_is_refused() -> None:
@@ -71,29 +80,32 @@ def test_toy_mip_takes_the_step_limit_of_the_g4setup() -> None:
 
 
 def test_par_angle_turns_the_source_about_where_it_enters_the_device() -> None:
-    # 50 um thick; the source comes down along -z and enters at (0, 0, 50)
-    turned = tilted({**SOURCE, "par_angle": 60}, 50.0)
-    assert turned["par_in"] == pytest.approx([950 * math.sin(math.radians(60)), 0, 50 + 950 * 0.5])
-    assert turned["par_out"] == pytest.approx([-1050 * math.sin(math.radians(60)), 0, 50 - 1050 * 0.5])
-    assert SOURCE["par_in"] == [0, 0, 1000]
+    # 50 um thick; the source comes up along +z and enters the top face at (0, 0, 0)
+    placed = g4_configuration(
+        SOURCE, {**G4SETUP, "source": {**PLACEMENT, "angle": 60}}, 1, None, None
+    )
+    turned = tilted(placed, 50.0)
+    assert turned["par_in"] == pytest.approx([-1000 * math.sin(math.radians(60)), 0, -500])
+    assert turned["par_out"] == pytest.approx([1000 * math.sin(math.radians(60)), 0, 500])
+    assert placed["par_in"] == [0, 0, -1000]
     # a source 0.5 um above the face stays above it at any angle
-    close = {**SOURCE, "par_in": [0, 0, 500.5], "par_out": [0, 0, 0], "par_angle": 80}
-    assert tilted(close, 500.0)["par_in"][2] > 500.0
-    with pytest.raises(ValueError, match="toy_mip"):
-        simulate_deposits(DEVICE, {"kind": "toy_mip", "par_angle": 30}, None, 1, 0)
+    close = {"par_in": [0, 0, -0.5], "par_out": [0, 0, 500], "par_angle": 80}
+    assert tilted(close, 500.0)["par_in"][2] < 0.0
     with pytest.raises(ValueError, match="neither face"):
-        tilted({**SOURCE, "par_in": [0, 0, 20], "par_angle": 30}, 50.0)
+        tilted({"par_in": [0, 0, 20], "par_out": [0, 0, 500], "par_angle": 30}, 50.0)
 
 
 def test_every_particle_takes_from_the_source_what_it_does_not_give() -> None:
-    source = {**SOURCE, "particles": [{}, {"par_in": [30, 0, 1000], "par_energy": 80.0}]}
-    first, second = g4_configuration(source, None, 1, None, None)["particles"]
-    assert first["par_in"] == [0, 0, 1000] and first["par_energy"] == 1000.0
-    assert second["par_in"] == [30, 0, 1000] and second["par_energy"] == 80.0
-    assert second["par_out"] == [0, 0, -1000] and second["par_type"] == "pi-"
+    source = {**SOURCE, "particles": [{}, {"offset": [30, 0, 0], "par_energy": 80.0}]}
+    first, second = g4_configuration(source, G4SETUP, 1, None, None)["particles"]
+    assert first["par_in"] == [0, 0, -1000] and first["par_energy"] == 1000.0
+    assert second["par_in"] == [30, 0, -1000] and second["par_energy"] == 80.0
+    assert second["par_out"] == [30, 0, 1000] and second["par_type"] == "pi-"
     # par_angle turns the points of the particles with those of the source
-    turned = tilted({**source, "par_angle": 90}, 50.0)["particles"][1]
-    assert turned["par_in"] == pytest.approx([950, 0, 20])
+    placed = g4_configuration(
+        source, {**G4SETUP, "source": {**PLACEMENT, "angle": 90}}, 1, None, None
+    )
+    assert tilted(placed, 50.0)["particles"][1]["par_in"] == pytest.approx([-1000, 0, -30])
 
 
 def _box(position_x, side_x):

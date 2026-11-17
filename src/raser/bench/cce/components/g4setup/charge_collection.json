@@ -13,7 +13,7 @@
         "colour": [1, 0.1, 0.8],
         "position_x": 0,
         "position_y": 0,
-        "position_z": 89.3
+        "position_z": -89.3
       },
       "Ni": {
         "name": "Ni",
@@ -24,7 +24,7 @@
         "colour": [1, 0.8, 0.6],
         "position_x": 0,
         "position_y": 0,
-        "position_z": 89.395
+        "position_z": -89.395
       },
       "Ti": {
         "name": "Ti",
@@ -35,7 +35,7 @@
         "colour": [0.5, 0.1, 0.8],
         "position_x": 0,
         "position_y": 0,
-        "position_z": 89.38
+        "position_z": -89.38
       }
     },
     "binary_compounds": {
@@ -53,7 +53,7 @@
         "colour": [0.2, 0.6, 1],
         "position_x": 0,
         "position_y": 0,
-        "position_z": 89.4,
+        "position_z": -89.4,
         "tub": {
           "tub_radius": 5000,
           "tub_depth": 5000
@@ -93,7 +93,7 @@
         "colour": [0, 0.5, 0.8],
         "position_x": 0,
         "position_y": 0,
-        "position_z": 74.3,
+        "position_z": -74.3,
         "tub": {
           "tub_radius": 5000,
           "tub_depth": 15
@@ -113,7 +113,7 @@
         "colour": [0, 0.5, 0.8],
         "position_x": 0,
         "position_y": 0,
-        "position_z": -15,
+        "position_z": 15,
         "tub": {
           "tub_radius": 5000,
           "tub_depth": 1500
@@ -121,6 +121,7 @@
       }
     }
   },
+  "source": {"at": [0, 0, -17000], "towards": [0, 0, 0], "angle": 0},
   "world": "G4_Galactic",
   "maxstep": 2,
   "g4_vis": false
