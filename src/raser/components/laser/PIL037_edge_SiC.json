@@ -3,14 +3,14 @@
     "tech" : "SPA",
     "direction" : "edge",
 
-    "alpha" : 1000,
+    "alpha" : 21000,
     "refractionIndex" : 3.124,
 
     "wavelength" : 375,
     "temporal_FWHM" : 60e-12,
     "pulse_energy" : 1.23e-12,
     "spacial_FWHM" : 20,
-    "central_time" : 1e-9,
+    "central_time" : 20e-9,
 
     "pairs_per_group" : 1000,
     "groups" : 3200,
