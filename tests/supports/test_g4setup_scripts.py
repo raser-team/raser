@@ -38,18 +38,17 @@ def test_a_script_g4setup_is_its_dictionary_with_its_name_and_the_hash_of_the_fi
     assert given["file"] == str(project / "world.py") and given["sha256"] == read["sha256"]
 
 
-def test_a_json_g4setup_reads_as_it_always_did(project: Path) -> None:
+def test_a_json_g4setup_is_refused_and_told_to_be_a_script(project: Path) -> None:
     (project / "old.json").write_text(json.dumps({"world": "G4_AIR", "maxstep": 1}))
-
-    assert loader.read_g4setup("old") == {"world": "G4_AIR", "maxstep": 1}
-
-
-def test_a_script_and_a_json_of_one_name_in_one_place_are_refused(project: Path) -> None:
     (project / "world.py").write_text(SCRIPT)
     (project / "world.json").write_text("{}")
 
-    with pytest.raises(ValueError, match="both world.py and world.json"):
+    with pytest.raises(ValueError, match="old.py"):
+        loader.read_g4setup("old")
+    with pytest.raises(ValueError, match="world.py"):
         loader.read_g4setup("world")
+    with pytest.raises(ValueError, match="a g4setup is a script now"):
+        loader.read_g4setup(str(project / "old.json"))
 
 
 def test_a_script_of_one_path_and_content_runs_once(project: Path) -> None:

@@ -75,26 +75,21 @@ def load_python_component(kind: str, selector: str | Path) -> tuple[Path, Module
 
 
 def read_g4setup(selector: str | Path) -> dict[str, Any]:
-    """The g4setup `selector` names, as run.json records it.
-
-    From <name>.py: its G4SETUP, with "file", the name or the path as it was
-    given, and "sha256", of the file: a change of the script makes the runs
-    that took it out of date even when G4SETUP stays. Its build() is not
-    touched here; the deposits slice takes it when it runs. From <name>.json,
-    until the g4setups are scripts: the file as it is. A .py and a .json of
-    one name in one component root are an error."""
+    """The g4setup `selector` names, as run.json records it: the G4SETUP of
+    <name>.py, with "file", the name or the path as it was given, and
+    "sha256", of the file: a change of the script makes the runs that took
+    it out of date even when G4SETUP stays. Its build() is not touched here;
+    the deposits slice takes it when it runs. A g4setup that is a json file
+    is refused: g4setups are scripts."""
     if _explicit(selector):
-        path = Path(selector).expanduser()
-        if path.suffix != ".py":
-            return load_component("g4setup", selector)[1]
+        stale = [Path(selector).expanduser()] if Path(selector).suffix == ".json" else []
     else:
-        for root in component_roots():
-            script, data = root / "g4setup" / f"{selector}.py", root / "g4setup" / f"{selector}.json"
-            if script.is_file() and data.is_file():
-                raise ValueError(f"{root / 'g4setup'}: both {script.name} and {data.name}; keep one of them")
-            if data.is_file():
-                return load_component("g4setup", selector)[1]
-            if script.is_file():
-                break
+        stale = [root / "g4setup" / f"{selector}.json" for root in component_roots()]
+    for path in stale:
+        if path.is_file():
+            raise ValueError(
+                f"{path}: a g4setup is a script now; write it as {path.with_suffix('.py').name} "
+                "with its keys in G4SETUP"
+            )
     path, module = load_python_component("g4setup", selector)
     return {**module.G4SETUP, "file": str(selector), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
