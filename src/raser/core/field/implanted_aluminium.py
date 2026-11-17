@@ -9,19 +9,11 @@ import math
 
 import numpy as np
 
+from raser.core.model.incomplete_ionization import free_holes
 from raser.core.model.material import Material
 
 ELEMENTARY_CHARGE_C = 1.602176634e-19
 BOLTZMANN_EV_K = 8.617333262e-5
-# states of the valence band of 4H-SiC [cm^-3 K^-1.5], as the field has it
-VALENCE_STATES_CM3_K15 = 4.8e15
-
-# Spera et al., eq. 13: level of the acceptor above the valence band,
-# E_0 - ALPHA * N_A^(1/3)
-LEVEL_ALONE_EV = 0.216
-LEVEL_FALL_EV_CM = 3e-8
-# degeneracy of the level, eq. 4
-DEGENERACY = 4
 
 # Spera et al., the layers they measured
 IMPLANTED_CM3 = 1e20
@@ -63,26 +55,17 @@ ACTIVATION_SLOPE_EV, ACTIVATION_INTERCEPT, DONORS_PER_IMPLANTED, MOBILITY_LEFT =
 def activated(anneal_c):
     """Part of the implanted aluminium that sits as an acceptor after an
     anneal at anneal_c [C]: the Arrhenius line through the measured layers,
-    not above 1."""
+    not above 1. The layers were annealed at 1675 to 1825 C; outside that
+    range, e.g. at the 1500 C of sicar3, the line is extrapolated."""
     kt_ev = BOLTZMANN_EV_K * (anneal_c + ZERO_CELSIUS_K)
     return min(1.0, math.exp(ACTIVATION_INTERCEPT + ACTIVATION_SLOPE_EV / kt_ev))
 
 
 def holes(acceptors_cm3, donors_cm3, temperature_k):
-    """Free holes [cm^-3] of a layer with acceptors that are partly ionized
-    and compensating donors, Spera et al., eqs. 5, 6 and 13."""
-    level_ev = LEVEL_ALONE_EV - LEVEL_FALL_EV_CM * acceptors_cm3 ** (1 / 3)
-    freed_cm3 = (
-        VALENCE_STATES_CM3_K15
-        * temperature_k**1.5
-        / DEGENERACY
-        * math.exp(-level_ev / (BOLTZMANN_EV_K * temperature_k))
-    )
-    taken_cm3 = donors_cm3 + freed_cm3
-    return (
-        math.sqrt(taken_cm3**2 + 4 * freed_cm3 * (acceptors_cm3 - donors_cm3))
-        - taken_cm3
-    ) / 2
+    """Free holes [cm^-3] of a layer with aluminium acceptors that are partly
+    ionized and compensating donors: the level and the neutrality of
+    core/model, Spera et al., eqs. 5, 6 and 13."""
+    return free_holes("SiC", "Al", acceptors_cm3, donors_cm3, temperature_k)
 
 
 def sheet_resistance(dose_cm2, thickness_cm, anneal_c, temperature_k):
