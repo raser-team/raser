@@ -197,3 +197,22 @@ def test_laser_pulse_is_one_event_of_deposits_with_the_spread_of_its_times(tmp_p
     assert sum(event.e) == pytest.approx(sum(groups.ionized_pairs) * 3.6e-6)
     assert sorted(set(np.round(np.array(event.t_fwhm) / 60e-15, 6))) == [round(1 / math.sqrt(2), 6), 1.0]
     assert event.z_start == event.z
+    # group by group, in the order of LaserInjection: one photon or two
+    assert event.t_fwhm == [float(w) for w in groups.time_FWHM]
+    assert event.pairs == pytest.approx(groups.ionized_pairs)
+
+
+@pytest.mark.parametrize("name", ["TPA1550_top_Si", "TPA1550_edge_Si"])
+def test_two_photon_presets_make_a_signal_and_absorb_little(name: str) -> None:
+    # a waist w0 and a Rayleigh length in silicon belong together:
+    # z_R = π w0² n / λ (w0 = FWHM / sqrt(2 ln2)); and the pulse of the preset
+    # makes more than 100 pairs in 50 um of silicon while two-photon
+    # absorption takes a small share of its photons (the weak-absorption
+    # range the formula holds in)
+    with open(component_path("laser", name + ".json")) as file:
+        preset = json.load(file)
+    w0 = preset["spacial_FWHM"] / math.sqrt(2 * math.log(2))
+    assert preset["l_Rayleigh"] == pytest.approx(math.pi * w0**2 * preset["refractionIndex"] / 1.55, rel=0.01)
+    laser = LaserInjection(SimpleNamespace(l_x=50.0, l_y=50.0, l_z=50.0, material="Si"), preset)
+    photons = preset["pulse_energy"] * 1.55e-6 / H_C
+    assert 100 < sum(laser.ionized_pairs) < 0.1 * photons
