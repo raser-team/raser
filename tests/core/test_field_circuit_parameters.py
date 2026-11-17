@@ -5,7 +5,9 @@ import pytest
 
 from raser.core.device.build_device import Detector
 from raser.core.device.build_device import device_file
+from raser.core.field.assets import field_pickle_path
 from raser.core.field.circuit_parameters import device_circuit
+from raser.core.field.circuit_parameters import field_circuit
 from raser.core.field.circuit_parameters import junction_capacitance
 from raser.core.readout.spice import solve
 
@@ -269,3 +271,52 @@ def test_strips_of_a_row_have_the_bias_resistance_and_coupling_of_the_device():
     assert "Ctop2_coupling top2_pad top2_port 1e-11" in circuit.lines
     assert "Ctop1_top2 top1_pad top2_pad" in " ".join(circuit.lines)
     assert circuit.outputs == {"top1": "top1_port", "top2": "top2_port"}
+
+
+def test_field_gives_a_planar_device_its_undepleted_bulk_for_its_area(tmp_path):
+    # 10 um of the 50 um left undepleted at 100 V: 9.4 Ohm cm^2 and 262 pF per
+    # cm^2 of the field, on the 0.0169 cm^2 of HPK-Si-PiN
+    device = _device(bias={"electrode": "top", "voltage": 100.0})
+    (tmp_path / "run.json").write_text(
+        json.dumps(
+            {
+                "files": {"device": {"det_name": "HPK-Si-PiN", "area_factor": 0.0169}},
+                "solved": {"undepleted": [100.0]},
+            }
+        )
+    )
+    (tmp_path / "100.0V.undepleted.json").write_text(
+        json.dumps(
+            {
+                "undepleted_width_um": 10.0,
+                "specific_resistance_ohm_cm2": 9.4,
+                "specific_capacitance_pF": 262.0,
+            }
+        )
+    )
+
+    row, undepleted = field_circuit(tmp_path, device)
+
+    assert row is None
+    assert undepleted == (
+        pytest.approx(9.4 / 0.0169, rel=1e-12),
+        pytest.approx(262.0e-12 * 0.0169, rel=1e-12, abs=0),
+    )
+
+
+def test_field_gives_a_row_of_strips_the_capacitances_it_stored(tmp_path):
+    device = _strips()
+    stored = field_pickle_path(
+        tmp_path / "weightingfield" / "top", "Capacitance", device.voltage
+    ).with_suffix(".json")
+
+    with pytest.raises(FileNotFoundError, match="-wf"):
+        field_circuit(tmp_path, device)
+
+    stored.parent.mkdir(parents=True)
+    stored.write_text(json.dumps(ROW))
+    row, undepleted = field_circuit(tmp_path, device)
+
+    # a strip device of two dimensions has no slab of undepleted bulk
+    assert row == ROW
+    assert undepleted is None

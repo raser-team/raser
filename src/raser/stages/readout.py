@@ -6,8 +6,10 @@ from raser.core.current.cal_current import electrode_names
 from raser.core.device import build_device as bdv
 from raser.core.readout.circuit import named_chain
 from raser.core.field.circuit_parameters import device_circuit
+from raser.core.field.circuit_parameters import field_circuit
 from raser.core.field.circuit_parameters import device_grid
 from raser.core.field.circuit_parameters import device_row
+from raser.core.field.solved import solved_field
 from raser.core.readout.job import write_waveforms
 from raser.stages.files import output
 
@@ -21,6 +23,12 @@ def waveforms(kwargs, position=None):
     layer and is read out on the strips or the pads on it. Its sheet
     resistance is that of its file unless sheet_resistance [Ohm] is
     given; a device without a resistive layer takes none.
+
+    Other devices take from the field at their bias the capacitances between
+    strips of a row and the undepleted bulk of a planar device; the junction
+    capacitance is the measured one of the device file, else that of the
+    row, else, for now, the estimate of the device, until the field gives
+    one at every bias.
 
     With a position, the slice readout.<position> on the file of
     current.<position>; a position that left no currents leaves no file and
@@ -40,7 +48,13 @@ def waveforms(kwargs, position=None):
             f"resistance of {sheet_ohm} Ohm"
         )
     else:
-        circuit, values = device_circuit(my_d, electrodes)
+        flux = my_d.irradiation_flux
+        if kwargs.get("irradiation") is not None:
+            flux = float(kwargs["irradiation"])
+        row, undepleted = field_circuit(solved_field(my_d, my_d.voltage, flux), my_d)
+        circuit, values = device_circuit(
+            my_d, electrodes, row=row, solved_undepleted=undepleted
+        )
     write_waveforms(
         output(kwargs, current),
         output(kwargs, "readout" if position is None else f"readout.{position}"),
