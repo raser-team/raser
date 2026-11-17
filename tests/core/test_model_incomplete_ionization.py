@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from raser.core.model.incomplete_ionization import ionized_fraction
+from raser.core.model.incomplete_ionization import free_holes, ionized_fraction
 
 K_EV = 8.617333262e-5
 
@@ -43,3 +43,23 @@ def test_a_frozen_out_dopant_is_not_ionized_unless_there_are_no_carriers() -> No
 
     assert fraction.value(carriers=1.0, N_band=1e18, T=20.0) == 0.0
     assert fraction.value(carriers=0.0, N_band=1e18, T=20.0) == 1.0
+
+
+def test_aluminium_in_sic_frees_holes_as_the_neutrality_gives() -> None:
+    # p + N_D = N_A p1/g / (p1/g + p), p1/g = N_v exp(-dE/kT)/4 at 300 K,
+    # dE = 216 meV - 3e-8 eV cm N_A^(1/3)
+    acceptors = 1e17
+    level = 0.216 - 3e-8 * acceptors ** (1 / 3)
+    p1_g = 4.8e15 * 300.0**1.5 / 4 * math.exp(-level / (K_EV * 300.0))
+
+    for donors in (0.0, 5e16):
+        holes = free_holes("SiC", "Al", acceptors, donors, 300.0)
+        assert holes + donors == pytest.approx(acceptors * p1_g / (p1_g + holes), rel=1e-9)
+    assert free_holes("SiC", "Al", acceptors, 5e16, 300.0) < 0.5 * free_holes("SiC", "Al", acceptors, 0.0, 300.0)
+
+
+def test_a_dense_dopant_ionizes_more_as_its_level_falls() -> None:
+    sparse = ionized_fraction("SiC", "Al", 1e16).value(carriers=1e17, N_band=2.49e19, T=300.0)
+    dense = ionized_fraction("SiC", "Al", 1e20).value(carriers=1e17, N_band=2.49e19, T=300.0)
+
+    assert dense > 1.5 * sparse
