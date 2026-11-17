@@ -17,6 +17,17 @@ def test_values_inside_one_sigma_give_the_width_of_the_whole_gaussian() -> None:
     assert sigma_error == pytest.approx(4.8 * 30.0 / np.sqrt(2 * len(inside)), rel=0.05)
 
 
+def test_fit_of_a_tail_without_a_core_keeps_its_mean_inside_the_window() -> None:
+    # values that only rise towards the upper edge: a Gaussian far beyond
+    # it with a large sigma fits them best, unless the mean is held inside
+    values = 1.0 + np.log(np.random.default_rng(4).uniform(np.exp(-3.0), 1.0, 2000)) / 3.0
+
+    mean, _, sigma, _ = truncated_gaussian(values, 0.0, 1.0)
+
+    assert 0.0 <= mean <= 1.0
+    assert sigma < 1.0
+
+
 def test_core_width_is_the_width_of_the_core_under_a_wide_tail() -> None:
     rng = np.random.default_rng(2)
     values = np.concatenate([rng.normal(100.0, 30.0, 20000), rng.normal(100.0, 600.0, 4000)])
