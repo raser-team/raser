@@ -28,3 +28,29 @@ def conductive(electrons, holes, net_doping, mu_n, mu_p):
     low_resistivity = conductivity * RESISTIVITY > 1.0
     undepleted = (doped > 0) & (electrons + holes > UNDEPLETED * doped)
     return low_resistivity | undepleted
+
+
+def undepleted_bulk(depth, electrons, holes, net_doping, mu_n, mu_p):
+    """The bulk of a planar device that is not depleted, along its depth: its
+    width in cm and its resistance times its area in Ohm cm^2.
+
+    `depth` is in cm at the nodes, the rest as for `conductive`. A node is of
+    the undepleted bulk when it is doped and not depleted and its resistivity
+    is not below RESISTIVITY: the heavily doped layers under the electrodes
+    are not of it. An interval between two such nodes is of the bulk, with
+    the mean of their resistivities. A fully depleted device has no such
+    interval: both values are 0.
+    """
+    order = np.argsort(np.asarray(depth, dtype=float))
+    depth = np.asarray(depth, dtype=float)[order]
+    electrons = np.asarray(electrons, dtype=float)[order]
+    holes = np.asarray(holes, dtype=float)[order]
+    doped = np.abs(np.asarray(net_doping, dtype=float))[order]
+    conductivity = ELEMENTARY_CHARGE * (mu_n * electrons + mu_p * holes)
+    of_bulk = (doped > 0) & (electrons + holes > UNDEPLETED * doped) & (conductivity * RESISTIVITY <= 1.0)
+    between = of_bulk[:-1] & of_bulk[1:]
+    width = np.diff(depth)[between]
+    resistivity = np.zeros(len(depth))
+    resistivity[of_bulk] = 1.0 / conductivity[of_bulk]
+    mean = 0.5 * (resistivity[:-1] + resistivity[1:])[between]
+    return float(width.sum()), float((width * mean).sum())

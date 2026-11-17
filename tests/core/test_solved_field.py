@@ -9,6 +9,7 @@ from raser.core.device.build_device import Detector
 from raser.core.device.build_device import device_json
 from raser.core.field.reading import Reading
 from raser.core.field.solved import solved_field
+from raser.core.field.solved import solved_undepleted
 
 
 def _device(change=lambda content: None) -> Detector:
@@ -88,3 +89,21 @@ def test_a_run_takes_the_field_of_the_mode_it_asks_for(fields: Path) -> None:
     assert solved_field(_device(), 100.0, 0, "fast") == fields / "mode_fast"
     with pytest.raises(FileNotFoundError, match=r"no semi_fast field.*\(0.0, 'fast'\), \(0.0, 'full'\).*--mode semi_fast"):
         solved_field(_device(), 100.0, 0, "semi_fast")
+
+
+def test_the_undepleted_bulk_of_a_field_is_taken_with_the_area_factor(fields: Path) -> None:
+    _field(fields, solved={"potential": [0.0, 100.0, 200.0], "undepleted": [100.0, 200.0]})
+    area = device_json("HPK-Si-PiN")["area_factor"]
+    (fields / "100.0V.undepleted.json").write_text(
+        json.dumps({"undepleted_width_um": 20.0, "specific_resistance_ohm_cm2": 26.0, "specific_capacitance_pF": 527.0})
+    )
+    (fields / "200.0V.undepleted.json").write_text(
+        json.dumps({"undepleted_width_um": 0.0, "specific_resistance_ohm_cm2": 0.0, "specific_capacitance_pF": None})
+    )
+
+    resistance, capacitance = solved_undepleted(fields, 100.0)
+    assert resistance == pytest.approx(26.0 / area)
+    assert capacitance == pytest.approx(527.0e-12 * area)
+    assert solved_undepleted(fields, 200.0) is None
+    with pytest.raises(FileNotFoundError, match=r"no undepleted bulk at 50.0 V.*raser field HPK-Si-PiN -bias 50.0"):
+        solved_undepleted(fields, 50.0)

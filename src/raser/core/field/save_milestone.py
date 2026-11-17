@@ -16,6 +16,7 @@ from .assets import field_pickle_path
 from . import devsim_draw
 from .create_parameter import create_parameter, delete_init
 from .conductive import conductive
+from .conductive import undepleted_bulk
 from raser.supports.output import create_path
 
 def conductive_of_region(device, region):
@@ -81,6 +82,25 @@ def milestone_save_1D(device, v, path, is_tcad):
         TrappingRate_p.extend(devsim.get_node_model_values(device=device, region=region, name=trap_p))
         if not is_tcad:
             Conductive.extend(conductive_of_region(device, region))
+            mu_n, mu_p, permittivity = (
+                float(devsim.get_parameter(device=device, region=region, name=name))
+                for name in ("mu_n", "mu_p", "Permittivity")
+            )
+
+    if not is_tcad:
+        # The undepleted bulk at this bias, per area: its resistance and its
+        # capacitance, which a run takes with the area factor of the device.
+        width, resistance = undepleted_bulk(x, Electrons, Holes, NetDoping, mu_n, mu_p)
+        layer = {
+            "voltage_V": float(v),
+            "undepleted_width_um": width * 1e4,
+            "specific_resistance_ohm_cm2": resistance,
+            "specific_capacitance_pF": 1e12 * permittivity / width if width else None,
+            "per": "cm^2",
+        }
+        with open(os.path.join(path, f"{float(v)}V.undepleted.json"), "w") as file:
+            json.dump(layer, file, indent=2)
+        save_solved(path, "undepleted", float(v))
 
     x = geometry_scale*np.array(x) # get x-node values
     Potential = np.array(Potential) # get the potential data
