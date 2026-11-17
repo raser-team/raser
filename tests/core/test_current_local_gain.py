@@ -65,3 +65,30 @@ def test_pairs_too_few_to_emit_on_the_way_are_emitted_at_the_end_of_the_path() -
 
     assert sum(current.gain_current.hole_system.charges) == pytest.approx(expected, rel=1e-6)
     assert len(current.gain_current.hole_system.charges) == 6
+
+
+class _ThinLayer(_Field):
+    """Gain only between z = 10 and 11 um: an electron from the top face multiplies once."""
+
+    def get_e_field_cached(self, x, y, z):
+        return (0.0, 0.0, 3e5 if 10.0 < z < 11.0 else 5e4)
+
+
+def test_a_gain_that_needs_more_slices_than_places_left_stops_with_an_error() -> None:
+    # one emission of four slices, with one place left: not one cluster in their stead
+    with pytest.raises(ValueError, match="gain_max_carriers = 1"):
+        CalCurrent(
+            _device(gain_max_carriers=1, local_gain_emit_slices=4), _ThinLayer(),
+            [100.0], [[50.0, 50.0, 50.0, 0.0]], diffusion=False,
+        )
+
+
+def test_a_gain_that_needs_exactly_the_allowed_clusters_is_made_whole() -> None:
+    current = CalCurrent(
+        _device(gain_max_carriers=4, local_gain_emit_slices=4), _ThinLayer(),
+        [100.0], [[50.0, 50.0, 50.0, 0.0]], diffusion=False,
+    )
+
+    births = sorted(float(path[0][2]) for path in current.gain_current.hole_system.paths)
+    assert len(births) == 4
+    assert births[-1] - births[0] > 0.5

@@ -476,14 +476,11 @@ class CalCurrentGain(CalCurrent):
                         continue
 
                     slices = emit_slices
-                    if max_carriers > 0:
-                        capacity = max_carriers - len(gain_starts)
-                        if capacity <= 0:
-                            raise ValueError(
-                                "the gain of {} makes more than gain_max_carriers = {} clusters "
-                                "of carriers: raise it in the device file".format(my_d.det_name, max_carriers)
-                            )
-                        slices = min(slices, capacity)
+                    if max_carriers > 0 and len(gain_starts) + slices > max_carriers:
+                        raise ValueError(
+                            "the gain of {} makes more than gain_max_carriers = {} clusters "
+                            "of carriers: raise it in the device file".format(my_d.det_name, max_carriers)
+                        )
                     for slice_idx in range(slices):
                         fraction = (slice_idx + 0.5) / slices
                         gain_starts.append((
