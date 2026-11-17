@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 from contextlib import contextmanager
 
-from raser.lifecycle import scheduler
 from raser.lifecycle import process
 from raser.supports.paths import infer_project_root
 from raser.supports.paths import project_root_context
@@ -19,6 +18,7 @@ from raser.supports.paths import work_root
 VERSION = "5.0"
 
 APPLICATIONS = (
+    "ana",
     "bmos",
     "cce",
     "field",
@@ -102,10 +102,10 @@ def main(argv=None):
         parser.print_help()
         return 1
 
-    if kwargs["global_batch"] != 0 and "batch" in kwargs:
-        # A command that splits into jobs submits every job itself: -b, -bb, ...
-        # before it is its own -b, with the memory level the b's count, and -t
-        # is its --dry-run.
+    if kwargs["global_batch"] != 0:
+        # Every command splits into jobs and submits each job itself: -b, -bb,
+        # ... before it is its own -b, with the memory level the b's count, and
+        # -t is its --dry-run.
         kwargs["dry_run"] = kwargs["dry_run"] or kwargs["test"]
         kwargs["batch"] = True
         kwargs["mem"] = max(kwargs["mem"], kwargs["global_batch"])
@@ -116,17 +116,7 @@ def main(argv=None):
 
     try:
         with _context(kwargs):
-            if kwargs["global_batch"] != 0:
-                # Global options such as -bb precede the sub-command; the worker
-                # must not see them, or it would submit itself again.
-                scheduler.main(
-                    command,
-                    argv[argv.index(command) :],
-                    kwargs["global_batch"],
-                    is_test=kwargs["test"],
-                )
-            else:
-                kwargs["_run"](kwargs)
+            kwargs["_run"](kwargs)
     finally:
         process.close()
     return 0

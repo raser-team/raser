@@ -7,8 +7,10 @@ Description:
 @version    : 1.0
 """
 
+import json
 import time
 import os
+from types import SimpleNamespace
 
 import ROOT
 ROOT.gROOT.SetBatch(True)
@@ -17,11 +19,15 @@ import numpy as np
 from raser.apps.telescope.g4_interaction import TelescopeG4Interaction
 from raser.core.seeding import stream
 from raser.core.device.build_device import Detector
+from raser.core.current.cal_current import electrode_names
+from raser.core.current.currents import EventCurrents, append_currents
 from raser.core.current.diffusion import ELEMENTARY_CHARGE, collect_by_diffusion
-from raser.core.interaction.deposits import EventDeposits
+from raser.core.interaction.deposits import Deposits, EventDeposits
+from raser.core.interaction.deposits import read_deposits, write_deposits
 from raser.core.interaction.ionization import ionized_pairs
 from raser.supports.output import create_path
 from raser.supports.output import output
+from raser.supports.paths import app_file_path
 
 class Telescope:
     def __init__(self,my_d,my_g4,my_c):
@@ -187,7 +193,10 @@ class Telescope:
                 k2 += t1**2
             k1 = k1**2
             kt = 1/(N-float(k1/k2))
-            Resolution_DUT[i] = [Resolution_Tol[i][0]/(kt+1),Resolution_Tol[i][1]/(kt+1),]
+            # kt is the leverage of layer i in a line through all N layers; the
+            # residual to a line through the other layers has the variance
+            # sigma^2/(1-kt) when every layer has the resolution sigma
+            Resolution_DUT[i] = [Resolution_Tol[i][0]*(1-kt)**0.5,Resolution_Tol[i][1]*(1-kt)**0.5,]
         
     #final data to be saved
     def save(self):
@@ -461,46 +470,117 @@ DIFFUSION_STEP = 50e-12  # s, one random step of the diffusion
 HIT_ELECTRONS = 0.2  # a pixel that collected more is a hit
 
 
-class DiffusedCharge:
-    """The electrons every pixel of every layer collects by diffusion.
+def _setup():
+    with open(app_file_path("telescope", "telescope.json")) as file:
+        return json.load(file)
 
-    event : one dict per event, layer -> {'index': [[i, j], ...], 'charge': [...]},
+
+def _file(kwargs, name):
+    """The file `name` of this job, in the point that holds its slice."""
+    batch = kwargs["_slice_batch_paths"][name.split(".")[0]]
+    return os.path.join(batch, "%s_%s.h5" % (name, kwargs.get("job_index") or 0))
+
+
+def deposits(kwargs):
+    """The beam through the layers of telescope.json: deposits_<job>.h5.
+
+    Every generated event is recorded, also one that left nothing. The
+    detector of a deposit is the name of its layer; x, y, z are in the
+    coordinates of that layer, from its corner and its lower face.
+    """
+    my_d = Detector("TAICHU3")
+    my_g4 = TelescopeG4Interaction(
+        my_d, "telescope", kwargs["seed"], int(kwargs["events_per_job"])
+    )
+    events = []
+    for number, names, positions, energies, times in zip(
+        my_g4.eventIDs,
+        my_g4.devicenames,
+        my_g4.localpositions,
+        my_g4.energy_steps,
+        my_g4.time_steps,
+        strict=True,
+    ):
+        record = EventDeposits(int(number), [], [], [], [], [], [])
+        for name, local, energy, time in zip(names, positions, energies, times, strict=True):
+            # pixels are named <type>_<row>_<column>_<layer>
+            _, row, column, layer = name.split("_", 3)
+            record.detector.append(layer)
+            record.x.append(local[0] + (int(column) + 0.5) * my_d.p_x)
+            record.y.append(local[1] + (int(row) + 0.5) * my_d.p_y)
+            record.z.append(local[2] + my_d.l_z / 2)
+            record.t.append(time)
+            record.e.append(energy)
+        record.pairs, _ = ionized_pairs(record, my_d.material)
+        events.append(record)
+    write_deposits(
+        _file(kwargs, "deposits"), Deposits(my_g4.generated_events, None, None, events)
+    )
+
+
+class DiffusedCharge:
+    """The electrons every pixel of every layer collects by diffusion, written
+    layer by layer to `paths` as the currents of that layer.
+
+    An event without a deposit in a layer has no row in the file of that layer.
+
+    event : one dict per event, layer number -> {'index': [[i, j], ...], 'charge': [...]},
         the pixels of the layer that collected electrons and how many
     last : (x_ele_num, y_ele_num) array, the electrons of the last layer of
         the last event
     """
-    def __init__(self, my_d, my_g4, window):
-        self.event = []
-        for number in range(len(my_g4.devicenames)):
-            layers = {}
-            for layer in range(len(my_g4.ltz)):
-                deposits = EventDeposits(number, [], [], [], [], [], [])
-                for name, local, energy, time in zip(
-                    my_g4.devicenames[number],
-                    my_g4.localpositions[number],
-                    my_g4.energy_steps[number],
-                    my_g4.time_steps[number],
-                    strict=True,
-                ):
-                    # pixels are named <type>_<row>_<column>_Layer_<layer>
-                    _, row, column, _, in_layer = name.split("_")
-                    if int(in_layer) != layer:
-                        continue
-                    deposits.x.append(local[0] + (int(column) + 0.5) * my_d.p_x)
-                    deposits.y.append(local[1] + (int(row) + 0.5) * my_d.p_y)
-                    deposits.z.append(local[2] + my_d.l_z / 2)
-                    deposits.t.append(time)
-                    deposits.e.append(energy)
-                pairs, positions = ionized_pairs(deposits, my_d.material)
-                _, _, charge = collect_by_diffusion(my_d, pairs, positions, window, DIFFUSION_STEP)
+    def __init__(self, my_d, events, paths, window):
+        names = electrode_names(my_d.read_out_contact, my_d.x_ele_num * my_d.y_ele_num)
+        self.event = [{} for _ in events]
+        for number, (layer, path) in enumerate(paths.items()):
+            if os.path.exists(path):
+                os.remove(path)
+            for record, layers in zip(events, self.event, strict=True):
+                mine = [k for k, name in enumerate(record.detector) if name == layer]
+                pairs = [record.pairs[k] for k in mine]
+                positions = [[record.x[k], record.y[k], record.z[k], record.t[k]] for k in mine]
+                t0, current, charge = collect_by_diffusion(
+                    my_d, pairs, positions, window, DIFFUSION_STEP
+                )
+                if mine:
+                    append_currents(
+                        path,
+                        names,
+                        DIFFUSION_STEP,
+                        EventCurrents(record.event, t0, current, charge, sum(pairs)),
+                    )
                 electrons = (-charge / ELEMENTARY_CHARGE).reshape(my_d.x_ele_num, my_d.y_ele_num)
                 fired = np.argwhere(electrons > HIT_ELECTRONS)
-                layers[layer] = {
+                layers[number] = {
                     "index": fired.tolist(),
                     "charge": [float(electrons[i, j]) for i, j in fired],
                 }
                 self.last = electrons
-            self.event.append(layers)
+
+
+def currents(kwargs):
+    """The deposits of every layer collected by diffusion: currents.<layer>_<job>.h5,
+    one file per layer.
+
+    The hits, clusters and residuals are still made here, from the charges
+    just collected, until the analysis reads the files.
+    """
+    my_d = Detector("TAICHU3")
+    setup = _setup()
+    my_g4 = SimpleNamespace(ltz=setup["ltz"], seedcharge=setup["seedcharge"])
+    paths = {
+        layer: _file(kwargs, "currents." + layer) for layer in setup["object"]["layer"]
+    }
+    my_hit_charge = DiffusedCharge(
+        my_d,
+        read_deposits(_file(kwargs, "deposits")).events,
+        paths,
+        setup["collection_window_s"],
+    )
+    draw_charge(my_hit_charge)
+    my_telescope_charge = Telescope(my_d,my_g4,my_hit_charge) 
+    my_hit_test = PixelHitTest(my_d, my_g4)
+    my_telescope_test = Telescope(my_d,my_g4,my_hit_test)
 
 
 def draw_charge(my_charge):
@@ -529,15 +609,6 @@ def draw_charge(my_charge):
     c.Update()
     c.SaveAs(path+"/Pixel_charge.pdf")
     c.SaveAs(path+"/Pixel_charge.root")
-
-def main(seed, events):
-    my_d = Detector("TAICHU3") #remain the same
-    my_g4 = TelescopeG4Interaction(my_d, "telescope", seed, events) #remove my_f
-    my_hit_charge = DiffusedCharge(my_d, my_g4, my_g4.collection_window)
-    draw_charge(my_hit_charge)
-    my_telescope_charge = Telescope(my_d,my_g4,my_hit_charge) 
-    my_hit_test = PixelHitTest(my_d, my_g4)
-    my_telescope_test = Telescope(my_d,my_g4,my_hit_test)
 
 def taichu_v2(label=""):
     #virtual object
@@ -589,10 +660,3 @@ def taichu_v2(label=""):
     if not os.access(path, os.F_OK):
         os.makedirs(path) 
     canvas.SaveAs(os.path.join(path, Name+".png"))
-
-if __name__ == '__main__':
-    start = time.time()
-    main()
-    print("drift_total1:%s"%(time.time()-start))
-    print("RUN END")
-    os._exit(0) 

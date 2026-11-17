@@ -183,8 +183,9 @@ class LaserInjection:
         #referring to the vertical and horizontal distance from the focus 
         w_0 = self.spacial_FWHM / (2 * np.log(2))**0.5
         wSquared = (w_0 ** 2) * (1 + (h / self.l_Rayleigh) ** 2)
+        # fluence [J/m^2] of a Gaussian beam of radius w: 2 E / (π w²) on the axis
         intensity = ((self.pulse_energy)\
-                    * (4 / (np.pi * wSquared * 1e-12))\
+                    * (2 / (np.pi * wSquared * 1e-12))\
                     * np.exp((-2 * r2 / wSquared))
         ) # time distribution decoupled
         

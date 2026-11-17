@@ -20,7 +20,9 @@ def _parsed(*words: str, folder: Path | str = "/no such folder") -> dict[str, An
     """The options a job of the field command receives."""
     argv = ["field", "HPK-Si-PiN", *words]
     run = {"_run_path": str(folder), "_files": {"device": device_json("HPK-Si-PiN")}}
-    return {**vars(build_parser().parse_args(argv)), "_argv": argv, **run}
+    parsed = vars(build_parser().parse_args(argv))
+    parsed["solution"] = parsed["solution"] or field.WORKFLOW.defaults["solution"]
+    return {**parsed, "_argv": argv, **run}
 
 
 @pytest.fixture
@@ -143,3 +145,8 @@ def test_emptying_devsim_keeps_the_linear_solver_it_had(
     field._empty_devsim()
 
     assert parameters == chosen
+
+
+def test_a_solution_that_is_not_there_yet_is_refused() -> None:
+    with pytest.raises(NotImplementedError, match="semi_fast solution"):
+        field.solve(_parsed("--solution", "semi_fast"))

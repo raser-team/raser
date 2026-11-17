@@ -21,9 +21,9 @@ def test_quantities_of_a_triangle() -> None:
 
     amplitude, peak = get_amplitude(TRIANGLE)
     assert (amplitude, peak) == (10.0, 6)
-    # the last bin below 3 before the peak is bin 2, the first after it bin 10
-    assert get_ToA(times, TRIANGLE, 3.0, peak) == pytest.approx(5.5e-9)
-    assert get_ToT(times, TRIANGLE, 3.0, peak) == pytest.approx(8.0e-9)
+    # 3 lies midway between bin 2 (2) and bin 3 (4), and again between bin 9 and bin 10
+    assert get_ToA(times, TRIANGLE, 3.0, peak) == pytest.approx(6.0e-9)
+    assert get_ToT(times, TRIANGLE, 3.0, peak) == pytest.approx(7.0e-9)
     # half the peak, 5, lies midway between bin 3 (4) and bin 4 (6)
     assert get_CFD50(times, TRIANGLE, 0.5, peak) == pytest.approx(7.0e-9)
     assert get_charge(TRIANGLE) == 50.0
@@ -33,7 +33,7 @@ def test_one_electrode_event_takes_its_bins_from_t0_and_dt() -> None:
     event = InputWaveform([TRIANGLE], T0, DT, 0.0, 3.0, 5.0, 1300.0, 1300.0)
 
     assert event.data["amplitude"] == 10.0
-    assert event.data["ToA"] == pytest.approx(5.5e-9)
+    assert event.data["ToA"] == pytest.approx(6.0e-9)
     assert event.data["CFD50"] == pytest.approx(7.0e-9)
 
 
@@ -73,9 +73,10 @@ def test_samples_below_the_baseline_do_not_count_as_pulse() -> None:
     amplitude, peak = get_amplitude(samples)
 
     assert (amplitude, peak) == (10.0, 5)
-    # the dip is below the threshold 3: the pulse starts after it
-    assert get_ToA(times, samples, 3.0, peak) == pytest.approx(1.5e-9)
-    assert get_ToT(times, samples, 3.0, peak) == pytest.approx(8.0e-9)
+    # the dip is below the threshold 3: the edge crosses it 15 / 16 of the
+    # way from the dip to the 4 after it, and falls through it midway from 4 to 2
+    assert get_ToA(times, samples, 3.0, peak) == pytest.approx((1.5 + 15 / 16) * 1.0e-9)
+    assert get_ToT(times, samples, 3.0, peak) == pytest.approx((9.0 - 1.5 - 15 / 16) * 1.0e-9)
 
 
 def test_net_pulse_is_the_samples_about_the_mean_of_the_first_ones() -> None:

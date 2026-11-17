@@ -18,12 +18,23 @@ def _tpa_laser(temporal_fwhm: float, rayleigh: float | None = 15.7) -> LaserInje
 
 
 def test_tpa_density_at_the_focus_of_a_50_pJ_60_fs_pulse() -> None:
-    # 50 pJ in a spot of 1 um FWHM: fluence 4 E / (π w0²) = 88.25 J/m² with
+    # 50 pJ in a spot of 1 um FWHM: fluence 2 E / (π w0²) = 44.13 J/m² with
     # w0² = 1 um² / (2 ln2); β_2 = 1.5e-11 m/W, 1550 nm, 60 fs:
-    # 1.5e-11 * 1.55e-6 * 88.25² / (2 h c) * sqrt(2 ln2) / (sqrt(π) 60 fs)
+    # 1.5e-11 * 1.55e-6 * 44.13² / (2 h c) * sqrt(2 ln2) / (sqrt(π) 60 fs)
     density = _tpa_laser(60e-15).getCarrierDensity(0.0, 0.0, 0.0)
 
-    assert density == pytest.approx(5.045e24, rel=2e-3)  # pairs per m³
+    assert density == pytest.approx(1.261e24, rel=2e-3)  # pairs per m³
+
+
+def test_pairs_of_a_fully_absorbed_pulse_are_its_photons() -> None:
+    # 1 pJ at 660 nm is 3.32e6 photons; with 1/α = 1 um all of them are
+    # absorbed in a sensor 50 um thick, one pair each
+    with open(component_path("laser", "SPA_top_Si.json")) as file:
+        laser = json.load(file)
+    laser.update(alpha=1e6, pulse_energy=1e-12, fz_rel=0.0, r_step=0.5, h_step=0.1)
+    injection = LaserInjection(SimpleNamespace(l_x=100.0, l_y=100.0, l_z=50.0), laser)
+
+    assert sum(injection.ionized_pairs) == pytest.approx(3.32e6, rel=2e-2)
 
 
 def test_tpa_density_doubles_when_the_pulse_is_half_as_long() -> None:
