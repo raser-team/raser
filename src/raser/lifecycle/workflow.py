@@ -762,7 +762,17 @@ def _start_again(workflow, record, folder, progress) -> None:
     words = [*record["command"], *(["--seed-folder", folder.name] if workflow.seeds else [])]
     print("starting the command again: raser " + " ".join(words))
     environment = {**os.environ, "RASER_RESUBMIT_DEPTH": str(depth + 1)}
-    subprocess.run([sys.executable, "-m", "raser.cli.raser", *words], cwd=record["cwd"], env=environment, check=False)
+    # Another job that ended at the same time may hold the folders: try again a few times.
+    for attempt in range(_STARTS):
+        if attempt:
+            time.sleep(_PAUSE)
+        started = subprocess.run([sys.executable, "-m", "raser.cli.raser", *words], cwd=record["cwd"], env=environment, check=False)
+        if getattr(started, "returncode", 0) == 0:
+            return
+    print(f"the command did not start again in {_STARTS} tries: give it again when the jobs it waits for are done")
+
+
+_STARTS, _PAUSE = 4, 30  # tries to start a command again on the cluster, and seconds between
 
 
 def _without_seed_folder(argv) -> list[str]:

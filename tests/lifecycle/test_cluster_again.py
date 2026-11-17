@@ -143,3 +143,23 @@ def test_through_the_queue_of_the_host_nothing_is_recorded_and_the_command_says_
 
     assert "is not started again by itself" in capsys.readouterr().out
     assert not list((cluster["folder"] / "batch").glob("*.submitted"))
+
+
+def test_a_command_started_again_that_finds_its_folders_held_is_tried_again(
+    cluster: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    execute(TOY, _kwargs())
+    monkeypatch.setenv("RASER_CLUSTER_JOB", "1")
+    monkeypatch.setattr(workflow, "_PAUSE", 0)
+    codes = iter([1, 1, 0])
+    tries: list[int] = []
+
+    def run(words, **kwargs):
+        tries.append(1)
+        return SimpleNamespace(returncode=next(codes))
+
+    monkeypatch.setattr(workflow.subprocess, "run", run)
+
+    workflow._run_job(TOY, {"job_dir": str(cluster["folder"]), "job_index": 0, "job_slices": "first,second"})
+
+    assert len(tries) == 3
