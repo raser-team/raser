@@ -33,7 +33,7 @@ APPLICATIONS = {  # command -> the module that registers it
     "timeres": "raser.bench.timeres",
 }
 # The short commands of the stages; files and folders hold the full names.
-SHORT = {"fld": "field", "dep": "deposit", "cur": "current", "rdo": "readout", "ana": "analysis"}
+SHORT = {"fld": "field", "dep": "deposit", "cur": "current", "rdo": "readout", "reco": "reconstruction", "ana": "analysis"}
 
 
 @contextmanager

@@ -67,8 +67,5 @@ def run(kwargs):
 def register(subparsers):
     parser = subparsers.add_parser("analysis", aliases=["ana"], help="stage: the results of the points of an experiment")
     parser.add_argument("experiment", help="experiment folder, work/<device>/<command>")
-    parser.add_argument("-adc", help="digitizer")
-    parser.add_argument("-threshold", type=float, help="of the times of arrival [mV], in place of the digitizer's")
-    parser.add_argument("-amplitude_threshold", type=float, help="of the selected events [mV], in place of the digitizer's")
     WORKFLOW.attach(parser)
     parser.set_defaults(_run=run)

@@ -148,3 +148,13 @@ def test_raser_field_on_an_experiment_solves_the_field_of_a_point_given_on_its_c
 
     assert started == [200]
     assert json.loads((experiment / "config.json").read_text()) == config
+
+
+def test_reco_runs_the_chain_up_to_the_reconstruction_of_the_waveforms(
+    work_root: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["reco", "HPK-Si-PiN", "--seed", "1", "--edge", "rising", "--dry-run"]) == 0
+
+    assert _slices(capsys.readouterr().out) == ["deposit", "field", "current", "readout", "reconstruction"]
+    with pytest.raises(SystemExit):
+        main(["ana", str(work_root / "HPK-Si-PiN" / "signal"), "-threshold", "30"])  # set on the reconstruction now

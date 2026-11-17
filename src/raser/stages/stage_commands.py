@@ -1,4 +1,4 @@
-"""raser deposit|current|readout <experiment folder or device>: the chain of
+"""raser deposit|current|readout|reconstruction <experiment folder or device>: the chain of
 an experiment run up to that stage, with what it lacks before it, the field
 among it. raser field is the stage command of the field.
 
@@ -25,6 +25,7 @@ STAGES = {
     "deposit": ("dep", "the energy deposited by the source", (chain.deposit_arguments,)),
     "current": ("cur", "the induced currents, after the deposits and the field", (chain.deposit_arguments, chain.current_arguments)),
     "readout": ("rdo", "the waveforms of the electronics, after all before them", (chain.deposit_arguments, chain.current_arguments, chain.readout_arguments)),
+    "reconstruction": ("reco", "every event of the waveforms as a row of its table, after all before them", (chain.deposit_arguments, chain.current_arguments, chain.readout_arguments, chain.reconstruction_arguments)),
 }
 
 

@@ -88,6 +88,9 @@ root_package = "raser"
 name = "The chain: a stage may use the stages before it, not those after it"
 type = "layers"
 layers = [
+  "raser.core.analysis",
+  "raser.core.reconstruction",
+  "raser.core.digitizer",
   "raser.core.readout",
   "raser.core.current",
   "raser.core.deposit",

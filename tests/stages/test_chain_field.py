@@ -76,7 +76,7 @@ def test_a_field_solved_again_runs_what_reads_it_again_and_keeps_the_deposits(ex
 
     experiment["state"]["stamp"] = "solved again"
     execute(experiment["workflow"], _kwargs())
-    assert experiment["ran"] == ["field", "current", "readout"]
+    assert experiment["ran"] == ["field", "current", "readout", "reconstruction"]
 
     experiment["ran"].clear()
     execute(experiment["workflow"], _kwargs())
@@ -104,11 +104,19 @@ def test_a_field_made_by_the_command_is_recorded_as_made_and_the_next_command_ru
     assert experiment["ran"] == []
 
 
+def test_a_scanned_threshold_reconstructs_the_same_waveforms_in_every_point(experiment: dict[str, Any]) -> None:
+    execute(experiment["workflow"], _kwargs(scan=["threshold=30,60"]))
+
+    held_in = _held_in(experiment["root"], "threshold_60")
+    assert held_in == {**dict.fromkeys(("deposit", "field", "current", "readout"), ""), "reconstruction": "threshold_60"}
+    assert experiment["ran"].count("readout") == 1 and experiment["ran"].count("reconstruction") == 2
+
+
 def test_a_scanned_bias_gives_every_point_its_own_deposits(experiment: dict[str, Any]) -> None:
     execute(experiment["workflow"], _kwargs(scan=["voltage=100,300"]))
 
     for point in ("voltage_100", "voltage_300"):
-        assert _held_in(experiment["root"], point) == dict.fromkeys(("deposit", "field", "current", "readout"), point)
+        assert _held_in(experiment["root"], point) == dict.fromkeys(("deposit", "field", "current", "readout", "reconstruction"), point)
     assert experiment["ran"].count("deposit") == 2
     # the points draw other numbers in the same job
     drawn = {point: seed for name, point, seed in experiment["seeds"] if name == "deposit"}
@@ -138,7 +146,7 @@ def test_another_bias_runs_the_field_and_what_follows_it_but_not_the_deposits(
 
     execute(experiment["workflow"], _kwargs(voltage=100.0))
 
-    assert experiment["ran"] == ["field", "current", "readout"]
+    assert experiment["ran"] == ["field", "current", "readout", "reconstruction"]
 
 
 def test_a_field_not_ready_is_started_once_for_the_points_that_share_it_and_their_jobs_wait(
