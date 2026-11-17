@@ -402,8 +402,15 @@ def _make_shared(kwargs, needs, root) -> None:
 def make_shared(workflow, kwargs, root) -> None:
     """What every point of the experiment in `root` shares and is not ready,
     made as a command of the experiment makes it before its jobs start, as
-    raser field <experiment> does; no job of the experiment runs."""
-    _, points, asked = _points(workflow, kwargs, _read(Path(root) / "config.json"), {})
+    raser field <experiment> does; no job of the experiment runs. Its
+    --scan and --set choose the points, for this command only."""
+    config = _read(Path(root) / "config.json")
+    address = {name: key for key, name in config.get("names", {}).items()}
+    given = {}
+    for item in kwargs.get("set") or []:
+        key, _, value = item.partition("=")
+        given[address.get(key, key)] = _parse(value)
+    _, points, asked = _points(workflow, kwargs, config, given)
     shared = [piece for piece in workflow.slices if piece.shared]
     needs = [(shared, *points[name][:2]) for name in asked]
     if kwargs["dry_run"]:

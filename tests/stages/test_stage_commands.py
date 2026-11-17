@@ -128,3 +128,23 @@ def test_a_batch_stage_command_given_a_relative_folder_records_where_it_is(
     record = json.loads((experiment / "seed_1" / "run.json").read_text())
     target = record["command"][record["command"].index("cur") + 1]
     assert Path(record["cwd"], target).resolve() == experiment.resolve()
+
+
+@pytest.mark.parametrize("option", ["--scan", "--set"])
+def test_raser_field_on_an_experiment_solves_the_field_of_a_point_given_on_its_command_line(
+    work_root: Path, monkeypatch: pytest.MonkeyPatch, option: str
+) -> None:
+    from raser.stages import field
+
+    started: list[float] = []
+    monkeypatch.setattr(field.SHARED, "ready", lambda options, files: None)
+    monkeypatch.setattr(field.SHARED, "start", lambda kwargs, options, files: started.append(options["voltage"]))
+    experiment = work_root / "HPK-Si-PiN" / "signal"
+    experiment.mkdir(parents=True)
+    config = {"workflow": "signal", "device": "HPK-Si-PiN", "set": {}, "scan": {"voltage": [100, 300]}}
+    (experiment / "config.json").write_text(json.dumps(config))
+
+    assert main(["-b", "fld", str(experiment), option, "voltage=200"]) == 0
+
+    assert started == [200]
+    assert json.loads((experiment / "config.json").read_text()) == config

@@ -248,7 +248,7 @@ def run(kwargs):
     experiment = WORKFLOWS[config["workflow"]]
     folder = folder.resolve()
     with project_root_context(folder.parents[len(words) - 1], kwargs["_components_of"][words[0]]):
-        make_shared(experiment, {**kwargs, "det_name": config.get("device"), "scan": []}, folder)
+        make_shared(experiment, {**kwargs, "det_name": config.get("device")}, folder)
     return None
 
 
