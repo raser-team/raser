@@ -9,6 +9,7 @@ from . import plots
 from .collection import efficiency_spread
 from .collection import event_efficiencies
 from .timing import event_times
+from .timing import point_tables
 from .timing import time_widths
 
 MILLIVOLT = 1.0e-3  # V
@@ -40,7 +41,10 @@ def write_point(jobs, digitizer, folder):
     """
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
-    efficiencies = event_efficiencies(jobs)
+    tables = point_tables(
+        jobs, digitizer["threshold"] * MILLIVOLT, digitizer["amplitude_threshold"] * MILLIVOLT
+    )
+    efficiencies = event_efficiencies(tables)
     result = {"digitizer": digitizer}
     missing = []
     try:
@@ -56,9 +60,7 @@ def write_point(jobs, digitizer, folder):
         (folder / "result.json").write_text(json.dumps(result, indent=2) + "\n")
         return "; ".join(missing)
 
-    count, polarity, times = event_times(
-        jobs, digitizer["threshold"] * MILLIVOLT, digitizer["amplitude_threshold"] * MILLIVOLT
-    )
+    count, polarity, times = event_times(tables)
     with h5py.File(folder / "events.h5", "w") as file:
         for name, values in times.items():
             file[name] = values.astype("int64") if name in ("job", "event") else values

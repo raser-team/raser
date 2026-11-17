@@ -2,14 +2,11 @@
 
 import numpy as np
 
+from raser.core.metrics.resolution import core_width
 from raser.core.readout.waveforms import read_waveforms
-from raser.core.deposit.deposits import read_deposits
-from raser.core.reconstruction.event import InputWaveform
-from raser.core.reconstruction.event import get_CFD50
-from raser.core.reconstruction.event import get_CoG
 from raser.core.reconstruction.event import net_pulse
 from raser.core.reconstruction.event import pulse_polarity
-from raser.core.metrics.resolution import core_width
+from raser.stages.reconstruction import job_table
 
 from .files import job_file
 from .files import slice_file
@@ -18,18 +15,43 @@ from .files import slice_file
 CFD_FRACTIONS = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9)
 
 
-def event_times(jobs, threshold, amplitude_threshold):
-    """Times and amplitude of the events of the finished jobs of a point.
+def point_tables(jobs, threshold, amplitude_threshold):
+    """The reconstruction of each finished job of a point that recorded
+    events, as (place of the job in `jobs`, its table). Until the chain has
+    the reconstruction slice the tables are made here, from the files of
+    the jobs, with the fractions CFD_FRACTIONS and one sign of the pulses
+    for the point, taken from all its events.
 
     jobs : (seed folder, job index) pairs, as lifecycle hands them out.
     threshold, amplitude_threshold : in the unit of the waveforms [V]
+    """
+    readouts = []
+    for place, (folder, index) in enumerate(jobs):
+        path = job_file(folder, index, "readout")
+        if path is not None:
+            readouts.append((place, folder, index, read_waveforms(path)))
+    if not readouts:
+        return []
+    polarity = pulse_polarity(
+        [net_pulse(samples)[0] for *_, waveforms in readouts for event in waveforms.events for samples in event.voltage]
+    )
+    tables = []
+    for place, folder, index, waveforms in readouts:
+        files = [slice_file(folder, index, name) for name in ("deposit", "current")]
+        tables.append((place, job_table(waveforms, *files, threshold, amplitude_threshold, CFD_FRACTIONS, polarity)))
+    return tables
 
-    Every waveform is taken without its baseline and with its pulse turned
-    positive; the thresholds and the amplitude are above the baseline. The
-    sign of the pulses is one for the point, taken from all its events.
+
+def event_times(tables):
+    """Times and amplitude of the selected events of a point.
+
+    tables : what `point_tables` gives
+
+    Every waveform was taken without its baseline and with its pulse turned
+    positive; the thresholds and the amplitude are above the baseline.
 
     Returns the number of events, the sign of the pulses (+1 or -1) and, for
-    the events above the amplitude threshold, one array per quantity:
+    the selected events, one array per quantity:
         job         place of the job of the event in `jobs`
         event       Geant4 number of the event in its job
         ToA         time of arrival [s]
@@ -41,46 +63,28 @@ def event_times(jobs, threshold, amplitude_threshold):
         CoG         centre of gravity in time of the part above the threshold [s]
         CFD10 ... CFD90   constant-fraction time at 10 % ... 90 % of the amplitude [s]
     """
-    names = ["job", "event", "ToA", "ToT", "amplitude", "baseline", "noise", "truth", "CoG"] + [f"CFD{round(100 * part)}" for part in CFD_FRACTIONS]
-    events = []
-    for place, (folder, index) in enumerate(jobs):
-        path = job_file(folder, index, "readout")
-        if path is None:
-            continue
-        waveforms = read_waveforms(path)
-        if len(waveforms.electrodes) > 1:
+    if not tables:
+        raise ValueError("the jobs recorded no event")
+    for _, table in tables:
+        if len(table.electrodes) > 1:
             raise NotImplementedError(
-                f"{path}: {len(waveforms.electrodes)} electrodes; "
+                f"{len(table.electrodes)} electrodes; "
                 "the time of an event with several electrodes is not settled"
             )
-        deposits = read_deposits(str(slice_file(folder, index, "deposit")))
-        earliest = {event.event: min(event.t) for event in deposits.events}
-        for event in waveforms.events:
-            if event.event not in earliest:
-                raise ValueError(f"{path}: event {event.event} is not among the deposits of the job")
-            events.append(
-                (place, event.event, event.t0, waveforms.dt, earliest[event.event], *net_pulse(event.voltage[0]))
-            )
-    if not events:
-        raise ValueError("the jobs recorded no event")
-    polarity = pulse_polarity([net for _, _, _, _, _, net, _, _ in events])
-    rows = []
-    for place, number, t0, dt, truth, net, baseline, noise in events:
-        one = InputWaveform(
-            [polarity * net], t0, dt, None, threshold, amplitude_threshold, None, None
-        )
-        if one.data["amplitude"] is None:
-            continue
-        fractions = [
-            get_CFD50(one.times, one.waveforms[0], part, one.peak_time[0])
-            for part in CFD_FRACTIONS
-        ]
-        center = get_CoG(one.times, one.waveforms[0], threshold, one.peak_time[0])
-        rows.append(
-            [place, number, one.data["ToA"], one.data["ToT"], one.data["amplitude"], baseline, noise, truth, center, *fractions]
-        )
-    table = np.array(rows, dtype="float64").reshape(len(rows), len(names))
-    return len(events), polarity, {name: table[:, k] for k, name in enumerate(names)}
+    names = ["job", "event", "ToA", "ToT", "amplitude", "baseline", "noise", "truth", "CoG"]
+    columns = {name: [] for name in names}
+    for place, table in tables:
+        rows = table.columns
+        chosen = rows["selected"]
+        columns["job"].append(np.full(int(np.sum(chosen)), float(place)))
+        columns["event"].append(rows["event"][chosen].astype("float64"))
+        for name in ("ToA", "ToT", "amplitude", "baseline", "noise", "CoG"):
+            columns[name].append(rows[name][chosen, 0])
+        columns["truth"].append(rows["deposit_time"][chosen])
+        for k, part in enumerate(table.fractions):
+            columns.setdefault(f"CFD{round(100 * part)}", []).append(rows["CFD"][chosen, 0, k])
+    count = sum(len(table) for _, table in tables)
+    return count, tables[0][1].polarity, {name: np.concatenate(values) for name, values in columns.items()}
 
 
 def time_widths(times):
@@ -105,7 +109,7 @@ def point_resolution(jobs, threshold, amplitude_threshold):
         polarity  sign of the pulses, +1 or -1
         times     what `time_widths` gives for the selected events
     """
-    count, polarity, times = event_times(jobs, threshold, amplitude_threshold)
+    count, polarity, times = event_times(point_tables(jobs, threshold, amplitude_threshold))
     return {
         "events": count,
         "selected": len(times["truth"]),

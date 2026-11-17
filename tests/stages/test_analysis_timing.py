@@ -5,6 +5,9 @@ import pytest
 
 from raser.stages.analysis.timing import event_times
 from raser.stages.analysis.timing import point_resolution
+from raser.stages.analysis.timing import point_tables
+from raser.core.current.currents import EventCurrents
+from raser.core.current.currents import append_currents
 from raser.core.readout.waveforms import EventWaveforms
 from raser.core.readout.waveforms import append_waveforms
 from raser.core.deposit.deposits import Deposits
@@ -43,6 +46,10 @@ def _job(folder, index, events, electrodes=("top",), truths=None):
                 [earliest + 5.0e-12, earliest], [0.1] * 2, [1000.0] * 2,
             )
         )
+        append_currents(
+            batch / f"current_{index}.h5", list(electrodes), 1.0e-11,
+            EventCurrents(1000 * index + number, 0.0, np.zeros((len(electrodes), 2)), np.zeros(len(electrodes)), 1000.0),
+        )
         samples = OFFSET + np.concatenate([np.zeros(BEFORE), scale * TRIANGLE])
         if number == 1:
             samples[-1] += 12.0e-3
@@ -61,7 +68,7 @@ def test_point_takes_the_quantities_of_the_events_above_the_amplitude_threshold(
     _job(second, 2, [(5.0e-9, 1.0)])  # not among the finished jobs
     write_deposits(str(second / "batch" / "deposit_1.h5"), Deposits(50, None, None, []))
 
-    count, polarity, times = event_times([(first, 0), (first, 1), (second, 0), (second, 1)], 3.0e-3, 5.0e-3)
+    count, polarity, times = event_times(point_tables([(first, 0), (first, 1), (second, 0), (second, 1)], 3.0e-3, 5.0e-3))
 
     assert count == 4
     # the 12 mV above the baseline are not the pulse of the second event
@@ -86,7 +93,7 @@ def test_several_electrodes_are_refused(tmp_path) -> None:
     _job(tmp_path, 0, [(0.0, 1.0)], electrodes=("left", "right"))
 
     with pytest.raises(NotImplementedError, match="2 electrodes"):
-        event_times([(tmp_path, 0)], 3.0e-3, 5.0e-3)
+        event_times(point_tables([(tmp_path, 0)], 3.0e-3, 5.0e-3))
 
 
 def test_event_that_is_not_among_the_deposits_is_an_error(tmp_path) -> None:
@@ -96,7 +103,7 @@ def test_event_that_is_not_among_the_deposits_is_an_error(tmp_path) -> None:
     (batch / "deposit_1.h5").write_bytes((batch / "deposit_0.h5").read_bytes())
 
     with pytest.raises(ValueError, match="event 1000 is not among the deposits"):
-        event_times([(tmp_path, 0), (tmp_path, 1)], 3.0e-3, 5.0e-3)
+        point_tables([(tmp_path, 0), (tmp_path, 1)], 3.0e-3, 5.0e-3)
 
 
 def test_resolution_is_the_width_of_time_minus_truth(tmp_path) -> None:

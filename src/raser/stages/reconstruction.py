@@ -34,17 +34,31 @@ def job_truth(deposit_path, current_path):
     return truth
 
 
+def job_table(waveforms, deposit_path, current_path, threshold, amplitude_threshold, fractions, polarity=None):
+    """The table of the events of one job, from its readout as
+    `read_waveforms` gives it.
+
+    threshold, amplitude_threshold : [V]
+    polarity : as `event_table` takes it
+    """
+    return event_table(
+        waveforms,
+        job_truth(deposit_path, current_path),
+        threshold,
+        amplitude_threshold,
+        fractions,
+        polarity,
+    )
+
+
 def reconstruct(readout_path, deposit_path, current_path, path, threshold, amplitude_threshold, fractions):
     """Write the table of the events of one job into `path`.
 
     threshold, amplitude_threshold : [mV]
     """
-    table = event_table(
-        read_waveforms(readout_path),
-        job_truth(deposit_path, current_path),
-        threshold * MILLIVOLT,
-        amplitude_threshold * MILLIVOLT,
-        fractions,
+    table = job_table(
+        read_waveforms(readout_path), deposit_path, current_path,
+        threshold * MILLIVOLT, amplitude_threshold * MILLIVOLT, fractions,
     )
     write_event_table(path, table)
     return table

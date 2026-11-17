@@ -102,7 +102,7 @@ def cluster(amplitudes, above, amplitude_threshold):
     return size, float("nan") if center is None else float(center)
 
 
-def event_table(waveforms, truth, threshold, amplitude_threshold, fractions):
+def event_table(waveforms, truth, threshold, amplitude_threshold, fractions, polarity=None):
     """The rows of the events of one job.
 
     waveforms : the readout of the job, as `read_waveforms` gives it
@@ -110,8 +110,8 @@ def event_table(waveforms, truth, threshold, amplitude_threshold, fractions):
         signed net charge of each electrode [C])
     threshold, amplitude_threshold : in the unit of the waveforms [V]
 
-    The sign that turns the pulses positive is one for the job, taken from
-    all its events and electrodes together.
+    polarity : the sign that turns the pulses positive; None takes it from
+        all events and electrodes of the job together
     """
     if not waveforms.events:
         raise ValueError("the readout holds no event")
@@ -120,7 +120,8 @@ def event_table(waveforms, truth, threshold, amplitude_threshold, fractions):
         if record.event not in truth:
             raise ValueError(f"event {record.event} of the readout has no deposits or currents")
         nets.append([net_pulse(samples) for samples in record.voltage])
-    polarity = pulse_polarity([net for pulses in nets for net, _, _ in pulses])
+    if polarity is None:
+        polarity = pulse_polarity([net for pulses in nets for net, _, _ in pulses])
     width = len(waveforms.electrodes)
     columns: dict[str, list] = {name: [] for name in (*EVENT_COLUMNS, *ELECTRODE_COLUMNS, "CFD")}
     for record, pulses in zip(waveforms.events, nets):

@@ -12,7 +12,6 @@ from raser.core.readout.waveforms import EventWaveforms
 from raser.core.readout.waveforms import append_waveforms
 from raser.core.reconstruction.event_table import read_event_table
 from raser.stages import reconstruction
-from raser.stages.analysis.timing import event_times
 
 E = 1.602176634e-19
 # a negative triangle [V]: 2 mV per bin up to 10 mV in bin 6, then down again
@@ -45,7 +44,7 @@ def _job(folder, scales, count, seed):
         append_waveforms(batch / "readout_0.h5", names, DT,
                          EventWaveforms(number, starts[number] - BEFORE * DT, np.array(samples)))
     write_deposits(str(batch / "deposit_0.h5"), Deposits(count, None, None, deposits))
-    return truths
+    return truths, starts
 
 
 def _run(folder, threshold, amplitude_threshold):
@@ -58,22 +57,27 @@ def _run(folder, threshold, amplitude_threshold):
     return read_event_table(folder / "batch" / "reconstruction_0.h5")
 
 
-def test_selected_rows_are_the_events_the_analysis_selects(tmp_path) -> None:
+def test_every_event_has_a_row_and_the_large_ones_are_selected(tmp_path) -> None:
     # 10 mV and 4 mV in turn; 5 mV selects the first ones
-    truths = _job(tmp_path, [[1.0], [0.4]], 60, seed=4)
+    truths, starts = _job(tmp_path, [[1.0], [0.4]], 60, seed=4)
 
     table = _run(tmp_path, 3, 5)
 
-    count, polarity, times = event_times([(tmp_path, 0)], 3.0e-3, 5.0e-3)
     rows = table.columns
-    assert (len(table), table.polarity) == (count, polarity) == (60, -1.0)
-    assert list(rows["event"][rows["selected"]]) == list(times["event"]) == list(range(0, 60, 2))
-    for name in ("ToA", "ToT", "CoG", "amplitude", "baseline", "noise"):
-        assert rows[name][rows["selected"], 0] == pytest.approx(times[name])
-    assert rows["CFD"][rows["selected"], 0, 1] == pytest.approx(times["CFD50"])
-    # the 4 mV events are above the 3 mV threshold and have times, not selected
-    assert rows["above"][:, 0].all()
-    assert not np.isnan(rows["ToA"][1::2, 0]).any()
+    assert (len(table), table.polarity) == (60, -1.0)
+    assert list(rows["event"]) == list(range(60))
+    assert list(np.flatnonzero(rows["selected"])) == list(range(0, 60, 2))
+    assert rows["amplitude"][:, 0] == pytest.approx(np.tile([10.0e-3, 4.0e-3], 30))
+    # bin i of the triangle is centred (i + 0.5) ns after its start; 3 mV is
+    # crossed midway from bin 2 to 3 and from 9 to 10 on the 10 mV ones, and
+    # three quarters of the way from bin 4 (2.4 mV) to 5 (3.2 mV) on the 4 mV ones
+    assert rows["ToA"][:, 0] == pytest.approx(starts + np.tile([3.0e-9, 5.25e-9], 30))
+    assert rows["ToT"][0::2, 0] == pytest.approx(np.full(30, 7.0e-9))
+    # symmetric about bin 6; 20 % of 10 mV is bin 2 itself, 50 % midway from bin 3 to 4
+    assert rows["CoG"][:, 0] == pytest.approx(starts + 6.5e-9)
+    assert rows["CFD"][0::2, 0, 0] == pytest.approx(starts[0::2] + 2.5e-9)
+    assert rows["CFD"][:, 0, 1] == pytest.approx(starts + 4.0e-9)
+    assert rows["charge"][0::2, 0] == pytest.approx(np.full(30, 50.0e-3 * DT))
     assert rows["deposit_time"] == pytest.approx(truths)
     assert rows["net_charge"][:, 0] == pytest.approx(-(900 + np.arange(60)) * E)
 
