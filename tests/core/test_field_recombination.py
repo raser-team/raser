@@ -20,6 +20,8 @@ def _value(text: str, names: dict[str, float]) -> float:
         # depleted: generation; flooded: recombination (Si, 300 K)
         {"Electrons": 1e3, "Holes": 1e2, "n_i": 9.65e9, "n1": 9.65e9, "p1": 9.65e9, "taun": 7e-3, "taup": 7e-3},
         {"Electrons": 1e17, "Holes": 3e16, "n_i": 9.65e9, "n1": 9.65e9, "p1": 9.65e9, "taun": 2.5e-6, "taup": 0.5e-6},
+        # a trap off the intrinsic level: n1 and p1 apart
+        {"Electrons": 1e12, "Holes": 1e8, "n_i": 9.65e9, "n1": 1e14, "p1": 9.3e5, "taun": 2.5e-6, "taup": 0.5e-6},
     ],
 )
 def test_the_solver_takes_the_srh_of_core_model(monkeypatch: pytest.MonkeyPatch, point: dict[str, float]) -> None:

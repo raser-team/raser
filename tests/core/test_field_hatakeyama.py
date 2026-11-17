@@ -5,6 +5,7 @@ import math
 import pytest
 
 from raser.core.field import physics_avalanche
+from raser.core.model.impact_ionization import hatakeyama
 from raser.core.model.material import Material
 
 # Hatakeyama et al., Appl. Phys. Lett. 85 (2004) 1380, 4H-SiC [1/cm, V/cm]
@@ -43,12 +44,21 @@ def _solver_coefficients(field: float, temperature: float) -> tuple[float, float
 
 
 @pytest.mark.parametrize("field", [5e3, 2e6, 3e6])
-def test_the_solver_takes_hatakeyama_at_four_degrees(field: float) -> None:
+@pytest.mark.parametrize("temperature", [254.0, 300.0])
+def test_the_solver_takes_hatakeyama_at_four_degrees(field: float, temperature: float) -> None:
     # The solver keeps its field 1 V/cm off zero: 1e-6 of the field here.
-    electron, hole = _solver_coefficients(-field, 300.0)
+    electron, hole = _solver_coefficients(-field, temperature)
 
-    assert electron == pytest.approx(_hatakeyama("n", field, 4.0, 300.0), rel=1e-4, abs=0.0)
-    assert hole == pytest.approx(_hatakeyama("p", field, 4.0, 300.0), rel=1e-4, abs=0.0)
+    assert electron == pytest.approx(_hatakeyama("n", field, 4.0, temperature), rel=1e-4, abs=0.0)
+    assert hole == pytest.approx(_hatakeyama("p", field, 4.0, temperature), rel=1e-4, abs=0.0)
+
+
+@pytest.mark.parametrize("angle", [4.0, 30.0, 90.0])
+def test_hatakeyama_between_the_two_axes(angle: float) -> None:
+    # The anisotropy of b grows with the angle; along <11-20> the law is that axis's.
+    for carrier, name in (("electron", "n"), ("hole", "p")):
+        value = hatakeyama(carrier, angle).value(E=3e6, T=300.0)
+        assert value == pytest.approx(_hatakeyama(name, 3e6, angle, 300.0), rel=1e-12)
 
 
 @pytest.mark.parametrize("field", [5e3, 2e6, 3e6])
