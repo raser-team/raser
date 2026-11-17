@@ -464,6 +464,22 @@ def test_the_first_run_writes_its_scan_to_the_config_and_later_runs_repeat_it(
     ]
 
 
+def test_a_scan_given_once_the_experiment_exists_joins_its_config(
+    started: list[Any], tmp_path: Path
+) -> None:
+    experiment = tmp_path / "toy"
+    experiment.mkdir()
+    config = {"workflow": "toy", "set": {}, "scan": {"width": [1.0, 2.0]}}
+    (experiment / "config.json").write_text(json.dumps(config))
+
+    execute(GAIN, _kwargs(gain=None, width=None, scan=["gain=5,7"], seed=1, jobs=2))
+    execute(GAIN, _kwargs(gain=None, width=None, seed=2, jobs=2))
+
+    written = json.loads((experiment / "config.json").read_text())
+    assert written["scan"] == {"width": [1.0, 2.0], "gain": [5, 7]}
+    assert "width_2_gain_7/seed_2" in _folders(started, experiment)
+
+
 def test_an_option_without_a_default_can_be_scanned_and_every_value_gets_a_folder(
     started: list[Any], tmp_path: Path
 ) -> None:

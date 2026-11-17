@@ -181,6 +181,14 @@ def execute(workflow, kwargs):
         if workflow.seeds:
             new["same_seeds"] = same_seeds
         _write(root / "config.json", new)
+    elif kwargs["scan"]:
+        # A scan given to an experiment that exists joins its config as written;
+        # later commands repeat it.
+        written = dict(config.get("scan", {}))
+        for item in kwargs["scan"]:
+            key, _, values = item.partition("=")
+            written[key] = [_parse(value) for value in values.split(",")]
+        _write(root / "config.json", {**config, "scan": written})
     failed: list = []
     for folder, left, stale, record, run_again, before, names in todo:
         slices.forget(run_again, folder)
