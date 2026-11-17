@@ -100,7 +100,14 @@ def electrode_names(read_out_contact, read_ele_num):
     )
 
 
-def split_at_conductor_edges(start, middle, pairs, conducts, spacing=0.05, tolerance=1e-4):
+# a step is sampled for conductor edges this often: a conducting layer
+# thinner than this may be missed
+edge_sampling = 0.05  # um
+# and each edge found to this
+edge_tolerance = 1e-4  # um
+
+
+def split_at_conductor_edges(start, middle, pairs, conducts, spacing=edge_sampling, tolerance=edge_tolerance):
     """The pairs of one step of a particle, split where the step crosses the
     edge of a region where the device conducts.
 
