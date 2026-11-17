@@ -290,13 +290,23 @@ def execute(workflow, kwargs, register=True):
         # A scan or a --set given to an experiment that exists joins its config,
         # under its address as _points reads it, in place of what the config
         # had there; later commands repeat it.
+        # A key given leaves out what the config had for it, scanned or set.
         written = dict(config.get("scan", {}))
+        kept = dict(config.get("set", {}))
+
+        def leave_out(key) -> None:
+            nonlocal written, kept
+            written = {old: v for old, v in written.items() if address.get(old, old) != key}
+            kept = {old: v for old, v in kept.items() if address.get(old, old) != key}
+
         for item in kwargs["scan"]:
             key, _, values = item.partition("=")
             key = address.get(key, key)
-            written = {old: v for old, v in written.items() if address.get(old, old) != key}
+            leave_out(key)
             written[key] = [_parse(value) for value in values.split(",")]
-        _write(root / "config.json", {**config, "scan": written, "set": {**config.get("set", {}), **fixed_here}})
+        for key in fixed_here:
+            leave_out(key)
+        _write(root / "config.json", {**config, "scan": written, "set": {**kept, **fixed_here}})
     _make_shared(kwargs, [need for *_, need in todo], root)
     failed: list = []
     # No other command writes these folders while this one does.

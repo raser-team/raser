@@ -1567,6 +1567,21 @@ def test_the_command_line_decides_a_group_over_the_set_of_the_config(started: li
     assert options["a"] == 2 and "b" not in options
 
 
+def test_a_value_set_for_a_scanned_option_ends_its_scan_for_the_next_commands(
+    started: list[Any], tmp_path: Path
+) -> None:
+    experiment = tmp_path / "toy"
+    experiment.mkdir()
+    (experiment / "config.json").write_text(json.dumps({"workflow": "toy", "set": {}, "scan": {"gain": [5, 7]}}))
+
+    execute(GAIN, _kwargs(gain=None, width=None, set=["gain=6"], jobs=2))
+    started.clear()
+    execute(GAIN, _kwargs(gain=None, width=None, jobs=2, seed=43))
+
+    assert _folders(started, experiment) == ["seed_43"]
+    assert _options(experiment / "seed_43")["gain"] == 6
+
+
 def test_two_keys_of_a_group_in_one_layer_are_refused(started: list[Any]) -> None:
     with pytest.raises(ValueError, match="a and b are given at once in the command line"):
         execute(EITHER, _kwargs(a=2, b=5))
