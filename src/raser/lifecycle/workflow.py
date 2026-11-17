@@ -8,10 +8,13 @@ import fcntl
 import hashlib
 import itertools
 import json
+import re
 import secrets
 import subprocess
+import sys
 import time
 import traceback
+from contextlib import contextmanager
 from dataclasses import dataclass
 from dataclasses import field
 from dataclasses import replace
@@ -117,9 +120,18 @@ def run_arguments(parser, seeds=True):
     parser.add_argument("-mem", type=int, default=1)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--scan", action="append", default=[])
+    parser.add_argument("--set", action="append", default=[], help="address=value, as --scan with one value")
 
 
-def execute(workflow, kwargs):
+def execute(workflow, kwargs, register=True):
+    """Run the points of an experiment that a command asks for.
+
+    register=False runs only the points the command itself gives, not the
+    scans of the config, and leaves config.json as it is; a config made now
+    holds only what names the experiment. The command line has no such
+    switch: a shared slice that a point of another experiment needs, such
+    as its field, is made so, and the experiment of the shared slice does
+    not take that point for one of its own."""
     if kwargs.get("job_dir"):
         return _run_job(workflow, kwargs)  # one of the jobs started below
 
@@ -134,7 +146,19 @@ def execute(workflow, kwargs):
         root = Path(project_path(*workflow.words))
         config = _read(root / "config.json")
     given = {key: kwargs[key] for key in workflow.keys if kwargs.get(key) is not None}
-    scan, points, asked = _points(workflow, kwargs, config, given)
+    # --set: one value at an address, written as --scan writes it.
+    address = {name: key for key, name in config.get("names", {}).items()}
+    fixed_here = {}
+    for item in kwargs.get("set") or []:
+        key, _, value = item.partition("=")
+        fixed_here[address.get(key, key)] = _parse(value)
+    scanned_here = {address.get(item.partition("=")[0], item.partition("=")[0]) for item in kwargs["scan"]}
+    for key, value in fixed_here.items():
+        _check_folder_names(key, [value])
+    if both := sorted(scanned_here & set(fixed_here)):
+        raise ValueError(f"{', '.join(both)}: given to --set and to --scan at once; give it to one of them")
+    given = {**given, **fixed_here}
+    scan, points, asked = _points(workflow, kwargs, config if register else {**config, "scan": {}}, given)
 
     # The seed folder of this command in every point, and the jobs left in it.
     # Without seeds the point folder itself holds the run, and its one job.
@@ -222,40 +246,22 @@ def execute(workflow, kwargs):
 
     if not config:
         root.mkdir(parents=True, exist_ok=True)
-        new = {**identity, "set": given, "scan": scan}
+        new = {**identity, "set": given if register else {}, "scan": scan if register else {}}
         if workflow.seeds:
             new["same_seeds"] = same_seeds
         _write(root / "config.json", new)
-    elif kwargs["scan"]:
-        # A scan given to an experiment that exists joins its config, under its
-        # address as _points reads it, in place of what the config scanned
-        # there; later commands repeat it.
-        address = {name: key for key, name in config.get("names", {}).items()}
+    elif register and (kwargs["scan"] or fixed_here):
+        # A scan or a --set given to an experiment that exists joins its config,
+        # under its address as _points reads it, in place of what the config
+        # had there; later commands repeat it.
         written = dict(config.get("scan", {}))
         for item in kwargs["scan"]:
             key, _, values = item.partition("=")
             key = address.get(key, key)
             written = {old: v for old, v in written.items() if address.get(old, old) != key}
             written[key] = [_parse(value) for value in values.split(",")]
-        _write(root / "config.json", {**config, "scan": written})
-    # What the points share and is not ready is made first, once for all the
-    # points that read the same of it.
-    started = set()
-    for *_, (shared, options, files) in todo:
-        for piece in shared:
-            same = json.dumps([piece.name, {key: options.get(key) for key in piece.keys}, files.get("device")])
-            if same not in started and piece.shared.ready(options, files) is None:
-                started.add(same)
-                try:
-                    piece.shared.start(kwargs, options, files)
-                except Running as running:  # another command makes it: the point waits
-                    print(f"{piece.name}: {running}")
-                    continue
-                if not kwargs["batch"] and not kwargs["dry_run"] and piece.shared.ready(options, files) is None:
-                    raise RuntimeError(
-                        f"{piece.name} was made in this process and is still not ready for a point of "
-                        f"{root}: waiting would not help"
-                    )
+        _write(root / "config.json", {**config, "scan": written, "set": {**config.get("set", {}), **fixed_here}})
+    _make_shared(kwargs, [need for *_, need in todo], root)
     failed: list = []
     # No other command writes these folders while this one does.
     held = [_lock(_folder_lock(folder), folder) for folder, *_ in todo]
@@ -284,6 +290,9 @@ def execute(workflow, kwargs):
                     _done(folder, i).unlink(missing_ok=True)
             if left:
                 (folder / "batch").mkdir(parents=True, exist_ok=True)
+                # The most jobs the seed folder was asked for, for raser status;
+                # it does not make a run out of date: -s 5 after -s 3 adds two.
+                record["jobs"] = max(record.get("jobs", 0), kwargs.get("jobs") or 1)
                 _write(folder / "run.json", record)
                 try:
                     _start(workflow, {**kwargs, "job_slices": names}, folder, left, alone=len(todo) == 1)
@@ -300,6 +309,45 @@ def execute(workflow, kwargs):
     if failed:
         raise SystemExit("\n".join([f"{len(failed)} of {len(todo)} points failed:", *failed]))
     return None
+
+
+def _make_shared(kwargs, needs, root) -> None:
+    """Make what the points share and is not ready, once for all the points
+    that read the same of it. `needs` holds, per point, (its shared slices,
+    its options, its files). A shared slice that another command is making
+    is left to it: the points wait."""
+    started = set()
+    for shared, options, files in needs:
+        for piece in shared:
+            same = json.dumps([piece.name, {key: options.get(key) for key in piece.keys}, files.get("device")])
+            if same not in started and piece.shared.ready(options, files) is None:
+                started.add(same)
+                try:
+                    piece.shared.start(kwargs, options, files)
+                except Running as running:  # another command makes it: the point waits
+                    print(f"{piece.name}: {running}")
+                    continue
+                if not kwargs["batch"] and not kwargs["dry_run"] and piece.shared.ready(options, files) is None:
+                    raise RuntimeError(
+                        f"{piece.name} was made in this process and is still not ready for a point of "
+                        f"{root}: waiting would not help"
+                    )
+
+
+def make_shared(workflow, kwargs, root) -> None:
+    """What every point of the experiment in `root` shares and is not ready,
+    made as a command of the experiment makes it before its jobs start, as
+    raser field <experiment> does; no job of the experiment runs."""
+    _, points, asked = _points(workflow, kwargs, _read(Path(root) / "config.json"), {})
+    shared = [piece for piece in workflow.slices if piece.shared]
+    needs = [(shared, *points[name][:2]) for name in asked]
+    if kwargs["dry_run"]:
+        for _, options, files in needs:
+            for piece in shared:
+                state = "ready" if piece.shared.ready(options, files) is not None else "to be made"
+                print(f"{root}: {piece.name} {state} for {options}")
+        return
+    _make_shared(kwargs, needs, root)
 
 
 def finished(workflow, kwargs, root) -> list[tuple[str, dict, list[tuple[Path, int]]]]:
@@ -365,6 +413,8 @@ def _points(workflow, kwargs, config, given) -> tuple[dict, dict]:
         key, _, values = item.partition("=")
         scan[address.get(key, key)] = [_parse(value) for value in values.split(",")]
     scan = {key: values for key, values in scan.items() if key not in given}
+    for key, values in scan.items():
+        _check_folder_names(key, values)
     label = {key: _label(key, names) for key in scan}
     for key, other in itertools.combinations(scan, 2):
         if label[key] == label[other]:
@@ -458,7 +508,8 @@ def _start(workflow, kwargs, folder, left, alone) -> None:
     """Start the jobs `left` of a seed folder; `alone` when the command has no other point."""
     single = kwargs.get("jobs") is None and not kwargs["batch"]
     if single and alone:
-        _run_job(workflow, {**kwargs, "job_dir": str(folder)})  # in this process
+        with _logged(Path(folder) / "batch" / "job_0.log"):
+            _run_job(workflow, {**kwargs, "job_dir": str(folder)})  # in this process
         return
     tail = workflow.words[1:]
     if workflow.device:
@@ -480,6 +531,43 @@ def _start(workflow, kwargs, folder, left, alone) -> None:
         indices=left,
         log_folder=None if kwargs["batch"] else Path(folder) / "batch",
     )
+
+
+class _Both:
+    """A stream that writes to the terminal's stream and to a log."""
+
+    def __init__(self, stream, log):
+        self.stream, self.log = stream, log
+
+    def write(self, text):
+        self.log.write(text)
+        return self.stream.write(text)
+
+    def flush(self):
+        self.log.flush()
+        self.stream.flush()
+
+    def __getattr__(self, name):
+        return getattr(self.stream, name)
+
+
+@contextmanager
+def _logged(log):
+    """What Python prints while a job runs in this process goes to the
+    terminal and to `log`, as for a job in a process of its own; a failure
+    leaves its traceback in the log. What Geant4 and ROOT print from C++
+    goes to the terminal only."""
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with open(log, "w") as file:
+        out, err = sys.stdout, sys.stderr
+        sys.stdout, sys.stderr = _Both(out, file), _Both(err, file)
+        try:
+            yield
+        except BaseException:
+            file.write(traceback.format_exc())
+            raise
+        finally:
+            sys.stdout, sys.stderr = out, err
 
 
 def _own_process(workflow, kwargs, words) -> None:
@@ -557,6 +645,30 @@ def _label(key, names) -> str:
     """A scanned option in the name of a folder: the name the config gives it,
     else the last two steps of an address, else the option itself."""
     return names.get(key) or ".".join(key.split(".")[-2:])
+
+
+# The text a value names a folder with may hold only these.
+_FOLDER_TEXT = re.compile(r"[A-Za-z0-9._+-]+")
+
+
+def _check_folder_names(key, values) -> None:
+    """Refuse values of `key` that cannot name a folder, as an expression,
+    and two values that would name the same folder, as beam/muon and
+    other/muon. What is scanned or set is a number or a short name; an
+    expression, as a doping profile, becomes a parameter with a name in its
+    file, and that number is scanned."""
+    seen: dict[str, object] = {}
+    for value in values:
+        text = _text(value)
+        if not _FOLDER_TEXT.fullmatch(text):
+            raise ValueError(
+                f"{key} = {value!r}: the folder of this value would be named {text!r}, which "
+                "holds more than letters, digits and ._+-; scan or set a number or a short name, "
+                "and give an expression such as a doping profile a parameter with a name in its file"
+            )
+        if text in seen and seen[text] != value:
+            raise ValueError(f"{key}: {seen[text]!r} and {value!r} would both be the folder {text!r}")
+        seen[text] = value
 
 
 def _text(value) -> str:
