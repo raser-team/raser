@@ -119,8 +119,9 @@ def test_noise_of_the_circuit_is_added_to_every_event(tmp_path):
     assert first.std() == pytest.approx(
         np.sqrt(1.380649e-23 * 300.15 / 10e-12), rel=0.15
     )
-    # each event has its own noise, the seed fixes all of it
-    assert abs(np.mean(first[0] * first[1])) < 0.2 * first.var()
+    # each event has its own noise, the seed fixes all of it; that the
+    # noise of events and outputs has nothing in common is tested on a row
+    assert not np.array_equal(first[0], first[1])
     np.testing.assert_array_equal(noise(3), first)
     assert not np.array_equal(noise(4), first)
 
@@ -406,3 +407,53 @@ def test_quiet_strips_between_two_hits_are_not_stored(tmp_path):
 
     assert {"top6", "top36"} <= set(in_part)
     assert "top21" not in in_part
+
+
+def test_noise_of_a_strip_is_its_own_whatever_else_the_file_holds(tmp_path):
+    # 1 fC on top10 alone, or on top9 too, after an event or not: the noise
+    # of top12 in the event 7 is the same
+    my_d, names, row = _row_of(21)
+    circuit, _ = device_circuit(my_d, names, row=row)
+    alone = np.zeros((21, 400))
+    alone[9, 20:40] = 1e-15 / (20 * DT_S)
+    both = alone.copy()
+    both[8, 20:40] = 1e-15 / (20 * DT_S)
+
+    def noise_of_top12(name, events):
+        currents_path = tmp_path / f"currents_{name}.h5"
+        for number, current in events:
+            append_currents(
+                currents_path,
+                names,
+                DT_S,
+                EventCurrents(number, 0.0, current, current.sum(axis=1) * DT_S, 0.0),
+            )
+
+        def voltage(seed):
+            path = tmp_path / f"readout_{name}_{seed}.h5"
+            write_waveforms(
+                currents_path,
+                path,
+                CHAIN,
+                circuit,
+                seed,
+                pulse_edge=["rising"] * 21,
+                part_of=lambda hit, margin: part_of_row(
+                    my_d, names, hit, margin, row=row
+                ),
+            )
+            event = read_waveforms(path).events[-1]
+            return event.voltage[event.electrodes.index("top12")]
+
+        return voltage(3) - voltage(None)
+
+    first = noise_of_top12("alone", [(7, alone)])
+
+    assert np.std(first) > 0
+    # the same draws; what differs is the rounding of the signal taken off
+    np.testing.assert_allclose(
+        noise_of_top12("both", [(7, both)]), first, rtol=1e-9, atol=1e-18
+    )
+    np.testing.assert_allclose(
+        noise_of_top12("after", [(6, both), (7, alone)]), first, rtol=1e-9, atol=1e-18
+    )

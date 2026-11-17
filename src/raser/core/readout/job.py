@@ -106,10 +106,11 @@ def write_waveforms(
 
     noise_seed : None for waveforms without noise. Otherwise the seed of the
         noise of the circuit, which ngspice calculates once for the chain
-        with the device and the load: every output of every event gets its
-        own noise, in one sequence that the seed fixes. The noise of two
-        outputs has nothing in common. Spectra are as noise_spectra gives
-        them.
+        with the device and the load: every output stored of every event
+        gets its own noise, drawn from the seed, the number of the event and
+        the place of the output among all outputs alone, whatever else is
+        stored. The noise of two outputs has nothing in common. Spectra are
+        as noise_spectra gives them.
     circuit_values : None, or the values the circuit is made of and where each
         is from, as device_circuit gives them: they are written to the file.
     pulse_edge : None, or the way the pulse of each output goes, as
@@ -130,7 +131,6 @@ def write_waveforms(
     if os.path.exists(waveforms_path):
         os.remove(waveforms_path)
     if noise_seed is not None:
-        generator = np.random.default_rng(noise_seed)
         frequencies, densities = noise_spectra(
             chain, circuit, LOWEST_NOISE_HZ, 0.5 / currents.dt
         )
@@ -166,7 +166,7 @@ def write_waveforms(
                         densities[place[name]],
                         voltage.shape[1],
                         currents.dt,
-                        generator,
+                        np.random.default_rng([noise_seed, event.event, place[name]]),
                     )
                     for name in names
                 ]
