@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from contextlib import contextmanager
 
-from raser.lifecycle import process
+from raser.supports import process
 from raser.supports.paths import infer_project_root
 from raser.supports.paths import project_root_context
 from raser.supports.paths import work_root

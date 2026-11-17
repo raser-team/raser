@@ -2,7 +2,7 @@
 
 import g4ppyy as g4b
 
-from raser.lifecycle import process
+from raser.supports import process
 
 
 def _release():

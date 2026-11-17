@@ -117,9 +117,6 @@ name = "The core does not know how it is run"
 type = "forbidden"
 source_modules = ["raser.core"]
 forbidden_modules = ["raser.lifecycle", "raser.cli"]
-ignore_imports = [
-  "raser.core.deposit.geant4.g4ppyy_runtime -> raser.lifecycle.process",
-]
 
 [[tool.importlinter.contracts]]
 name = "No experiment imports another"

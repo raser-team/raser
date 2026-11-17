@@ -10,7 +10,7 @@ import pytest
 from raser.cli.raser import main
 from raser.apps import field
 from raser.lifecycle import jobs
-from raser.lifecycle import process
+from raser.supports import process
 
 
 SOURCE_ROOT = Path(__file__).resolve().parents[2] / "src"
