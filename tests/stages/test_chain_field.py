@@ -29,7 +29,16 @@ def experiment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any
     monkeypatch.setattr(workflow, "_commit", lambda: "abc")
     monkeypatch.setattr(workflow, "device_json", lambda name: {"det_name": name, "bias": {"voltage": 200.0}})
     monkeypatch.setitem(sys.modules, "raser.core.seeding", SimpleNamespace(seed_generators=lambda seed: None))
+    # the job of each point runs here, not in a process of its own
+    monkeypatch.setattr(
+        workflow, "_own_process", lambda flow, kwargs, words: workflow._run_job(flow, {**kwargs, "job_dir": words[-1]})
+    )
     ran: list[str] = []
+    seeds: list[tuple[str, str, int]] = []  # slice, point folder, the seed it ran with
+
+    def note(options, name):
+        ran.append(name)
+        seeds.append((name, Path(options["_run_path"]).parent.name, options["seed"]))
     started: list[float] = []
     state = {"ready": True}
 
@@ -40,17 +49,47 @@ def experiment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any
         ready=lambda options, files: Path("field") if state["ready"] else None, start=shared_start
     )
     pieces = tuple(
-        replace(piece, run=lambda options, name=piece.name: ran.append(name), shared=shared if piece.shared else None)
+        replace(piece, run=lambda options, name=piece.name: note(options, name), shared=shared if piece.shared else None)
         for piece in chain.SLICES
     )
     toy = Workflow(name="signal", keys=chain.KEYS, in_file=chain.IN_FILE, slices=pieces)
-    return {"workflow": toy, "ran": ran, "started": started, "state": state}
+    return {"workflow": toy, "ran": ran, "started": started, "state": state, "root": tmp_path / "dev" / "signal", "seeds": seeds}
 
 
 def _kwargs(**given: Any) -> dict[str, Any]:
     kwargs: dict[str, Any] = {"det_name": "dev", "jobs": None, "batch": False, "mem": 1, "seed": 1}
     kwargs.update(dry_run=False, scan=[], same_seeds=False, _entry_command_prefix=("signal",))
     return {**kwargs, **given}
+
+
+def _held_in(root: Path, point: str) -> dict[str, str]:
+    return json.loads((root / point / "seed_1" / "run.json").read_text())["held_in"]
+
+
+def test_a_scanned_bias_gives_every_point_its_own_deposits(experiment: dict[str, Any]) -> None:
+    execute(experiment["workflow"], _kwargs(scan=["voltage=100,300"]))
+
+    for point in ("voltage_100", "voltage_300"):
+        assert _held_in(experiment["root"], point) == dict.fromkeys(("deposits", "field", "currents", "waveforms"), point)
+    assert experiment["ran"].count("deposits") == 2
+    # the points draw other numbers in the same job
+    drawn = {point: seed for name, point, seed in experiment["seeds"] if name == "deposits"}
+    assert drawn["voltage_100"] != drawn["voltage_300"]
+
+
+def test_with_same_seeds_the_points_of_a_bias_scan_share_one_run_of_the_deposits(
+    experiment: dict[str, Any],
+) -> None:
+    execute(experiment["workflow"], _kwargs(scan=["voltage=100,300"], same_seeds=True))
+
+    for point in ("voltage_100", "voltage_300"):
+        held_in = _held_in(experiment["root"], point)
+        assert held_in["deposits"] == ""
+        assert [held_in[name] for name in ("field", "currents", "waveforms")] == [point] * 3
+    assert [experiment["ran"].count(name) for name in ("deposits", "field", "currents")] == [1, 2, 2]
+    # and the same numbers in the same job
+    drawn = {point: seed for name, point, seed in experiment["seeds"] if name == "currents"}
+    assert drawn["voltage_100"] == drawn["voltage_300"]
 
 
 def test_another_bias_runs_the_field_and_what_follows_it_but_not_the_deposits(
