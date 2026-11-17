@@ -107,7 +107,10 @@ def test_a_planar_device_not_fully_depleted_is_read_out_through_its_undepleted_b
     tmp_path, monkeypatch
 ):
     # HPK-Si-PiN at 100 V with 10 um undepleted, as its field gives it: the
-    # circuit of the device gets the R and C of that bulk for its area
+    # circuit of the device gets the R and C of that bulk for its area, 556
+    # Ohm and 4.4 pF. All of 1 fC still leaves through the 50 Ohm, but held
+    # back: on average after 2.2 ns, where the depleted device alone, 3.44
+    # pF on 50 Ohm, lets it out after 0.26 ns
     field = tmp_path / "field"
     field.mkdir()
     (field / "run.json").write_text(
@@ -130,7 +133,7 @@ def test_a_planar_device_not_fully_depleted_is_read_out_through_its_undepleted_b
     monkeypatch.setattr(readout, "solved_field", lambda *_: field)
     device = json.loads(device_file("HPK-Si-PiN").read_text(encoding="utf-8"))
     device["bias"] = {"electrode": "top", "voltage": 100.0}
-    current = np.zeros((1, 200))
+    current = np.zeros((1, 2000))
     current[0, :10] = 1e-15 / (10 * DT_S)
     append_currents(
         tmp_path / "current_0.h5",
@@ -153,6 +156,10 @@ def test_a_planar_device_not_fully_depleted_is_read_out_through_its_undepleted_b
         "farad": pytest.approx(262.0e-12 * 0.0169, rel=1e-12, abs=0),
         "from": "field",
     }
+    voltage = read_waveforms(tmp_path / "readout_0.h5").events[0].voltage[0]
+    times = (np.arange(voltage.size) + 0.5) * DT_S
+    assert voltage.sum() * DT_S / 50.0 * 1e15 == pytest.approx(1.0, rel=0.01)
+    assert np.sum(times * voltage) / np.sum(voltage) > 1.5e-9
 
 
 def test_a_row_of_strips_is_read_out_through_the_capacitances_its_field_stored(
@@ -179,7 +186,9 @@ def test_a_row_of_strips_is_read_out_through_the_capacitances_its_field_stored(
         )
     )
     monkeypatch.setattr(readout, "solved_field", lambda *_: field)
+    # 1 fC on the second strip
     current = np.zeros((4, 200))
+    current[1, :10] = 1e-15 / (10 * DT_S)
     append_currents(
         tmp_path / "current_0.h5",
         [f"top{k}" for k in range(1, 5)],
@@ -205,6 +214,10 @@ def test_a_row_of_strips_is_read_out_through_the_capacitances_its_field_stored(
         "farad": pytest.approx(0.5e-12, rel=1e-12, abs=0),
         "from": "field",
     }
+    # the neighbours see it through the capacitances between the strips
+    voltage = read_waveforms(tmp_path / "readout_0.h5").events[0].voltage
+    peaks = np.abs(voltage).max(axis=1)
+    assert peaks[0] > 0.05 * peaks[1] and peaks[2] > 0.05 * peaks[1]
 
 
 def test_a_device_without_a_measured_capacitance_takes_the_one_its_field_solved(
