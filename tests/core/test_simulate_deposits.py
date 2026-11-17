@@ -136,3 +136,19 @@ def test_generated_fraction_is_the_solid_angle_of_the_cone() -> None:
     assert generated_fraction(sr90) == pytest.approx(0.017037, rel=1e-4)
     assert generated_fraction({"nuclides": [[38, 90]]}) == 1.0
     assert generated_fraction(SOURCE) == 1.0
+
+
+def test_an_event_draws_the_same_pairs_whatever_else_is_recorded() -> None:
+    from raser.core import seeding
+
+    device = SimpleNamespace(l_x=100.0, l_y=100.0, l_z=300.0, material="Si")
+    source = {"kind": "toy_mip", "landau_sampling": True}
+    runs = []
+    for edep_min in (None, 0.124):  # about half of the tracks lose more
+        seeding.seed_generators(4)
+        deposits = simulate_deposits(device, source, None, None, 0, edep_min=edep_min, generated=40)
+        runs.append({event.event: event.pairs for event in deposits.events})
+    everything, some = runs
+    # the window drops some tracks; those it keeps drew the same pairs
+    assert 0 < len(some) < len(everything)
+    assert all(some[number] == everything[number] for number in some)
