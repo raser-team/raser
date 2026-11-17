@@ -497,7 +497,7 @@ def straight_tracks(my_d, setup, events):
     for layer in layers:
         if any(layer["rotation_xyz"]):
             raise ValueError(
-                f"{layer['name']} is rotated: the fast solution has straight tracks "
+                f"{layer['name']} is rotated: the fast mode has straight tracks "
                 "through layers that face the beam only"
             )
     generator = stream("telescope_straight_tracks")
@@ -538,13 +538,13 @@ def collect_under(my_d, pairs, positions, step):
 def deposits(kwargs):
     """The beam through the layers of telescope.json: deposits_<job>.h5.
 
-    The solution full is Geant4, fast is straight_tracks. Every generated
+    The mode full is Geant4, fast is straight_tracks. Every generated
     event is recorded, also one that left nothing. The detector of a deposit
     is the name of its layer; x, y, z are in the coordinates of that layer,
     from its corner and its lower face.
     """
     my_d = Detector("TAICHU3")
-    if kwargs["solution"] == "fast":
+    if kwargs["mode"] == "fast":
         events = straight_tracks(my_d, _setup(), kwargs["events_per_job"])
         for record in events:
             record.pairs, _ = ionized_pairs(record, my_d.material)
@@ -623,7 +623,7 @@ class DiffusedCharge:
 
 def currents(kwargs):
     """The deposits of every layer collected by its pixels: currents.<layer>_<job>.h5,
-    one file per layer. The solution full is collect_by_diffusion, fast is
+    one file per layer. The mode full is collect_by_diffusion, fast is
     collect_under. The charge of the last layer of the last event and the
     residuals of every layer are drawn in plots/job_<job>.
 
@@ -636,7 +636,7 @@ def currents(kwargs):
     paths = {
         layer: _file(kwargs, "currents." + layer) for layer in setup["object"]["layer"]
     }
-    if kwargs["solution"] == "fast":
+    if kwargs["mode"] == "fast":
         def collect(pairs, positions):
             return collect_under(my_d, pairs, positions, DIFFUSION_STEP)
     else:

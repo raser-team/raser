@@ -24,7 +24,7 @@ def _currents(kwargs):
 # The layers are the detectors of one deposits file; the currents are one
 # file per layer.
 SLICES = (
-    Slice("deposits", _deposits, keys=("events_per_job", "solution")),
+    Slice("deposits", _deposits, keys=("events_per_job", "mode")),
     Slice("currents", _currents),
 )
 
@@ -42,12 +42,12 @@ def register(subparsers):
                 "-evt", "--events-per-job", type=int, help="events per job"
             )
             setup_parser.add_argument(
-                "--solution",
+                "--mode",
                 choices=("full", "fast"),
                 help="how the hits are found: Geant4 and diffusion, or straight "
                 "tracks whose charge goes to the pixel under them; full by default",
             )
-            keys = ("events_per_job", "solution")
+            keys = ("events_per_job", "mode")
             job, slices = None, SLICES
         if setup == "taichu_v2":
             setup_parser.add_argument("variant", nargs="?", default="taichu_v2")
@@ -57,7 +57,7 @@ def register(subparsers):
             job=job,
             slices=slices,
             keys=keys,
-            defaults={"events_per_job": TAICHU_V1["total_events"], "solution": "full"}
+            defaults={"events_per_job": TAICHU_V1["total_events"], "mode": "full"}
             if keys
             else {},
             device=False,
