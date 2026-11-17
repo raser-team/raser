@@ -309,10 +309,19 @@ class CalCurrent:
             # an array as soon as it stops: the list of points takes about
             # six times the memory, too much to keep for every cluster at once
             cluster.path = np.array(cluster.path)
+        # the carriers not yet trapped along each path, taken once here for
+        # every use: the induced current and the gain
+        remaining = [
+            surviving(cluster.path, cluster.carriers, my_f)
+            if my_d.irradiation_model is not None
+            else np.full(len(cluster.path) - 1, float(cluster.carriers))
+            for cluster in clusters
+        ]
         return Drifted(
             list(carriers),
             [cluster.path for cluster in clusters],
             [cluster.reason for cluster in clusters],
+            remaining,
         )
 
     def count_ends(self):
@@ -361,11 +370,9 @@ class CalCurrent:
         if carrier_system is None:
             return bins
         bin_width = (self.t_end - self.t_start) / self.n_bin
-        for carriers, path in zip(carrier_system.carriers, carrier_system.paths):
+        for carriers, path in zip(carrier_system.remaining, carrier_system.paths):
             if len(path) < 2:
                 continue
-            if my_d.irradiation_model is not None:
-                carriers = surviving(path, carriers, my_f)
             for number, in_field, offset in self.electrodes_near(path[0][0], path[0][1], my_d, my_f):
                 induced = induced_charges(path, carriers, my_f, in_field, offset)
                 for value, t_from, t_to in zip(induced, path[:-1, 3], path[1:, 3]):
@@ -455,12 +462,16 @@ class CalCurrentGain(CalCurrent):
             return
 
         # each cluster multiplies where it stops: its pairs start at the gain
-        # layer at that time, as many as the depth it was made at gives
+        # layer at that time, as many as the depth it was made at gives for
+        # the carriers not trapped by then. Pairs made in front of the gain
+        # layer send the other carrier through it; for them the survival of
+        # this one is an approximation
         gain_depth = my_f.planar_gain_depth(my_d)
-        for carriers, path in zip(source_system.carriers, source_system.paths):
+        for carriers, remaining, path in zip(source_system.carriers, source_system.remaining, source_system.paths):
+            arriving = remaining[-1] if len(remaining) else carriers
             x, y, _, t = path[-1]
             gain_starts.append((x, y, gain_depth, t))
-            gain_pairs.append(abs(carriers) * my_f.planar_gain_at(my_d, path[0][2]))
+            gain_pairs.append(abs(arriving) * my_f.planar_gain_at(my_d, path[0][2]))
 
     def _build_local_gain_carriers(self, my_d, my_f, my_current, gain_starts, gain_pairs):
         cal_coefficient = Material(my_d.material, avalanche_model=my_d.avalanche_model).cal_coefficient
@@ -501,7 +512,9 @@ class CalCurrentGain(CalCurrent):
                 if active_pairs <= 0:
                     continue
                 charge_sign = -1 if carrier_system.carriers[carrier_idx] < 0 else 1
-                for point0, point1 in zip(path[:-1], path[1:]):
+                # the share of the cluster not yet trapped, at the middle of each step
+                untrapped = carrier_system.remaining[carrier_idx] / carrier_system.carriers[carrier_idx]
+                for point0, point1, share in zip(path[:-1], path[1:], untrapped):
                     x0, y0, z0, t0 = point0
                     x1, y1, z1, t1 = point1
                     dx = x1 - x0
@@ -539,7 +552,10 @@ class CalCurrentGain(CalCurrent):
                     if not math.isfinite(exponent):
                         continue
                     exponent = min(exponent, 50.0)
-                    new_pairs = active_pairs * math.expm1(exponent)
+                    # active_pairs is the cluster with its gain so far, were
+                    # none trapped; the untrapped share of it multiplies
+                    growth = active_pairs * math.expm1(exponent)
+                    new_pairs = growth * share
                     if new_pairs <= 0:
                         # the growth stops: what grew since the last emission
                         # starts on the last segment it grew on
@@ -548,7 +564,7 @@ class CalCurrentGain(CalCurrent):
                             pending_pairs = 0.0
                             emitted_segments += 1
                         continue
-                    active_pairs += new_pairs
+                    active_pairs += growth
                     pending_pairs += new_pairs
                     last_growth = (x0, y0, z0, t0, x1, y1, z1, t1)
                     if pending_pairs < min_pairs:

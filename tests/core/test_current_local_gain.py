@@ -115,3 +115,34 @@ def test_gain_pairs_too_few_to_emit_start_in_the_layer_they_grew_in() -> None:
     births = sorted((float(path[0][2]), charge) for charge, path in zip(gain.carriers, gain.paths))
     assert len(births) == 2
     assert 9.0 < births[0][0] < 12.5 and 29.0 < births[1][0] < 32.5
+
+
+class _Trapping(_Field):
+    """Electrons and holes trapped at 2e9 /s everywhere."""
+
+    def get_trap_e_cached(self, x, y, z):
+        return 2.0e9
+
+    def get_trap_h_cached(self, x, y, z):
+        return 2.0e9
+
+
+def test_the_gain_along_a_path_multiplies_only_the_carriers_not_yet_trapped():
+    # an electron cluster from z = 40 um to the face at 0, at the speed v of
+    # its path: dN = N (alpha dz - r dt), so it makes N0 alpha / k (exp(k z) - 1)
+    # gain pairs, k = alpha - r / v; holes from the top face make none
+    alpha = Material("Si", avalanche_model="vanOverstraeten").cal_coefficient(FIELD, -1, 300.0) * 1e-4  # /um
+    current = CalCurrent(
+        _device(irradiation_model="constant", gain_pair_threshold=1e30), _Trapping(),
+        [100.0], [[50.0, 50.0, 40.0, 0.0]], diffusion=False,
+    )
+
+    electron = current.electron_system.paths[0]
+    speed = 40.0 / electron[-1][3]  # um/s
+    k = alpha - 2.0e9 / speed
+    made = sum(
+        carriers for carriers, path in zip(current.gain_current.hole_system.carriers, current.gain_current.hole_system.paths)
+        if path[0][2] < 39.0
+    )
+    assert made == pytest.approx(100.0 * alpha / k * math.expm1(k * 40.0), rel=0.02)
+    assert made < 0.9 * 100.0 * math.expm1(alpha * 40.0)

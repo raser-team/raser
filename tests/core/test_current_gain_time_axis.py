@@ -1,5 +1,6 @@
 """The gain current is binned on the time axis of the current it multiplies."""
 
+import math
 from types import SimpleNamespace
 
 import pytest
@@ -141,3 +142,31 @@ def test_sensitive_pairs_leave_out_the_pairs_born_where_the_device_conducts():
 
     assert current.pairs == 207.0
     assert current.sensitive_pairs == 100.0
+
+
+class _Trapping(_UniformField):
+    """Electrons and holes trapped at 2e9 /s everywhere."""
+
+    def get_trap_e_cached(self, x, y, z):
+        return 2.0e9
+
+    def get_trap_h_cached(self, x, y, z):
+        return 2.0e9
+
+
+def test_the_planar_gain_multiplies_the_electrons_left_when_they_reach_the_gain_layer():
+    # electrons from z = 25 um reach the gain layer at z = 0 after t; of 100,
+    # 100 exp(-2e9 t) are left to multiply by GAIN
+    current = CalCurrent(
+        SimpleNamespace(**{**vars(_lgad()), "irradiation_model": "constant"}),
+        _Trapping(),
+        [100.0],
+        [[50.0, 50.0, 25.0, 0.0]],
+        diffusion=False,
+    )
+
+    electron = current.electron_system.paths[0]
+    arrival = electron[-1][3]
+    made = sum(current.gain_current.hole_system.carriers)
+    assert made == pytest.approx(GAIN * 100.0 * math.exp(-2.0e9 * arrival), rel=2e-3)
+    assert made < 0.8 * GAIN * 100.0
