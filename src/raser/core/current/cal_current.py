@@ -17,7 +17,7 @@ import ROOT
 ROOT.gROOT.SetBatch(True)
 
 from ..model.material import Material
-from .drift import Cluster, Drifted, advance, induced_charges, surviving
+from .drift import Cluster, Drifted, advance, induced_charges, surviving, surviving_at
 from . import draw
 from .draw_drift_path import draw_drift_path
 from .currents import EventCurrents, append_currents
@@ -479,14 +479,28 @@ class CalCurrentGain(CalCurrent):
             logger.warning("No carrier system found for planar gain calculation.")
             return
 
-        # each cluster multiplies where it stops: its pairs start at the gain
-        # layer at that time, as many as the depth it was made at gives for
-        # the carriers not trapped by then. Pairs made in front of the gain
-        # layer send the other carrier through it; for them the survival of
-        # this one is an approximation
+        # each cluster that reaches the gain layer multiplies there: its pairs
+        # start at the gain depth when it stops, as many as the depth it was
+        # made at gives for its carriers not yet trapped when it crossed
+        # that depth. A cluster that never moved, or moved towards the layer
+        # without reaching it, makes none. One that moves away from it was
+        # made in front of the layer and sends the other carrier through it:
+        # its pairs are taken whole, the other carrier being through at once
         gain_depth = my_f.planar_gain_depth(my_d)
-        for carriers, remaining, path in zip(source_system.carriers, source_system.remaining, source_system.paths):
-            arriving = carriers if remaining is None or not len(remaining) else remaining[-1]
+        trapping = my_d.irradiation_model is not None
+        for carriers, path in zip(source_system.carriers, source_system.paths):
+            if len(path) < 2:
+                continue
+            depths = path[:, 2] - gain_depth
+            crossed = np.flatnonzero(depths[:-1] * depths[1:] <= 0)
+            if len(crossed):
+                step = int(crossed[0])
+                fraction = depths[step] / (depths[step] - depths[step + 1]) if depths[step] != depths[step + 1] else 0.0
+                arriving = surviving_at(path, carriers, my_f, step, fraction) if trapping else carriers
+            elif abs(depths[-1]) < abs(depths[0]):
+                continue
+            else:
+                arriving = carriers
             x, y, _, t = path[-1]
             gain_starts.append((x, y, gain_depth, t))
             gain_pairs.append(abs(arriving) * my_f.planar_gain_at(my_d, path[0][2]))

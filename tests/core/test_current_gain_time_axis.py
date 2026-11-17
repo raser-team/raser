@@ -3,6 +3,8 @@
 import math
 from types import SimpleNamespace
 
+import numpy as np
+
 import pytest
 
 from raser.core.current.cal_current import CalCurrent
@@ -154,8 +156,15 @@ class _Trapping(_UniformField):
         return 2.0e9
 
 
-def test_the_planar_gain_multiplies_the_electrons_left_when_they_reach_the_gain_layer():
-    # electrons from z = 25 um reach the gain layer at z = 0 after t; of 100,
+def _crossing_time(path, depth):
+    """When a path, falling or rising, passes the depth, by linear interpolation."""
+    z, t = path[:, 2], path[:, 3]
+    k = int(np.flatnonzero((z[:-1] - depth) * (z[1:] - depth) <= 0)[0])
+    return t[k] + (depth - z[k]) / (z[k + 1] - z[k]) * (t[k + 1] - t[k])
+
+
+def test_the_planar_gain_multiplies_the_electrons_left_when_they_cross_the_gain_depth():
+    # electrons from z = 25 um pass the gain depth, 1 um, at t; of 100,
     # 100 exp(-2e9 t) are left to multiply by GAIN
     current = CalCurrent(
         SimpleNamespace(**{**vars(_lgad()), "irradiation_model": "constant"}),
@@ -165,11 +174,50 @@ def test_the_planar_gain_multiplies_the_electrons_left_when_they_reach_the_gain_
         diffusion=False,
     )
 
-    electron = current.electron_system.paths[0]
-    arrival = electron[-1][3]
+    crossing = _crossing_time(current.electron_system.paths[0], 1.0)
     made = sum(current.gain_current.hole_system.carriers)
-    assert made == pytest.approx(GAIN * 100.0 * math.exp(-2.0e9 * arrival), rel=2e-3)
+    assert made == pytest.approx(GAIN * 100.0 * math.exp(-2.0e9 * crossing), rel=1e-6)
     assert made < 0.8 * GAIN * 100.0
+
+
+class _HolesMultiplyAt49um(_Trapping):
+    """Holes, trapped at 8e9 /s and not electrons' 2e9 /s, multiply at 49 um."""
+
+    def get_trap_h_cached(self, x, y, z):
+        return 8.0e9
+
+    def planar_gain_depth(self, my_d):
+        return 49.0
+
+    def planar_gain_carrier(self, my_d):
+        return 1
+
+
+def test_the_planar_gain_takes_the_trapping_of_the_carrier_that_multiplies():
+    current = CalCurrent(
+        SimpleNamespace(**{**vars(_lgad()), "irradiation_model": "constant"}),
+        _HolesMultiplyAt49um(),
+        [100.0],
+        [[50.0, 50.0, 25.0, 0.0]],
+        diffusion=False,
+    )
+
+    crossing = _crossing_time(current.hole_system.paths[0], 49.0)
+    made = sum(current.gain_current.hole_system.carriers)
+    assert made == pytest.approx(GAIN * 100.0 * math.exp(-8.0e9 * crossing), rel=1e-6)
+
+
+class _NoFieldAtAll(_UniformField):
+    def get_e_field_cached(self, x, y, z):
+        raise ValueError("outside the mesh")
+
+
+def test_a_cluster_that_never_moved_makes_no_gain():
+    current = CalCurrent(
+        SimpleNamespace(**{**vars(_lgad())}), _NoFieldAtAll(), [100.0], [[50.0, 50.0, 25.0, 0.0]], diffusion=False
+    )
+
+    assert current.gain_current.hole_system is None
 
 
 class _NoFieldBelow10um(_UniformField):

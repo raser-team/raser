@@ -158,3 +158,12 @@ def surviving(path, carriers, my_f):
     decay = rates * np.diff(path[:, 3])
     return carriers * np.exp(-(np.cumsum(decay) - decay / 2))
 
+
+
+def surviving_at(path, carriers, my_f, step, fraction):
+    """Carriers of a cluster not yet trapped `fraction` of the way through
+    step `step` of its path, with the rates `surviving` takes."""
+    rate = my_f.get_trap_h_cached if carriers > 0 else my_f.get_trap_e_cached
+    rates = np.array([rate(x, y, z) for x, y, z, _ in path[: step + 1]])
+    decay = rates * np.diff(path[: step + 2, 3])
+    return carriers * np.exp(-(decay[:step].sum() + fraction * decay[step]))
