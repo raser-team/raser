@@ -2,6 +2,7 @@ import devsim
 
 from raser.core.model.band_structure import BAND_STRUCTURE
 from raser.core.model.material import RELATIVE_PERMITTIVITY
+from raser.core.model.recombination import SRH_LIFETIME
 
 from . import model_create
 
@@ -57,8 +58,8 @@ def CreateSiliconCarbideConstant(T, device, region):
 
     devsim.set_parameter(device=device, region=region, name="n1", value=N_i)
     devsim.set_parameter(device=device, region=region, name="p1", value=N_i)
-    devsim.set_parameter(device=device, region=region, name="taun", value=2.5e-6)
-    devsim.set_parameter(device=device, region=region, name="taup", value=0.5e-6)
+    devsim.set_parameter(device=device, region=region, name="taun", value=SRH_LIFETIME["SiC"]["tau_n"])
+    devsim.set_parameter(device=device, region=region, name="taup", value=SRH_LIFETIME["SiC"]["tau_p"])
 
 def CreateDiamondConstant(T, device, region):
     # define Diamond parameters
@@ -80,8 +81,8 @@ def CreateDiamondConstant(T, device, region):
 
     devsim.set_parameter(device=device, region=region, name="n1", value=N_i)
     devsim.set_parameter(device=device, region=region, name="p1", value=N_i)
-    devsim.set_parameter(device=device, region=region, name="taun", value=5.6e-7)
-    devsim.set_parameter(device=device, region=region, name="taup", value=2.4e-7)
+    devsim.set_parameter(device=device, region=region, name="taun", value=SRH_LIFETIME["Diamond"]["tau_n"])
+    devsim.set_parameter(device=device, region=region, name="taup", value=SRH_LIFETIME["Diamond"]["tau_p"])
 
 def CreateSiliconConstant(T, device, region):
     # define Silicon parameters
@@ -103,8 +104,8 @@ def CreateSiliconConstant(T, device, region):
 
     devsim.set_parameter(device=device, region=region, name="n1", value=N_i)
     devsim.set_parameter(device=device, region=region, name="p1", value=N_i)
-    devsim.set_parameter(device=device, region=region, name="taun", value=7e-3)
-    devsim.set_parameter(device=device, region=region, name="taup", value=7e-3)
+    devsim.set_parameter(device=device, region=region, name="taun", value=SRH_LIFETIME["Si"]["tau_n"])
+    devsim.set_parameter(device=device, region=region, name="taup", value=SRH_LIFETIME["Si"]["tau_p"])
 
 def CreateFineExponentialModels(T, device, region):
     epsilon_model_in = 10 * 1.6 * 1e-19  # J
