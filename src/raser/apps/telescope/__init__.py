@@ -24,7 +24,7 @@ def _currents(kwargs):
 # The layers are the detectors of one deposits file; the currents are one
 # file per layer.
 SLICES = (
-    Slice("deposits", _deposits, keys=("events_per_job",)),
+    Slice("deposits", _deposits, keys=("events_per_job", "mode")),
     Slice("currents", _currents),
 )
 
@@ -32,7 +32,7 @@ SLICES = (
 def register(subparsers):
     parser = subparsers.add_parser("telescope", help="telescope")
     setups = parser.add_subparsers(dest="telescope_setup", required=True)
-    for setup in ("taichu_v1", "taichu_v2", "acts_v1", "g4"):
+    for setup in ("taichu_v1", "taichu_v2"):
         setup_parser = setups.add_parser(setup)
         command = None
         keys = ()
@@ -41,7 +41,13 @@ def register(subparsers):
             setup_parser.add_argument(
                 "-evt", "--events-per-job", type=int, help="events per job"
             )
-            keys = ("events_per_job",)
+            setup_parser.add_argument(
+                "--mode",
+                choices=("full", "fast"),
+                help="how the hits are found: Geant4 and diffusion, or straight "
+                "tracks whose charge goes to the pixel under them; full by default",
+            )
+            keys = ("events_per_job", "mode")
             job, slices = None, SLICES
         if setup == "taichu_v2":
             setup_parser.add_argument("variant", nargs="?", default="taichu_v2")
@@ -51,7 +57,9 @@ def register(subparsers):
             job=job,
             slices=slices,
             keys=keys,
-            defaults={key: TAICHU_V1["total_events"] for key in keys},
+            defaults={"events_per_job": TAICHU_V1["total_events"], "mode": "full"}
+            if keys
+            else {},
             device=False,
             command=command,
         ).attach(setup_parser)
@@ -63,15 +71,6 @@ def _variant(kwargs):
 
 
 def run(kwargs):
-    setup = kwargs["telescope_setup"]
-    if setup == "taichu_v2":
-        from .telescope_signal import taichu_v2
+    from .telescope_signal import taichu_v2
 
-        return taichu_v2(kwargs["variant"])
-    if setup == "acts_v1":
-        from .telescope_acts import main
-
-        return main(kwargs["seed"])
-    from .telescope_g4 import main
-
-    return main()
+    return taichu_v2(kwargs["variant"])
