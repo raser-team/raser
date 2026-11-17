@@ -70,8 +70,14 @@ _HATAKEYAMA_COEFFICIENTS = {
 }
 
 
+# 4H-SiC is grown on substrates cut 4 degrees off (0001) towards <11-20>:
+# in a planar device the field, normal to the surface, is 4 degrees off
+# <0001>. The drift and the field solver both take this angle.
+OFF_AXIS_DEG = 4.0
+
+
 @functools.cache
-def hatakeyama(carrier, angle_deg):
+def hatakeyama(carrier, angle_deg=OFF_AXIS_DEG):
     """The Hatakeyama coefficient of `carrier` for a field `angle_deg` off <0001>."""
     c = _HATAKEYAMA_COEFFICIENTS[carrier]
     along_0001 = math.cos(math.radians(angle_deg))
