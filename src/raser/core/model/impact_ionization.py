@@ -8,10 +8,10 @@ from .formula import Formula
 # van Overstraeten and de Man, Solid-State Electronics 13 (1970) 583: a
 # Chynoweth law with a low- and a high-field set of a [1/cm] and b [V/cm],
 # the two met at E0, and the temperature dependence of the optical phonon
-# energy hbarOmega [eV] (k_T0 = k T0 [eV]). Below 1.75e5 V/cm the coefficient
-# is taken to be zero.
+# energy hbarOmega [eV] (k_T0 = k T0 [eV]). Below 1.75e5 V/cm, the lower
+# end of the measured fit, the coefficient is taken to be zero.
 _VAN_OVERSTRAETEN = (
-    "ifelse(E > 1.75e5, "
+    "ifelse(E >= 1.75e5, "
     "ifelse(E > E0, gamma*a_high*exp(-(gamma*b_high)/E), gamma*a_low*exp(-(gamma*b_low)/E)), "
     "0)"
 )

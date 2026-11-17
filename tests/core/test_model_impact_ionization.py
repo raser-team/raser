@@ -13,6 +13,8 @@ def test_van_overstraeten_holes_take_the_low_field_set_below_e0() -> None:
 
     assert VAN_OVERSTRAETEN["hole"].value(E=3e5, T=300.0) == pytest.approx(expected, rel=1e-12)
     assert VAN_OVERSTRAETEN["hole"].value(E=1.7e5, T=300.0) == 0.0
+    # the fit holds from 1.75e5 V/cm on, that end included
+    assert VAN_OVERSTRAETEN["electron"].value(E=1.75e5, T=300.0) > 500.0
 
 
 def test_van_overstraeten_ionization_grows_as_the_lattice_cools() -> None:

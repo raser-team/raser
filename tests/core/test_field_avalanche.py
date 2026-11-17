@@ -20,7 +20,7 @@ def _devsim_value(text: str, field: float, temperature: float) -> float:
     return float(eval(text.replace("^", "**"), {"__builtins__": {}}, names))
 
 
-@pytest.mark.parametrize("field", [174999.5, 175000.5, 399999.5, 400000.5, 3e5])
+@pytest.mark.parametrize("field", [174999.5, 175000.0, 175000.5, 399999.5, 400000.5, 3e5])
 def test_the_solver_takes_the_van_overstraeten_of_the_drift(field: float) -> None:
     # Either side of the 1.75e5 V/cm cut and of E0 = 4e5 V/cm, where holes change
     # from the low- to the high-field set (0.9% apart at E0). The solver keeps
