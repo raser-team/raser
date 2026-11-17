@@ -18,8 +18,11 @@ from raser.core.field.solved import DEFAULT_MODE
 from raser.core.field.solved import HAS_DEVSIM
 from raser.core.field.solved import solved_field
 from raser.lifecycle.slices import Shared
+from raser.lifecycle.workflow import WORKFLOWS
 from raser.lifecycle.workflow import Workflow
 from raser.lifecycle.workflow import execute
+from raser.lifecycle.workflow import make_shared
+from raser.supports.paths import project_root_context
 
 
 def _solver(kwargs):
@@ -232,7 +235,21 @@ WORKFLOW = Workflow(
 
 
 def run(kwargs):
-    return execute(WORKFLOW, kwargs)
+    """raser field <device>: its field; raser field <experiment folder>: the
+    fields the points of that experiment need, as its own command would
+    solve them before its jobs start."""
+    folder = Path(kwargs["det_name"]).expanduser()
+    if not (folder / "config.json").is_file():
+        return execute(WORKFLOW, kwargs)
+    config = json.loads((folder / "config.json").read_text())
+    words = config["workflow"].split()
+    if words == WORKFLOW.words:
+        raise SystemExit(f"{folder}: this is the field itself; give its device, raser field {config['device']}")
+    experiment = WORKFLOWS[config["workflow"]]
+    folder = folder.resolve()
+    with project_root_context(folder.parents[len(words) - 1], kwargs["_components_of"][words[0]]):
+        make_shared(experiment, {**kwargs, "det_name": config.get("device"), "scan": []}, folder)
+    return None
 
 
 def _flux_of_run(my_d, options):
@@ -282,11 +299,14 @@ def start(kwargs, options, files):
     parser = argparse.ArgumentParser(prog="raser")
     register(parser.add_subparsers(dest="_command"))
     field_kwargs = vars(parser.parse_args(words))
+    # jobs=1: each field is solved in a process of its own, as devsim holds
+    # one device a process, and the command of the experiment never loads it.
     field_kwargs.update(
-        batch=kwargs["batch"], mem=kwargs["mem"], _argv=words, _entry_command_prefix=("field",)
+        batch=kwargs["batch"], mem=kwargs["mem"], jobs=1, _argv=words, _entry_command_prefix=("field",)
     )
     print("the field is not ready: " + " ".join(["raser", *words]))
-    execute(WORKFLOW, field_kwargs)
+    # The point is this experiment's, not one of the field's own scans.
+    execute(WORKFLOW, field_kwargs, register=False)
 
 
 SHARED = Shared(ready=ready, start=start)
@@ -296,7 +316,7 @@ def register(subparsers):
     parser = subparsers.add_parser(
         "field", aliases=["fld"], help="stage: the fields of a device, its weighting fields and IV/CV"
     )
-    parser.add_argument("det_name", help="name of the detector")
+    parser.add_argument("det_name", help="a device, or an experiment folder whose points' fields to solve")
     parser.add_argument(
         "-v", "--verbose", help="VERBOSE level", action="count", default=0
     )

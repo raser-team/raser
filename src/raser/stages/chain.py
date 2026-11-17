@@ -121,11 +121,12 @@ SLICES = (
         _deposits,
         keys=("source", "g4setup", "events_per_job", "edep_min", "edep_max", "fano"),
         kinds=("source", "g4setup"),
+        needs=(),
     ),
     # The field is shared by the experiments of a device, in work/<device>/field;
-    # the deposits do not read it.
-    Slice("field", _field, keys=("voltage", "irradiation"), shared=field.SHARED),
-    Slice("current", _currents, keys=("plots",)),
+    # it and the deposits do not read each other.
+    Slice("field", _field, keys=("voltage", "irradiation"), shared=field.SHARED, needs=()),
+    Slice("current", _currents, keys=("plots",), needs=("deposit", "field")),
     # The electronics works on what was measured: its points read the same currents.
-    Slice("readout", _waveforms, keys=("amplifier",), new_events=False),
+    Slice("readout", _waveforms, keys=("amplifier",), new_events=False, needs=("current",)),
 )
