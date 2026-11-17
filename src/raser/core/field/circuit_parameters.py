@@ -199,10 +199,12 @@ def device_circuit(my_d, electrodes, solved_f=None, row=None, solved_undepleted=
     return circuit, values
 
 
-def sheet_resistance(my_d):
+def sheet_resistance(my_d, chosen_ohm=None):
     """Resistance of a square [Ohm] of the resistive layer of a device, and
     where it is from, for the record of the run:
 
+    "chosen" : chosen_ohm, a value the run is given in place of that of the
+        device file, such as a point of a scan;
     "device file" : sheet_resistance_ohm of resistive_layer in the device
         file, a measured or a chosen value;
     "implanted layer" : that of the implanted aluminium, from implanted_cm2,
@@ -210,6 +212,8 @@ def sheet_resistance(my_d):
         file has no sheet_resistance_ohm.
     """
     layer = my_d.device_dict["resistive_layer"]
+    if chosen_ohm is not None:
+        return float(chosen_ohm), "chosen"
     if "sheet_resistance_ohm" in layer:
         return float(layer["sheet_resistance_ohm"]), "device file"
     return (
@@ -223,7 +227,7 @@ def sheet_resistance(my_d):
     )
 
 
-def device_row(my_d, cells, solved_f=None):
+def device_row(my_d, cells, solved_f=None, sheet_ohm=None):
     """DeviceCircuit of the row of strips on the resistive layer of a device,
     and the values it is made of, for the record of the run.
 
@@ -231,13 +235,15 @@ def device_row(my_d, cells, solved_f=None):
         wide as the pitch of the device.
     solved_f : capacitance [F] of one cell to the back, as
         junction_capacitance takes it.
+    sheet_ohm : resistance of a square of the layer [Ohm] in place of that
+        of the device, as sheet_resistance takes it.
 
     The strips are those of resistive_layer in the device file: for each its
     name with the numbers (from 0) of its first and last cell. Its grounded
     contacts are given the same way.
     """
     farad, capacitance_from = junction_capacitance(my_d, solved_f)
-    ohm, resistance_from = sheet_resistance(my_d)
+    ohm, resistance_from = sheet_resistance(my_d, sheet_ohm)
     width_m = float(my_d.p_x) * 1e-6
     length_m = float(my_d.l_y) * 1e-6
     strips = {
@@ -260,7 +266,7 @@ def device_row(my_d, cells, solved_f=None):
     return circuit, values
 
 
-def device_grid(my_d, cells, solved_f=None):
+def device_grid(my_d, cells, solved_f=None, sheet_ohm=None):
     """DeviceCircuit of the pads on the resistive layer of a device, and the
     values it is made of, for the record of the run.
 
@@ -268,6 +274,7 @@ def device_grid(my_d, cells, solved_f=None):
         by y_ele_num at the pitches of the device.
     solved_f : capacitance [F] of one cell to the back, as
         junction_capacitance takes it.
+    sheet_ohm : as device_row takes it.
 
     The pads and the grounded contacts are those of resistive_layer in the
     device file. With coupling there, thickness_um and permittivity of the
@@ -275,7 +282,7 @@ def device_grid(my_d, cells, solved_f=None):
     """
     layer = my_d.device_dict["resistive_layer"]
     farad, capacitance_from = junction_capacitance(my_d, solved_f)
-    ohm, resistance_from = sheet_resistance(my_d)
+    ohm, resistance_from = sheet_resistance(my_d, sheet_ohm)
     widths_m = (float(my_d.p_x) * 1e-6, float(my_d.p_y) * 1e-6)
     coupling = None
     if "coupling" in layer:
