@@ -230,7 +230,8 @@ def job_alive(job_id) -> bool | None:
         return None
     if result.returncode != 0:
         return None
-    held = {line.split()[0].split(".")[0] for line in result.stdout.splitlines() if line[:1].isdigit()}
+    rows = [line.split() for line in result.stdout.splitlines()]
+    held = {words[0].split(".")[0] for words in rows if words and words[0][:1].isdigit()}
     return str(job_id) in held
 
 

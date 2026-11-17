@@ -146,3 +146,15 @@ def test_an_installed_raser_records_its_version_and_runs_its_workers_in_the_fold
     monkeypatch.chdir(tmp_path)
     script = scheduler.worker_script(("raser", "signal", "dev"), None)
     assert f"cd {tmp_path} || exit 1" in script and "env/setup" not in script
+
+
+@pytest.mark.parametrize("scheduler_name", ["hep_sub", "condor"])
+def test_a_job_the_scheduler_lists_with_leading_spaces_is_alive_and_another_is_not(
+    monkeypatch: pytest.MonkeyPatch, scheduler_name: str
+) -> None:
+    monkeypatch.setenv("RASER_SCHEDULER", scheduler_name)
+    listing = "JOBID   OWNER  ST\n  123.0 user R\n  1234.0 user I\n"
+    monkeypatch.setattr(scheduler.subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=0, stdout=listing))
+
+    assert scheduler.job_alive("123") is True
+    assert scheduler.job_alive("12") is False

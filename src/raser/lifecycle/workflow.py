@@ -730,13 +730,19 @@ def _note_submitted(folder, index, names, job) -> None:
     nothing is recorded, and nothing starts the command again for it."""
     if job is None:
         return
+    text = json.dumps({"job": job, "time": time.strftime("%Y-%m-%d %H:%M:%S")}) + "\n"
     for name in names:
+        # Written beside it, then linked in whole: a record is never there half
+        # written, and one already there stays.
+        path = _submitted(folder, index, name)
+        part = path.with_name(f"{path.name}.{os.getpid()}.part")
+        part.write_text(text)
         try:
-            handle = os.open(_submitted(folder, index, name), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.link(part, path)
         except FileExistsError:
-            continue
-        with os.fdopen(handle, "w") as file:
-            file.write(json.dumps({"job": job, "time": time.strftime("%Y-%m-%d %H:%M:%S")}) + "\n")
+            pass
+        finally:
+            part.unlink()
 
 
 def _not_submitted(folder, left, names) -> list[int]:

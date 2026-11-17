@@ -47,6 +47,23 @@ def _kwargs(**given: Any) -> dict[str, Any]:
     return {**kwargs, **given}
 
 
+def test_a_record_cut_short_by_a_kill_is_not_left_and_the_job_is_submitted_at_the_next_command(
+    cluster: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def killed(*args):
+        raise KeyboardInterrupt
+
+    with monkeypatch.context() as patched:
+        patched.setattr(workflow.time, "strftime", killed)
+        with pytest.raises(KeyboardInterrupt):
+            execute(TOY, _kwargs(jobs=1, _argv=["-b", "toy", "--seed", "1"]))
+
+    assert list((cluster["folder"] / "batch").glob("*.submitted*")) == []
+    cluster["submitted"].clear()
+    execute(TOY, _kwargs(jobs=1, _argv=["-b", "toy", "--seed", "1"]))
+    assert cluster["submitted"] == ["0"]
+
+
 def test_a_job_submitted_is_recorded_for_each_of_its_slices_with_its_name_on_the_cluster(cluster: dict[str, Any]) -> None:
     execute(TOY, _kwargs())
 
