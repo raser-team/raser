@@ -1,5 +1,7 @@
 """Circuit of a sensor and its values, taken from its device and its field."""
 
+import dataclasses
+
 from .sensor_spice import planar_sensor
 from .sensor_spice import row_of_electrodes
 from .sensor_spice import side_by_side
@@ -94,7 +96,9 @@ def device_sensor(my_d, electrodes, solved_f=None, row=None, solved_undepleted=N
     behind the depleted one of every electrode. A row has none: the layer
     under strips is not a slab under each of them.
     Every electrode has the bias resistance and the coupling capacitance of
-    the device file, as on_sensor gives them.
+    the device file, as on_sensor gives them. The electrodes count as alike
+    for their noise: in a row the strips at its ends have the capacitance
+    they lack to neighbours on ground, and the same in all.
     The record says what the circuit does not have.
     """
     bias_ohm, coupling_f = on_sensor(my_d)
@@ -158,6 +162,7 @@ def device_sensor(my_d, electrodes, solved_f=None, row=None, solved_undepleted=N
             )
         sensor = row_of_electrodes(sensors, between_f)
         between = {"farad": between_f, "from": "field"}
+    sensor = dataclasses.replace(sensor, outputs_alike=True)
     values = {
         "junction_capacitance": {"farad": farad, "from": source},
         "between_electrodes": between,

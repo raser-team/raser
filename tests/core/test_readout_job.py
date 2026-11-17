@@ -1,10 +1,14 @@
+import dataclasses
+
 import numpy as np
 import pytest
 
 from raser.core.current.currents import EventCurrents
 from raser.core.current.currents import append_currents
+from raser.core.readout import job
 from raser.core.readout.job import write_waveforms
 from raser.core.field.sensor_spice import planar_sensor
+from raser.core.field.sensor_spice import side_by_side
 from raser.core.readout.waveforms import read_sensor_values
 from raser.core.readout.waveforms import read_waveforms
 
@@ -92,3 +96,59 @@ def test_noise_of_the_circuit_is_added_to_every_event(tmp_path):
     assert abs(np.mean(first[0] * first[1])) < 0.2 * first.var()
     np.testing.assert_array_equal(noise(3), first)
     assert not np.array_equal(noise(4), first)
+
+
+def _quiet_events(path, electrodes, events, bins):
+    count = len(electrodes)
+    quiet = EventCurrents(0, 0.0, np.zeros((count, bins)), np.zeros(count), 0.0)
+    for event in range(events):
+        quiet.event = event
+        append_currents(path, electrodes, DT_S, quiet)
+
+
+def test_outputs_that_differ_each_have_the_noise_of_their_own_circuit(tmp_path):
+    currents_path = tmp_path / "currents_0.h5"
+    _quiet_events(currents_path, ["small", "large"], 10, 2000)
+    sensor = side_by_side(
+        [planar_sensor("small", 10e-12), planar_sensor("large", 40e-12)]
+    )
+
+    path = tmp_path / "waveforms_0.h5"
+    write_waveforms(currents_path, path, CHAIN, sensor, 5)
+    voltage = np.array([record.voltage for record in read_waveforms(path).events])
+
+    k_t = 1.380649e-23 * 300.15
+    assert voltage[:, 0].std() == pytest.approx(np.sqrt(k_t / 10e-12), rel=0.15)
+    assert voltage[:, 1].std() == pytest.approx(np.sqrt(k_t / 40e-12), rel=0.15)
+
+
+def test_alike_outputs_share_one_spectrum_and_draw_their_own_noise(
+    tmp_path, monkeypatch
+):
+    electrodes = [f"strip{k}" for k in range(5)]
+    currents_path = tmp_path / "currents_0.h5"
+    _quiet_events(currents_path, electrodes, 10, 2000)
+    sensor = dataclasses.replace(
+        side_by_side([planar_sensor(name, 10e-12) for name in electrodes]),
+        outputs_alike=True,
+    )
+    analysed = []
+    spectrum = job.output_noise_spectrum
+
+    def counted(chain, sensor, lowest_hz, highest_hz, outputs=None):
+        analysed.append(outputs)
+        return spectrum(chain, sensor, lowest_hz, highest_hz, outputs)
+
+    monkeypatch.setattr(job, "output_noise_spectrum", counted)
+
+    path = tmp_path / "waveforms_0.h5"
+    write_waveforms(currents_path, path, CHAIN, sensor, 5)
+    voltage = np.array([record.voltage for record in read_waveforms(path).events])
+
+    # the spectrum of the middle strip, once, for all five
+    assert analysed == [["strip2"]]
+    assert voltage.std(axis=(0, 2)) == pytest.approx(
+        np.sqrt(1.380649e-23 * 300.15 / 10e-12), rel=0.15
+    )
+    # each strip its own noise
+    assert abs(np.mean(voltage[:, 0] * voltage[:, 1])) < 0.2 * voltage.var()

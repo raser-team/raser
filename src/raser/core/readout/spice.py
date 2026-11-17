@@ -193,18 +193,20 @@ PER_DECADE = 50
 
 
 def write_noise_netlist(chain, sensor, lowest_hz, highest_hz, raws):
-    """Netlist of the noise analysis of each output. chain and sensor are
-    those of write_netlist; raws are the files, one per output in the order
-    of sensor.outputs, ngspice writes the spectra to."""
-    lines, outputs = _chain(chain, sensor)
+    """Netlist of the noise analysis of some outputs. chain and sensor are
+    those of write_netlist; raws are the files ngspice writes the spectra to,
+    by the names of the outputs analysed."""
+    lines, nodes = _chain(chain, sensor)
+    node_of = dict(zip(sensor.outputs, nodes))
     # the analysis asks for a source, which leaves the noise at the output
     # as it is: the place of an induced current
     source_from, source_to = next(iter(sensor.sources.values()))
     lines.append(f"I1 {source_from} {source_to} dc 0 ac 1")
     control = [".control"]
-    for k, (node, raw) in enumerate(zip(outputs, raws), 1):
+    for k, (output, raw) in enumerate(raws.items(), 1):
         control.append(
-            f"noise v({node}) I1 dec {PER_DECADE} {lowest_hz:.9g} {highest_hz:.9g}"
+            f"noise v({node_of[output]}) I1 dec {PER_DECADE} "
+            f"{lowest_hz:.9g} {highest_hz:.9g}"
         )
         # every analysis leaves two plots: the spectra, then their integrals
         control.append(f"setplot noise{2 * k - 1}")
@@ -213,19 +215,26 @@ def write_noise_netlist(chain, sensor, lowest_hz, highest_hz, raws):
     return "\n".join(lines) + "\n"
 
 
-def output_noise_spectrum(chain, sensor, lowest_hz, highest_hz):
-    """Noise of the circuit at each output, as ngspice calculates it from the
+def output_noise_spectrum(chain, sensor, lowest_hz, highest_hz, outputs=None):
+    """Noise of the circuit at outputs, as ngspice calculates it from the
     thermal noise of the resistors and the noise of the device models, at
     27 degrees Celsius: the frequencies [Hz], from lowest_hz to highest_hz, and
     the amplitude spectral density at them [V / sqrt(Hz)], shape (outputs,
-    frequencies), in the order of sensor.outputs. chain and sensor are those
-    of write_netlist; the sensor and the load are part of the circuit.
+    frequencies). chain and sensor are those of write_netlist; the sensor and
+    the load are part of the circuit.
+
+    outputs : names of the outputs analysed, in the order of the spectra;
+        None for all those of the sensor, in their order. The whole circuit
+        is in each analysis, and each takes as long as the circuit is large.
 
     The noise of one output is taken by itself: what several outputs have in
     common is not given.
     """
     with tempfile.TemporaryDirectory() as folder:
-        raws = [Path(folder) / f"noise{k}.raw" for k in range(len(sensor.outputs))]
+        raws = {
+            output: Path(folder) / f"noise{k}.raw"
+            for k, output in enumerate(sensor.outputs if outputs is None else outputs)
+        }
         netlist = Path(folder) / "noise.cir"
         netlist.write_text(
             write_noise_netlist(chain, sensor, lowest_hz, highest_hz, raws),
@@ -234,5 +243,5 @@ def output_noise_spectrum(chain, sensor, lowest_hz, highest_hz):
         subprocess.run(
             ["ngspice", "-b", str(netlist)], check=True, capture_output=True, text=True
         )
-        spectra = [np.loadtxt(raw, dtype=np.float64, ndmin=2) for raw in raws]
+        spectra = [np.loadtxt(raw, dtype=np.float64, ndmin=2) for raw in raws.values()]
     return spectra[0][:, 0], np.array([spectrum[:, 1] for spectrum in spectra])

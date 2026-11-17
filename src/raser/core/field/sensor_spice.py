@@ -14,6 +14,9 @@ class SensorCircuit:
         stage reads. The read-outs may be other than the electrodes of the
         currents: those of a resistive layer are its strips, the currents
         are those of its cells.
+    outputs_alike : every output has the same circuit behind it, so that its
+        noise is that of any other: one noise spectrum, that of the middle
+        output, is taken for all of them.
 
     The node names ``in<k>_<j>`` and ``out<k>`` belong to the stages.
     """
@@ -21,6 +24,7 @@ class SensorCircuit:
     lines: tuple[str, ...]
     sources: dict[str, tuple[str, str]]
     outputs: dict[str, str]
+    outputs_alike: bool = False
 
 
 def undepleted_layer(

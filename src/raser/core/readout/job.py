@@ -32,7 +32,8 @@ def write_waveforms(
         noise of the circuit, which ngspice calculates once for the chain
         with the sensor and the load: every output of every event gets its
         own noise, in one sequence that the seed fixes. The noise of two
-        outputs has nothing in common.
+        outputs has nothing in common. Outputs the sensor gives as alike
+        share the spectrum of the middle one.
     sensor_values : None, or the values the sensor is made of and where each
         is from, as device_sensor gives them: they are written to the file.
     """
@@ -41,9 +42,15 @@ def write_waveforms(
         os.remove(waveforms_path)
     if noise_seed is not None:
         generator = np.random.default_rng(noise_seed)
+        outputs = list(sensor.outputs)
         frequencies, densities = output_noise_spectrum(
-            chain, sensor, LOWEST_NOISE_HZ, 0.5 / currents.dt
+            chain,
+            sensor,
+            LOWEST_NOISE_HZ,
+            0.5 / currents.dt,
+            [outputs[len(outputs) // 2]] if sensor.outputs_alike else outputs,
         )
+        densities = np.broadcast_to(densities, (len(outputs), densities.shape[1]))
     for event in currents.events:
         voltage = solve(chain, currents.electrodes, currents.dt, event.current, sensor)
         if noise_seed is not None:
