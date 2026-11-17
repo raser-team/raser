@@ -60,6 +60,7 @@ def test_each_event_keeps_the_electrodes_it_has_a_signal_on(tmp_path):
     read = read_waveforms(path).events
 
     assert [record.electrodes for record in read] == [["s4", "s2"], [], ["s5"]]
+    assert [record.t0 for record in read] == [0.0, 1e-9, 2e-9]
     for got, written in zip(read, events, strict=True):
         np.testing.assert_array_equal(got.voltage, written.voltage)
     with pytest.raises(ValueError, match="not each once of the electrodes"):
