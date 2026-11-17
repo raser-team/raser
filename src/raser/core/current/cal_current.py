@@ -17,7 +17,7 @@ import ROOT
 ROOT.gROOT.SetBatch(True)
 
 from ..model.material import Material
-from .drift import Drifted, drift, induced_charges, surviving
+from .drift import Cluster, Drifted, advance, induced_charges, surviving
 from . import draw
 from .draw_drift_path import draw_drift_path
 from .currents import EventCurrents, append_currents
@@ -47,9 +47,6 @@ delta_t = {
     2: 20e-12,
     3: 20e-12
 }
-
-t_tol = 1e-20
-
 
 logger = logging.getLogger(__name__)
 if not logging.getLogger().handlers:
@@ -103,6 +100,56 @@ def electrode_names(read_out_contact, read_ele_num):
     )
 
 
+# a step is sampled for conductor edges this often: a conducting layer
+# thinner than this may be missed
+edge_sampling = 0.05  # um
+# and each edge found to this
+edge_tolerance = 1e-4  # um
+
+
+def split_at_conductor_edges(start, middle, pairs, conducts, spacing=edge_sampling, tolerance=edge_tolerance):
+    """The pairs of one step of a particle, split where the step crosses the
+    edge of a region where the device conducts.
+
+    The step runs from `start` to 2 `middle` - `start` (x, y, z in um) and
+    made `pairs` pairs evenly along it; `conducts(x, y, z)` says whether the
+    device conducts at a point, as the drift asks. The step is sampled every
+    `spacing` um or closer, so a layer thinner than that may be missed, and
+    each change between two samples is found by halving to `tolerance` um.
+
+    Returns (x, y, z, pairs) of each part between edges, at its middle, with
+    the pairs of its share of the length; a step that crosses no edge is one
+    part at `middle` with all its pairs.
+    """
+    end = [2 * m - s for s, m in zip(start, middle)]
+    length = math.dist(start, end)
+
+    def at(fraction):
+        return [s + fraction * (e - s) for s, e in zip(start, end)]
+
+    samples = max(1, math.ceil(length / spacing))
+    fractions = [k / samples for k in range(samples + 1)]
+    states = [conducts(*at(fraction)) for fraction in fractions]
+    edges = []
+    for low, high, state_low, state_high in zip(fractions, fractions[1:], states, states[1:]):
+        if state_low == state_high:
+            continue
+        while (high - low) * length > tolerance:
+            halfway = (low + high) / 2
+            if conducts(*at(halfway)) == state_low:
+                low = halfway
+            else:
+                high = halfway
+        edges.append((low + high) / 2)
+    if not edges:
+        return [(*middle, pairs)]
+    bounds = [0.0, *edges, 1.0]
+    return [
+        (*at((first + last) / 2), pairs * (last - first))
+        for first, last in zip(bounds, bounds[1:])
+    ]
+
+
 def gain_algorithm(my_f):
     """How the gain is calculated in a field.
 
@@ -152,8 +199,11 @@ class CalCurrent:
         first_creation = min(creation_times, default=0.0)
         last_creation = max(creation_times, default=0.0)
         self.t_start = first_creation + relative_start
-        self.t_end = last_creation + relative_end
-        self.n_bin = int((self.t_end + t_tol - self.t_start) / self.t_bin)
+        # whole bins of t_bin, the fewest that reach last_creation + relative_end
+        self.n_bin = math.ceil((last_creation + relative_end - self.t_start) / self.t_bin)
+        while self.t_start + self.n_bin * self.t_bin < last_creation + relative_end:
+            self.n_bin += 1  # the quotient rounded down
+        self.t_end = self.t_start + self.n_bin * self.t_bin
 
         self.read_ele_num = my_d.read_ele_num
         if hasattr(my_d, "x_ele_num") and hasattr(my_d, "y_ele_num"):
@@ -170,6 +220,12 @@ class CalCurrent:
             if self._is_in_sensor(x, y, z, my_d) and self._is_in_field_range(x, y, my_d):
                 starts.append((x, y, z, t))
                 pairs.append(n_pairs)
+
+        # the pairs the drift moves: born where the device does not conduct, by
+        # the test drift makes before the first step
+        self.sensitive_pairs = float(
+            sum(n_pairs for (x, y, z, _), n_pairs in zip(starts, pairs) if not my_f.get_conductive(x, y, z))
+        )
 
         logger.info(f"carriers inside the detector: {len(starts)} electrons, {len(starts)} holes")
         self.electron_system = self.drift_all(my_d, my_f, starts, [-n_pairs for n_pairs in pairs])
@@ -245,14 +301,19 @@ class CalCurrent:
         if not starts:
             return None
         mobility = Material(my_d.material).cal_mobility
-        drifted = Drifted(list(charges), [], [])
-        for (x, y, z, t), charge in zip(starts, charges):
-            path, reason = drift(
-                x, y, z, t, charge, my_d, my_f, mobility, self.delta_t, self.diffusion
-            )
-            drifted.paths.append(path)
-            drifted.reasons.append(reason)
-        return drifted
+        clusters = [Cluster.starting(x, y, z, t, charge) for (x, y, z, t), charge in zip(starts, charges)]
+        # one cluster after another, each to its end: the order of the random draws
+        for cluster in clusters:
+            while cluster.reason is None:
+                advance(cluster, my_d, my_f, mobility, self.delta_t, self.diffusion)
+            # an array as soon as it stops: the list of points takes about
+            # six times the memory, too much to keep for every cluster at once
+            cluster.path = np.array(cluster.path)
+        return Drifted(
+            list(charges),
+            [cluster.path for cluster in clusters],
+            [cluster.reason for cluster in clusters],
+        )
 
     def count_ends(self):
         """How many clusters stopped for each reason."""
@@ -410,6 +471,24 @@ class CalCurrentGain(CalCurrent):
         emitted_segments = 0
         field_failures = 0
 
+        def emit(segment, pairs):
+            """Start `pairs` gain pairs along the segment (x0, y0, z0, t0,
+            x1, y1, z1, t1), in emit_slices clusters at the middles of its
+            equal parts."""
+            if max_carriers > 0 and len(gain_starts) + emit_slices > max_carriers:
+                raise ValueError(
+                    "the gain of {} makes more than gain_max_carriers = {} clusters "
+                    "of carriers: raise it in the device file".format(my_d.det_name, max_carriers)
+                )
+            x0, y0, z0, t0, x1, y1, z1, t1 = segment
+            for slice_idx in range(emit_slices):
+                fraction = (slice_idx + 0.5) / emit_slices
+                gain_starts.append((
+                    x0 + fraction * (x1 - x0), y0 + fraction * (y1 - y0), z0 + fraction * (z1 - z0),
+                    t0 + fraction * (t1 - t0),
+                ))
+                gain_pairs.append(pairs / emit_slices)
+
         for carrier_system in (my_current.electron_system, my_current.hole_system):
             if carrier_system is None:
                 continue
@@ -462,30 +541,27 @@ class CalCurrentGain(CalCurrent):
                     exponent = min(exponent, 50.0)
                     new_pairs = active_pairs * math.expm1(exponent)
                     if new_pairs <= 0:
+                        # the growth stops: what grew since the last emission
+                        # starts on the last segment it grew on
+                        if pending_pairs > 0:
+                            emit(last_growth, pending_pairs)
+                            pending_pairs = 0.0
+                            emitted_segments += 1
                         continue
                     active_pairs += new_pairs
                     pending_pairs += new_pairs
+                    last_growth = (x0, y0, z0, t0, x1, y1, z1, t1)
                     if pending_pairs < min_pairs:
                         continue
 
-                    slices = emit_slices
-                    if max_carriers > 0:
-                        capacity = max_carriers - len(gain_starts)
-                        if capacity <= 0:
-                            if gain_starts:
-                                gain_pairs[-1] += pending_pairs
-                            logger.warning("Gain carrier generation reached configured limit (%d).", max_carriers)
-                            return
-                        slices = min(slices, capacity)
-                    for slice_idx in range(slices):
-                        fraction = (slice_idx + 0.5) / slices
-                        gain_starts.append((
-                            x0 + fraction * dx, y0 + fraction * dy, z0 + fraction * dz,
-                            t0 + fraction * (t1 - t0),
-                        ))
-                        gain_pairs.append(pending_pairs / slices)
+                    emit(last_growth, pending_pairs)
                     pending_pairs = 0.0
                     emitted_segments += 1
+
+                # pairs too few to emit by the end of the path start on the
+                # last segment they grew on
+                if pending_pairs > 0:
+                    emit(last_growth, pending_pairs)
 
         logger.info("local gain emitted segments: %d", emitted_segments)
         if field_failures:
@@ -532,6 +608,24 @@ class CalCurrentG4P(CalCurrent):
         )
 
 
+def pulse_in_bins(time_pulse, fwhm, n_bin, bin_width):
+    """Share of a laser pulse in a time bin, for each offset of the bin.
+
+    `time_pulse(t)` [1/s] is the pulse shape, of integral 1, at the time t
+    [s] from its middle, and `fwhm` [s] its full width at half maximum.
+    Returns the integral of `time_pulse` over the bin of `bin_width` [s]
+    centred k bins from the middle, for k from -(n_bin - 1) to n_bin - 1.
+    The integral takes samples a twentieth of the width apart or closer, so
+    a pulse much shorter than a bin gives a share of 1 to the bin it lies in.
+    """
+    samples = max(1, math.ceil(20 * bin_width / fwhm))
+    offsets = np.arange(-(n_bin - 1), n_bin)
+    shares = np.zeros(len(offsets))
+    for sample in range(samples):
+        shares += time_pulse((offsets + (sample + 0.5) / samples - 0.5) * bin_width)
+    return shares * bin_width / samples
+
+
 class CalCurrentLaser(CalCurrent):
     def __init__(self, my_d, my_f, my_l, keep_drift_paths=True, diffusion=True):
         super().__init__(
@@ -545,8 +639,9 @@ class CalCurrentLaser(CalCurrent):
         
         # convolute the currents with the laser pulse shape in time
         bin_width = (self.t_end - self.t_start) / self.n_bin
+        shares = pulse_in_bins(my_l.timePulse, my_l.temporal_FWHM, self.n_bin, bin_width)
         bins = np.arange(self.n_bin)
-        pulse = my_l.timePulse((bins[:, None] - bins[None, :]) * bin_width) * bin_width
+        pulse = shares[bins[:, None] - bins[None, :] + self.n_bin - 1]
         convolved = [
             (self.hole_current, self.positive_cu),
             (self.electron_current, self.negative_cu),
@@ -608,6 +703,7 @@ def write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, pl
                 my_current.current,
                 my_current.charge,
                 my_current.pairs,
+                my_current.sensitive_pairs,
             ),
         )
         if drawn:
@@ -636,7 +732,8 @@ def write_laser_currents(currents_path, my_d, my_f, my_l, plot_path=None):
         my_current.electrodes,
         my_current.t_bin,
         EventCurrents(
-            0, my_current.t_start, my_current.current, my_current.charge, my_current.pairs
+            0, my_current.t_start, my_current.current, my_current.charge, my_current.pairs,
+            my_current.sensitive_pairs,
         ),
     )
     if plot_path is not None:
