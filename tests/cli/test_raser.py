@@ -172,3 +172,48 @@ def test_the_version_is_the_one_of_the_package(monkeypatch: pytest.MonkeyPatch, 
         main(["--version"])
 
     assert capsys.readouterr().out.strip() == "raser 9.9"
+
+
+@pytest.mark.parametrize(
+    ("raised", "said"),
+    [
+        (
+            "missing",
+            "raser: devsim is not installed. Install it with pip install devsim",
+        ),
+        (
+            "root",
+            "raser: ROOT's Python bindings are not available in this Python. "
+            "Install them with conda install -c conda-forge root_base",
+        ),
+    ],
+)
+def test_a_missing_dependency_is_one_sentence_and_no_traceback(
+    work_root: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture, raised: str, said: str
+) -> None:
+    from raser.stages import field
+    from raser.supports.dependency import MissingDependency
+
+    def execute(*args, **kwargs):
+        if raised == "missing":
+            raise MissingDependency("devsim is not installed", "Install it with pip install devsim")
+        raise ModuleNotFoundError("No module named 'ROOT'", name="ROOT")
+
+    monkeypatch.setattr(field, "execute", execute)
+
+    assert main(["field", "HPK-Si-PiN"]) == 1
+
+    out = capsys.readouterr()
+    assert out.err.strip() == said and "Traceback" not in out.err + out.out
+
+
+def test_another_module_not_found_is_raised_as_it_is(work_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from raser.stages import field
+
+    def execute(*args, **kwargs):
+        raise ModuleNotFoundError("No module named 'numpyy'", name="numpyy")
+
+    monkeypatch.setattr(field, "execute", execute)
+
+    with pytest.raises(ModuleNotFoundError, match="numpyy"):
+        main(["field", "HPK-Si-PiN"])

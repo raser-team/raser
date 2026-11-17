@@ -11,6 +11,9 @@ from contextlib import contextmanager
 
 import raser
 from raser.supports import process
+from raser.supports.dependency import ROOT_MISSING
+from raser.supports.dependency import ROOT_MODULES
+from raser.supports.dependency import MissingDependency
 from raser.supports.paths import infer_project_root
 from raser.supports.paths import project_root_context
 from raser.supports.paths import work_root
@@ -130,6 +133,14 @@ def main(argv=None):
     try:
         with _context(kwargs):
             kwargs["_run"](kwargs)
+    except MissingDependency as missing:
+        print(f"raser: {missing}", file=sys.stderr)
+        return 1
+    except ModuleNotFoundError as error:
+        if error.name not in ROOT_MODULES:
+            raise
+        print(f"raser: {ROOT_MISSING}", file=sys.stderr)
+        return 1
     finally:
         process.close()
     return 0
