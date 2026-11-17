@@ -17,7 +17,7 @@ import ROOT
 ROOT.gROOT.SetBatch(True)
 
 from ..model.material import Material
-from .drift import Drifted, drift, induced_charges, surviving
+from .drift import Cluster, Drifted, advance, induced_charges, surviving
 from . import draw
 from .draw_drift_path import draw_drift_path
 from .currents import EventCurrents, append_currents
@@ -243,14 +243,16 @@ class CalCurrent:
         if not starts:
             return None
         mobility = Material(my_d.material).cal_mobility
-        drifted = Drifted(list(charges), [], [])
-        for (x, y, z, t), charge in zip(starts, charges):
-            path, reason = drift(
-                x, y, z, t, charge, my_d, my_f, mobility, self.delta_t, self.diffusion
-            )
-            drifted.paths.append(path)
-            drifted.reasons.append(reason)
-        return drifted
+        clusters = [Cluster.starting(x, y, z, t, charge) for (x, y, z, t), charge in zip(starts, charges)]
+        # one cluster after another, each to its end: the order of the random draws
+        for cluster in clusters:
+            while cluster.reason is None:
+                advance(cluster, my_d, my_f, mobility, self.delta_t, self.diffusion)
+        return Drifted(
+            list(charges),
+            [np.array(cluster.path) for cluster in clusters],
+            [cluster.reason for cluster in clusters],
+        )
 
     def count_ends(self):
         """How many clusters stopped for each reason."""
