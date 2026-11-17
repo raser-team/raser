@@ -22,8 +22,8 @@ from . import draw
 from .draw_drift_path import draw_drift_path
 from .currents import EventCurrents, append_currents
 
-from ..interaction.carrier_list import CarrierListFromG4P
-from ..interaction.deposits import EventDeposits, read_deposits
+from ..deposit.carrier_list import CarrierListFromG4P
+from ..deposit.deposits import EventDeposits, read_deposits
 from raser.supports.output import output
 
 t_bin = {

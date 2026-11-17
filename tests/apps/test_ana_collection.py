@@ -6,9 +6,9 @@ import pytest
 from raser.apps.ana.collection import point_efficiency
 from raser.core.current.currents import EventCurrents
 from raser.core.current.currents import append_currents
-from raser.core.interaction.deposits import Deposits
-from raser.core.interaction.deposits import EventDeposits
-from raser.core.interaction.deposits import write_deposits
+from raser.core.deposit.deposits import Deposits
+from raser.core.deposit.deposits import EventDeposits
+from raser.core.deposit.deposits import write_deposits
 
 E = 1.602176634e-19
 

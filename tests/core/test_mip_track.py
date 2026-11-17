@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from raser.core import seeding
-from raser.core.interaction.mip_track import mip_deposits
+from raser.core.deposit.mip_track import mip_deposits
 
 
 def _device(material: str) -> SimpleNamespace:

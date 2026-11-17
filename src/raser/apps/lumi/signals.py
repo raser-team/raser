@@ -17,7 +17,7 @@ from raser.core.device import build_device as bdv
 from raser.core.readout.circuit import named_chain
 from raser.core.field.circuit_parameters import device_sensor
 from raser.core.readout.job import write_waveforms
-from raser.core.interaction.deposits import read_deposits
+from raser.core.deposit.deposits import read_deposits
 
 
 def currents(kwargs, pad):

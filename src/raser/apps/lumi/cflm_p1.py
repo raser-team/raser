@@ -1,6 +1,6 @@
 #!/usr/bin/env python3 
 import math
-from raser.core.interaction.geant4.g4ppyy_runtime import g4b
+from raser.core.deposit.geant4.g4ppyy_runtime import g4b
 g4b.include("G4VUserDetectorConstruction.hh")
 g4b.include("G4UserLimits.hh")
 g4b.include("G4VUserActionInitialization.hh")

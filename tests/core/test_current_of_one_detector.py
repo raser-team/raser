@@ -1,5 +1,5 @@
 from raser.core.current.cal_current import deposits_in
-from raser.core.interaction.deposits import EventDeposits
+from raser.core.deposit.deposits import EventDeposits
 
 
 def test_the_deposits_of_one_detector_keep_their_own_pairs():

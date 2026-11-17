@@ -22,8 +22,8 @@ from raser.core.field.solved import solved_field
 from raser.core.readout.circuit import named_chain
 from raser.core.field.circuit_parameters import device_sensor
 from raser.core.readout.job import write_waveforms
-from raser.core.interaction.simulate_deposits import write_simulated_deposits
-from raser.core.interaction.view_geometry import view_geometry
+from raser.core.deposit.simulate_deposits import write_simulated_deposits
+from raser.core.deposit.view_geometry import view_geometry
 from raser.lifecycle.slices import Ended
 
 

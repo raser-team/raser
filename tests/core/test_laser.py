@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from raser.core.interaction.laser import LaserInjection, absorption_coefficient
+from raser.core.deposit.laser import LaserInjection, absorption_coefficient
 from raser.supports.paths import component_path
 
 H_C = 6.626e-34 * 2.998e8  # J m

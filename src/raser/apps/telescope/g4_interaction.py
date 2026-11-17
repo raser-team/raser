@@ -18,18 +18,18 @@ import json
 import os
 
 import numpy as np
-from raser.core.interaction.geant4.g4ppyy_runtime import g4b
+from raser.core.deposit.geant4.g4ppyy_runtime import g4b
 
 g4b.include("G4VUserDetectorConstruction.hh")
 g4b.include("G4UserLimits.hh")
 
-from raser.core.interaction.geant4.interaction import GeneralG4Interaction
-from raser.core.interaction.geant4.action_initialization import GeneralActionInitialization
-from raser.core.interaction.geant4.detector_construction import GeneralDetectorConstruction
-from raser.core.interaction.geant4.primary_generator_action import GeneralPrimaryGeneratorAction
-from raser.core.interaction.geant4.event_action import GeneralEventAction
-from raser.core.interaction.geant4.stepping_action import GeneralSteppingAction
-from raser.core.interaction.geant4.run_action import GeneralRunAction
+from raser.core.deposit.geant4.interaction import GeneralG4Interaction
+from raser.core.deposit.geant4.action_initialization import GeneralActionInitialization
+from raser.core.deposit.geant4.detector_construction import GeneralDetectorConstruction
+from raser.core.deposit.geant4.primary_generator_action import GeneralPrimaryGeneratorAction
+from raser.core.deposit.geant4.event_action import GeneralEventAction
+from raser.core.deposit.geant4.stepping_action import GeneralSteppingAction
+from raser.core.deposit.geant4.run_action import GeneralRunAction
 from raser.supports.paths import app_file_path
 
 verbose = 0

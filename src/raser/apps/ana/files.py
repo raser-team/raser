@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from raser.core.interaction.deposits import read_deposits
+from raser.core.deposit.deposits import read_deposits
 
 
 def slice_file(folder, index, name):

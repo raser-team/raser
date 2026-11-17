@@ -95,7 +95,7 @@ type = "layers"
 layers = [
   "raser.core.readout",
   "raser.core.current",
-  "raser.core.interaction",
+  "raser.core.deposit",
   "raser.core.field",
   "raser.core.device",
   "raser.core.model",
@@ -118,7 +118,7 @@ type = "forbidden"
 source_modules = ["raser.core"]
 forbidden_modules = ["raser.lifecycle", "raser.cli"]
 ignore_imports = [
-  "raser.core.interaction.geant4.g4ppyy_runtime -> raser.lifecycle.process",
+  "raser.core.deposit.geant4.g4ppyy_runtime -> raser.lifecycle.process",
 ]
 
 [[tool.importlinter.contracts]]

@@ -11,9 +11,9 @@ from raser.core.current.currents import EventCurrents
 from raser.core.current.currents import append_currents
 from raser.core.readout.waveforms import EventWaveforms
 from raser.core.readout.waveforms import append_waveforms
-from raser.core.interaction.deposits import Deposits
-from raser.core.interaction.deposits import EventDeposits
-from raser.core.interaction.deposits import write_deposits
+from raser.core.deposit.deposits import Deposits
+from raser.core.deposit.deposits import EventDeposits
+from raser.core.deposit.deposits import write_deposits
 
 E = 1.602176634e-19
 # a negative triangle [V]: 2 mV per bin up to 10 mV in bin 6, then down again;

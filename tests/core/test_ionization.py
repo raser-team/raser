@@ -2,9 +2,9 @@ import numpy as np
 import pytest
 
 from raser.core import seeding
-from raser.core.interaction import ionization
-from raser.core.interaction.deposits import EventDeposits
-from raser.core.interaction.ionization import ionized_pairs
+from raser.core.deposit import ionization
+from raser.core.deposit.deposits import EventDeposits
+from raser.core.deposit.ionization import ionized_pairs
 
 
 def _deposits(energies: list[float]) -> EventDeposits:

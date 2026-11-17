@@ -11,10 +11,10 @@ import json
 
 from raser.apps.signal.gen_signal import output
 from raser.core.device import build_device as bdv
-from raser.core.interaction.deposits import Deposits
-from raser.core.interaction.deposits import EventDeposits
-from raser.core.interaction.deposits import write_deposits
-from raser.core.interaction.ionization import ionized_pairs
+from raser.core.deposit.deposits import Deposits
+from raser.core.deposit.deposits import EventDeposits
+from raser.core.deposit.deposits import write_deposits
+from raser.core.deposit.ionization import ionized_pairs
 from raser.lifecycle.slices import Ended
 from raser.supports.paths import app_file_path
 

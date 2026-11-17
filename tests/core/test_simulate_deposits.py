@@ -3,9 +3,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from raser.core.interaction.simulate_deposits import simulate_deposits
-from raser.core.interaction.simulate_deposits import g4_configuration
-from raser.core.interaction.simulate_deposits import tilted
+from raser.core.deposit.simulate_deposits import simulate_deposits
+from raser.core.deposit.simulate_deposits import g4_configuration
+from raser.core.deposit.simulate_deposits import tilted
 
 SOURCE = {
     "name": "pion",

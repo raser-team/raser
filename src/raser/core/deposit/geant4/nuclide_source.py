@@ -2,7 +2,7 @@
 
 import math
 
-from raser.core.interaction.geant4.g4ppyy_runtime import g4b
+from raser.core.deposit.geant4.g4ppyy_runtime import g4b
 from raser.core.seeding import stream
 
 g4b.include("G4VUserPrimaryGeneratorAction.hh")

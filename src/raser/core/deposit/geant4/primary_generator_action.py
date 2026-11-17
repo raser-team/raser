@@ -7,7 +7,7 @@ Description:  primary_generator_action.py
 
 from raser.core.seeding import stream
 
-from raser.core.interaction.geant4.g4ppyy_runtime import g4b
+from raser.core.deposit.geant4.g4ppyy_runtime import g4b
 
 g4b.include("G4VUserPrimaryGeneratorAction.hh")
 

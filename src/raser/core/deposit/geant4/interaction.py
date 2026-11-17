@@ -5,7 +5,7 @@ Description:  interaction.py
 @version    : 1.0
 """
 
-from raser.core.interaction.geant4.g4ppyy_runtime import g4b
+from raser.core.deposit.geant4.g4ppyy_runtime import g4b
 
 from ..deposits import deposits_of_steps
 from .detector_construction import GeneralDetectorConstruction
@@ -62,7 +62,7 @@ class GeneralG4Interaction:
         if g4_vis:
             raise ValueError(
                 "GeneralG4Interaction does not draw; use "
-                "raser.core.interaction.view_geometry.view_geometry"
+                "raser.core.deposit.view_geometry.view_geometry"
             )
 
         self.geant4_model = g4_dic["geant4_model"]

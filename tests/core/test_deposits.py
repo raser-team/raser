@@ -1,8 +1,8 @@
-from raser.core.interaction.deposits import Deposits
-from raser.core.interaction.deposits import EventDeposits
-from raser.core.interaction.deposits import deposits_of_steps
-from raser.core.interaction.deposits import read_deposits
-from raser.core.interaction.deposits import write_deposits
+from raser.core.deposit.deposits import Deposits
+from raser.core.deposit.deposits import EventDeposits
+from raser.core.deposit.deposits import deposits_of_steps
+from raser.core.deposit.deposits import read_deposits
+from raser.core.deposit.deposits import write_deposits
 
 
 def test_deposits_file_returns_each_event_with_its_own_deposits(tmp_path) -> None:

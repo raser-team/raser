@@ -10,7 +10,7 @@ import os
 from raser.apps.signal import gen_signal
 from raser.core.current.cal_current import write_laser_currents
 from raser.core.device import build_device as bdv
-from raser.core.interaction.laser import LaserInjection
+from raser.core.deposit.laser import LaserInjection
 
 
 def currents(kwargs):

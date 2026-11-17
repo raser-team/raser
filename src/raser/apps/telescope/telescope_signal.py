@@ -23,10 +23,10 @@ from raser.core.device.build_device import Detector
 from raser.core.current.cal_current import electrode_names
 from raser.core.current.currents import EventCurrents, append_currents
 from raser.core.current.diffusion import ELEMENTARY_CHARGE, collect_by_diffusion
-from raser.core.interaction.deposits import Deposits, EventDeposits
-from raser.core.interaction.deposits import read_deposits, write_deposits
-from raser.core.interaction.ionization import PAIR_ENERGY_EV, ionized_pairs
-from raser.core.interaction.mip_track import PAIRS_PER_UM
+from raser.core.deposit.deposits import Deposits, EventDeposits
+from raser.core.deposit.deposits import read_deposits, write_deposits
+from raser.core.deposit.ionization import PAIR_ENERGY_EV, ionized_pairs
+from raser.core.deposit.mip_track import PAIRS_PER_UM
 from raser.supports.output import output
 from raser.supports.paths import app_file_path
 

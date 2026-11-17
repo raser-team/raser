@@ -2,8 +2,8 @@ import json
 
 from raser.apps.ana.files import job_file
 from raser.apps.ana.files import slice_file
-from raser.core.interaction.deposits import Deposits
-from raser.core.interaction.deposits import write_deposits
+from raser.core.deposit.deposits import Deposits
+from raser.core.deposit.deposits import write_deposits
 
 
 def test_slice_file_is_in_the_point_that_holds_the_slice(tmp_path) -> None:

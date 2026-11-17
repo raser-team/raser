@@ -11,9 +11,9 @@ import ROOT
 
 from raser.core import seeding
 from raser.core.current.drift import drift
-from raser.core.interaction.energy_loss import sample_fano_pairs
-from raser.core.interaction.energy_loss import sample_landau_energy_loss
-from raser.core.interaction.toy_mip import ToyMIPInteraction
+from raser.core.deposit.energy_loss import sample_fano_pairs
+from raser.core.deposit.energy_loss import sample_landau_energy_loss
+from raser.core.deposit.toy_mip import ToyMIPInteraction
 
 
 def _drift() -> object:

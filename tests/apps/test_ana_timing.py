@@ -7,9 +7,9 @@ from raser.apps.ana.timing import event_times
 from raser.apps.ana.timing import point_resolution
 from raser.core.readout.waveforms import EventWaveforms
 from raser.core.readout.waveforms import append_waveforms
-from raser.core.interaction.deposits import Deposits
-from raser.core.interaction.deposits import EventDeposits
-from raser.core.interaction.deposits import write_deposits
+from raser.core.deposit.deposits import Deposits
+from raser.core.deposit.deposits import EventDeposits
+from raser.core.deposit.deposits import write_deposits
 
 # a negative triangle [V]: 2 mV per bin up to 10 mV in bin 6, then down again
 TRIANGLE = 1.0e-3 * np.array([0.0, 0, -2, -4, -6, -8, -10, -8, -6, -4, -2, 0, 0])
