@@ -1,0 +1,92 @@
+{
+    "det_name": "SiC-AC-LGAD",
+    "det_model": "lgadstrip",
+    "material": "SiC",
+
+    "l_x": 300,
+    "l_y": 300,
+    "l_z": 45,
+
+    "p_x": 100,
+    "read_ele_num": 3,
+
+    "doping": {
+        "Acceptors": "3e19*step(3e-5-x)",
+        "Donors": "7.5e16*step(2.4e-4-x)+ifelse(x>2.4e-4,1.5e14*step(0.003-x),0)+ifelse(x>0.003,1e18*step(0.0031-x),0)+ifelse(x>0.0031,1e17*step(0.0045-x),0)"
+    },
+
+    "U_const": -5e10,
+    "avalanche_bond": 3.0,
+    "avalanche_model": "Hatakeyama",
+    "parameter": {"name": "F_sat", "value": 1e5, "unit": "V/cm", "description": "saturation electricfield of TAT"},
+
+    "bias": {
+        "electrode": "bot",
+        "voltage": 500.0
+    },
+
+    "temperature": 300.0,
+
+    "area_factor": 1,
+    "default_dimension": 2,
+    "read_out_contact": [
+        {"x_span": 0, "y_span": 0, "name": "top1"},
+        {"x_span": 0, "y_span": 0, "name": "top2"},
+        {"x_span": 0, "y_span": 0, "name": "top3"}
+    ],
+    "field_shift_x": 0,
+
+    "electrical": {
+        "bias_resistance_ohm": 1000000.0,
+        "ac_coupling_capacitance_pF": 3.109,
+        "sheet_resistance_ohm_per_square": 7000.0,
+
+        "_comment": "p++ 3e19 over 0-0.3 um (measured device: p++ serves as both contact window and lateral resistive sheet). Sheet resistance 7000 ohm/sq: Asada 2018, Jpn. J. Appl. Phys. 57, 088002, p-type 4H-SiC measured fit extrapolated to 3e19 (rho ~ 0.211 ohm.cm) divided by the 0.295 um conducting thickness (5 nm depleted by charge balance) -> 7159; cross-checked with Burin 2025 (arXiv:2410.06798) TABLE XXX: 17 hole-mobility models + incomplete ionization, 8 of 10 models consistent at 2e18 predict 6.2-7.7 kohm/sq. No direct measurement exists: the p++ Van der Pauw structures in Gsponer 2025 (Sec. 6.3) failed because molten metal shorted the pads. The 0.3 um layer thickness is a literature assumption, pending SIMS/C-V.",
+        "coupling_oxide_thickness_um": 0.2,
+        "pad_size_um": 60.0,
+        "pad_pitch_um": 100.0,
+        "pad_matrix": 3
+    },
+
+    "field": {
+        "solver": {
+            "initial": {"maximum_iterations": 200},
+            "voltage_step": {"initial": 1.0, "maximum": 2.0, "increase_factor": 1.5, "decrease_factor": 0.5, "maximum_iterations": 200},
+            "saved_voltage_interval": 100.0
+        }
+    },
+
+    "mesh": {
+        "2D_mesh": {
+            "mesh_line": [
+                {"dir": "x", "pos": -2e-4, "ps": 1e-4},
+                {"dir": "x", "pos": 0, "ps": 2e-6},
+                {"dir": "x", "pos": 0.3e-4, "ps": 2e-6},
+                {"dir": "x", "pos": 2.4e-4, "ps": 2e-6},
+                {"dir": "x", "pos": 0.003, "ps": 5e-5},
+                {"dir": "x", "pos": 0.0031, "ps": 1e-5},
+                {"dir": "x", "pos": 0.0045, "ps": 1e-4},
+                {"dir": "x", "pos": 0.0047, "ps": 1e-4},
+
+                {"dir": "y", "pos": 0, "ps": 5e-4},
+                {"dir": "y", "pos": 3e-2, "ps": 5e-4}
+            ],
+            "region": [
+                {"material": "SiliconCarbide", "region": "SiC-AC-LGAD"},
+                {"material": "air", "region": "air1", "xl": -2e-4, "xh": 0},
+                {"material": "air", "region": "air2", "xl": 0.0045, "xh": 0.0047}
+            ],
+            "contact": [
+                {"name": "top1", "material": "metal", "region": "SiC-AC-LGAD", "xl": 0, "xh": 0, "yl": 0.2e-2, "yh": 0.8e-2, "bloat": 1e-10},
+                {"name": "top2", "material": "metal", "region": "SiC-AC-LGAD", "xl": 0, "xh": 0, "yl": 1.2e-2, "yh": 1.8e-2, "bloat": 1e-10},
+                {"name": "top3", "material": "metal", "region": "SiC-AC-LGAD", "xl": 0, "xh": 0, "yl": 2.2e-2, "yh": 2.8e-2, "bloat": 1e-10},
+                {"name": "bot", "material": "metal", "region": "SiC-AC-LGAD", "xl": 0.0045, "xh": 0.0045, "bloat": 1e-10}
+            ],
+            "ac_contact": [
+                {"name": "top1", "material": "metal", "region": "SiC-AC-LGAD", "xl": 0, "xh": 0, "yl": 0.2e-2, "yh": 0.8e-2, "bloat": 1e-10},
+                {"name": "top2", "material": "metal", "region": "SiC-AC-LGAD", "xl": 0, "xh": 0, "yl": 1.2e-2, "yh": 1.8e-2, "bloat": 1e-10},
+                {"name": "top3", "material": "metal", "region": "SiC-AC-LGAD", "xl": 0, "xh": 0, "yl": 2.2e-2, "yh": 2.8e-2, "bloat": 1e-10}
+            ]
+        }
+    }
+}
