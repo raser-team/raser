@@ -183,7 +183,7 @@ def test_a_change_of_the_device_that_the_field_does_not_read_takes_the_field_the
 
 
 def test_the_field_is_solved_for_the_device_as_the_point_changed_it(monkeypatch: pytest.MonkeyPatch) -> None:
-    asked: list[tuple[list[str], bool]] = []
+    asked: list[tuple[list[str], bool, int]] = []
     monkeypatch.setattr(field, "execute", lambda flow, kwargs, register: asked.append((kwargs["scan"], register, kwargs["jobs"])))
     device = device_json("HPK-Si-PiN")
     device["bias"]["voltage"] = 300.0
