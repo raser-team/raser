@@ -76,6 +76,25 @@ def folder_states(workflow, folder: Path, record: dict, ready=None) -> dict[str,
     return states
 
 
+def _folder_lines(workflow, folder: Path, record: dict, why: str | None, ready, note: str = "") -> list[str]:
+    """The lines of one seed or point folder: its slices and their jobs."""
+    lines = [f"{folder}:" + (f" out of date ({why})" if why else "") + note]
+    for piece_name, by_state in folder_states(workflow, folder, record, ready).items():
+        count = sum(len(jobs) for jobs in by_state.values())
+        done = len(by_state["done"])
+        shown = f"{done}/{count} done" if not why else f"{done}/{count} done, out of date"
+        rest = ", ".join(f"{state} {jobs}" for state, jobs in by_state.items() if state != "done" and jobs)
+        lines.append(f"  {piece_name:<12}{shown}" + (f"; {rest}" if rest else ""))
+    return lines
+
+
+def _runs(workflow, root: Path, name: str) -> list[Path]:
+    """The run.json of the seed folders (or the point folder) of the point `name`."""
+    runs = sorted((root / name).glob("*/run.json" if workflow.seeds else "run.json"))
+    # Not a seed folder: an experiment inside this one, such as its analysis.
+    return [path for path in runs if not workflow.seeds or "seed" in json.loads(path.read_text())]
+
+
 def _lines(workflow, root: Path, kwargs) -> list[str]:
     config = json.loads((root / "config.json").read_text())
     _, points, asked = _points(workflow, kwargs, config, {})
@@ -83,9 +102,7 @@ def _lines(workflow, root: Path, kwargs) -> list[str]:
     for name in asked:
         options, files = points[name][:2]
         now = json.loads(json.dumps({"options": options, "files": files}))
-        runs = sorted((root / name).glob("*/run.json" if workflow.seeds else "run.json"))
-        # Not a seed folder: an experiment inside this one, such as its analysis.
-        runs = [path for path in runs if not workflow.seeds or "seed" in json.loads(path.read_text())]
+        runs = _runs(workflow, root, name)
         if not runs:
             lines.append(f"{root / name}: not started")
         for path in runs:
@@ -94,14 +111,17 @@ def _lines(workflow, root: Path, kwargs) -> list[str]:
                 continue  # kept aside by a rerun
             any_code = {**record, "commit": ""}
             why = _outdated(workflow, any_code, {**any_code, **now})
-            lines.append(f"{folder}:" + (f" out of date ({why})" if why else ""))
-            ready = (lambda piece: piece.shared.ready(options, files) is not None)
-            for piece_name, by_state in folder_states(workflow, folder, record, ready).items():
-                count = sum(len(jobs) for jobs in by_state.values())
-                done = len(by_state["done"])
-                shown = f"{done}/{count} done" if not why else f"{done}/{count} done, out of date"
-                rest = ", ".join(f"{state} {jobs}" for state, jobs in by_state.items() if state != "done" and jobs)
-                lines.append(f"  {piece_name:<12}{shown}" + (f"; {rest}" if rest else ""))
+            ready = (lambda piece, options=options, files=files: piece.shared.ready(options, files) is not None)
+            lines += _folder_lines(workflow, folder, record, why, ready)
+    # Points on disk that the config does not ask for: made for another
+    # experiment, as a field one of its points needs.
+    pattern = "*/*/run.json" if workflow.seeds else "*/run.json"
+    for path in sorted(root.glob(pattern)):
+        record = json.loads(path.read_text())
+        point_folder = path.parent.parent if workflow.seeds else path.parent
+        if record.get("point") in asked or point_folder != root / str(record.get("point")):
+            continue
+        lines += _folder_lines(workflow, path.parent, record, None, None, " asked for by another experiment, not in this config")
     return lines
 
 

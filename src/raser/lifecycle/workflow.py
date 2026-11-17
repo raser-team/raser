@@ -120,7 +120,15 @@ def run_arguments(parser, seeds=True):
     parser.add_argument("--set", action="append", default=[], help="address=value, as --scan with one value")
 
 
-def execute(workflow, kwargs):
+def execute(workflow, kwargs, register=True):
+    """Run the points of an experiment that a command asks for.
+
+    register=False runs only the points the command itself gives, not the
+    scans of the config, and leaves config.json as it is; a config made now
+    holds only what names the experiment. The command line has no such
+    switch: a shared slice that a point of another experiment needs, such
+    as its field, is made so, and the experiment of the shared slice does
+    not take that point for one of its own."""
     if kwargs.get("job_dir"):
         return _run_job(workflow, kwargs)  # one of the jobs started below
 
@@ -145,7 +153,7 @@ def execute(workflow, kwargs):
     if both := sorted(scanned_here & set(fixed_here)):
         raise ValueError(f"{', '.join(both)}: given to --set and to --scan at once; give it to one of them")
     given = {**given, **fixed_here}
-    scan, points, asked = _points(workflow, kwargs, config, given)
+    scan, points, asked = _points(workflow, kwargs, config if register else {**config, "scan": {}}, given)
 
     # The seed folder of this command in every point, and the jobs left in it.
     # Without seeds the point folder itself holds the run, and its one job.
@@ -233,11 +241,11 @@ def execute(workflow, kwargs):
 
     if not config:
         root.mkdir(parents=True, exist_ok=True)
-        new = {**identity, "set": given, "scan": scan}
+        new = {**identity, "set": given if register else {}, "scan": scan if register else {}}
         if workflow.seeds:
             new["same_seeds"] = same_seeds
         _write(root / "config.json", new)
-    elif kwargs["scan"] or fixed_here:
+    elif register and (kwargs["scan"] or fixed_here):
         # A scan or a --set given to an experiment that exists joins its config,
         # under its address as _points reads it, in place of what the config
         # had there; later commands repeat it.

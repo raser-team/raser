@@ -286,7 +286,8 @@ def start(kwargs, options, files):
         batch=kwargs["batch"], mem=kwargs["mem"], _argv=words, _entry_command_prefix=("field",)
     )
     print("the field is not ready: " + " ".join(["raser", *words]))
-    execute(WORKFLOW, field_kwargs)
+    # The point is this experiment's, not one of the field's own scans.
+    execute(WORKFLOW, field_kwargs, register=False)
 
 
 SHARED = Shared(ready=ready, start=start)

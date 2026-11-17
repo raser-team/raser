@@ -1346,3 +1346,25 @@ def test_a_set_value_by_short_name_replaces_the_one_the_config_had_and_runs_agai
 def test_one_address_given_to_set_and_to_scan_at_once_is_refused(started: list[Any]) -> None:
     with pytest.raises(ValueError, match="gain: given to --set and to --scan at once"):
         execute(GAIN, _kwargs(gain=None, width=None, set=["gain=7"], scan=["gain=5,9"], jobs=2))
+
+
+def test_a_point_run_unregistered_leaves_the_config_and_runs_none_of_its_scans(
+    started: list[Any], tmp_path: Path
+) -> None:
+    experiment = tmp_path / "toy"
+    experiment.mkdir()
+    config = {"workflow": "toy", "set": {}, "scan": {"width": [1.0, 2.0]}}
+    (experiment / "config.json").write_text(json.dumps(config))
+
+    execute(GAIN, _kwargs(gain=None, width=None, scan=["gain=7"], jobs=2), register=False)
+
+    assert json.loads((experiment / "config.json").read_text()) == config
+    assert _folders(started, experiment) == ["gain_7/seed_42"]
+
+
+def test_a_new_experiment_made_for_an_unregistered_point_keeps_no_scan(
+    started: list[Any], tmp_path: Path
+) -> None:
+    execute(GAIN, _kwargs(gain=None, width=None, scan=["gain=7"], jobs=2), register=False)
+
+    assert json.loads((tmp_path / "toy" / "config.json").read_text())["scan"] == {}
