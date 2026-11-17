@@ -18,7 +18,7 @@ from raser.supports.paths import work_root
 VERSION = "5.0"
 
 APPLICATIONS = {  # command -> the module that registers it
-    "ana": "raser.stages.ana",
+    "analysis": "raser.stages.analysis",
     "field": "raser.stages.field",
     "deposit": "raser.stages.stage_commands",
     "current": "raser.stages.stage_commands",
@@ -32,7 +32,7 @@ APPLICATIONS = {  # command -> the module that registers it
     "timeres": "raser.bench.timeres",
 }
 # The short commands of the stages; files and folders hold the full names.
-SHORT = {"fld": "field", "dep": "deposit", "cur": "current", "rdo": "readout"}
+SHORT = {"fld": "field", "dep": "deposit", "cur": "current", "rdo": "readout", "ana": "analysis"}
 
 
 @contextmanager

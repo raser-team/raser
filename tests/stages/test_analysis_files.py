@@ -1,7 +1,7 @@
 import json
 
-from raser.stages.ana.files import job_file
-from raser.stages.ana.files import slice_file
+from raser.stages.analysis.files import job_file
+from raser.stages.analysis.files import slice_file
 from raser.core.deposit.deposits import Deposits
 from raser.core.deposit.deposits import write_deposits
 
