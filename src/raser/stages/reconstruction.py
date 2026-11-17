@@ -1,7 +1,8 @@
 """The reconstruction slice of a job: every event of its readout as one row.
 
-Slice:        reconstruction, writes reconstruction_<job>.h5
-Needs:        readout (the waveforms)
+Slice:        reconstruction, writes reconstruction_<job>.h5; with several
+              positions reconstruction.<position> for each readout.<position>
+Needs:        readout (the waveforms), readout.<position> with positions
 Options:      threshold            50 mV, of the times and the charge
               amplitude_threshold  100 mV, of the selected events
               fractions            0.1, 0.2, ..., 0.9, of the constant-fraction times
@@ -11,6 +12,8 @@ Component files: none
 Random numbers:  none
 The content of the file is in raser.core.reconstruction.event_table.
 """
+
+import os
 
 from raser.core.readout.waveforms import read_waveforms
 from raser.core.reconstruction.event_table import event_table
@@ -38,16 +41,21 @@ def reconstruct(readout_path, path, threshold, amplitude_threshold, fractions, e
     return table
 
 
-def run(kwargs, slot=None):
-    """The slice of one job. `slot` names the device of the experiment the
-    slice reconstructs; None for the one device of an experiment with one."""
-    if slot is not None:
-        raise NotImplementedError(f"slot {slot!r}: the files of a slot are not named yet")
+def run(kwargs, position=None):
+    """The slice of one job: reconstruction_<job>.h5 from readout_<job>.h5.
+
+    With a position, the slice reconstruction.<position> on the file of
+    readout.<position>; a position that left no readout leaves no file and
+    {"events": 0} with its mark."""
+    readout = "readout" if position is None else f"readout.{position}"
+    if position is not None and not os.path.exists(output(kwargs, readout)):
+        return {"events": 0}
     reconstruct(
-        output(kwargs, "readout"),
-        output(kwargs, "reconstruction"),
+        output(kwargs, readout),
+        output(kwargs, "reconstruction" if position is None else f"reconstruction.{position}"),
         float(kwargs["threshold"]),
         float(kwargs["amplitude_threshold"]),
         tuple(float(part) for part in kwargs["fractions"]),
         kwargs.get("edge"),
     )
+    return None

@@ -98,3 +98,18 @@ def test_thresholds_on_the_other_edge_see_no_pulse(tmp_path) -> None:
         _run(tmp_path, 3, 5, "down")
     with pytest.raises(ValueError, match="edge None"):
         _run(tmp_path, 3, 5, None)
+
+
+def test_position_reads_and_writes_the_files_of_its_own_slices(tmp_path) -> None:
+    batch = tmp_path / "batch"
+    batch.mkdir()
+    names = {name: str(batch) for name in ("readout.left", "reconstruction.left", "readout.right", "reconstruction.right")}
+    samples = np.concatenate([np.zeros(BEFORE), TRIANGLE])
+    append_waveforms(batch / "readout.left_0.h5", ["top"], DT, EventWaveforms(7, 0.0, np.array([samples])))
+    kwargs = {"_slice_batch_paths": names, "threshold": 3, "amplitude_threshold": 5, "fractions": FRACTIONS, "edge": "falling"}
+
+    assert reconstruction.run(kwargs, "left") is None
+    assert reconstruction.run(kwargs, "right") == {"events": 0}  # no currents, no readout there
+
+    assert list(read_event_table(batch / "reconstruction.left_0.h5").columns["event"]) == [7]
+    assert not (batch / "reconstruction.right_0.h5").exists()
