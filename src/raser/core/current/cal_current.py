@@ -231,8 +231,10 @@ class CalCurrent:
         self.electron_system = self.drift_all(my_d, my_f, starts, [-n_pairs for n_pairs in pairs])
         self.hole_system = self.drift_all(my_d, my_f, starts, pairs)
 
-        # number of carriers that stopped for each reason; those of the gain are added with the gain current
+        # for each reason, how many clusters stopped for it and their carriers;
+        # those of the gain are added with the gain current
         self.ends = self.count_ends()
+        self.without_field = self.first_without_field()
 
         # the currents: arrays (read_ele_num, n_bin + 2) in A; the first and last columns hold the parts before and after the time window
         hole_bins = self.binned(my_d, my_f, self.hole_system)
@@ -243,8 +245,12 @@ class CalCurrent:
         if my_d.has_avalanche:
             self.gain_current = CalCurrentGain(my_d, my_f, self)
             sum_bins += self.gain_current.hole_bins + self.gain_current.electron_bins
-            for reason, count in self.gain_current.count_ends().items():
-                self.ends[reason] = self.ends.get(reason, 0) + count
+            for reason, (clusters, carriers) in self.gain_current.count_ends().items():
+                ends = self.ends.setdefault(reason, [0, 0.0])
+                ends[0] += clusters
+                ends[1] += carriers
+            if self.without_field is None:
+                self.without_field = self.gain_current.first_without_field()
 
         # current of each electrode inside the time window, (read_ele_num, n_bin), in A
         self.hole_current = hole_bins[:, 1:-1]
@@ -325,13 +331,25 @@ class CalCurrent:
         )
 
     def count_ends(self):
-        """How many clusters stopped for each reason."""
+        """For each reason the clusters stopped for, how many and their
+        carriers, without sign: {reason: [clusters, carriers]}."""
         ends = {}
         for carrier_system in (self.electron_system, self.hole_system):
             if carrier_system is not None:
-                for reason in carrier_system.reasons:
-                    ends[reason] = ends.get(reason, 0) + 1
+                for reason, carriers in zip(carrier_system.reasons, carrier_system.carriers):
+                    count = ends.setdefault(reason, [0, 0.0])
+                    count[0] += 1
+                    count[1] += abs(carriers)
         return ends
+
+    def first_without_field(self):
+        """Where the first cluster that found no field stopped, x, y, z [um]; None if none did."""
+        for carrier_system in (self.electron_system, self.hole_system):
+            if carrier_system is not None:
+                for reason, path in zip(carrier_system.reasons, carrier_system.paths):
+                    if reason == "no_field":
+                        return tuple(float(value) for value in path[-1][:3])
+        return None
 
     def electrodes_near(self, x, y, my_d, my_f):
         """The electrodes a cluster starting at x, y may induce charge on.
@@ -682,6 +700,28 @@ def deposits_in(record, detector):
     )
 
 
+def log_ends(ends, without_field):
+    """Log why the clusters of a job stopped: `ends` as CalCurrent.ends,
+    summed over the events, and `without_field` (event, (x, y, z)) of the
+    first cluster that found no field, or None. Clusters that found no field
+    are warned of: what they would have induced further on is missing."""
+    logger.info(
+        "clusters stopped: %s",
+        ", ".join(
+            "{} {} ({:.6g} carriers)".format(reason, clusters, carriers)
+            for reason, (clusters, carriers) in sorted(ends.items())
+        ),
+    )
+    if "no_field" in ends:
+        clusters, carriers = ends["no_field"]
+        event, (x, y, z) = without_field
+        logger.warning(
+            "%d clusters (%.6g carriers) stopped where the field has no value, the first in "
+            "event %s at x, y, z = %.4f, %.4f, %.4f um: what they would have induced further on is missing",
+            clusters, carriers, event, x, y, z,
+        )
+
+
 def write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, plot_path=None, detector=None):
     """Drift the pairs of every event of the deposits file in the field and
     write the currents they induce to the currents file, event by event.
@@ -705,10 +745,18 @@ def write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, pl
             )
     if os.path.exists(currents_path):
         os.remove(currents_path)
+    ends = {}
+    without_field = None
     for count, record in enumerate(events):
         drawn = count < plots
         positions = [list(point) for point in zip(record.x, record.y, record.z, record.t)]
         my_current = CalCurrent(my_d, my_f, record.pairs, positions, keep_drift_paths=drawn)
+        for reason, (clusters, carriers) in my_current.ends.items():
+            total = ends.setdefault(reason, [0, 0.0])
+            total[0] += clusters
+            total[1] += carriers
+        if without_field is None and my_current.without_field is not None:
+            without_field = (record.event, my_current.without_field)
         append_currents(
             currents_path,
             my_current.electrodes,
@@ -731,6 +779,7 @@ def write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, pl
                 my_current.charge_collection_strip(path)
             if my_d.is_pixel:
                 my_current.charge_collection_pixel(path)
+    log_ends(ends, without_field)
 
 
 def write_laser_currents(currents_path, my_d, my_f, my_l, plot_path=None):
@@ -743,6 +792,7 @@ def write_laser_currents(currents_path, my_d, my_f, my_l, plot_path=None):
     if os.path.exists(currents_path):
         os.remove(currents_path)
     my_current = CalCurrentLaser(my_d, my_f, my_l, diffusion=False)
+    log_ends(my_current.ends, None if my_current.without_field is None else (0, my_current.without_field))
     append_currents(
         currents_path,
         my_current.electrodes,

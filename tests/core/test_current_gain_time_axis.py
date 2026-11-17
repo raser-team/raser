@@ -170,3 +170,27 @@ def test_the_planar_gain_multiplies_the_electrons_left_when_they_reach_the_gain_
     made = sum(current.gain_current.hole_system.carriers)
     assert made == pytest.approx(GAIN * 100.0 * math.exp(-2.0e9 * arrival), rel=2e-3)
     assert made < 0.8 * GAIN * 100.0
+
+
+class _NoFieldBelow10um(_UniformField):
+    def get_e_field_cached(self, x, y, z):
+        if z < 10.0:
+            raise ValueError("outside the mesh")
+        return (0.0, 0.0, 1.0e4)
+
+
+def test_clusters_that_find_no_field_are_counted_with_where_the_first_stopped():
+    # the electrons of 100 pairs at 25 um drift down to 10 um, where the field
+    # has no value; the holes leave by the top face
+    current = CalCurrent(
+        SimpleNamespace(**{**vars(_lgad()), "has_avalanche": False}),
+        _NoFieldBelow10um(),
+        [100.0],
+        [[50.0, 50.0, 25.0, 0.0]],
+        diffusion=False,
+        keep_drift_paths=False,
+    )
+
+    assert current.ends == {"no_field": [1, 100.0], "left_device": [1, 100.0]}
+    x, y, z = current.without_field
+    assert (x, y) == (50.0, 50.0) and 9.0 < z < 10.0
