@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "raser"
-version = "5.0"
+dynamic = ["version"]
 description = "RASER simulation framework"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
@@ -52,6 +52,9 @@ raser = "raser.cli.raser:main"
 [tool.setuptools]
 package-dir = {"" = "src"}
 include-package-data = true
+
+[tool.setuptools.dynamic]
+version = {attr = "raser.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
