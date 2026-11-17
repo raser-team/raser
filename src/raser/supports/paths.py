@@ -112,11 +112,12 @@ def component_roots(
 
 
 def app_component_root(app_name: str):
-    return PACKAGE_ROOT / "apps" / app_name / "components"
+    """The components of an app; `app_name` is its folder in the package, "bench/cce"."""
+    return PACKAGE_ROOT / app_name / "components"
 
 
 def app_file_path(app_name: str, filename: str):
-    path = PACKAGE_ROOT / "apps" / app_name / filename
+    path = PACKAGE_ROOT / app_name / filename
     if path.exists():
         return path
     raise FileNotFoundError(f"Cannot find RASER app file: {path}")
@@ -174,7 +175,7 @@ def module_work_name(current_file_path: str | os.PathLike):
         return path.stem
 
     parts = relative.parts
-    if len(parts) >= 2 and parts[0] in {"apps", "core"}:
+    if len(parts) >= 2 and parts[0] in {"apps", "bench", "core"}:
         return parts[1]
     if parts and parts[0] == "cli":
         return "cli"

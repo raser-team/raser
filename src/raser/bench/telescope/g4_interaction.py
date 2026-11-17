@@ -56,7 +56,7 @@ class TelescopeG4Interaction(GeneralG4Interaction):
         ---------
             2023/04/18
         """
-        geant4_json = app_file_path("telescope", g4experiment + ".json")
+        geant4_json = app_file_path("bench/telescope", g4experiment + ".json")
         with open(geant4_json) as f:
             g4_dic = json.load(f)
         g4_dic["total_events"] = events

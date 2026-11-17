@@ -36,4 +36,4 @@ def register(subparsers):
     parser = subparsers.add_parser("signal", help="single signal simulation")
     chain.add_arguments(parser)
     WORKFLOW.attach(parser)
-    parser.set_defaults(_project="det_name", _components=("signal",))
+    parser.set_defaults(_project="det_name", _components=("bench/signal",))

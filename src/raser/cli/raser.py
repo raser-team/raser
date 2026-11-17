@@ -20,13 +20,13 @@ VERSION = "5.0"
 APPLICATIONS = {  # command -> the module that registers it
     "ana": "raser.stages.ana",
     "bmos": "raser.apps.bmos",
-    "cce": "raser.apps.cce",
+    "cce": "raser.bench.cce",
     "field": "raser.stages.field",
     "cflm": "raser.apps.cflm",
-    "signal": "raser.apps.signal",
-    "tct": "raser.apps.tct",
-    "telescope": "raser.apps.telescope",
-    "timeres": "raser.apps.timeres",
+    "signal": "raser.bench.signal",
+    "tct": "raser.bench.tct",
+    "telescope": "raser.bench.telescope",
+    "timeres": "raser.bench.timeres",
 }
 
 

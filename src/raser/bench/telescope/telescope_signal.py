@@ -17,7 +17,7 @@ import ROOT
 ROOT.gROOT.SetBatch(True)
 import numpy as np
 
-from raser.apps.telescope.g4_interaction import TelescopeG4Interaction
+from raser.bench.telescope.g4_interaction import TelescopeG4Interaction
 from raser.core.seeding import stream
 from raser.core.device.build_device import Detector
 from raser.core.current.cal_current import electrode_names
@@ -468,7 +468,7 @@ HIT_ELECTRONS = 0.2  # a pixel that collected more is a hit
 
 
 def _setup():
-    with open(app_file_path("telescope", "telescope.json")) as file:
+    with open(app_file_path("bench/telescope", "telescope.json")) as file:
         return json.load(file)
 
 

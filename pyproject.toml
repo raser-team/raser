@@ -123,12 +123,12 @@ name = "No experiment imports another"
 type = "independence"
 modules = [
   "raser.apps.bmos",
-  "raser.apps.cce",
+  "raser.bench.cce",
   "raser.apps.cflm",
-  "raser.apps.signal",
-  "raser.apps.tct",
-  "raser.apps.telescope",
-  "raser.apps.timeres",
+  "raser.bench.signal",
+  "raser.bench.tct",
+  "raser.bench.telescope",
+  "raser.bench.timeres",
 ]
 
 [tool.mypy]
