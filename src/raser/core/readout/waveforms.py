@@ -54,6 +54,20 @@ class Waveforms:
     pulse_edge: list[str]
 
 
+# the datasets of a file of this layout
+DATASETS = ("event", "t0", "count", "stored", "index", "voltage")
+
+
+def _check_layout(file, path):
+    """Refuse a file of another layout, before anything is read or added."""
+    missing = [name for name in DATASETS if name not in file]
+    if missing or file["voltage"].ndim != 1:
+        raise ValueError(
+            f"{path} is a readout file of an older layout (no {missing or ['one-row voltage']}): "
+            "run the readout again"
+        )
+
+
 def append_waveforms(
     path, electrodes, dt, record, circuit_values=None, pulse_edge=None
 ):
@@ -116,6 +130,7 @@ def append_waveforms(
                 compression="gzip",
             )
         else:
+            _check_layout(file, path)
             in_file = file.attrs["electrodes"].tolist()
             if in_file != electrodes or float(file.attrs["dt"]) != float(dt):
                 raise ValueError(
@@ -143,6 +158,7 @@ def append_waveforms(
 def read_waveforms(path):
     """Waveforms of the file, each event with the names of its traces."""
     with h5py.File(str(path), "r") as file:
+        _check_layout(file, path)
         electrodes = file.attrs["electrodes"].tolist()
         dt = float(file.attrs["dt"])
         if "pulse_edge" not in file.attrs:
