@@ -16,6 +16,16 @@ def patch_gdml():
         print(f"[Error] 找不到原始文件: {raw_path}", file=sys.stderr)
         return
 
+    # GDML 在下面居中；g4setup 脚本里再放偏移就会平移两次，所以先核对，不对就不写
+    setup = Path(__file__).parent / 'components' / 'g4setup' / 'pcb_readout_gdml.py'
+    gdml = load_python_component('g4setup', setup)[1].G4SETUP.get('gdml', {})
+    if gdml.get('position_um') != [0, 0, 0] or gdml.get('auto_center') is not False:
+        raise SystemExit(
+            f"[Error] {setup} 的 gdml 段应当是 position_um = [0, 0, 0]、auto_center = False"
+            f"（GDML 在这里居中），现在是 {gdml.get('position_um')}、{gdml.get('auto_center')}："
+            "先改这个脚本，GDML 没有写"
+        )
+
     print(f"[Info] 正在读取 GDML 数据: {raw_path}")
     with open(raw_path, 'r', encoding='utf-8') as f:
         content = f.read()
@@ -103,19 +113,6 @@ def patch_gdml():
         '<box name="WorldBox" x="2000000" y="2000000" z="2000000" lunit="um"/>',
         content,
     )
-
-    # ====================================================
-    # 步骤 5：核对 g4setup 脚本里 GDML 的放法没有另加偏移
-    # ====================================================
-    setup = Path(__file__).parent / 'components' / 'g4setup' / 'pcb_readout_gdml.py'
-    gdml = load_python_component('g4setup', setup)[1].G4SETUP.get('gdml', {})
-    if gdml.get('position_um') != [0, 0, 0] or gdml.get('auto_center') is not False:
-        print(
-            "[Warning] g4setup/pcb_readout_gdml.py 的 gdml 段应当是 position_um = [0, 0, 0]、"
-            "auto_center = False（GDML 已在上面居中），现在是 "
-            f"{gdml.get('position_um')}、{gdml.get('auto_center')}",
-            file=sys.stderr,
-        )
 
     # ====================================================
     # 保存结果
