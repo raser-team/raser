@@ -62,7 +62,7 @@ def g4_configuration(
     total_events is the events to generate, `generated` or at most
     generated_limit.
     """
-    asked(events, generated)
+    asked(events, generated, generated_limit)
     placed = sorted(
         {key for one in (source, *source.get("particles", ())) for key in one}
         & set(_PLACEMENT_KEYS)
@@ -222,7 +222,7 @@ def _energy_deposits(
             f"no simulation of deposits for a source of kind {kind!r}; "
             f"known: {['toy_mip', *G4_KINDS]}"
         )
-    asked(events, generated)
+    asked(events, generated, generated_limit)
     if kind == "toy_mip":
         max_step = (DEVICE_ALONE if g4setup is None else g4setup)["maxstep"]
         return mip_deposits(

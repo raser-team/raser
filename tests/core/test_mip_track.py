@@ -105,3 +105,7 @@ def test_tracks_are_generated_until_enough_are_recorded() -> None:
         mip_deposits(_device("Si"), source, 1, 50.0, edep_min=100.0, generated_limit=50)
     with pytest.raises(ValueError, match="not both"):
         mip_deposits(_device("Si"), source, 1, 50.0, generated=1)
+    # nothing to record, nothing to generate, no room to generate: errors
+    for counts in ({"events": 0}, {"events": None, "generated": 0}, {"events": 1, "generated_limit": 0}):
+        with pytest.raises(ValueError, match="at least 1"):
+            mip_deposits(_device("Si"), source, max_step=50.0, **counts)
