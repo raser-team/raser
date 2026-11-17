@@ -48,9 +48,13 @@ DOPANTS = {
         "B": _acceptor((0.311, 1.0)),
     },
     # Diamond. B: Collins and Williams, J. Phys. C 4 (1971) 1789; N, the
-    # substitutional deep donor: Farrer, Solid State Commun. 7 (1969) 685.
+    # substitutional deep donor: Farrer, Solid State Commun. 7 (1969) 685;
+    # P: 0.60 +- 0.02 eV, the optical ionization energy from its excited
+    # states, as Hall measurements give it: Gheeraert et al., Solid State
+    # Commun. 113 (2000) 577.
     "Diamond": {
         "B": _acceptor((0.37, 1.0)),
         "N": _donor((1.7, 1.0)),
+        "P": _donor((0.60, 1.0)),
     },
 }
