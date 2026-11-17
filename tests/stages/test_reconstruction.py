@@ -58,7 +58,7 @@ def test_every_event_has_a_row_and_the_large_ones_are_selected(tmp_path) -> None
     assert rows["CoG"][:, 0] == pytest.approx(starts + 6.5e-9)
     assert rows["CFD"][0::2, 0, 0] == pytest.approx(starts[0::2] + 2.5e-9)
     assert rows["CFD"][:, 0, 1] == pytest.approx(starts + 4.0e-9)
-    assert rows["charge"][0::2, 0] == pytest.approx(np.full(30, 50.0e-3 * DT))
+    assert rows["area"][0::2, 0] == pytest.approx(np.full(30, 50.0e-3 * DT))
 
 
 def test_cluster_of_three_strips_weighs_the_strips_above_the_threshold(tmp_path) -> None:
@@ -135,3 +135,18 @@ def test_event_above_the_amplitude_cut_but_below_the_timing_threshold_is_selecte
     assert rows["selected"].all()
     assert rows["amplitude"][:, 0] == pytest.approx(np.full(2, 10.0e-3))
     assert not rows["above"].any() and np.isnan(rows["ToA"]).all()
+
+
+def test_area_is_of_the_lobe_that_holds_the_peak(tmp_path) -> None:
+    # -120 mV for one ns, then an undershoot of +120 mV for one ns, on noise
+    # far below them; the undershoot of a falling pulse is not its area
+    batch = tmp_path / "batch"
+    batch.mkdir()
+    rng = np.random.default_rng(10)
+    samples = np.concatenate([rng.normal(0.0, 1.0e-4, BEFORE), [0.0, -120.0e-3, 120.0e-3, 0.0], rng.normal(0.0, 1.0e-4, 50)])
+    samples[BEFORE] = samples[BEFORE + 3] = 1.0e-3  # above the baseline on the far sides
+    append_waveforms(batch / "readout_0.h5", ["top"], DT, EventWaveforms(0, 0.0, np.array([samples])))
+
+    rows = _run(tmp_path, 50, 100).columns
+
+    assert rows["area"][0, 0] == pytest.approx(120.0e-3 * DT, rel=0.01)

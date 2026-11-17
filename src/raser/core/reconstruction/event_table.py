@@ -4,7 +4,7 @@ The file is HDF5, one per job, and is written at once.
 
 Attributes of the file:
     electrodes           names of the electrodes, in the order of the columns
-    threshold            of the times and the charge [V], above the baseline
+    threshold            of the times and the area [V], above the baseline
     amplitude_threshold  of the selected events [V], above the baseline
     fractions            of the constant-fraction times, (fractions,)
     edge                 "rising" or "falling": the edge the thresholds are
@@ -26,11 +26,13 @@ Datasets, one row per event and one column per electrode:
     ToT             from there to where the falling edge crosses it [s];
                     0 when it does not fall below it before the record ends
     CoG             centre of gravity in time of the part above threshold [s]
-    charge          integral of the waveform above the baseline [V s]
+    area            integral of the lobe of the pulse that holds its peak:
+                    the bins on either side of the peak down to where the
+                    pulse returns to the baseline [V s]
 Dataset, one row per event, one column per electrode and one per fraction:
     CFD             where the rising edge crosses the fraction of the
                     amplitude [s]
-The times, CoG and charge are NaN where `above` is false, and a time is NaN
+The times, CoG and area are NaN where `above` is false, and a time is NaN
 where its crossing is not found.
 """
 
@@ -48,7 +50,7 @@ from .event import get_ToA
 from .event import get_ToT
 from .event import net_pulse
 
-ELECTRODE_COLUMNS = ("baseline", "noise", "amplitude", "above", "ToA", "ToT", "CoG", "charge")
+ELECTRODE_COLUMNS = ("baseline", "noise", "amplitude", "above", "ToA", "ToT", "CoG", "area")
 EVENT_COLUMNS = ("event", "selected", "cluster_size", "cluster_center")
 EDGE_SIGN = {"rising": 1.0, "falling": -1.0}
 KINDS = {"event": "int64", "selected": "bool", "above": "bool", "cluster_size": "int64"}
@@ -68,15 +70,28 @@ class EventTable:
         return len(self.columns["event"])
 
 
+def lobe_area(samples, peak, dt):
+    """Integral of the positive lobe that holds the bin `peak`: from the bin
+    after the last one not above zero before it, to the bin before the
+    first one not above zero after it [unit of the samples times s]."""
+    first = peak
+    while first > 0 and samples[first - 1] > 0:
+        first -= 1
+    last = peak
+    while last < len(samples) - 1 and samples[last + 1] > 0:
+        last += 1
+    return float(np.sum(samples[first:last + 1]) * dt)
+
+
 def electrode_row(times, dt, net, threshold, fractions):
     """What one positive waveform without its baseline gives, as the
-    columns of one electrode of ELECTRODE_COLUMNS from amplitude to charge
+    columns of one electrode of ELECTRODE_COLUMNS from amplitude to area
     and the times of the fractions."""
     amplitude, peak = get_amplitude(net)
     nothing = float("nan")
     if amplitude < threshold:
         return {"amplitude": amplitude, "above": False, "ToA": nothing, "ToT": nothing,
-                "CoG": nothing, "charge": nothing}, [nothing] * len(fractions)
+                "CoG": nothing, "area": nothing}, [nothing] * len(fractions)
     arrival = get_ToA(times, net, threshold, peak)
     row = {
         "amplitude": amplitude,
@@ -84,7 +99,7 @@ def electrode_row(times, dt, net, threshold, fractions):
         "ToA": nothing if arrival is None else arrival,
         "ToT": get_ToT(times, net, threshold, peak),
         "CoG": get_CoG(times, net, threshold, peak),
-        "charge": float(np.sum(np.abs(net)) * dt),
+        "area": lobe_area(net, peak, dt),
     }
     constant = [get_CFD50(times, net, part, peak) for part in fractions]
     return row, [nothing if time is None else time for time in constant]
@@ -139,7 +154,7 @@ def event_table(waveforms, threshold, amplitude_threshold, fractions, edge):
         columns["cluster_center"].append(center)
         columns["baseline"].append([baseline for _, baseline, _ in pulses])
         columns["noise"].append([noise for _, _, noise in pulses])
-        for name in ("amplitude", "above", "ToA", "ToT", "CoG", "charge"):
+        for name in ("amplitude", "above", "ToA", "ToT", "CoG", "area"):
             columns[name].append([row[name] for row in rows])
         columns["CFD"].append(constant)
     arrays = {name: np.array(values, dtype=KINDS.get(name, "float64")) for name, values in columns.items()}

@@ -3,7 +3,7 @@
 Slice:        reconstruction, writes reconstruction_<job>.h5; with several
               positions reconstruction.<position> for each readout.<position>
 Needs:        readout (the waveforms), readout.<position> with positions
-Options:      threshold            50 mV, of the times and the charge
+Options:      threshold            50 mV, of the times and the area
               amplitude_threshold  100 mV, of the selected events
               fractions            0.1, 0.2, ..., 0.9, of the constant-fraction times
               edge                 no default: the edge of the pulses the thresholds
