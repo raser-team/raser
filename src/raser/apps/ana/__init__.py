@@ -9,7 +9,7 @@ from raser.lifecycle.workflow import finished_in
 from raser.supports.paths import project_root_context
 
 from .point import write_point
-from .points import write_points
+from .across_points import write_points
 
 
 def collect(options):
