@@ -68,3 +68,32 @@ def test_a_short_command_hands_its_jobs_the_full_name(
     assert main(["-b", "fld", "HPK-Si-PiN"]) == 0
 
     assert submitted == [("field",)]
+
+
+def test_raser_field_on_an_experiment_solves_the_fields_its_points_need_and_runs_none_of_its_jobs(
+    work_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from raser.stages import field
+
+    started: list[float] = []
+    monkeypatch.setattr(field.SHARED, "ready", lambda options, files: None)
+    monkeypatch.setattr(field.SHARED, "start", lambda kwargs, options, files: started.append(options["voltage"]))
+    monkeypatch.setattr(jobs, "run_indexed_jobs", lambda *a, **k: pytest.fail("submitted"))
+    experiment = work_root / "HPK-Si-PiN" / "signal"
+    experiment.mkdir(parents=True)
+    config = {"workflow": "signal", "device": "HPK-Si-PiN", "set": {}, "scan": {"voltage": [100, 300]}}
+    (experiment / "config.json").write_text(json.dumps(config))
+
+    assert main(["-b", "fld", str(experiment)]) == 0
+
+    assert sorted(started) == [100, 300]
+    assert sorted(path.name for path in experiment.iterdir()) == ["config.json"]
+
+
+def test_raser_field_on_the_field_itself_names_its_device(work_root: Path) -> None:
+    folder = work_root / "HPK-Si-PiN" / "field"
+    folder.mkdir(parents=True)
+    (folder / "config.json").write_text(json.dumps({"workflow": "field", "device": "HPK-Si-PiN"}))
+
+    with pytest.raises(SystemExit, match="raser field HPK-Si-PiN"):
+        main(["field", str(folder)])
