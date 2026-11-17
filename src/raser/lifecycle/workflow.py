@@ -117,6 +117,7 @@ def run_arguments(parser, seeds=True):
     parser.add_argument("-mem", type=int, default=1)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--scan", action="append", default=[])
+    parser.add_argument("--set", action="append", default=[], help="address=value, as --scan with one value")
 
 
 def execute(workflow, kwargs):
@@ -134,6 +135,16 @@ def execute(workflow, kwargs):
         root = Path(project_path(*workflow.words))
         config = _read(root / "config.json")
     given = {key: kwargs[key] for key in workflow.keys if kwargs.get(key) is not None}
+    # --set: one value at an address, written as --scan writes it.
+    address = {name: key for key, name in config.get("names", {}).items()}
+    fixed_here = {}
+    for item in kwargs.get("set") or []:
+        key, _, value = item.partition("=")
+        fixed_here[address.get(key, key)] = _parse(value)
+    scanned_here = {address.get(item.partition("=")[0], item.partition("=")[0]) for item in kwargs["scan"]}
+    if both := sorted(scanned_here & set(fixed_here)):
+        raise ValueError(f"{', '.join(both)}: given to --set and to --scan at once; give it to one of them")
+    given = {**given, **fixed_here}
     scan, points, asked = _points(workflow, kwargs, config, given)
 
     # The seed folder of this command in every point, and the jobs left in it.
@@ -226,18 +237,17 @@ def execute(workflow, kwargs):
         if workflow.seeds:
             new["same_seeds"] = same_seeds
         _write(root / "config.json", new)
-    elif kwargs["scan"]:
-        # A scan given to an experiment that exists joins its config, under its
-        # address as _points reads it, in place of what the config scanned
-        # there; later commands repeat it.
-        address = {name: key for key, name in config.get("names", {}).items()}
+    elif kwargs["scan"] or fixed_here:
+        # A scan or a --set given to an experiment that exists joins its config,
+        # under its address as _points reads it, in place of what the config
+        # had there; later commands repeat it.
         written = dict(config.get("scan", {}))
         for item in kwargs["scan"]:
             key, _, values = item.partition("=")
             key = address.get(key, key)
             written = {old: v for old, v in written.items() if address.get(old, old) != key}
             written[key] = [_parse(value) for value in values.split(",")]
-        _write(root / "config.json", {**config, "scan": written})
+        _write(root / "config.json", {**config, "scan": written, "set": {**config.get("set", {}), **fixed_here}})
     # What the points share and is not ready is made first, once for all the
     # points that read the same of it.
     started = set()
