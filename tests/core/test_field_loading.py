@@ -4,9 +4,11 @@ import json
 import pickle
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from raser.core.field.devsim_field import DevsimField
+from raser.core.field.interpolation import interpolate_3d
 
 FILES = {
     "Potential_57V.pkl": "potential",
@@ -107,3 +109,150 @@ def test_the_electric_field_of_a_row_is_read_in_one_cell(
     assert field.get_potential(30.0, 0.0, 25.0) == pytest.approx(first + 30.0)
     assert field.get_potential(250.0, 0.0, 25.0) == pytest.approx(first + 50.0)
     assert field.get_potential(970.0, 0.0, 25.0) == pytest.approx(first + 70.0)
+
+
+def test_unstructured_3d_field_is_regularized_with_explicit_bins() -> None:
+    points = np.asarray(
+        [
+            (0.0, 0.0, 0.0),
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.0, 0.0, 1.0),
+            (1.0, 1.0, 1.0),
+        ]
+    )
+    values = np.sum(points, axis=1)
+    interpolation = interpolate_3d(
+        {"points": points, "values": values},
+        bins={"x": 5, "y": 5, "z": 5},
+    )
+
+    assert interpolation(0.0, 0.0, 0.0) == pytest.approx(0.0)
+    assert interpolation(1.0, 1.0, 1.0) == pytest.approx(3.0)
+    assert 0.0 < interpolation(0.5, 0.5, 0.5) < 3.0
+
+
+def test_repeated_3d_points_do_not_leave_an_uninitialized_grid_cell() -> None:
+    points = np.asarray(
+        [
+            (0.0, 0.0, 0.0),
+            (0.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.0, 0.0, 1.0),
+            (0.0, 1.0, 1.0),
+            (1.0, 0.0, 0.0),
+            (1.0, 1.0, 0.0),
+            (1.0, 0.0, 1.0),
+        ]
+    )
+    interpolation = interpolate_3d(
+        {"points": points, "values": np.sum(points, axis=1)},
+        bins={"x": 3, "y": 3, "z": 3},
+    )
+
+    assert np.isfinite(interpolation(1.0, 1.0, 1.0))
+
+
+def _write_field_pickle(path: Path, points, values, *, voltage: float) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("wb") as stream:
+        pickle.dump(
+            {
+                "points": np.asarray(points, dtype=float),
+                "values": np.asarray(values, dtype=float),
+                "metadata": {"voltage": voltage, "dimension": 3},
+            },
+            stream,
+        )
+
+
+def test_devsim_field_loads_unstructured_3d_assets(tmp_path: Path) -> None:
+    points = np.asarray(
+        [
+            (0.0, 0.0, 0.0),
+            (0.01, 0.0, 0.0),
+            (0.0, 0.01, 0.0),
+            (0.0, 0.0, 0.01),
+            (0.01, 0.01, 0.01),
+        ]
+    )
+    potential = np.sum(points, axis=1)
+    _write_field_pickle(tmp_path / "Potential_57V.pkl", points, potential, voltage=57)
+    _write_field_pickle(
+        tmp_path / "NetDoping_0V.pkl", points, np.full(5, 1.0e12), voltage=0
+    )
+    _write_field_pickle(
+        tmp_path / "TrappingRate_p_57V.pkl", points, np.zeros(5), voltage=57
+    )
+    _write_field_pickle(
+        tmp_path / "TrappingRate_n_57V.pkl", points, np.zeros(5), voltage=57
+    )
+    _write_field_pickle(
+        tmp_path / "Conductive_57V.pkl", points, np.zeros(5), voltage=57
+    )
+    _write_field_pickle(
+        tmp_path / "weightingfield" / "center" / "Potential_57V.pkl",
+        points,
+        potential / 0.03,
+        voltage=1,
+    )
+
+    (tmp_path / "run.json").write_text(json.dumps({"axes": ["x", "y", "z"]}))
+
+    field = DevsimField(
+        "synthetic-3d",
+        57,
+        [{"name": "center"}],
+        bounds={"x": (0.0, 100.0), "y": (0.0, 100.0), "z": (0.0, 100.0)},
+        field_directory=tmp_path,
+    )
+
+    assert field.get_potential(0.0, 0.0, 0.0) == pytest.approx(0.0)
+    assert field.get_potential(100.0, 100.0, 100.0) == pytest.approx(0.03)
+    assert field.get_w_p(100.0, 100.0, 100.0, 0) == pytest.approx(1.0)
+    assert np.all(np.isfinite(field.get_e_field(50.0, 50.0, 50.0)))
+
+
+def _write_field(directory: Path, points, potential, axes) -> None:
+    flat = np.zeros(len(points))
+    for name, values, voltage in (
+        ("Potential_57V.pkl", potential, 57),
+        ("NetDoping_0V.pkl", flat, 0),
+        ("TrappingRate_p_57V.pkl", flat, 57),
+        ("TrappingRate_n_57V.pkl", flat, 57),
+        ("Conductive_57V.pkl", flat, 57),
+        ("weightingfield/center/Potential_57V.pkl", flat, 1),
+    ):
+        _write_field_pickle(directory / name, points, values, voltage=voltage)
+    if axes:
+        (directory / "run.json").write_text(json.dumps({"axes": list(axes)}))
+
+
+def _grid_3d():
+    grid = np.linspace(0.0, 0.01, 3)
+    return np.array([(a, b, c) for a in grid for b in grid for c in grid])
+
+
+@pytest.mark.parametrize(
+    ("axes", "along"),
+    [(("x", "y", "z"), 0), (("z", "x", "y"), 1)],
+)
+def test_a_field_is_read_along_the_axes_its_folder_records(
+    tmp_path: Path, axes, along
+) -> None:
+    points = _grid_3d()
+    _write_field(tmp_path, points, 100.0 * points[:, along], axes)
+
+    field = DevsimField("synthetic", 57, [{"name": "center"}], field_directory=tmp_path)
+
+    assert field.get_potential(100.0, 50.0, 50.0) == pytest.approx(1.0)
+    assert field.get_potential(0.0, 50.0, 50.0) == pytest.approx(0.0)
+    assert field.get_e_field(50.0, 50.0, 50.0) == pytest.approx((-100.0, 0.0, 0.0))
+
+
+def test_a_field_folder_without_its_record_is_refused(tmp_path: Path) -> None:
+    points = _grid_3d()
+    _write_field(tmp_path, points, points[:, 0], axes=None)
+
+    with pytest.raises(FileNotFoundError, match="run.json is missing"):
+        DevsimField("synthetic", 57, [{"name": "center"}], field_directory=tmp_path)

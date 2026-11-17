@@ -6,6 +6,9 @@ from typing import Any
 import pytest
 
 from raser.core.field import loop_section
+from raser.core.field.physics_avalanche import CreateImpactModel_vanOvenstraeten
+from raser.core.field.solver_section import _resolve_impact_model
+from raser.core.field.solver_section import _voltage_milestones
 
 
 @pytest.fixture
@@ -137,3 +140,22 @@ def test_the_try_after_a_failed_step_starts_from_the_solved_biases_again(
         "Electrons": [2.0, 2.0, 2.0],
         "Holes": [2.0, 2.0, 2.0],
     }
+
+
+def test_van_overstraeten_has_zero_ionization_below_its_field_threshold() -> None:
+    electron, hole = CreateImpactModel_vanOvenstraeten("device", "region")
+
+    assert "abs(ElectricField)>1.75e5" in electron
+    assert "abs(ElectricField)>1.75e5" in hole
+    assert electron.endswith(", 0)")
+    assert hole.endswith(", 0)")
+
+
+def test_field_solver_uses_enabled_avalanche_and_includes_final_bias() -> None:
+    disabled = SimpleNamespace(has_avalanche=False, avalanche_model="vanOverstraeten")
+    enabled = SimpleNamespace(has_avalanche=True, avalanche_model="vanOverstraeten")
+
+    assert _resolve_impact_model(disabled) is None
+    assert _resolve_impact_model(enabled) == "vanOverstraeten"
+    assert _voltage_milestones(350.0, 100.0) == [100.0, 200.0, 300.0, 350.0]
+    assert _voltage_milestones(-250.0, 100.0) == [-100.0, -200.0, -250.0]
