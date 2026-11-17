@@ -1368,3 +1368,18 @@ def test_a_new_experiment_made_for_an_unregistered_point_keeps_no_scan(
     execute(GAIN, _kwargs(gain=None, width=None, scan=["gain=7"], jobs=2), register=False)
 
     assert json.loads((tmp_path / "toy" / "config.json").read_text())["scan"] == {}
+
+
+def test_a_job_run_in_this_process_leaves_a_log_with_what_it_printed_and_why_it_failed(
+    started: list[Any], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def job(options: dict[str, Any]) -> None:
+        print("collected 3 points")
+        raise RuntimeError("no event selected")
+
+    with pytest.raises(RuntimeError):
+        execute(Workflow(name="toy", job=job, device=False), _kwargs())
+
+    log = (tmp_path / "toy" / "seed_42" / "batch" / "job_0.log").read_text()
+    assert "collected 3 points" in capsys.readouterr().out and "collected 3 points" in log
+    assert log.rstrip().endswith("RuntimeError: no event selected")

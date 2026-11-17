@@ -10,8 +10,10 @@ import itertools
 import json
 import secrets
 import subprocess
+import sys
 import time
 import traceback
+from contextlib import contextmanager
 from dataclasses import dataclass
 from dataclasses import field
 from dataclasses import replace
@@ -479,7 +481,8 @@ def _start(workflow, kwargs, folder, left, alone) -> None:
     """Start the jobs `left` of a seed folder; `alone` when the command has no other point."""
     single = kwargs.get("jobs") is None and not kwargs["batch"]
     if single and alone:
-        _run_job(workflow, {**kwargs, "job_dir": str(folder)})  # in this process
+        with _logged(Path(folder) / "batch" / "job_0.log"):
+            _run_job(workflow, {**kwargs, "job_dir": str(folder)})  # in this process
         return
     tail = workflow.words[1:]
     if workflow.device:
@@ -501,6 +504,43 @@ def _start(workflow, kwargs, folder, left, alone) -> None:
         indices=left,
         log_folder=None if kwargs["batch"] else Path(folder) / "batch",
     )
+
+
+class _Both:
+    """A stream that writes to the terminal's stream and to a log."""
+
+    def __init__(self, stream, log):
+        self.stream, self.log = stream, log
+
+    def write(self, text):
+        self.log.write(text)
+        return self.stream.write(text)
+
+    def flush(self):
+        self.log.flush()
+        self.stream.flush()
+
+    def __getattr__(self, name):
+        return getattr(self.stream, name)
+
+
+@contextmanager
+def _logged(log):
+    """What Python prints while a job runs in this process goes to the
+    terminal and to `log`, as for a job in a process of its own; a failure
+    leaves its traceback in the log. What Geant4 and ROOT print from C++
+    goes to the terminal only."""
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with open(log, "w") as file:
+        out, err = sys.stdout, sys.stderr
+        sys.stdout, sys.stderr = _Both(out, file), _Both(err, file)
+        try:
+            yield
+        except BaseException:
+            file.write(traceback.format_exc())
+            raise
+        finally:
+            sys.stdout, sys.stderr = out, err
 
 
 def _own_process(workflow, kwargs, words) -> None:
