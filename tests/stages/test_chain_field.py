@@ -311,3 +311,15 @@ def test_a_field_started_for_an_experiment_hands_its_job_the_command_that_waits(
     field.start({"batch": True, "mem": 1, "_waiting": waiting}, {"voltage": None, "irradiation": None}, {"device": device})
 
     assert handed == [waiting]
+
+
+def test_the_settings_of_a_field_command_are_its_linear_solver_and_the_content_of_its_tcad_file(tmp_path: Path) -> None:
+    tdr = tmp_path / "device.tdr"
+    tdr.write_bytes(b"one solution")
+    plain = field.WORKFLOW.settings({"umf": False, "input": None})
+    umf = field.WORKFLOW.settings({"umf": True, "input": None})
+    first = field.WORKFLOW.settings({"umf": False, "input": str(tdr)})
+    tdr.write_bytes(b"another one!")  # the same name and size
+    second = field.WORKFLOW.settings({"umf": False, "input": str(tdr)})
+
+    assert len({json.dumps(settings) for settings in (plain, umf, first, second)}) == 4

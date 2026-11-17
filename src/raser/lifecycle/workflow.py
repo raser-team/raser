@@ -106,6 +106,11 @@ class Workflow:
     # run out of date, or None. Not given: any difference between the two does,
     # and so do uncommitted changes of the code.
     outdated: Callable | None = None
+    # the options of a command -> the settings of its command line that change
+    # what its jobs write and that no option of the experiment holds, such as
+    # the linear solver of a field; recorded in run.json, other ones make the
+    # run out of date whatever `outdated` judges
+    settings: Callable | None = None
     command: Callable | None = None  # extra words of the job command
     # the options of a command -> its experiment folder, for an experiment that
     # is not at work/<device>/<words>, such as one inside another experiment
@@ -258,6 +263,8 @@ def _execute(workflow, kwargs, register, root, config, identity, release):
         if not workflow.seeds:
             record = {"point": name}
         record.update(commit=commit, options=options, files=files)
+        if workflow.settings:
+            record["settings"] = workflow.settings(kwargs)
         for k, piece in enumerate(workflow.slices):
             record.setdefault("slices", {})[piece.name] = _read_by(workflow, kwargs, given_here, k)
             record.setdefault("held_in", {})[piece.name] = held_in[k]
@@ -563,6 +570,9 @@ def finished_in(root) -> list[tuple[str, dict, list[tuple[Path, int]]]]:
 
 def _outdated(workflow, old, record) -> str | None:
     """What makes the run that wrote `old` out of date for `record`, or None."""
+    # A run recorded before its settings were is taken as made with these.
+    if "settings" in old and old["settings"] != record.get("settings"):
+        return "other settings of the command line"
     if workflow.outdated:
         return workflow.outdated(old, record)
     if record["commit"].endswith("+dirty"):

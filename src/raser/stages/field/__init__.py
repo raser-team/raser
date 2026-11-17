@@ -224,6 +224,16 @@ def job_command(kwargs):
     return words
 
 
+def settings(kwargs):
+    """What of the command line of a field changes the field it solves: the
+    linear solver -umf asks for, and the content of the TCAD file of -ext.
+    Other ones make the folder of the field out of date and solved anew."""
+    imported = None
+    if kwargs.get("input") is not None:
+        imported = hashlib.sha256(Path(kwargs["input"]).read_bytes()).hexdigest()
+    return {"umf": bool(kwargs.get("umf")), "imported": imported}
+
+
 WORKFLOW = Workflow(
     name="field",
     job=solve,
@@ -232,6 +242,7 @@ WORKFLOW = Workflow(
     defaults={"irradiation_flux": None, "mode": DEFAULT_MODE},
     seeds=False,
     outdated=outdated,
+    settings=settings,
 )
 
 

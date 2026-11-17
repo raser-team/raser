@@ -1700,3 +1700,32 @@ def test_two_keys_of_a_group_in_one_layer_are_refused(started: list[Any]) -> Non
         execute(EITHER, _kwargs(a=2, b=5))
     with pytest.raises(ValueError, match="a and b are given at once in the defaults of toy"):
         Workflow(name="toy", keys=("a", "b"), defaults={"a": 1, "b": 2}, exclusive=(("a", "b"),))
+
+
+def test_a_setting_of_the_command_line_that_changed_makes_the_run_out_of_date_whatever_the_workflow_judges(
+    started: list[Any], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ran: list[bool] = []
+    solver = Workflow(
+        name="toy",
+        job=lambda options: ran.append(options["umf"]),
+        device=False,
+        seeds=False,
+        outdated=lambda old, record: None,  # the field judges only its device and flux
+        settings=lambda kwargs: {"umf": bool(kwargs["umf"])},
+    )
+    execute(solver, _plain(umf=False))
+    execute(solver, _plain(umf=False))
+    assert "replaced" not in capsys.readouterr().out  # the same settings
+
+    execute(solver, _plain(umf=True))
+
+    assert ran[-1] is True
+    assert "replaced: other settings of the command line" in capsys.readouterr().out
+    assert _record(tmp_path / "toy")["settings"] == {"umf": True}
+
+    old = _record(tmp_path / "toy")
+    del old["settings"]  # written before the settings were recorded
+    (tmp_path / "toy" / "run.json").write_text(json.dumps(old))
+    execute(solver, _plain(umf=False))
+    assert "replaced" not in capsys.readouterr().out
