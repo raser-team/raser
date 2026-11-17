@@ -697,7 +697,7 @@ def test_without_seeds_the_job_of_every_point_runs_in_the_point_folder_at_every_
     ] * 2
     assert "seed" not in received[0]
     assert _record(experiment / "x_2") == {
-        "point": "x_2", "commit": "abc", "options": {"x": 2}, "files": {},
+        "point": "x_2", "commit": "abc", "options": {"x": 2}, "files": {}, "jobs": 1,
     }
     assert "same_seeds" not in json.loads((experiment / "config.json").read_text())
     assert [(name, len(done)) for name, _, done in
@@ -1302,3 +1302,47 @@ def test_a_file_system_that_cannot_lock_warns_and_lets_the_run_go_on(
 
     assert workflow_module._lock(tmp_path / "x.lock", "x") is None
     assert "cannot be locked here (No locks available)" in capsys.readouterr().out
+
+
+def test_more_jobs_asked_of_a_seed_folder_add_to_it_and_do_not_make_it_out_of_date(
+    started: list[Any], tmp_path: Path
+) -> None:
+    execute(TOY, _kwargs(jobs=3))
+    execute(TOY, _kwargs(jobs=5))
+
+    assert [jobs for _, _, jobs, _ in started] == [[0, 1, 2], [3, 4]]
+    assert json.loads((tmp_path / "toy" / "seed_42" / "run.json").read_text())["jobs"] == 5
+    (tmp_path / "toy" / "seed_42" / "batch" / "job_1.done").unlink()  # a job to redo with fewer asked
+    execute(TOY, _kwargs(jobs=3))
+    assert json.loads((tmp_path / "toy" / "seed_42" / "run.json").read_text())["jobs"] == 5
+
+
+def test_a_set_value_is_one_value_at_an_address_and_a_new_experiment_keeps_it(
+    started: list[Any], tmp_path: Path
+) -> None:
+    execute(GAIN, _kwargs(gain=None, width=None, set=["width=2.5"], jobs=2))
+
+    config = json.loads((tmp_path / "toy" / "config.json").read_text())
+    assert config["set"] == {"width": 2.5}
+    assert _options(tmp_path / "toy" / "seed_42")["width"] == 2.5
+
+
+def test_a_set_value_by_short_name_replaces_the_one_the_config_had_and_runs_again(
+    started: list[Any], tmp_path: Path
+) -> None:
+    experiment = tmp_path / "toy"
+    experiment.mkdir()
+    config = {"workflow": "toy", "set": {"gain": 5}, "scan": {}, "names": {"gain": "g"}}
+    (experiment / "config.json").write_text(json.dumps(config))
+    execute(GAIN, _kwargs(gain=None, width=None, jobs=2))
+
+    execute(GAIN, _kwargs(gain=None, width=None, set=["g=7"], jobs=2))
+
+    assert json.loads((experiment / "config.json").read_text())["set"] == {"gain": 7}
+    assert _options(experiment / "seed_42")["gain"] == 7
+    assert len(_kept(experiment)) == 1  # the run with gain 5 is kept aside
+
+
+def test_one_address_given_to_set_and_to_scan_at_once_is_refused(started: list[Any]) -> None:
+    with pytest.raises(ValueError, match="gain: given to --set and to --scan at once"):
+        execute(GAIN, _kwargs(gain=None, width=None, set=["gain=7"], scan=["gain=5,9"], jobs=2))

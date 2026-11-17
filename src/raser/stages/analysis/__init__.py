@@ -39,7 +39,7 @@ def collect(options):
 
 
 WORKFLOW = Workflow(
-    name="ana",
+    name="analysis",
     job=collect,
     keys=("adc", "threshold", "amplitude_threshold"),
     defaults={"adc": "scope", "threshold": None, "amplitude_threshold": None},
@@ -48,7 +48,7 @@ WORKFLOW = Workflow(
     device=False,
     seeds=False,
     # the analysis is an experiment inside the experiment it analyses
-    folder=lambda kwargs: Path(kwargs["experiment"]) / "ana",
+    folder=lambda kwargs: Path(kwargs["experiment"]) / "analysis",
     command=lambda kwargs: [kwargs["experiment"]],
 )
 
@@ -65,7 +65,7 @@ def run(kwargs):
 
 
 def register(subparsers):
-    parser = subparsers.add_parser("ana", help="results of the points of an experiment")
+    parser = subparsers.add_parser("analysis", aliases=["ana"], help="stage: the results of the points of an experiment")
     parser.add_argument("experiment", help="experiment folder, work/<device>/<command>")
     parser.add_argument("-adc", help="digitizer")
     parser.add_argument("-threshold", type=float, help="of the times of arrival [mV], in place of the digitizer's")

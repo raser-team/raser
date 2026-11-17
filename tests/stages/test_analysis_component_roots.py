@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from raser.cli.raser import main
-from raser.stages import ana
+from raser.stages import analysis as ana
 from raser.supports.paths import app_component_root
 
 

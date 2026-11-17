@@ -96,22 +96,28 @@ class Workflow:
         return self.name.split()
 
     def attach(self, parser):
-        if self.seeds:
-            parser.add_argument("-s", "--jobs", type=int)
-            parser.add_argument("--seed", type=int)
-            parser.add_argument("--same-seeds", action="store_true")
-        parser.add_argument("-b", "--batch", action="store_true")
-        parser.add_argument("-mem", type=int, default=1)
-        parser.add_argument("--dry-run", action="store_true")
-        parser.add_argument("--scan", action="append", default=[])
+        run_arguments(parser, self.seeds)
         if self.slices:
-            names = [piece.name for piece in self.slices]
-            parser.add_argument("--until", choices=names, help="stop after this slice")
             parser.add_argument("--job-slices", help=argparse.SUPPRESS)
         parser.add_argument("--job-dir", help=argparse.SUPPRESS)
         parser.add_argument("--job-index", type=int, help=argparse.SUPPRESS)
         parser.set_defaults(_run=lambda kwargs: execute(self, kwargs))
         WORKFLOWS[self.name] = self
+
+
+def run_arguments(parser, seeds=True):
+    """The options of how a command runs: its jobs and their seeds, the
+    cluster, a dry run, scans. A command that runs a workflow of its own
+    gets them from `Workflow.attach`."""
+    if seeds:
+        parser.add_argument("-s", "--jobs", type=int)
+        parser.add_argument("--seed", type=int)
+        parser.add_argument("--same-seeds", action="store_true")
+    parser.add_argument("-b", "--batch", action="store_true")
+    parser.add_argument("-mem", type=int, default=1)
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--scan", action="append", default=[])
+    parser.add_argument("--set", action="append", default=[], help="address=value, as --scan with one value")
 
 
 def execute(workflow, kwargs):
@@ -129,6 +135,16 @@ def execute(workflow, kwargs):
         root = Path(project_path(*workflow.words))
         config = _read(root / "config.json")
     given = {key: kwargs[key] for key in workflow.keys if kwargs.get(key) is not None}
+    # --set: one value at an address, written as --scan writes it.
+    address = {name: key for key, name in config.get("names", {}).items()}
+    fixed_here = {}
+    for item in kwargs.get("set") or []:
+        key, _, value = item.partition("=")
+        fixed_here[address.get(key, key)] = _parse(value)
+    scanned_here = {address.get(item.partition("=")[0], item.partition("=")[0]) for item in kwargs["scan"]}
+    if both := sorted(scanned_here & set(fixed_here)):
+        raise ValueError(f"{', '.join(both)}: given to --set and to --scan at once; give it to one of them")
+    given = {**given, **fixed_here}
     scan, points, asked = _points(workflow, kwargs, config, given)
 
     # The seed folder of this command in every point, and the jobs left in it.
@@ -221,18 +237,17 @@ def execute(workflow, kwargs):
         if workflow.seeds:
             new["same_seeds"] = same_seeds
         _write(root / "config.json", new)
-    elif kwargs["scan"]:
-        # A scan given to an experiment that exists joins its config, under its
-        # address as _points reads it, in place of what the config scanned
-        # there; later commands repeat it.
-        address = {name: key for key, name in config.get("names", {}).items()}
+    elif kwargs["scan"] or fixed_here:
+        # A scan or a --set given to an experiment that exists joins its config,
+        # under its address as _points reads it, in place of what the config
+        # had there; later commands repeat it.
         written = dict(config.get("scan", {}))
         for item in kwargs["scan"]:
             key, _, values = item.partition("=")
             key = address.get(key, key)
             written = {old: v for old, v in written.items() if address.get(old, old) != key}
             written[key] = [_parse(value) for value in values.split(",")]
-        _write(root / "config.json", {**config, "scan": written})
+        _write(root / "config.json", {**config, "scan": written, "set": {**config.get("set", {}), **fixed_here}})
     # What the points share and is not ready is made first, once for all the
     # points that read the same of it.
     started = set()
@@ -279,6 +294,9 @@ def execute(workflow, kwargs):
                     _done(folder, i).unlink(missing_ok=True)
             if left:
                 (folder / "batch").mkdir(parents=True, exist_ok=True)
+                # The most jobs the seed folder was asked for, for raser status;
+                # it does not make a run out of date: -s 5 after -s 3 adds two.
+                record["jobs"] = max(record.get("jobs", 0), kwargs.get("jobs") or 1)
                 _write(folder / "run.json", record)
                 try:
                     _start(workflow, {**kwargs, "job_slices": names}, folder, left, alone=len(todo) == 1)
