@@ -160,7 +160,7 @@ def _energy_deposits(my_d, source, g4setup, events, g4_seed, edep_min, edep_max)
     source = tilted(source, my_d.l_z)
     if kind == "toy_mip":
         max_step = (DEVICE_ALONE if g4setup is None else g4setup)["maxstep"]
-        return mip_deposits(my_d, source, events, max_step, edep_min, edep_max)
+        return mip_deposits(my_d, source, None, max_step, edep_min, edep_max, generated=events)
     # g4ppyy creates the Geant4 managers when imported; sources that do
     # not need Geant4 must not pay for it.
     from .geant4.interaction import GeneralG4Interaction

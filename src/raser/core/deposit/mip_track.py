@@ -7,6 +7,8 @@ import math
 from raser.core.seeding import stream
 
 from .deposits import Deposits, EventDeposits
+from .generation import GENERATED_LIMIT
+from .generation import generation
 from .ionization import PAIR_ENERGY_EV
 
 # Electron-hole pairs a MIP creates per um of track.
@@ -30,12 +32,17 @@ _SOURCE_KEYS = {
 def mip_deposits(
     my_d,
     source: dict,
-    events: int,
+    events: int | None,
     max_step: float,
     edep_min: float | None = None,
     edep_max: float | None = None,
+    generated: int | None = None,
+    generated_limit: int = GENERATED_LIMIT,
 ) -> Deposits:
-    """Deposits of `events` straight tracks through the device.
+    """Deposits of straight tracks through the device: `events` recorded
+    ones, generated until there are that many, or those recorded of
+    `generated` tracks; one of the two is None. More than generated_limit
+    tracks for the `events` asked for is an error.
 
     Keys of source:
         landau_sampling       whether the energy of each deposit fluctuates
@@ -70,8 +77,9 @@ def mip_deposits(
     width_per_um = LANDAU_WIDTH_MEV_PER_UM[material]
     generator = stream("toy_mip")
 
-    recorded = []
-    for number in range(int(events)):
+    recorded: list[EventDeposits] = []
+    number = -1
+    for number in generation(events, generated, generated_limit, lambda: len(recorded)):
         start, end = _track_ends(my_d, source, generator)
         length = math.dist(start, end)
         if "packets" in source:
@@ -99,7 +107,7 @@ def mip_deposits(
         recorded.append(
             EventDeposits(number, ["Device"] * count, x, y, z, [0.0] * count, energies)
         )
-    return Deposits(int(events), edep_min, edep_max, recorded)
+    return Deposits(number + 1, edep_min, edep_max, recorded)
 
 
 def _track_ends(my_d, source: dict, generator) -> tuple[list[float], list[float]]:

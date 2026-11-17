@@ -34,8 +34,8 @@ def test_energy_window_drops_the_track_and_keeps_the_generated_number() -> None:
     # the track loses 6 * 0.0144 = 0.0864 MeV
     source = {"landau_sampling": False}
 
-    below = mip_deposits(_device("Si"), source, 3, 50.0, edep_min=0.09)
-    above = mip_deposits(_device("Si"), source, 3, 50.0, edep_max=0.08)
+    below = mip_deposits(_device("Si"), source, None, 50.0, edep_min=0.09, generated=3)
+    above = mip_deposits(_device("Si"), source, None, 50.0, edep_max=0.08, generated=3)
     inside = mip_deposits(_device("Si"), source, 3, 50.0, 0.08, 0.09)
 
     assert (below.generated_events, len(below.events)) == (3, 0)
@@ -83,3 +83,22 @@ def test_key_that_is_not_read_is_refused() -> None:
 
     with pytest.raises(ValueError, match="pairs_per_um"):
         mip_deposits(_device("Si"), source, 1, 50.0)
+
+
+def test_tracks_are_generated_until_enough_are_recorded() -> None:
+    # about half of the tracks lose more than 0.105 MeV
+    source = {"landau_sampling": True}
+    asked = mip_deposits(_device("Si"), source, 20, 50.0, edep_min=0.105)
+    assert len(asked.events) == 20
+    assert 20 < asked.generated_events < 200
+    # the last generated track is the last recorded one: nothing is thrown away
+    assert asked.events[-1].event == asked.generated_events - 1
+
+    counted = mip_deposits(_device("Si"), source, None, 50.0, edep_min=0.105, generated=100)
+    assert counted.generated_events == 100
+    assert 0 < len(counted.events) < 100
+
+    with pytest.raises(RuntimeError, match="0 of the 1 events"):
+        mip_deposits(_device("Si"), source, 1, 50.0, edep_min=100.0, generated_limit=50)
+    with pytest.raises(ValueError, match="not both"):
+        mip_deposits(_device("Si"), source, 1, 50.0, generated=1)
