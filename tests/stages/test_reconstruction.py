@@ -15,8 +15,9 @@ FRACTIONS = (0.2, 0.5)
 
 def _job(folder, scales, count, seed):
     """The readout of job 0 of `count` events in a seed folder; the
-    electrodes carry the triangle times `scales`. Returns the start of the
-    triangle of each event."""
+    electrodes carry the triangle times `scales`, whose sign gives the edge
+    the readout derives for each. Returns the start of the triangle of each
+    event."""
     batch = folder / "batch"
     batch.mkdir(parents=True, exist_ok=True)
     names = [f"strip_{k}" for k in range(len(scales[0]))]
@@ -25,7 +26,7 @@ def _job(folder, scales, count, seed):
         samples = [np.concatenate([np.zeros(BEFORE), scale * TRIANGLE]) for scale in scales[number % len(scales)]]
         append_waveforms(batch / "readout_0.h5", names, DT,
                          EventWaveforms(number, starts[number] - BEFORE * DT, np.array(samples)),
-                         pulse_edge=["falling"] * len(names))
+                         pulse_edge=["falling" if scale > 0 else "rising" for scale in scales[0]])
     return starts
 
 
@@ -46,7 +47,7 @@ def test_every_event_has_a_row_and_the_large_ones_are_selected(tmp_path) -> None
     table = _run(tmp_path, 3, 5)
 
     rows = table.columns
-    assert (len(table), table.edge) == (60, "falling")
+    assert (len(table), table.edges) == (60, ["falling"])
     assert list(rows["event"]) == list(range(60))
     assert list(np.flatnonzero(rows["selected"])) == list(range(0, 60, 2))
     assert rows["amplitude"][:, 0] == pytest.approx(np.tile([10.0e-3, 4.0e-3], 30))
@@ -95,20 +96,8 @@ def test_thresholds_on_the_other_edge_see_no_pulse(tmp_path) -> None:
     assert not rising["above"].any() and not rising["selected"].any()
     # turned over the falling pulse is a dip: nothing rises above the baseline
     assert rising["amplitude"][:, 0] == pytest.approx(np.zeros(3))
-    with pytest.raises(ValueError, match="edge 'down': .* rising .* or falling"):
+    with pytest.raises(ValueError, match="edge 'down': .* rising .* or a falling"):
         _run(tmp_path, 3, 5, "down")
-    # not given, the edge is the one the readout wrote its pulses with
-    assert _run(tmp_path, 3, 5, None).edge == "falling"
-
-
-def test_without_an_edge_pulses_of_both_ways_are_refused(tmp_path) -> None:
-    batch = tmp_path / "batch"
-    batch.mkdir()
-    samples = np.zeros((2, 40))
-    append_waveforms(batch / "readout_0.h5", ["top", "back"], DT, EventWaveforms(0, 0.0, samples), pulse_edge=["falling", "rising"])
-
-    with pytest.raises(ValueError, match="top falling, back rising"):
-        _run(tmp_path, 3, 5, None)
 
 
 def test_position_reads_and_writes_the_files_of_its_own_slices(tmp_path) -> None:
@@ -197,3 +186,48 @@ def test_centre_of_gravity_of_a_lopsided_pulse_is_not_its_peak(tmp_path) -> None
     centres = (BEFORE + np.arange(1, 5) + 0.5) * DT
     assert rows["CoG"][0, 0] == pytest.approx(np.dot(centres, [4, 10, 6, 4]) / 24)
     assert rows["CoG"][0, 0] > (BEFORE + 2.5) * DT  # later than the peak
+
+
+def test_without_an_edge_each_electrode_takes_the_one_the_readout_derives(tmp_path, capsys) -> None:
+    # strip 0 falls by 10 mV, strip 1 rises by 5 mV
+    _job(tmp_path, [[1.0, -0.5]], 2, seed=13)
+
+    rows = _run(tmp_path, 3, 4, None).columns
+
+    assert rows["amplitude"] == pytest.approx(np.tile([10.0e-3, 5.0e-3], (2, 1)))
+    assert list(rows["cluster_size"]) == [2, 2]
+    assert capsys.readouterr().out == ""
+
+
+def test_given_edge_that_is_not_the_pulse_is_told_and_taken(tmp_path, capsys) -> None:
+    _job(tmp_path, [[1.0, -0.5]], 2, seed=13)
+
+    rows = _run(tmp_path, 3, 4, "falling").columns
+
+    assert rows["amplitude"][:, 0] == pytest.approx(np.full(2, 10.0e-3))
+    assert not rows["above"][:, 1].any()
+    told = capsys.readouterr().out
+    assert "edge falling given for strip_1, whose pulse is rising" in told and "strip_0" not in told
+
+
+def test_event_holds_only_the_strips_it_has_a_signal_on(tmp_path) -> None:
+    batch = tmp_path / "batch"
+    batch.mkdir()
+    names = ["strip_0", "strip_1", "strip_2"]
+    samples = np.concatenate([np.zeros(BEFORE), TRIANGLE])
+    events = [
+        EventWaveforms(0, 0.0, np.array([samples, 0.5 * samples]), ["strip_1", "strip_2"]),
+        EventWaveforms(1, 0.0, np.zeros((0, len(samples))), []),  # no current, no waveform
+    ]
+    for event in events:
+        append_waveforms(batch / "readout_0.h5", names, DT, event, pulse_edge=["falling"] * 3)
+
+    rows = _run(tmp_path, 3, 4, None).columns
+
+    assert list(rows["event"]) == [0, 1]
+    assert rows["traced"].tolist() == [[False, True, True], [False, False, False]]
+    assert rows["amplitude"][0, 1:] == pytest.approx([10.0e-3, 5.0e-3])
+    assert np.isnan(rows["amplitude"][0, 0]) and np.isnan(rows["amplitude"][1]).all()
+    assert rows["selected"].tolist() == [True, False]
+    assert list(rows["cluster_size"]) == [2, 0]
+    assert rows["cluster_center"][0] == pytest.approx((1 * 10 + 2 * 5) / 15)

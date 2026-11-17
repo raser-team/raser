@@ -49,7 +49,7 @@ def write_point(jobs, folder):
     if tables:
         threshold, amplitude_threshold, fractions, edge = table_setting(tables[0][3])
         result["reconstruction"] = {
-            "threshold": threshold, "amplitude_threshold": amplitude_threshold, "fractions": list(fractions), "edge": edge,
+            "threshold": threshold, "amplitude_threshold": amplitude_threshold, "fractions": list(fractions), "edge": list(edge),
         }
     missing = []
     try:

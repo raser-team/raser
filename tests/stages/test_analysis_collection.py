@@ -38,7 +38,7 @@ def _job(folder, index, efficiencies):
             1.0e-11,
             EventCurrents(number, 0.0, np.zeros((1, 2)), charge, 1000.0),
         )
-    table = EventTable(["top"], 3.0e-3, 5.0e-3, (0.5,), "falling", {"event": np.arange(len(efficiencies))})
+    table = EventTable(["top"], 3.0e-3, 5.0e-3, (0.5,), ["falling"], {"event": np.arange(len(efficiencies))})
     write_event_table(batch / f"reconstruction_{index}.h5", table)
 
 

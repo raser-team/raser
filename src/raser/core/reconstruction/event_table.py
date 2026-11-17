@@ -7,9 +7,10 @@ Attributes of the file:
     threshold            of the times and the area [V], above the baseline
     amplitude_threshold  of the selected events [V], above the baseline
     fractions            of the constant-fraction times, (fractions,)
-    edge                 "rising" or "falling": the edge the thresholds are
-                         set on, as on a scope; a falling pulse is turned
-                         positive before its quantities are taken
+    edge                 for each electrode, "rising" or "falling": the edge
+                         the thresholds are set on, as on a scope; a falling
+                         pulse is turned positive before its quantities are
+                         taken
 Datasets, one row per event of the readout file:
     event           Geant4 event number
     selected        the amplitude of one of its electrodes at least is not
@@ -18,6 +19,9 @@ Datasets, one row per event of the readout file:
     cluster_center  amplitude-weighted place of the cluster, in electrodes
                     from the first one; NaN when it has none
 Datasets, one row per event and one column per electrode:
+    traced          the readout holds a waveform of the electrode in the
+                    event; one without has NaN in the columns below and is
+                    not above
     baseline        mean of the samples before the pulse [V]
     noise           their standard deviation [V]
     amplitude       largest sample above the baseline [V]
@@ -50,10 +54,10 @@ from .event import get_ToA
 from .event import get_ToT
 from .event import net_pulse
 
-ELECTRODE_COLUMNS = ("baseline", "noise", "amplitude", "above", "ToA", "ToT", "CoG", "area")
+ELECTRODE_COLUMNS = ("traced", "baseline", "noise", "amplitude", "above", "ToA", "ToT", "CoG", "area")
 EVENT_COLUMNS = ("event", "selected", "cluster_size", "cluster_center")
 EDGE_SIGN = {"rising": 1.0, "falling": -1.0}
-KINDS = {"event": "int64", "selected": "bool", "above": "bool", "cluster_size": "int64"}
+KINDS = {"event": "int64", "selected": "bool", "traced": "bool", "above": "bool", "cluster_size": "int64"}
 
 
 @dataclass
@@ -62,7 +66,7 @@ class EventTable:
     threshold: float  # [V]
     amplitude_threshold: float  # [V]
     fractions: tuple[float, ...]
-    edge: str
+    edges: list[str]  # of each electrode
     # each name of EVENT_COLUMNS, ELECTRODE_COLUMNS and "CFD" to its array
     columns: dict[str, np.ndarray]
 
@@ -121,50 +125,75 @@ def cluster(amplitudes, threshold, amplitude_threshold):
     return len(members), float(np.dot(members, weights) / weights.sum())
 
 
-def event_table(waveforms, threshold, amplitude_threshold, fractions, edge):
+def chosen_edges(given, derived, electrodes):
+    """The edge the thresholds are set on for each electrode, and a line for
+    each electrode whose given edge is not the one its pulse has.
+
+    given : "rising", "falling" or None
+    derived : the edge of the pulse of each electrode, as the readout
+        derives it from the device and the chain
+    None takes the derived edges; a given edge holds for every electrode.
+    """
+    if given is None:
+        return list(derived), []
+    if given not in EDGE_SIGN:
+        raise ValueError(
+            f"edge {given!r}: the thresholds are set on a rising (positive pulses) "
+            "or a falling (negative pulses) edge"
+        )
+    notes = [
+        f"edge {given} given for {name}, whose pulse is {edge}: its pulses are not seen as the readout makes them"
+        for name, edge in zip(electrodes, derived)
+        if edge != given
+    ]
+    return [given] * len(electrodes), notes
+
+
+def event_table(waveforms, threshold, amplitude_threshold, fractions, edges):
     """The rows of the events of one job.
 
-    waveforms : the readout of the job, as `read_waveforms` gives it
+    waveforms : the readout of the job, as `read_waveforms` gives it; an
+        event may hold the waveforms of some of its electrodes only
     threshold, amplitude_threshold : in the unit of the waveforms [V]
-    edge : "rising" or "falling", the edge of the pulses the thresholds
-        are set on
+    edges : "rising" or "falling" for each electrode, as `chosen_edges`
+        gives them
     """
-    if edge not in EDGE_SIGN:
-        raise ValueError(
-            f"edge {edge!r}: give the edge the thresholds are set on, "
-            "rising (positive pulses) or falling (negative pulses)"
-        )
-    polarity = EDGE_SIGN[edge]
+    if len(edges) != len(waveforms.electrodes) or any(edge not in EDGE_SIGN for edge in edges):
+        raise ValueError(f"edges {edges}: one of rising or falling for each of {waveforms.electrodes}")
+    polarity = [EDGE_SIGN[edge] for edge in edges]
+    place = {name: k for k, name in enumerate(waveforms.electrodes)}
     wrong = [part for part in fractions if not 0 < part < 1]
     if wrong:
         raise ValueError(f"fractions {wrong}: a constant fraction lies between 0 and 1")
     if not waveforms.events:
         raise ValueError("the readout holds no event")
-    nets = [[net_pulse(samples) for samples in record.voltage] for record in waveforms.events]
     width = len(waveforms.electrodes)
+    nothing = float("nan")
     columns: dict[str, list] = {name: [] for name in (*EVENT_COLUMNS, *ELECTRODE_COLUMNS, "CFD")}
-    for record, pulses in zip(waveforms.events, nets):
+    for record in waveforms.events:
         times = record.t0 + (np.arange(record.voltage.shape[1]) + 0.5) * waveforms.dt
-        rows, constant = [], []
-        for net, _, _ in pulses:
-            row, fraction_times = electrode_row(times, waveforms.dt, polarity * net, threshold, fractions)
-            rows.append(row)
-            constant.append(fraction_times)
+        untraced = {"traced": False, "baseline": nothing, "noise": nothing, "amplitude": nothing, "above": False,
+                    "ToA": nothing, "ToT": nothing, "CoG": nothing, "area": nothing}
+        rows = [dict(untraced) for _ in range(width)]
+        constant = [[nothing] * len(fractions) for _ in range(width)]
+        for name, samples in zip(record.electrodes, record.voltage):
+            k = place[name]
+            net, baseline, noise = net_pulse(samples)
+            row, constant[k] = electrode_row(times, waveforms.dt, polarity[k] * net, threshold, fractions)
+            rows[k] = {**row, "traced": True, "baseline": baseline, "noise": noise}
         size, center = cluster([row["amplitude"] for row in rows], threshold, amplitude_threshold)
         columns["event"].append(record.event)
         columns["selected"].append(size > 0)
         columns["cluster_size"].append(size)
         columns["cluster_center"].append(center)
-        columns["baseline"].append([baseline for _, baseline, _ in pulses])
-        columns["noise"].append([noise for _, _, noise in pulses])
-        for name in ("amplitude", "above", "ToA", "ToT", "CoG", "area"):
+        for name in ELECTRODE_COLUMNS:
             columns[name].append([row[name] for row in rows])
         columns["CFD"].append(constant)
     arrays = {name: np.array(values, dtype=KINDS.get(name, "float64")) for name, values in columns.items()}
     arrays["CFD"] = arrays["CFD"].reshape(len(waveforms.events), width, len(fractions))
     return EventTable(
         list(waveforms.electrodes), float(threshold), float(amplitude_threshold),
-        tuple(float(part) for part in fractions), edge, arrays,
+        tuple(float(part) for part in fractions), list(edges), arrays,
     )
 
 
@@ -174,7 +203,7 @@ def write_event_table(path, table):
         file.attrs["threshold"] = table.threshold
         file.attrs["amplitude_threshold"] = table.amplitude_threshold
         file.attrs["fractions"] = np.array(table.fractions, dtype="float64")
-        file.attrs["edge"] = table.edge
+        file.attrs.create("edge", table.edges, dtype=h5py.string_dtype())
         for name, values in table.columns.items():
             file[name] = values
 
@@ -186,6 +215,6 @@ def read_event_table(path):
             float(file.attrs["threshold"]),
             float(file.attrs["amplitude_threshold"]),
             tuple(float(part) for part in file.attrs["fractions"]),
-            str(file.attrs["edge"]),
+            file.attrs["edge"].tolist(),
             {name: file[name][()] for name in file},
         )
