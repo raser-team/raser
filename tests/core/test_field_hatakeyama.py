@@ -25,7 +25,8 @@ def _hatakeyama(carrier: str, field: float, angle_deg: float, temperature: float
     a = a1120 ** ((big_b * e1120 / (b1120 * field)) ** 2) * a0001 ** ((big_b * e0001 / (b0001 * field)) ** 2)
     big_a = math.log(a0001 / a1120)
     b = big_b * math.sqrt(1 - big_a**2 * (big_b * e1120 * e0001 / (field * b1120 * b0001)) ** 2)
-    gamma = math.tanh(0.19 / (2 * 0.0257)) / math.tanh(0.19 / (2 * 0.0257 * temperature / 300.0))
+    k = 8.617333262e-5
+    gamma = math.tanh(0.19 / (2 * k * 300.0)) / math.tanh(0.19 / (2 * k * temperature))
     return gamma * a * math.exp(-gamma * b / field)
 
 

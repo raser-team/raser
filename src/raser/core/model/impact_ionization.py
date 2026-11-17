@@ -5,21 +5,24 @@ import math
 
 from .formula import Formula
 
+BOLTZMANN_EV_PER_K = 8.617333262e-5  # CODATA 2018
+
 # van Overstraeten and de Man, Solid-State Electronics 13 (1970) 583: a
 # Chynoweth law with a low- and a high-field set of a [1/cm] and b [V/cm],
 # the two met at E0. The temperature dependence through the optical phonon
-# energy hbarOmega [eV] (k_T0 = k T0 [eV]) has no source found yet. Below 1.75e5 V/cm, the lower
-# end of the measured fit, the coefficient is taken to be zero.
+# energy hbarOmega [eV] at the reference temperature T0 has no source found
+# yet. Below 1.75e5 V/cm, the lower end of the measured fit, the
+# coefficient is taken to be zero.
 _VAN_OVERSTRAETEN = (
     "ifelse(E >= 1.75e5, "
     "ifelse(E > E0, gamma*a_high*exp(-(gamma*b_high)/E), gamma*a_low*exp(-(gamma*b_low)/E)), "
     "0)"
 )
 _VAN_OVERSTRAETEN_TEMPERATURE = {
-    "gamma": "tanh(hbarOmega/(2*k_T0))/tanh(hbarOmega/(2*k_T0*T/T0))",
+    "gamma": "tanh(hbarOmega/(2*k*T0))/tanh(hbarOmega/(2*k*T))",
     "E0": 4.0e5,
     "hbarOmega": 0.063,
-    "k_T0": 0.0257,
+    "k": BOLTZMANN_EV_PER_K,
     "T0": 293.0,
 }
 
@@ -50,15 +53,15 @@ VAN_OVERSTRAETEN = {
 # SISPAD 2005, "Physical modeling and scaling properties of 4H-SiC power
 # devices", appendix: the law for a field `angle` off <0001> between them.
 # The temperature dependence through the optical phonon energy hbarOmega
-# [eV] (k_T0 = k T0 [eV]) has no source found yet. For a
+# [eV] at the reference temperature T0 has no source found yet. For a
 # field at a fixed angle B and a are numbers; b depends on the field
 # through its second term. Below 1e4 V/cm the coefficient is taken to be
 # zero.
 _HATAKEYAMA = "ifelse(E > 1e4, gamma*a*exp(-gamma*b/E), 0)"
 _HATAKEYAMA_TEMPERATURE = {
-    "gamma": "tanh(hbarOmega/(2*k_T0))/tanh(hbarOmega/(2*k_T0*T/T0))",
+    "gamma": "tanh(hbarOmega/(2*k*T0))/tanh(hbarOmega/(2*k*T))",
     "hbarOmega": 0.19,
-    "k_T0": 0.0257,
+    "k": BOLTZMANN_EV_PER_K,
     "T0": 300.0,
 }
 _HATAKEYAMA_COEFFICIENTS = {

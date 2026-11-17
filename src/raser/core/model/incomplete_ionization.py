@@ -9,8 +9,7 @@ TCAD Parameters for 4H-SiC: A Review, arXiv:2410.06798, section 10.1.
 
 from .dopants import DOPANTS
 from .formula import Formula
-
-BOLTZMANN_EV_PER_K = 8.617333262e-5  # CODATA 2018
+from .impact_ionization import BOLTZMANN_EV_PER_K
 
 
 def ionized_fraction(material, element):
