@@ -42,7 +42,9 @@ def test_the_solver_takes_the_silicon_bands_of_core_model_as_they_were(
     ("material", "name", "expected"),
     [
         ("SiliconCarbide", "E_g", 3.26 * 1.6 * 1e-19),
-        ("SiliconCarbide", "n_i", 3.89e-9),
+        # 4H-SiC n_i from its own bands: 9.3e-9 /cm3 at 300 K, 8.1e-14 at 254 K
+        ("SiliconCarbide", "n_i", pow(3.25e15 * pow(254.0, 1.5) * 4.8e15 * pow(254.0, 1.5), 0.5)
+         * math.exp(-3.26 * 1.6 * 1e-19 / (2 * 1.3806503e-23 * 254.0))),
         # 4H-SiC at 254 K: 3.25e15 T^1.5, the effective density of states
         ("SiliconCarbide", "N_c", 3.25e15 * pow(254.0, 1.5)),
         ("SiliconCarbide", "N_v", 4.8e15 * pow(254.0, 1.5)),
