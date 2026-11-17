@@ -100,6 +100,49 @@ def electrode_names(read_out_contact, read_ele_num):
     )
 
 
+def split_at_conductor_edges(start, middle, pairs, conducts, spacing=0.05, tolerance=1e-4):
+    """The pairs of one step of a particle, split where the step crosses the
+    edge of a region where the device conducts.
+
+    The step runs from `start` to 2 `middle` - `start` (x, y, z in um) and
+    made `pairs` pairs evenly along it; `conducts(x, y, z)` says whether the
+    device conducts at a point, as the drift asks. The step is sampled every
+    `spacing` um or closer, so a layer thinner than that may be missed, and
+    each change between two samples is found by halving to `tolerance` um.
+
+    Returns (x, y, z, pairs) of each part between edges, at its middle, with
+    the pairs of its share of the length; a step that crosses no edge is one
+    part at `middle` with all its pairs.
+    """
+    end = [2 * m - s for s, m in zip(start, middle)]
+    length = math.dist(start, end)
+
+    def at(fraction):
+        return [s + fraction * (e - s) for s, e in zip(start, end)]
+
+    samples = max(1, math.ceil(length / spacing))
+    fractions = [k / samples for k in range(samples + 1)]
+    states = [conducts(*at(fraction)) for fraction in fractions]
+    edges = []
+    for low, high, state_low, state_high in zip(fractions, fractions[1:], states, states[1:]):
+        if state_low == state_high:
+            continue
+        while (high - low) * length > tolerance:
+            halfway = (low + high) / 2
+            if conducts(*at(halfway)) == state_low:
+                low = halfway
+            else:
+                high = halfway
+        edges.append((low + high) / 2)
+    if not edges:
+        return [(*middle, pairs)]
+    bounds = [0.0, *edges, 1.0]
+    return [
+        (*at((first + last) / 2), pairs * (last - first))
+        for first, last in zip(bounds, bounds[1:])
+    ]
+
+
 def gain_algorithm(my_f):
     """How the gain is calculated in a field.
 
