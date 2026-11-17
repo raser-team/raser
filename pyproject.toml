@@ -86,9 +86,6 @@ markers = [
 [tool.importlinter]
 root_package = "raser"
 
-# The imports listed under ignore_imports are known and are to go: when one
-# is gone its line must go too, or lint-imports fails.
-
 [[tool.importlinter.contracts]]
 name = "The chain: a stage may use the stages before it, not those after it"
 type = "layers"
@@ -102,7 +99,7 @@ layers = [
 ]
 
 [[tool.importlinter.contracts]]
-name = "Nothing below the apps imports an app"
+name = "Below the stages nothing knows a stage, a bench or an app"
 type = "forbidden"
 source_modules = [
   "raser.core",
@@ -110,7 +107,13 @@ source_modules = [
   "raser.supports",
   "raser.lifecycle",
 ]
-forbidden_modules = ["raser.apps"]
+forbidden_modules = ["raser.stages", "raser.bench", "raser.apps"]
+
+[[tool.importlinter.contracts]]
+name = "A stage knows no bench or app"
+type = "forbidden"
+source_modules = ["raser.stages"]
+forbidden_modules = ["raser.bench", "raser.apps"]
 
 [[tool.importlinter.contracts]]
 name = "The core does not know how it is run"
@@ -122,13 +125,13 @@ forbidden_modules = ["raser.lifecycle", "raser.cli"]
 name = "No experiment imports another"
 type = "independence"
 modules = [
-  "raser.apps.bmos",
   "raser.bench.cce",
-  "raser.apps.cflm",
   "raser.bench.signal",
   "raser.bench.tct",
   "raser.bench.telescope",
   "raser.bench.timeres",
+  "raser.apps.bmos",
+  "raser.apps.cflm",
 ]
 
 [tool.mypy]
