@@ -160,38 +160,6 @@ def CreateHatakeyamaImpact(T, device, region):
     devsim.set_parameter(device=device, region=region, name="p_a_1120", value=p_a_1120)
     devsim.set_parameter(device=device, region=region, name="p_b_1120", value=p_b_1120)
 
-def CreateVanOvenstraetenImpact(T, device, region):
-    T = 300  # K
-
-    hbarOmega = 0.063  # eV
-    E0 = 4.0e5  # V/cm
-    T0 = 293.0  # K
-    k_T0 = 0.0257  # eV
-    gamma = math.tanh(hbarOmega / (2 * k_T0)) / math.tanh(hbarOmega / (2 * k_T0 * T / T0))
-
-    n_a_low = 7.03e5  # cm-1
-    n_a_high = 7.03e5  # cm-1
-
-    n_b_low = 1.232e6  # cm-1
-    n_b_high = 1.232e6  # cm-1
-
-    p_a_low = 1.582e6  # cm-1
-    p_a_high = 6.71e5  # cm-1
-
-    p_b_low = 2.036e6  # cm-1
-    p_b_high = 1.693e6  # cm-1
-
-    devsim.set_parameter(device=device, region=region, name="gamma", value=gamma)
-    devsim.set_parameter(device=device, region=region, name="n_a_high", value=n_a_high)
-    devsim.set_parameter(device=device, region=region, name="n_b_high", value=n_b_high)
-    devsim.set_parameter(device=device, region=region, name="p_a_high", value=p_a_high)
-    devsim.set_parameter(device=device, region=region, name="p_b_high", value=p_b_high)
-
-    devsim.set_parameter(device=device, region=region, name="n_a_low", value=n_a_low)
-    devsim.set_parameter(device=device, region=region, name="n_b_low", value=n_b_low)
-    devsim.set_parameter(device=device, region=region, name="p_a_low", value=p_a_low)
-    devsim.set_parameter(device=device, region=region, name="p_b_low", value=p_b_low)
-
 def CreateTAT(T, device, region):
     '''trap assisted tunneling model for SiC'''
     devsim.set_parameter(device=device, region=region, name="U_TAT", value=-1.9e11)
@@ -216,7 +184,6 @@ def create_parameter(MyDetector, device, region):
         CreateTAT(T, device, region)
     elif devsim.get_material(device=device, region=region) == "Silicon":
         CreateSiliconConstant(T, device, region)
-        CreateVanOvenstraetenImpact(T, device, region)
     elif devsim.get_material(device=device, region=region) == "Diamond":
         CreateDiamondConstant(T, device, region)
     elif devsim.get_material(device=device, region=region) == "gas":

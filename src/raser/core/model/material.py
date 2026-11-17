@@ -19,6 +19,8 @@ except ImportError:
 
 from raser.supports.output import output
 
+from .impact_ionization import VAN_OVERSTRAETEN
+
 class Material:
 
     def __init__(self,mat_name,mobility_model=None,avalanche_model=None):
@@ -265,52 +267,10 @@ class Material:
 
         # van Overstraeten – de Man Model
         if(self.avalanche_model == 'vanOverstraeten'):
-
-            hbarOmega = 0.063 # eV
-            E0 = 4.0e5 # V/cm
-            T0 = 293.0 # K
-            k_T0 = 0.0257 # eV
-
-            # electron
-            if( charges < 0 ): 
-
-                a_low = 7.03e5 # cm-1
-                a_high = 7.03e5 # cm-1
-
-                b_low = 1.232e6 # cm-1
-                b_high = 1.232e6 # cm-1
-
-                #
-                # For BandgapDependence parameters
-                #
-
-                # Glambda = 62e-8 #cm
-                # beta_low = 0.678925 # 1
-                # beta_high = 0.678925 # 1
-
-            # hole
-            if( charges > 0 ): 
-
-                a_low = 1.582e6 # cm-1
-                a_high = 6.71e5 # cm-1
-
-                b_low = 2.036e6 # cm-1
-                b_high = 1.693e6 # cm-1
-
-                Glambda = 45e-8 #cm
-
-                beta_low = 0.815009 # 1
-                beta_high =  0.677706 # 1
-
-            Ggamma = math.tanh(hbarOmega/(2*k_T0))/math.tanh(hbarOmega/(2*k_T0*T/T0))
-            
-            if(E>1.75e05):
-                if(E>E0):
-                    coefficient = Ggamma*a_high*math.exp(-(Ggamma*b_high)/E)
-                else:
-                    coefficient = Ggamma*a_low*math.exp(-(Ggamma*b_low)/E)
-            else:
-                coefficient = 0.
+            if( charges < 0 ):
+                coefficient = VAN_OVERSTRAETEN["electron"].value(E=E, T=T)
+            if( charges > 0 ):
+                coefficient = VAN_OVERSTRAETEN["hole"].value(E=E, T=T)
 
         if(self.avalanche_model == 'Okuto'):
 

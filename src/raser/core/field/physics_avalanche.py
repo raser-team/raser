@@ -12,6 +12,11 @@ import devsim
 from .model_create import *
 import math
 
+from raser.core.model.impact_ionization import VAN_OVERSTRAETEN
+
+# The field on an edge as the models of core/model take it, kept 1 V/cm
+# above zero so that b/E stays finite.
+EDGE_FIELD = "abs(ElectricField)+1"
 
 def CreateImpactGeneration(device, region, impact_model,custom_ion_n='0', custom_ion_p='0' ):   
     
@@ -87,10 +92,8 @@ def CreateImpactModel_vanOvenstraeten(device, region):
     """
     van Ovenstraeten Model
     """
-    # constants in gen_devsim_db.py
-
-    Ion_coeff_n  = "ifelse(abs(ElectricField)>1.75e5, (ifelse(abs(ElectricField)>4e5, gamma * n_a_high * exp( - gamma * n_b_high / (abs(ElectricField)+1)),  gamma * n_a_low * exp( - gamma * n_b_low / (abs(ElectricField)+1)))), 0)"
-    Ion_coeff_p  = "ifelse(abs(ElectricField)>1.75e5, (ifelse(abs(ElectricField)>4e5, gamma * p_a_high * exp( - gamma * p_b_high / (abs(ElectricField)+1)),  gamma * p_a_low * exp( - gamma * p_b_low / (abs(ElectricField)+1)))), 0)"
+    Ion_coeff_n = VAN_OVERSTRAETEN["electron"].devsim(E=EDGE_FIELD, T="T")
+    Ion_coeff_p = VAN_OVERSTRAETEN["hole"].devsim(E=EDGE_FIELD, T="T")
 
     return Ion_coeff_n, Ion_coeff_p
 
