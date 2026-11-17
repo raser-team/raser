@@ -90,8 +90,8 @@ def readout_arguments(parser):
 # The edge of the pulses the thresholds are set on, as on a scope; None:
 # the one the readout wrote its pulses with.
 RECONSTRUCTION_DEFAULTS = {
-    "threshold": 50.0,
-    "amplitude_threshold": 100.0,
+    "threshold": 10.0,
+    "amplitude_threshold": 10.0,
     "fractions": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
     "edge": None,
 }
