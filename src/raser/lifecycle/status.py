@@ -9,6 +9,7 @@ from pathlib import Path
 
 from raser.lifecycle import scheduler
 from raser.lifecycle import slices
+from raser.lifecycle.workflow import JOB_ENDED
 from raser.lifecycle.workflow import WORKFLOWS
 from raser.lifecycle.workflow import _outdated
 from raser.lifecycle.workflow import _points
@@ -79,7 +80,9 @@ def folder_states(workflow, folder: Path, record: dict, ready=None) -> dict[str,
     asked: dict = {}
     for i in range(count):
         running = _held(folder / "batch" / f"job_{i}.lock")
-        logged = (folder / "batch" / f"job_{i}.log").is_file()
+        log = folder / "batch" / f"job_{i}.log"
+        # A job that ran all it was asked, as only the deposits, did not fail.
+        logged = log.is_file() and (not workflow.slices or JOB_ENDED not in log.read_text(errors="replace"))
         done_of: dict[int, bool] = {}
         for k, piece in enumerate(pieces):
             name = piece.name if piece else "job"
@@ -101,6 +104,10 @@ def folder_states(workflow, folder: Path, record: dict, ready=None) -> dict[str,
 
 def _folder_lines(workflow, folder: Path, record: dict, why: str | None, ready, note: str = "") -> list[str]:
     """The lines of one seed or point folder: its slices and their jobs."""
+    held_in = record.get("held_in", {})
+    if workflow.slices and set(held_in) != {piece.name for piece in workflow.slices}:
+        # A run of an older raser, whose slices had other names.
+        return [f"{folder}: out of date (recorded with the slices {sorted(held_in)})" + note]
     lines = [f"{folder}:" + (f" out of date ({why})" if why else "") + note]
     for piece_name, by_state in folder_states(workflow, folder, record, ready).items():
         count = sum(len(jobs) for jobs in by_state.values())

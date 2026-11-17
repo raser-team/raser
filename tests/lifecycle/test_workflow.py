@@ -1439,6 +1439,15 @@ def test_a_job_run_in_this_process_leaves_a_log_with_what_it_printed_and_why_it_
     assert log.rstrip().endswith("RuntimeError: no event selected")
 
 
+def test_a_job_of_slices_run_in_this_process_ends_its_log_with_the_slices_it_ran(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], ran: list[tuple[str, Any]], tmp_path: Path
+) -> None:
+    execute(_chain(ran), _chain_kwargs(until="deposits"))
+
+    log = (tmp_path / "toy" / "seed_42" / "batch" / "job_0.log").read_text()
+    assert f"{workflow_module.JOB_ENDED}: deposits" in log
+
+
 @pytest.mark.parametrize(
     "given",
     [

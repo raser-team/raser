@@ -750,7 +750,13 @@ def _run_one_job(workflow, kwargs, folder, index):
     now = {name for name in wanted if slices.mark(folders[name], index, name).exists()}
     for name in now:
         _submitted(folder, index, name).unlink(missing_ok=True)
+    print(f"{JOB_ENDED}: {','.join(wanted)}")
     _start_again(workflow, record, folder, progress=bool(now - marked))
+
+
+# The line a job of slices prints when it ran them all; a log without it is
+# of a job that failed, or that runs.
+JOB_ENDED = "raser: the job ran its slices"
 
 
 def _slice_folders(workflow, record, folder) -> dict[str, Path]:
