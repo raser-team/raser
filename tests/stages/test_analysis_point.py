@@ -4,9 +4,9 @@ import h5py
 import numpy as np
 import pytest
 
-from raser.stages import ana
+from raser.stages import analysis as ana
 from raser.lifecycle import workflow
-from raser.stages.ana.point import write_point
+from raser.stages.analysis.point import write_point
 from raser.core.current.currents import EventCurrents
 from raser.core.current.currents import append_currents
 from raser.core.readout.waveforms import EventWaveforms
@@ -128,7 +128,7 @@ def test_every_point_of_the_analysis_holds_the_results_of_the_points_it_analyses
     with pytest.raises(SystemExit, match="2 of 2 points failed"):
         ana.run({**kwargs, "scan": ["amplitude_threshold=5,2"]})
 
-    place = root / "ana"
+    place = root / "analysis"
     assert json.loads((place / "config.json").read_text())["scan"] == {"amplitude_threshold": [5, 2]}
     selected = {
         (point, upstream): json.loads((place / point / upstream / "result.json").read_text())["timing"]["selected"]

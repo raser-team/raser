@@ -42,6 +42,8 @@ class Slice:
     # Given: the slice reads something shared with other experiments; the
     # command makes it first where it is not ready, and its jobs wait for it.
     shared: Shared | None = None
+    # The slices whose files it reads, by name; None: the one before it.
+    needs: tuple | None = None
 
 
 class Ended(Exception):
@@ -60,29 +62,47 @@ def notes(folder, index, name) -> dict:
     return json.loads(mark(folder, index, name).read_text() or "{}")
 
 
-def owner(slices, key) -> int:
-    """The first slice that reads the option or the kind of file `key`.
-    One that no slice names counts for the first: changing it runs everything again."""
-    for k, piece in enumerate(slices):
-        if key in piece.keys or key in piece.kinds or key.split(".")[0] in piece.kinds:
-            return k
-    return 0
+def upstream(slices, k) -> set[int]:
+    """The slices the k-th reads the files of, directly or through others."""
+    index = {piece.name: j for j, piece in enumerate(slices)}
+    needs = slices[k].needs
+    direct = {k - 1} if needs is None and k > 0 else {index[name] for name in needs or ()}
+    return direct.union(*(upstream(slices, j) for j in direct))
 
 
-def first_changed(slices, old, record) -> int:
-    """The first slice that read something else in the run `old` than in
-    `record`; the number of slices when none did."""
-    for k, piece in enumerate(slices):
-        if old.get("slices", {}).get(piece.name) != record["slices"][piece.name]:
-            return k
-    return len(slices)
+def owners(slices, key) -> set[int]:
+    """The slices that read the option or the kind of file `key`. One that no
+    slice names counts for those that read no other slice: changing it runs
+    everything again."""
+    named = {
+        k
+        for k, piece in enumerate(slices)
+        if key in piece.keys or key in piece.kinds or key.split(".")[0] in piece.kinds
+    }
+    return named or {k for k in range(len(slices)) if not upstream(slices, k)}
+
+
+def reads(slices, key, k) -> bool:
+    """Whether the k-th slice reads `key`, itself or through a slice it reads."""
+    return bool(owners(slices, key) & (upstream(slices, k) | {k}))
+
+
+def to_run_again(slices, old, record) -> set[int]:
+    """The slices that read something else in the run `old` than in `record`.
+    What a slice reads holds what the slices it reads read, so a slice that
+    reads the files of one of them is among them too."""
+    return {
+        k
+        for k, piece in enumerate(slices)
+        if old.get("slices", {}).get(piece.name) != record["slices"][piece.name]
+    }
 
 
 def left(slices, folder, jobs, again) -> dict:
-    """Per slice, the jobs it still has to run: every job from the slice
-    `again` on, before it the jobs without its mark."""
+    """Per slice, the jobs it still has to run: every job of the slices in
+    `again`, of the others the jobs without its mark."""
     return {
-        piece.name: [i for i in jobs if k >= again or not mark(folder, i, piece.name).exists()]
+        piece.name: [i for i in jobs if k in again or not mark(folder, i, piece.name).exists()]
         for k, piece in enumerate(slices)
     }
 
@@ -100,20 +120,22 @@ def run(slices, folders, index, options, wanted, before) -> bool:
 
     `folders` gives each slice the seed folder that holds its mark, which is
     another point's when the slice does not read what makes this point
-    differ. A slice starts only when the ones before it are done there, and
-    is not run when one of them raised `Ended`, which the mark of that one says.
+    differ. A slice starts only when the ones it reads (Slice.needs) are done
+    there, and is not run when one of them raised `Ended`, which the mark of
+    that one says.
     `before` is called with a slice before it runs."""
     for k, piece in enumerate(slices):
         if piece.name not in wanted or mark(folders[piece.name], index, piece.name).exists():
             continue
-        for earlier in slices[:k]:
+        earlier_ones = [slices[j] for j in sorted(upstream(slices, k))]
+        for earlier in earlier_ones:
             if not mark(folders[earlier.name], index, earlier.name).exists():
                 raise RuntimeError(
                     f"{piece.name} of job {index} needs {earlier.name}, "
                     f"which is not done in {folders[earlier.name]}"
                 )
         done = mark(folders[piece.name], index, piece.name)
-        if any(notes(folders[earlier.name], index, earlier.name).get("ended") for earlier in slices[:k]):
+        if any(notes(folders[earlier.name], index, earlier.name).get("ended") for earlier in earlier_ones):
             done.touch()  # an earlier slice ended the job
             continue
         before(piece)

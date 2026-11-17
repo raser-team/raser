@@ -697,7 +697,7 @@ def test_without_seeds_the_job_of_every_point_runs_in_the_point_folder_at_every_
     ] * 2
     assert "seed" not in received[0]
     assert _record(experiment / "x_2") == {
-        "point": "x_2", "commit": "abc", "options": {"x": 2}, "files": {},
+        "point": "x_2", "commit": "abc", "options": {"x": 2}, "files": {}, "jobs": 1,
     }
     assert "same_seeds" not in json.loads((experiment / "config.json").read_text())
     assert [(name, len(done)) for name, _, done in
@@ -1302,3 +1302,147 @@ def test_a_file_system_that_cannot_lock_warns_and_lets_the_run_go_on(
 
     assert workflow_module._lock(tmp_path / "x.lock", "x") is None
     assert "cannot be locked here (No locks available)" in capsys.readouterr().out
+
+
+def test_more_jobs_asked_of_a_seed_folder_add_to_it_and_do_not_make_it_out_of_date(
+    started: list[Any], tmp_path: Path
+) -> None:
+    execute(TOY, _kwargs(jobs=3))
+    execute(TOY, _kwargs(jobs=5))
+
+    assert [jobs for _, _, jobs, _ in started] == [[0, 1, 2], [3, 4]]
+    assert json.loads((tmp_path / "toy" / "seed_42" / "run.json").read_text())["jobs"] == 5
+    (tmp_path / "toy" / "seed_42" / "batch" / "job_1.done").unlink()  # a job to redo with fewer asked
+    execute(TOY, _kwargs(jobs=3))
+    assert json.loads((tmp_path / "toy" / "seed_42" / "run.json").read_text())["jobs"] == 5
+
+
+def test_a_set_value_is_one_value_at_an_address_and_a_new_experiment_keeps_it(
+    started: list[Any], tmp_path: Path
+) -> None:
+    execute(GAIN, _kwargs(gain=None, width=None, set=["width=2.5"], jobs=2))
+
+    config = json.loads((tmp_path / "toy" / "config.json").read_text())
+    assert config["set"] == {"width": 2.5}
+    assert _options(tmp_path / "toy" / "seed_42")["width"] == 2.5
+
+
+def test_a_set_value_by_short_name_replaces_the_one_the_config_had_and_runs_again(
+    started: list[Any], tmp_path: Path
+) -> None:
+    experiment = tmp_path / "toy"
+    experiment.mkdir()
+    config = {"workflow": "toy", "set": {"gain": 5}, "scan": {}, "names": {"gain": "g"}}
+    (experiment / "config.json").write_text(json.dumps(config))
+    execute(GAIN, _kwargs(gain=None, width=None, jobs=2))
+
+    execute(GAIN, _kwargs(gain=None, width=None, set=["g=7"], jobs=2))
+
+    assert json.loads((experiment / "config.json").read_text())["set"] == {"gain": 7}
+    assert _options(experiment / "seed_42")["gain"] == 7
+    assert len(_kept(experiment)) == 1  # the run with gain 5 is kept aside
+
+
+def test_one_address_given_to_set_and_to_scan_at_once_is_refused(started: list[Any]) -> None:
+    with pytest.raises(ValueError, match="gain: given to --set and to --scan at once"):
+        execute(GAIN, _kwargs(gain=None, width=None, set=["gain=7"], scan=["gain=5,9"], jobs=2))
+
+
+def test_a_point_run_unregistered_leaves_the_config_and_runs_none_of_its_scans(
+    started: list[Any], tmp_path: Path
+) -> None:
+    experiment = tmp_path / "toy"
+    experiment.mkdir()
+    config = {"workflow": "toy", "set": {}, "scan": {"width": [1.0, 2.0]}}
+    (experiment / "config.json").write_text(json.dumps(config))
+
+    execute(GAIN, _kwargs(gain=None, width=None, scan=["gain=7"], jobs=2), register=False)
+
+    assert json.loads((experiment / "config.json").read_text()) == config
+    assert _folders(started, experiment) == ["gain_7/seed_42"]
+
+
+def test_a_new_experiment_made_for_an_unregistered_point_keeps_no_scan(
+    started: list[Any], tmp_path: Path
+) -> None:
+    execute(GAIN, _kwargs(gain=None, width=None, scan=["gain=7"], jobs=2), register=False)
+
+    assert json.loads((tmp_path / "toy" / "config.json").read_text())["scan"] == {}
+
+
+def test_a_job_run_in_this_process_leaves_a_log_with_what_it_printed_and_why_it_failed(
+    started: list[Any], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def job(options: dict[str, Any]) -> None:
+        print("collected 3 points")
+        raise RuntimeError("no event selected")
+
+    with pytest.raises(RuntimeError):
+        execute(Workflow(name="toy", job=job, device=False), _kwargs())
+
+    log = (tmp_path / "toy" / "seed_42" / "batch" / "job_0.log").read_text()
+    assert "collected 3 points" in capsys.readouterr().out and "collected 3 points" in log
+    assert log.rstrip().endswith("RuntimeError: no event selected")
+
+
+@pytest.mark.parametrize(
+    "given",
+    [
+        {"scan": ["gain=5*(step(x)-1)"]},
+        {"set": ["gain=5*(step(x)-1)"]},
+    ],
+)
+def test_a_value_that_cannot_name_a_folder_is_refused(started: list[Any], given: dict[str, Any]) -> None:
+    with pytest.raises(ValueError, match="holds more than letters, digits and"):
+        execute(GAIN, _kwargs(gain=None, width=None, jobs=2, **given))
+    assert started == []
+
+
+def test_two_values_that_would_name_one_folder_are_refused(started: list[Any]) -> None:
+    with pytest.raises(ValueError, match="'beam/muon' and 'other/muon' would both be the folder 'muon'"):
+        execute(GAIN, _kwargs(gain=None, width=None, scan=["gain=beam/muon,other/muon"], jobs=2))
+
+
+def _branches(ran: list[tuple[str, Any]]) -> Workflow:
+    """A first slice that nothing here changes; two slices that read no other
+    and share the option x; between them one of its own option y that reads
+    none; last one that reads the two of x."""
+
+    def piece(name: str, keys: tuple, needs: tuple) -> Slice:
+        return Slice(name, lambda options: ran.append((name, options.get("x"))), keys=keys, needs=needs)
+
+    return Workflow(
+        name="toy",
+        slices=(
+            piece("r", ("z",), ()),
+            piece("a", ("x",), ()),
+            piece("d", ("y",), ()),
+            piece("b", ("x",), ()),
+            piece("c", (), ("a", "b")),
+        ),
+        keys=("x", "y", "z"),
+        defaults={"x": 1, "y": 1, "z": 1},
+        device=False,
+    )
+
+
+def test_an_option_two_slices_read_runs_both_again_and_what_reads_them_but_not_the_rest(
+    started: list[Any], seeded: list[int], ran: list[tuple[str, Any]]
+) -> None:
+    execute(_branches(ran), _kwargs())
+    ran.clear()
+
+    execute(_branches(ran), _kwargs(x=2))
+
+    assert [name for name, _ in ran] == ["a", "b", "c"]
+
+
+def test_an_option_of_a_slice_nothing_reads_runs_that_slice_alone_again(
+    started: list[Any], seeded: list[int], ran: list[tuple[str, Any]]
+) -> None:
+    execute(_branches(ran), _kwargs())
+    ran.clear()
+
+    execute(_branches(ran), _kwargs(y=2))
+
+    assert [name for name, _ in ran] == ["d"]
