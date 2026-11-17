@@ -171,9 +171,9 @@ def test_row_of_strips_with_an_undepleted_layer_is_an_error():
 
 
 def _strips(**keys):
-    """ITk-Si-strip: strips 5 mm long."""
+    """ITk-Si-strip with strips 5 mm long."""
     content = json.loads(device_file("ITk-Si-strip").read_text(encoding="utf-8"))
-    return Detector("ITk-Si-strip", {**content, **keys})
+    return Detector("ITk-Si-strip", {**content, "l_y": 5000, **keys})
 
 
 # of a strip, per cm: 1 pF in all, 0.5 pF to the two nearest strips together,
