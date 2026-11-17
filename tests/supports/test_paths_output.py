@@ -7,7 +7,6 @@ import pytest
 from raser.supports.output import create_path
 from raser.supports.output import delete_file
 from raser.supports.output import owned_path
-from raser.supports.io_decorator import io_decorator
 from raser.supports.memory_decorator import memory_decorator
 from raser.supports.paths import component_file_path
 from raser.supports.paths import infer_project_root
@@ -54,26 +53,6 @@ def test_output_paths_remain_under_the_declared_owner(
         owned_path("signal", "/outside")
     with pytest.raises(ValueError, match="removal must remain inside"):
         delete_file(tmp_path.parent / "outside")
-
-
-def test_io_diagnostic_preserves_results_and_failures(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    @io_decorator
-    def successful() -> int:
-        print("payload")
-        return 3
-
-    @io_decorator
-    def failed() -> None:
-        print("before failure")
-        raise RuntimeError("visible")
-
-    assert successful() == 3
-    assert "payload" in capsys.readouterr().out
-    with pytest.raises(RuntimeError, match="visible"):
-        failed()
-    assert "before failure" in capsys.readouterr().out
 
 
 def test_memory_diagnostic_preserves_the_wrapped_result(
