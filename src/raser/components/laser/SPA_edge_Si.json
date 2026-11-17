@@ -1,4 +1,5 @@
 {
+    "description" : "Particulars LA-01 IR FC, 1064 nm: pulse <350 ps to 4 ns, spot at focus <11 um FWHM, few to 100 MIP in 300 um Si (https://www.particulars.si/products.php?prod=scanTCT.html); pulse_energy is about 10 MIP in 300 um Si",
     "tech" : "SPA",
     "direction" : "edge",
     
@@ -6,8 +7,8 @@
 
     "wavelength" : 1064,
     "temporal_FWHM" : 350e-12,
-    "pulse_energy" : 1e-12,
-    "spacial_FWHM" : 8,
+    "pulse_energy" : 1.8e-13,
+    "spacial_FWHM" : 11,
     "central_time" : 1e-9,
 
     "pairs_per_group" : 1000,

@@ -23,6 +23,14 @@ def _laser(name: str, size: tuple[float, float, float] = (50.0, 50.0, 50.0), **c
     return LaserInjection(detector, laser)
 
 
+# the two-photon beam the numbers below are worked out for, whatever the laser file says
+TPA = {"pulse_energy": 50e-12, "temporal_FWHM": 60e-15, "spacial_FWHM": 1.0, "l_Rayleigh": 15.7}
+
+
+def _tpa(size: tuple[float, float, float] = (50.0, 50.0, 50.0), **changes):
+    return _laser("TPA_edge_Si", size, **{**TPA, **changes})
+
+
 def _tpa_pairs_without_end(energy: float, fwhm: float) -> float:
     # β_2 E² z_R sqrt(2 ln2) / (2 hν w0² sqrt(π) τ) for a beam in a medium
     # without end: 50 pJ, 60 fs, 1 um FWHM, z_R = 15.7 um at 1550 nm give 3.53e7
@@ -34,22 +42,22 @@ def _tpa_pairs_without_end(energy: float, fwhm: float) -> float:
 def test_two_photon_pairs_of_a_beam_through_300_um() -> None:
     # the path from -150 um to +150 um around the focus holds
     # 2 atan(150 / 15.7) / π = 93.4 % of the pairs of a medium without end
-    laser = _laser("TPA_edge_Si", size=(300.0, 300.0, 300.0))
+    laser = _tpa(size=(300.0, 300.0, 300.0))
 
     assert _tpa_pairs_without_end(50e-12, 60e-15) == pytest.approx(3.53e7, rel=2e-3)
     assert sum(laser.ionized_pairs) == pytest.approx(0.934 * 3.53e7, rel=3e-3)
 
 
 def test_two_photon_pairs_double_when_the_pulse_is_half_as_long() -> None:
-    long = sum(_laser("TPA_edge_Si").ionized_pairs)
-    short = sum(_laser("TPA_edge_Si", temporal_FWHM=30e-15).ionized_pairs)
+    long = sum(_tpa().ionized_pairs)
+    short = sum(_tpa(temporal_FWHM=30e-15).ionized_pairs)
 
     assert short == pytest.approx(2.0 * long)
 
 
 def test_half_of_the_two_photon_pairs_lie_within_one_rayleigh_length() -> None:
     # atan(1) / atan(150 / 15.7) = 53.5 % of the pairs made on the path
-    laser = _laser("TPA_edge_Si", size=(300.0, 300.0, 300.0))
+    laser = _tpa(size=(300.0, 300.0, 300.0))
     along = np.array(laser.track_position)[:, 0]
 
     assert np.mean(np.abs(along - 150.0) < 15.7) == pytest.approx(0.535, abs=0.01)
@@ -58,7 +66,7 @@ def test_half_of_the_two_photon_pairs_lie_within_one_rayleigh_length() -> None:
 def test_two_photon_pairs_are_narrower_than_the_beam() -> None:
     # across the beam the pairs follow exp(-4 r² / w²): half of them inside
     # r = w sqrt(ln2) / 2, which is 0.354 um at the focus of a 1 um FWHM spot
-    laser = _laser("TPA_edge_Si", size=(300.0, 300.0, 300.0), l_Rayleigh=1e6)
+    laser = _tpa(size=(300.0, 300.0, 300.0), l_Rayleigh=1e6)
     places = np.array(laser.track_position)
     radius = np.hypot(places[:, 1] - 150.0, places[:, 2] - 150.0)
 
@@ -67,7 +75,7 @@ def test_two_photon_pairs_are_narrower_than_the_beam() -> None:
 
 def test_rayleigh_length_follows_from_the_spot_when_the_file_gives_none() -> None:
     # π w0² n / λ with w0² = 1 um² / (2 ln2), n = 3.51, λ = 1.55 um
-    assert _laser("TPA_edge_Si", l_Rayleigh=None).l_Rayleigh == pytest.approx(5.132, rel=1e-3)
+    assert _tpa(l_Rayleigh=None).l_Rayleigh == pytest.approx(5.132, rel=1e-3)
 
 
 def test_pairs_of_a_fully_absorbed_pulse_are_its_photons() -> None:
@@ -105,7 +113,7 @@ def test_light_beside_the_detector_makes_no_pairs() -> None:
 
 
 def test_no_group_holds_more_pairs_than_the_laser_file_allows() -> None:
-    laser = _laser("SPA_top_Si", pairs_per_group=200)
+    laser = _laser("SPA_top_Si", pairs_per_group=200, pulse_energy=1e-12)
 
     assert max(laser.ionized_pairs) <= 200
     assert sum(laser.ionized_pairs) == pytest.approx(3.31e6, rel=2e-2)
@@ -142,7 +150,7 @@ def test_defects_absorb_their_share_of_the_photons_along_the_whole_beam() -> Non
     # 50 pJ at 1550 nm is 3.90e8 photons; α = 100 /m over the 50 um of the
     # sensor absorbs 0.5 % of them, wherever the focus is. The pulse is long,
     # so that two photons make no pairs.
-    laser = _laser("TPA_edge_Si", alpha=100.0, temporal_FWHM=1e-3)
+    laser = _tpa(alpha=100.0, temporal_FWHM=1e-3)
 
     assert sum(laser.ionized_pairs) == pytest.approx(0.005 * 3.90e8, rel=5e-3)
 
@@ -151,8 +159,8 @@ def test_single_photon_share_grows_when_the_pulse_energy_falls() -> None:
     # two-photon pairs go with E², single-photon pairs with E; the pairs of
     # one photon alone are those of a long pulse
     def share(energy: float) -> float:
-        one = sum(_laser("TPA_edge_Si", pulse_energy=energy, alpha=1.0, temporal_FWHM=1e-3).ionized_pairs)
-        both = sum(_laser("TPA_edge_Si", pulse_energy=energy, alpha=1.0).ionized_pairs)
+        one = sum(_tpa(pulse_energy=energy, alpha=1.0, temporal_FWHM=1e-3).ionized_pairs)
+        both = sum(_tpa(pulse_energy=energy, alpha=1.0).ionized_pairs)
         return one / (both - one)
 
     assert share(5e-12) == pytest.approx(10.0 * share(50e-12), rel=1e-3)

@@ -1,15 +1,16 @@
 {
+    "description" : "NKT PILAS PIL037, 375 nm: pulse <60 ps (https://lf.hamamatsu.com/wp-json/nktphotonics/v1/download/PILAS/PILAS%20Datasheet.pdf); spot and pulse_energy are of the setup",
     "tech" : "SPA",
     "direction" : "edge",
 
-    "alpha" : 21000,
+    "alpha" : 1000,
     "refractionIndex" : 3.124,
 
-    "wavelength" : 355,
-    "temporal_FWHM" : 8.1e-9,
-    "pulse_energy" : 3e3,
-    "spacial_FWHM" : 25,
-    "central_time" : 20e-9,
+    "wavelength" : 375,
+    "temporal_FWHM" : 60e-12,
+    "pulse_energy" : 1.23e-12,
+    "spacial_FWHM" : 20,
+    "central_time" : 1e-9,
 
     "pairs_per_group" : 1000,
     "groups" : 3200,
