@@ -197,8 +197,12 @@ def execute(workflow, kwargs, register=True):
     # The slices this command runs: all, or one and those it reads.
     runs = set(range(len(workflow.slices)))
     if kwargs.get("until"):
-        until = [piece.name for piece in workflow.slices].index(kwargs["until"])
-        runs = {until} | slices.upstream(workflow.slices, until)
+        # A stage whose slices are one per position, current.<position>: all of them.
+        named = [piece.name for piece in workflow.slices]
+        until = [k for k, name in enumerate(named) if kwargs["until"] in (name, name.split(".")[0])]
+        if not until:
+            raise ValueError(f"no slice {kwargs['until']} in {named}")
+        runs = set(until).union(*(slices.upstream(workflow.slices, k) for k in until))
     # A slice is held by the run of the point that differs from this one only
     # in what the slice reads: the points that hold slices of others come first.
     # A point that holds none of its slices, as one whose two roots are held by

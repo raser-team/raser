@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from raser.apps.cflm import PADS
 from raser.cli.raser import main
 from raser.lifecycle import jobs
 
@@ -97,3 +98,33 @@ def test_raser_field_on_the_field_itself_names_its_device(work_root: Path) -> No
 
     with pytest.raises(SystemExit, match="raser field HPK-Si-PiN"):
         main(["field", str(folder)])
+
+
+def test_a_stage_command_on_an_experiment_with_a_slice_per_position_runs_all_of_them_up_to_that_stage(
+    work_root: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    experiment = work_root / "HPK-Si-PiN" / "cflm"
+    experiment.mkdir(parents=True)
+    (experiment / "config.json").write_text(json.dumps({"workflow": "cflm", "device": "HPK-Si-PiN"}))
+
+    assert main(["current", str(experiment), "--seed", "1", "--dry-run"]) == 0
+
+    ran = [name.removesuffix("jobs").removesuffix("reused") for name in _slices(capsys.readouterr().out)]
+    assert ran[:2] == ["deposit", "field"]
+    assert ran[2:] == [f"current.{pad}" for pad in PADS]
+
+
+def test_a_batch_stage_command_given_a_relative_folder_records_where_it_is(
+    work_root: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(jobs, "run_indexed_jobs", lambda *a, **k: None)
+    assert main(["rdo", "HPK-Si-PiN", "--seed", "1", "--dry-run"]) == 0
+    experiment = work_root / "HPK-Si-PiN" / "signal"
+    experiment.mkdir(parents=True, exist_ok=True)
+    (experiment / "config.json").write_text(json.dumps({"workflow": "signal", "device": "HPK-Si-PiN"}))
+
+    assert main(["-b", "cur", "work/HPK-Si-PiN/signal", "--seed", "1"]) == 0
+
+    record = json.loads((experiment / "seed_1" / "run.json").read_text())
+    target = record["command"][record["command"].index("cur") + 1]
+    assert Path(record["cwd"], target).resolve() == experiment.resolve()
