@@ -1,15 +1,14 @@
 import numpy as np
 import pytest
 
-from raser.core.metrics.reconstruction import InputWaveform
-from raser.core.metrics.reconstruction import get_amplitude
-from raser.core.metrics.reconstruction import get_CFD50
-from raser.core.metrics.reconstruction import get_charge
-from raser.core.metrics.reconstruction import get_CoG
-from raser.core.metrics.reconstruction import get_ToA
-from raser.core.metrics.reconstruction import get_ToT
-from raser.core.metrics.reconstruction import net_pulse
-from raser.core.metrics.reconstruction import pulse_polarity
+from raser.core.reconstruction.event import InputWaveform
+from raser.core.reconstruction.event import get_amplitude
+from raser.core.reconstruction.event import get_CFD50
+from raser.core.reconstruction.event import get_charge
+from raser.core.reconstruction.event import get_CoG
+from raser.core.reconstruction.event import get_ToA
+from raser.core.reconstruction.event import get_ToT
+from raser.core.reconstruction.event import net_pulse
 
 # a triangle: 2 per bin up to 10 in bin 6, then down again
 TRIANGLE = np.array([0.0, 0, 2, 4, 6, 8, 10, 8, 6, 4, 2, 0, 0])
@@ -27,6 +26,19 @@ def test_quantities_of_a_triangle() -> None:
     # half the peak, 5, lies midway between bin 3 (4) and bin 4 (6)
     assert get_CFD50(times, TRIANGLE, 0.5, peak) == pytest.approx(7.0e-9)
     assert get_charge(TRIANGLE) == 50.0
+
+
+def test_threshold_near_the_peak_is_crossed_by_the_bins_next_to_it() -> None:
+    # a sharp pulse: the edges are steep next to the peak and slow after,
+    # so a line through bins farther from the peak lands elsewhere
+    samples = np.array([0.0, 1, 2, 7, 10, 4, 3, 2, 1, 0])
+    times = (np.arange(len(samples)) + 0.5) * 1.0e-9
+    _, peak = get_amplitude(samples)
+
+    # 9 is a third of the way from 10 back to 7 (bins 4 and 3), and a sixth
+    # of the way from 10 down to 4 (bins 4 and 5)
+    assert get_ToA(times, samples, 9.0, peak) == pytest.approx((4.5 - 1 / 3) * 1.0e-9)
+    assert get_ToT(times, samples, 9.0, peak) == pytest.approx((1 / 3 + 1 / 6) * 1.0e-9)
 
 
 def test_one_electrode_event_takes_its_bins_from_t0_and_dt() -> None:
@@ -93,13 +105,3 @@ def test_net_pulse_is_the_samples_about_the_mean_of_the_first_ones() -> None:
 def test_waveform_without_samples_after_the_baseline_is_an_error() -> None:
     with pytest.raises(ValueError, match="200 samples, not more than the 200"):
         net_pulse(np.zeros(200))
-
-
-def test_polarity_is_of_the_events_together_not_of_the_most_events() -> None:
-    # two events with a pulse of -10; in three small ones of -2 the noise
-    # reaches +3: most events have their farthest sample above the baseline
-    large = np.array([0.0, 1.0, -10.0, -1.0])
-    small = np.array([0.0, 3.0, -2.0, 0.0])
-
-    assert pulse_polarity([large, small, small, large, small]) == -1.0
-    assert pulse_polarity([-large, -small, -small, -large, -small]) == 1.0

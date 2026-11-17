@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from raser.core.metrics.collection import collection_efficiency
+from raser.core.analysis.collection import collection_efficiency
 
 E = 1.602176634e-19
 

@@ -12,8 +12,8 @@ from pathlib import Path
 
 import ROOT
 
-from raser.core.metrics.reconstruction import CFD_LABEL
-from raser.core.metrics.reconstruction import remove_none
+from raser.core.reconstruction.event import CFD_LABEL
+from raser.core.reconstruction.event import remove_none
 
 
 def fit_data_normal(histo,x_min,x_max):
