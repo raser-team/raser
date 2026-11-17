@@ -106,9 +106,22 @@ def test_bins_are_as_wide_as_the_written_bin_width_when_deposits_are_spread_in_t
     )
 
     assert current.t_bin == 5e-12
-    assert (current.t_end - current.t_start) / current.n_bin == pytest.approx(5e-12, rel=1e-12)
+    assert (current.t_end - current.t_start) / current.n_bin == pytest.approx(5e-12, rel=1e-12, abs=0)
     assert current.n_bin == 1251
     assert current.t_end >= 3.3e-12 + 5e-9
+
+
+def test_the_window_reaches_5_ns_after_a_deposit_a_hair_later_than_the_first():
+    # 2 attoseconds apart: 1250 bins would end 2 as short of 5 ns after the last
+    current = CalCurrent(
+        SimpleNamespace(**{**vars(_lgad()), "has_avalanche": False}),
+        _UniformField(),
+        [100.0, 100.0],
+        [[50.0, 50.0, 25.0, 0.0], [50.0, 50.0, 25.0, 2e-18]],
+    )
+
+    assert current.t_end >= 2e-18 + 5e-9
+    assert current.t_end - current.t_bin < 2e-18 + 5e-9
 
 
 class _ConductingBelow10um(_UniformField):

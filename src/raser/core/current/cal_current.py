@@ -149,8 +149,10 @@ class CalCurrent:
         first_creation = min(creation_times, default=0.0)
         last_creation = max(creation_times, default=0.0)
         self.t_start = first_creation + relative_start
-        # whole bins of t_bin, as many as reach last_creation + relative_end
-        self.n_bin = math.ceil((last_creation + relative_end - self.t_start) / self.t_bin - 1e-6)
+        # whole bins of t_bin, the fewest that reach last_creation + relative_end
+        self.n_bin = math.ceil((last_creation + relative_end - self.t_start) / self.t_bin)
+        while self.t_start + self.n_bin * self.t_bin < last_creation + relative_end:
+            self.n_bin += 1  # the quotient rounded down
         self.t_end = self.t_start + self.n_bin * self.t_bin
 
         self.read_ele_num = my_d.read_ele_num
