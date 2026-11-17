@@ -17,7 +17,7 @@ class Dopant:
 
 
 # Degeneracy factors 2 for donors, 4 for acceptors: Sze and Ng, Physics of
-# Semiconductor Devices, 3rd ed. (2007), chapter 1.
+# Semiconductor Devices, 3rd ed. (2007), section 1.4.3, p. 22.
 def _donor(*levels):
     return Dopant("donor", levels, 2.0)
 
@@ -27,12 +27,12 @@ def _acceptor(*levels):
 
 
 DOPANTS = {
-    # Sze and Ng (2007), chapter 1 (measured ionization energies in Si).
+    # Sze and Ng (2007), Fig. 10(a), p. 23 (measured ionization energies in Si).
     "Si": {
-        "P": _donor((0.045, 1.0)),
+        "P": _donor((0.046, 1.0)),
         "As": _donor((0.054, 1.0)),
-        "Sb": _donor((0.039, 1.0)),
-        "B": _acceptor((0.045, 1.0)),
+        "Sb": _donor((0.043, 1.0)),
+        "B": _acceptor((0.044, 1.0)),
     },
     # 4H-SiC, hexagonal and cubic sites: TCAD Parameters for 4H-SiC: A
     # Review, arXiv:2410.06798, section 10.2 and table "Changing ionization
