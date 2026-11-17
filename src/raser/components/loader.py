@@ -81,15 +81,23 @@ def read_g4setup(selector: str | Path) -> dict[str, Any]:
     it out of date even when G4SETUP stays. Its build() is not touched here;
     the deposits slice takes it when it runs. A g4setup that is a json file
     is refused: g4setups are scripts."""
+    stale = None
     if _explicit(selector):
-        stale = [Path(selector).expanduser()] if Path(selector).suffix == ".json" else []
+        if Path(selector).suffix == ".json":
+            stale = Path(selector).expanduser()
     else:
-        stale = [root / "g4setup" / f"{selector}.json" for root in component_roots()]
-    for path in stale:
-        if path.is_file():
-            raise ValueError(
-                f"{path}: a g4setup is a script now; write it as {path.with_suffix('.py').name} "
-                "with its keys in G4SETUP"
-            )
+        # the first root that has the g4setup decides, as for any component
+        for root in component_roots():
+            script, data = root / "g4setup" / f"{selector}.py", root / "g4setup" / f"{selector}.json"
+            if data.is_file():
+                stale = data  # alone, or left beside the script in the same root
+                break
+            if script.is_file():
+                break
+    if stale is not None:
+        raise ValueError(
+            f"{stale}: a g4setup is a script now; write it as {stale.with_suffix('.py').name} "
+            "with its keys in G4SETUP"
+        )
     path, module = load_python_component("g4setup", selector)
     return {**module.G4SETUP, "file": str(selector), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}

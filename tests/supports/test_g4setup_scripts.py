@@ -51,6 +51,19 @@ def test_a_json_g4setup_is_refused_and_told_to_be_a_script(project: Path) -> Non
         loader.read_g4setup(str(project / "old.json"))
 
 
+
+def test_a_json_beside_a_script_of_a_root_searched_later_is_not_looked_at(
+    project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    later = tmp_path / "later"
+    (later / "g4setup").mkdir(parents=True)
+    (later / "g4setup" / "world.json").write_text("{}")
+    monkeypatch.setenv("RASER_COMPONENT_PATH", str(later))
+    (project / "world.py").write_text(SCRIPT)
+
+    assert loader.read_g4setup("world")["world"] == "G4_Galactic"
+
+
 def test_a_script_of_one_path_and_content_runs_once(project: Path) -> None:
     (project / "count.py").write_text("import builtins\nbuiltins.RASER_COUNT = getattr(builtins, 'RASER_COUNT', 0) + 1\nG4SETUP = {}\n")
     import builtins
