@@ -1396,6 +1396,36 @@ def test_a_folder_or_a_job_that_another_process_holds_is_not_run_again(
     assert ran == [1]
 
 
+def test_a_command_that_finds_a_folder_held_leaves_the_config_as_it_was(
+    started: list[Any], tmp_path: Path
+) -> None:
+    execute(GAIN, _kwargs(gain=None, width=None, jobs=2))
+    config = (tmp_path / "toy" / "config.json").read_text()
+    other = workflow_module._lock(workflow_module._folder_lock(tmp_path / "toy" / "seed_42"), "seed_42")
+
+    with pytest.raises(workflow_module.Running):
+        execute(GAIN, _kwargs(gain=None, width=None, jobs=2, set=["gain=7"]))
+    other.close()
+
+    assert (tmp_path / "toy" / "config.json").read_text() == config
+
+
+def test_while_one_command_holds_the_config_another_waits_for_it_and_neither_loses_its_scan(
+    started: list[Any], tmp_path: Path
+) -> None:
+    execute(GAIN, _kwargs(gain=None, width=None, jobs=2))
+    other = workflow_module._lock(tmp_path / ".toy.config.lock", "toy")  # another command reads the config
+
+    with pytest.raises(workflow_module.Running, match="toy"):
+        execute(GAIN, _kwargs(gain=None, width=None, jobs=2, seed=43, scan=["gain=7,8"]))
+    other.close()
+    assert "gain" not in json.loads((tmp_path / "toy" / "config.json").read_text())["scan"]
+
+    execute(GAIN, _kwargs(gain=None, width=None, jobs=2, seed=43, scan=["gain=7,8"]))
+    execute(GAIN, _kwargs(gain=None, width=None, jobs=2, seed=44, scan=["width=2.0"]))
+    assert json.loads((tmp_path / "toy" / "config.json").read_text())["scan"] == {"gain": [7, 8], "width": [2.0]}
+
+
 def test_a_file_system_that_cannot_lock_warns_and_lets_the_run_go_on(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

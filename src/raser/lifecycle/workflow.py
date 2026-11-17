@@ -177,7 +177,26 @@ def execute(workflow, kwargs, register=True):
     config = _read(root / "config.json")
     if not workflow.folder and any(config.get(key) != value for key, value in identity.items()):
         root = Path(project_path(*workflow.words))
-        config = _read(root / "config.json")
+    # One command at a time reads and writes the config of an experiment: it
+    # is read again under the lock, and the lock is let go once the command
+    # holds the folders it writes and has written the config.
+    lock = None if kwargs["dry_run"] else _lock(root.parent / f".{root.name}.config.lock", f"the config of {root}")
+    held = [lock]
+
+    def release() -> None:
+        if held[0] is not None:
+            held[0].close()
+            held[0] = None
+
+    try:
+        return _execute(workflow, kwargs, register, root, _read(root / "config.json"), identity, release)
+    finally:
+        release()
+
+
+def _execute(workflow, kwargs, register, root, config, identity, release):
+    """execute, from the config of the experiment in `root` on; `release`
+    lets go of the lock of the config."""
     given = {key: kwargs[key] for key in workflow.keys if kwargs.get(key) is not None}
     # --set: one value at an address, written as --scan writes it.
     address = {name: key for key, name in config.get("names", {}).items()}
@@ -299,6 +318,42 @@ def execute(workflow, kwargs, register=True):
     if commit.endswith("+dirty"):
         print("warning: the code has uncommitted changes; run.json records this")
 
+    # No other command writes these folders while this one does; one that
+    # holds one of them stops this command before the config is written.
+    held = []
+    try:
+        for folder, *_ in todo:
+            held.append(_lock(_folder_lock(folder), folder))
+    except BaseException:
+        _close(held)
+        raise
+    try:
+        _write_config(workflow, kwargs, register, root, config, identity, given, scan, same_seeds, address, fixed_here)
+    except BaseException:
+        _close(held)
+        raise
+    release()
+    try:
+        _make_shared(kwargs, [need for *_, need in todo], root)
+        for folder, left, stale, record, run_again, before, names, (shared, options, files) in todo:
+            _stamp(workflow, record, options, files)  # of what was made just now
+        failed = _run_points(workflow, kwargs, todo, label)
+    finally:
+        _close(held)
+    if failed:
+        raise SystemExit("\n".join([f"{len(failed)} of {len(todo)} points failed:", *failed]))
+    return None
+
+
+def _close(handles) -> None:
+    for handle in handles:
+        if handle is not None:
+            handle.close()
+
+
+def _write_config(workflow, kwargs, register, root, config, identity, given, scan, same_seeds, address, fixed_here):
+    """config.json: made with what this command gives when there is none;
+    else what --scan and --set give joins it."""
     if not config:
         root.mkdir(parents=True, exist_ok=True)
         new = {**identity, "set": given if register else {}, "scan": scan if register else {}}
@@ -328,82 +383,75 @@ def execute(workflow, kwargs, register=True):
         for key in fixed_here:
             leave_out(key)
         _write(root / "config.json", {**config, "scan": written, "set": {**kept, **fixed_here}})
-    _make_shared(kwargs, [need for *_, need in todo], root)
-    for folder, left, stale, record, run_again, before, names, (shared, options, files) in todo:
-        _stamp(workflow, record, options, files)  # of what was made just now
+
+
+def _run_points(workflow, kwargs, todo, label) -> list:
+    """Start the jobs of every point of `todo`, in folders this command
+    holds; what failed, a line each."""
     failed: list = []
-    # No other command writes these folders while this one does.
-    held = [_lock(_folder_lock(folder), folder) for folder, *_ in todo]
-    try:
-        for folder, left, stale, record, run_again, before, names, (shared, options, files) in todo:
-            if (stale or run_again) and (running := _running_jobs(folder)):
-                # A job that runs read the old settings: the folder stays as it is.
-                said = (
-                    f"{folder}: jobs {running} run there now; the new settings did not take effect "
-                    "there; run the command again when they are done"
-                )
-                print(said)
-                failed.append(f"  {said}")
+    for folder, left, stale, record, run_again, before, names, (shared, options, files) in todo:
+        if (stale or run_again) and (running := _running_jobs(folder)):
+            # A job that runs read the old settings: the folder stays as it is.
+            said = (
+                f"{folder}: jobs {running} run there now; the new settings did not take effect "
+                "there; run the command again when they are done"
+            )
+            print(said)
+            failed.append(f"  {said}")
+            continue
+        slices.forget(run_again, folder)
+        if workflow.slices and not stale and (folder / "batch").is_dir():
+            # A job killed after the mark of its last slice and before its own.
+            held_by = _slice_folders(workflow, record, folder)
+            for i in range(kwargs.get("jobs") or 1):
+                if all(slices.mark(held_by[piece.name], i, piece.name).exists() for piece in workflow.slices):
+                    _done(folder, i).touch()
+        unready = [piece.name for piece in shared if piece.shared.ready(options, files) is None]
+        waiting = [
+            i
+            for i in left
+            if unready or any(not slices.mark(place, i, piece).exists() for piece, place in before)
+        ]
+        if waiting:
+            left = [i for i in left if i not in waiting]
+            needed = ", ".join(
+                [f"{name}, shared with other experiments" for name in unready]
+                + [f"{piece} in {place}" for piece, place in before]
+            )
+            print(f"{folder}: jobs {waiting} wait for {needed}; run the command again when it is done")
+            failed.append(f"  {folder}: jobs {waiting} wait for {needed}")
+        if stale and workflow.seeds:
+            folder.rename(folder.with_name(f"{label}_{time.strftime('%Y_%m%d_%H%M%S')}"))
+        elif stale:  # a point without seeds has no folder of its own to set aside
+            slices.forget(workflow.slices, folder)
+            for i in left:
+                _done(folder, i).unlink(missing_ok=True)
+        if left:
+            (folder / "batch").mkdir(parents=True, exist_ok=True)
+            # The most jobs the seed folder was asked for, for raser status;
+            # it does not make a run out of date: -s 5 after -s 3 adds two.
+            record["jobs"] = max(record.get("jobs", 0), kwargs.get("jobs") or 1)
+            if kwargs["batch"] and os.environ.get("RASER_SUBMIT_QUEUE"):
+                # Jobs the host submits are not recorded: a job that started the
+                # command again would submit them all once more.
+                record.pop("command", None)
+            elif kwargs["batch"]:
+                # What a job on the cluster starts again when it is done.
+                record["command"] = _without_seed_folder(kwargs.get("_argv") or [])
+                record["cwd"] = os.getcwd()
+                left = _not_submitted(folder, left, names.split(",") if workflow.slices else ["job"])
+            _write(folder / "run.json", record)
+            if not left:
                 continue
-            slices.forget(run_again, folder)
-            if workflow.slices and not stale and (folder / "batch").is_dir():
-                # A job killed after the mark of its last slice and before its own.
-                held_by = _slice_folders(workflow, record, folder)
-                for i in range(kwargs.get("jobs") or 1):
-                    if all(slices.mark(held_by[piece.name], i, piece.name).exists() for piece in workflow.slices):
-                        _done(folder, i).touch()
-            unready = [piece.name for piece in shared if piece.shared.ready(options, files) is None]
-            waiting = [
-                i
-                for i in left
-                if unready or any(not slices.mark(place, i, piece).exists() for piece, place in before)
-            ]
-            if waiting:
-                left = [i for i in left if i not in waiting]
-                needed = ", ".join(
-                    [f"{name}, shared with other experiments" for name in unready]
-                    + [f"{piece} in {place}" for piece, place in before]
-                )
-                print(f"{folder}: jobs {waiting} wait for {needed}; run the command again when it is done")
-                failed.append(f"  {folder}: jobs {waiting} wait for {needed}")
-            if stale and workflow.seeds:
-                folder.rename(folder.with_name(f"{label}_{time.strftime('%Y_%m%d_%H%M%S')}"))
-            elif stale:  # a point without seeds has no folder of its own to set aside
-                slices.forget(workflow.slices, folder)
-                for i in left:
-                    _done(folder, i).unlink(missing_ok=True)
-            if left:
-                (folder / "batch").mkdir(parents=True, exist_ok=True)
-                # The most jobs the seed folder was asked for, for raser status;
-                # it does not make a run out of date: -s 5 after -s 3 adds two.
-                record["jobs"] = max(record.get("jobs", 0), kwargs.get("jobs") or 1)
-                if kwargs["batch"] and os.environ.get("RASER_SUBMIT_QUEUE"):
-                    # Jobs the host submits are not recorded: a job that started the
-                    # command again would submit them all once more.
-                    record.pop("command", None)
-                elif kwargs["batch"]:
-                    # What a job on the cluster starts again when it is done.
-                    record["command"] = _without_seed_folder(kwargs.get("_argv") or [])
-                    record["cwd"] = os.getcwd()
-                    left = _not_submitted(folder, left, names.split(",") if workflow.slices else ["job"])
-                _write(folder / "run.json", record)
-                if not left:
-                    continue
-                try:
-                    _start(workflow, {**kwargs, "job_slices": names}, folder, left, alone=len(todo) == 1)
-                except Exception as error:
-                    if len(todo) == 1:
-                        raise
-                    # The points do not depend on each other: the rest still run.
-                    traceback.print_exc()
-                    failed.append(f"  {folder}: {error!r}")
-    finally:
-        for handle in held:
-            if handle is not None:
-                handle.close()
-    if failed:
-        raise SystemExit("\n".join([f"{len(failed)} of {len(todo)} points failed:", *failed]))
-    return None
+            try:
+                _start(workflow, {**kwargs, "job_slices": names}, folder, left, alone=len(todo) == 1)
+            except Exception as error:
+                if len(todo) == 1:
+                    raise
+                # The points do not depend on each other: the rest still run.
+                traceback.print_exc()
+                failed.append(f"  {folder}: {error!r}")
+    return failed
 
 
 def _stamp(workflow, record, options, files) -> None:
