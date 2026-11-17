@@ -1,9 +1,9 @@
 {
     "name" : "proton_3GeV_spread",
     "kind" : "beam",
-    "description" : "3 GeV protons from below the device (z = -6000 um) upwards, directions spread over 300 um at the target point",
+    "description" : "3 GeV protons whose directions spread uniformly by up to 300/7000 = 0.0429 along x and along y; par_randx and par_randy spread the point aimed at, so 728.6 um for a g4setup that puts the source 17 mm from that point, as device_alone does",
     "par_type" : "proton",
     "par_energy" : 3000,
-    "par_randx" : 300,
-    "par_randy" : 300
+    "par_randx" : 728.6,
+    "par_randy" : 728.6
 }
