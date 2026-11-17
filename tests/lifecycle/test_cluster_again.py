@@ -142,12 +142,15 @@ def test_a_job_without_progress_or_too_deep_does_not_start_the_command_again(
 def test_going_on_in_a_seed_folder_named_by_its_time_makes_no_new_one(
     cluster: dict[str, Any], tmp_path: Path
 ) -> None:
-    execute(TOY, _kwargs(seed=None))
+    argv = ["-b", "toy", "-s", "2"]
+    execute(TOY, _kwargs(seed=None, _argv=argv))
     (label,) = [path.name for path in (tmp_path / "toy").iterdir() if path.is_dir()]
+    drawn = json.loads((tmp_path / "toy" / label / "run.json").read_text())["seed"]
 
-    execute(TOY, _kwargs(seed=None, seed_folder=label))
+    execute(TOY, _kwargs(seed=None, seed_folder=label, _argv=[*argv, "--seed-folder", label]))
 
     assert [path.name for path in (tmp_path / "toy").iterdir() if path.is_dir()] == [label]
+    assert json.loads((tmp_path / "toy" / label / "run.json").read_text())["seed"] == drawn
 
 
 def test_through_the_queue_of_the_host_nothing_is_recorded_and_the_command_says_so(
