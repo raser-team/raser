@@ -109,7 +109,8 @@ class Workflow:
     # the options of a command -> the settings of its command line that change
     # what its jobs write and that no option of the experiment holds, such as
     # the linear solver of a field; recorded in run.json, other ones make the
-    # run out of date whatever `outdated` judges
+    # run out of date whatever `outdated` judges. Given no options, the
+    # default settings.
     settings: Callable | None = None
     command: Callable | None = None  # extra words of the job command
     # the options of a command -> its experiment folder, for an experiment that
@@ -570,8 +571,10 @@ def finished_in(root) -> list[tuple[str, dict, list[tuple[Path, int]]]]:
 
 def _outdated(workflow, old, record) -> str | None:
     """What makes the run that wrote `old` out of date for `record`, or None."""
-    # A run recorded without its settings has no known ones: it is out of date.
-    if old.get("settings") != record.get("settings"):
+    # A run recorded without its settings was made with the default ones:
+    # those of a command line that gives none.
+    default = workflow.settings({}) if workflow.settings else None
+    if old.get("settings", default) != record.get("settings"):
         return "other settings of the command line"
     if workflow.outdated:
         return workflow.outdated(old, record)

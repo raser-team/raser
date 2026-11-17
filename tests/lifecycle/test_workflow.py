@@ -1712,7 +1712,7 @@ def test_a_setting_of_the_command_line_that_changed_makes_the_run_out_of_date_wh
         device=False,
         seeds=False,
         outdated=lambda old, record: None,  # the field judges only its device and flux
-        settings=lambda kwargs: {"umf": bool(kwargs["umf"])},
+        settings=lambda kwargs: {"umf": bool(kwargs.get("umf"))},
     )
     execute(solver, _plain(umf=False))
     execute(solver, _plain(umf=False))
@@ -1725,7 +1725,9 @@ def test_a_setting_of_the_command_line_that_changed_makes_the_run_out_of_date_wh
     assert _record(tmp_path / "toy")["settings"] == {"umf": True}
 
     old = _record(tmp_path / "toy")
-    del old["settings"]  # written before the settings were recorded
-    (tmp_path / "toy" / "run.json").write_text(json.dumps(old))
-    execute(solver, _plain(umf=True))
-    assert "replaced: other settings of the command line" in capsys.readouterr().out
+    # written before the settings were recorded: made with the default ones
+    for asked, replaced in ((False, False), (True, True)):
+        old = {key: value for key, value in old.items() if key != "settings"}
+        (tmp_path / "toy" / "run.json").write_text(json.dumps(old))
+        execute(solver, _plain(umf=asked))
+        assert ("replaced: other settings of the command line" in capsys.readouterr().out) is replaced
