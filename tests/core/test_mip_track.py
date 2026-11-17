@@ -28,6 +28,9 @@ def test_track_without_fluctuation_loses_the_energy_of_the_material(
     assert track.z == pytest.approx([25.0, 75.0, 125.0, 175.0, 225.0, 275.0])
     assert track.x == pytest.approx([500.0] * 6)
     assert track.y == pytest.approx([400.0] * 6)
+    # each piece runs from its start through its middle: 50 um, one after another
+    assert track.z_start == pytest.approx([0.0, 50.0, 100.0, 150.0, 200.0, 250.0])
+    assert track.x_start == pytest.approx([500.0] * 6)
 
 
 def test_energy_window_drops_the_track_and_keeps_the_generated_number() -> None:

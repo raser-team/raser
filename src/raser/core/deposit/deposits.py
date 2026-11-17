@@ -8,7 +8,11 @@ Datasets, one value per recorded event:
     count     number of deposits of the event
 Datasets, one value per deposit:
     detector  name of the detector the deposit lies in
-    x, y, z   position in the coordinates of that detector [um]
+    x, y, z   position in the coordinates of that detector [um]: the middle
+              of the step that made the deposit
+    x_start, y_start, z_start
+              where that step starts [um]; it ends at 2 * (x, y, z) - start.
+              A writer that does not know them leaves them out.
     t         time since the primary was generated [s]
     e         deposited energy [MeV]
     pairs     electron-hole pairs the deposit created
@@ -28,6 +32,7 @@ import h5py
 import numpy as np
 
 _NUMBERS = ("x", "y", "z", "t", "e")
+_STARTS = ("x_start", "y_start", "z_start")
 
 
 @dataclass
@@ -41,6 +46,10 @@ class EventDeposits:
     e: list[float]
     # electron-hole pairs of every deposit; None until the ionization is drawn
     pairs: list[float] | None = None
+    # where the step of every deposit starts [um]; None when it is not known
+    x_start: list[float] | None = None
+    y_start: list[float] | None = None
+    z_start: list[float] | None = None
 
 
 @dataclass
@@ -62,21 +71,33 @@ def deposits_of_steps(
     generated_events: int,
     edep_min: float | None,
     edep_max: float | None,
+    starts=None,
 ) -> Deposits:
     """Deposits of one detector from the steps recorded event by event.
 
     positions[i][k] is the (x, y, z) [um] of step k of event i in the
     coordinates of the detector, energies[i][k] its energy [MeV] and
-    times[i][k] its time [s]. Steps that deposit no energy are left out,
-    and so are events left without a deposit.
+    times[i][k] its time [s], and starts[i][k], if given, where the step
+    starts. Steps that deposit no energy are left out, and so are events left
+    without a deposit.
     """
     events = []
-    for number, event_positions, event_energies, event_times in zip(
-        event_numbers, positions, energies, times, strict=True
+    if starts is None:
+        starts = [None] * len(positions)
+    for number, event_positions, event_energies, event_times, event_starts in zip(
+        event_numbers, positions, energies, times, starts, strict=True
     ):
         kept = [k for k, energy in enumerate(event_energies) if energy > 0]
         if not kept:
             continue
+        begun = (
+            {}
+            if event_starts is None
+            else {
+                name: [float(event_starts[k][axis]) for k in kept]
+                for axis, name in enumerate(("x_start", "y_start", "z_start"))
+            }
+        )
         events.append(
             EventDeposits(
                 int(number),
@@ -86,6 +107,7 @@ def deposits_of_steps(
                 [float(event_positions[k][2]) for k in kept],
                 [float(event_times[k]) for k in kept],
                 [float(event_energies[k]) for k in kept],
+                **begun,
             )
         )
     return Deposits(generated_events, edep_min, edep_max, events)
@@ -118,6 +140,15 @@ def write_deposits(path: str, deposits: Deposits) -> None:
                 [value for record in events for value in getattr(record, name)],
                 dtype="float64",
             )
+        begun = [record.x_start is not None for record in events]
+        if any(begun) and not all(begun):
+            raise ValueError("some events know where their steps start and some do not")
+        if events and all(begun):
+            for name in _STARTS:
+                file[name] = np.array(
+                    [value for record in events for value in getattr(record, name)],
+                    dtype="float64",
+                )
 
 
 def read_deposits(path: str) -> Deposits:
@@ -132,6 +163,7 @@ def read_deposits(path: str) -> Deposits:
         counts = file["count"][()]
         detector = file["detector"].asstr()[()]
         columns = {name: file[name][()] for name in (*_NUMBERS, "pairs")}
+        starts = {name: file[name][()] for name in _STARTS if name in file}
     events = []
     first = 0
     for number, count in zip(numbers, counts, strict=True):
@@ -141,6 +173,7 @@ def read_deposits(path: str) -> Deposits:
                 int(number),
                 detector[first:last].tolist(),
                 *(columns[name][first:last].tolist() for name in (*_NUMBERS, "pairs")),
+                **{name: column[first:last].tolist() for name, column in starts.items()},
             )
         )
         first = last

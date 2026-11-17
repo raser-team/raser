@@ -110,6 +110,8 @@ class GeneralG4Interaction:
             self.time_steps,
             self.events_angles,
         ) = [], [], [], [], [], []
+        # where each recorded step starts [um], in the coordinates of Geant4
+        self.start_steps = []
 
         # recorded_events: the run stops when this many events are recorded,
         # and total_events is the most it generates for them; None: the run
@@ -140,6 +142,7 @@ class GeneralG4Interaction:
                 if self.recorded_events is not None
                 else {}
             ),
+            start_steps=self.start_steps,
             **(
                 {
                     "nuclides": {
@@ -169,6 +172,13 @@ class GeneralG4Interaction:
                 for single_step in p_step
             ]
             for p_step in self.p_steps
+        ]
+        self.start_steps_current = [
+            [
+                [step[0] + my_d.l_x / 2, step[1] + my_d.l_y / 2, step[2] - self.init_tz_device]
+                for step in start_step
+            ]
+            for start_step in self.start_steps
         ]
         # change the coordinate system from Geant4 to device
 
@@ -202,6 +212,7 @@ class GeneralG4Interaction:
             self.time_steps,
             self.generated_events,
             *self.edep_window,
+            self.start_steps_current,
         )
 
     def close(self):

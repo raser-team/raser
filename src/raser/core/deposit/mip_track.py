@@ -104,8 +104,16 @@ def mip_deposits(
             [start[axis] + f * (end[axis] - start[axis]) for f in fractions]
             for axis in range(3)
         )
+        # each piece starts where the one before it ends
+        x_start, y_start, z_start = (
+            [start[axis] + k / count * (end[axis] - start[axis]) for k in range(count)]
+            for axis in range(3)
+        )
         recorded.append(
-            EventDeposits(number, ["Device"] * count, x, y, z, [0.0] * count, energies)
+            EventDeposits(
+                number, ["Device"] * count, x, y, z, [0.0] * count, energies,
+                x_start=x_start, y_start=y_start, z_start=z_start,
+            )
         )
     return Deposits(number + 1, edep_min, edep_max, recorded)
 

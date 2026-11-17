@@ -13,7 +13,7 @@ import numpy as np
 
 class GeneralEventAction(g4b.G4UserEventAction):
     "My Event Action"
-    def __init__(self, runAction, point_in, point_out, eventIDs, edep_devices, p_steps, energy_steps, time_steps, events_angles, edep_window, recorded_events=None,):
+    def __init__(self, runAction, point_in, point_out, eventIDs, edep_devices, p_steps, energy_steps, time_steps, events_angles, edep_window, recorded_events=None, start_steps=None,):
         super().__init__()
         # the run stops when this many events are recorded; None: it does not
         self.recorded_events = recorded_events
@@ -30,11 +30,14 @@ class GeneralEventAction(g4b.G4UserEventAction):
         self.time_steps = time_steps
         self.events_angles = events_angles
         self.edep_window = edep_window
+        # where each recorded step starts [um], event by event; None: not kept
+        self.start_steps = start_steps
 
     def BeginOfEventAction(self, event):
         self.edep_device= 0.0
         self.event_angle = 0.0
         self.p_step = []
+        self.start_step = []
         self.energy_step = []
         self.time_step = []
 
@@ -74,6 +77,7 @@ class GeneralEventAction(g4b.G4UserEventAction):
         self.p_step.append([(point_in.getX()+point_out.getX())*500,
                             (point_in.getY()+point_out.getY())*500,
                             (point_in.getZ()+point_out.getZ())*500])
+        self.start_step.append([point_in.getX()*1000, point_in.getY()*1000, point_in.getZ()*1000])
         self.energy_step.append(edep)
         self.time_step.append(time/g4b.s)
 
@@ -82,6 +86,8 @@ class GeneralEventAction(g4b.G4UserEventAction):
             self.eventIDs.append(eventID)
             self.edep_devices.append(self.edep_device)
             self.p_steps.append(self.p_step)
+            if self.start_steps is not None:
+                self.start_steps.append(self.start_step)
             self.energy_steps.append(self.energy_step)
             self.time_steps.append(self.time_step)
             self.events_angles.append(self.event_angle)
@@ -89,6 +95,8 @@ class GeneralEventAction(g4b.G4UserEventAction):
             self.eventIDs.append(eventID)
             self.edep_devices.append(self.edep_device)
             self.p_steps.append([[0,0,0]])
+            if self.start_steps is not None:
+                self.start_steps.append([[0,0,0]])
             self.energy_steps.append([0])
             self.time_steps.append([0])
             self.events_angles.append(self.event_angle)
