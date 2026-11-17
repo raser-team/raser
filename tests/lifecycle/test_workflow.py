@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import json
 import sys
 from dataclasses import replace
@@ -744,7 +745,7 @@ def test_without_seeds_a_point_run_with_another_record_is_run_again_in_its_place
     experiment = tmp_path / "toy"
     assert "the old run is replaced" in capsys.readouterr().out
     assert _record(experiment)["options"] == {"x": 5}
-    assert sorted(path.name for path in tmp_path.iterdir()) == ["toy"]
+    assert sorted(path.name for path in tmp_path.iterdir() if not path.name.startswith(".")) == ["toy"]
     assert not (experiment / "batch" / "job_0.done").exists()
 
 
@@ -1266,3 +1267,38 @@ def test_what_a_slice_returns_is_kept_with_its_mark_and_does_not_end_the_job(tmp
     assert slices.notes(tmp_path, 0, "currents") == field
     assert slices.notes(tmp_path, 0, "waveforms") == {}
     assert ran == ["waveforms"]
+
+
+def test_a_folder_or_a_job_that_another_process_holds_is_not_run_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("RASER_PROJECT_PATH", str(tmp_path))
+    monkeypatch.setattr(workflow_module, "_commit", lambda: "abc")
+    ran: list[int] = []
+    toy = Workflow(name="toy", job=lambda options: ran.append(1), device=False, seeds=False)
+    other = workflow_module._lock(workflow_module._folder_lock(tmp_path / "toy"), "toy")  # another command
+
+    with pytest.raises(workflow_module.Running):
+        execute(toy, _plain())
+    assert not (tmp_path / "toy" / "run.json").exists()
+
+    other.close()
+    execute(toy, _plain())
+    job = workflow_module._lock(tmp_path / "toy" / "batch" / "job_0.lock", "job 0")  # the job runs elsewhere
+    with pytest.raises(workflow_module.Running):
+        workflow_module._run_job(toy, {"job_dir": str(tmp_path / "toy")})
+    job.close()
+    assert ran == [1]
+
+
+def test_a_file_system_that_cannot_lock_warns_and_lets_the_run_go_on(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def refuse(handle, how):
+        raise OSError(errno.ENOLCK, "No locks available")
+
+    monkeypatch.setattr(workflow_module.fcntl, "flock", refuse)
+
+    assert workflow_module._lock(tmp_path / "x.lock", "x") is None
+    assert "cannot be locked here (No locks available)" in capsys.readouterr().out

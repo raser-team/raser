@@ -202,3 +202,21 @@ def test_a_shared_slice_made_here_that_is_still_not_ready_stops_the_command(
 
     with pytest.raises(RuntimeError, match="still not ready"):
         execute(experiment["workflow"], _kwargs())
+
+
+def test_a_field_that_another_command_is_solving_makes_the_points_wait(
+    experiment: dict[str, Any],
+) -> None:
+    experiment["state"]["ready"] = False
+
+    def solving_elsewhere(kwargs, options, files):
+        raise workflow.Running("work/dev/field is run by another process now")
+
+    pieces = tuple(
+        replace(piece, shared=Shared(ready=piece.shared.ready, start=solving_elsewhere)) if piece.shared else piece
+        for piece in experiment["workflow"].slices
+    )
+
+    with pytest.raises(SystemExit, match="wait for field, shared with other experiments"):
+        execute(replace(experiment["workflow"], slices=pieces), _kwargs())
+    assert experiment["ran"] == []
