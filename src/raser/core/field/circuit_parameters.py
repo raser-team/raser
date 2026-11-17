@@ -166,9 +166,11 @@ def device_circuit(my_d, electrodes, solved_f=None, row=None, solved_undepleted=
     behind the depleted one of every electrode. A row has none: the layer
     under strips is not a slab under each of them.
     Every electrode has the bias resistance and the coupling capacitance of
-    the device file, as bias_and_coupling gives them. The electrodes count as alike
-    for their noise: in a row the strips at its ends have the capacitance
-    they lack to neighbours on ground, and the same in all.
+    the device file, as bias_and_coupling gives them. Without row every
+    electrode has the same circuit, alike for its noise. In a row the strips
+    at least neighbours_coupled places from both ends have the same circuit;
+    nearer the ends the strips the same number of places from either end
+    mirror each other: those are alike.
     The record says what the circuit does not have.
     """
     bias_ohm, coupling_f = bias_and_coupling(my_d)
@@ -232,7 +234,21 @@ def device_circuit(my_d, electrodes, solved_f=None, row=None, solved_undepleted=
             )
         circuit = row_of_electrodes(circuits, between_f)
         between = {"farad": between_f, "from": "field"}
-    circuit = dataclasses.replace(circuit, outputs_alike=True)
+    if row is None:
+        alike = (tuple(electrodes),)
+    else:
+        # how far a strip is from the nearer end, up to the reach of the
+        # capacitances between strips
+        reach = len(between_f)
+        place_class = [
+            min(place, len(electrodes) - 1 - place, reach)
+            for place in range(len(electrodes))
+        ]
+        alike = tuple(
+            tuple(e for e, c in zip(electrodes, place_class) if c == group)
+            for group in sorted(set(place_class))
+        )
+    circuit = dataclasses.replace(circuit, alike=alike)
     values = {
         "junction_capacitance": {"farad": farad, "from": source},
         "between_electrodes": between,

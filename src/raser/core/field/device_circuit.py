@@ -14,9 +14,10 @@ class DeviceCircuit:
         stage reads. The read-outs may be other than the electrodes of the
         currents: those of a resistive layer are its strips, the currents
         are those of its cells.
-    outputs_alike : every output has the same circuit behind it, so that its
-        noise is that of any other: one noise spectrum, that of the middle
-        output, is taken for all of them.
+    alike : groups of outputs that have the same circuit behind each of
+        them, so that their noise is the same: one noise spectrum, that of
+        the middle output of the group, serves the whole group. An output in
+        no group has a spectrum of its own.
 
     The node names ``in<k>_<j>`` and ``out<k>`` belong to the stages.
     """
@@ -24,7 +25,7 @@ class DeviceCircuit:
     lines: tuple[str, ...]
     sources: dict[str, tuple[str, str]]
     outputs: dict[str, str]
-    outputs_alike: bool = False
+    alike: tuple[tuple[str, ...], ...] = ()
 
 
 def planar_circuit(

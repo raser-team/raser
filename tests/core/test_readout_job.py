@@ -1,16 +1,16 @@
-import dataclasses
+import json
 
 import numpy as np
 import pytest
 
-from raser.core.current.currents import EventCurrents
-from raser.core.current.currents import append_currents
+from raser.core.current.currents import EventCurrents, append_currents
+from raser.core.device.build_device import Detector, device_file
+from raser.core.field.circuit_parameters import device_circuit
+from raser.core.field.device_circuit import planar_circuit, side_by_side
 from raser.core.readout import job
-from raser.core.readout.job import write_waveforms
-from raser.core.field.device_circuit import planar_circuit
-from raser.core.field.device_circuit import side_by_side
-from raser.core.readout.waveforms import read_circuit_values
-from raser.core.readout.waveforms import read_waveforms
+from raser.core.readout.circuit import named_chain
+from raser.core.readout.job import LOWEST_NOISE_HZ, noise_spectra, write_waveforms
+from raser.core.readout.waveforms import read_circuit_values, read_waveforms
 
 pytestmark = pytest.mark.ngspice
 
@@ -122,16 +122,31 @@ def test_outputs_that_differ_each_have_the_noise_of_their_own_circuit(tmp_path):
     assert voltage[:, 1].std() == pytest.approx(np.sqrt(k_t / 40e-12), rel=0.15)
 
 
-def test_alike_outputs_share_one_spectrum_and_draw_their_own_noise(
-    tmp_path, monkeypatch
-):
-    electrodes = [f"strip{k}" for k in range(5)]
-    currents_path = tmp_path / "currents_0.h5"
-    _quiet_events(currents_path, electrodes, 10, 2000)
-    circuit = dataclasses.replace(
-        side_by_side([planar_circuit(name, 10e-12) for name in electrodes]),
-        outputs_alike=True,
-    )
+def _row_of_six():
+    """Six strips 1 cm long of ITk-Si-strip, coupled to the strips two
+    places away: 1 pF in all, 0.6 pF to the nearest two, 0.2 pF to the next
+    two, per cm. The circuit of each strip, and the groups of alike ones."""
+    content = json.loads(device_file("ITk-Si-strip").read_text(encoding="utf-8"))
+    my_d = Detector("ITk-Si-strip", {**content, "read_ele_num": 6, "l_y": 10000})
+    row = {
+        "unit": "F/cm",
+        "of": "top",
+        "total": 1.0e-12,
+        "to": {"neighbour1": 0.6e-12, "neighbour2": 0.2e-12, "bot": 0.2e-12},
+        "neighbours_coupled": 2,
+    }
+    names = [f"top{k}" for k in range(1, 7)]
+    circuit, _ = device_circuit(my_d, names, row=row)
+    return names, circuit
+
+
+@pytest.mark.parametrize(
+    "chain", [CHAIN, named_chain("SantaCruz+Gali52+Termination50")]
+)
+def test_each_strip_of_a_row_has_the_noise_of_its_own_place(chain, monkeypatch):
+    # the strips at the ends and next to them lack neighbours: three
+    # spectra, each that of every strip of its group
+    names, circuit = _row_of_six()
     analysed = []
     spectrum = job.output_noise_spectrum
 
@@ -141,14 +156,32 @@ def test_alike_outputs_share_one_spectrum_and_draw_their_own_noise(
 
     monkeypatch.setattr(job, "output_noise_spectrum", counted)
 
+    frequencies, shared = noise_spectra(chain, circuit, 1e3, 1e11)
+    _, own = spectrum(chain, circuit, 1e3, 1e11)
+
+    assert circuit.alike == (("top1", "top6"), ("top2", "top5"), ("top3", "top4"))
+    assert len(analysed[0]) == 3
+    np.testing.assert_allclose(shared, own, rtol=1e-6)
+    # the ends do differ from the middle
+    assert not np.allclose(own[0], own[2], rtol=1e-3, atol=0)
+
+
+def test_every_strip_draws_noise_of_its_own(tmp_path):
+    names, circuit = _row_of_six()
+    currents_path = tmp_path / "currents_0.h5"
+    _quiet_events(currents_path, names, 40, 400)
+
     path = tmp_path / "waveforms_0.h5"
     write_waveforms(currents_path, path, CHAIN, circuit, 5)
     voltage = np.array([record.voltage for record in read_waveforms(path).events])
 
-    # the spectrum of the middle strip, once, for all five
-    assert analysed == [["strip2"]]
-    assert voltage.std(axis=(0, 2)) == pytest.approx(
-        np.sqrt(1.380649e-23 * 300.15 / 10e-12), rel=0.15
+    # at one time, across the 40 events: no two strips alike
+    at_once = voltage[:, :, 200]
+    correlation = np.corrcoef(at_once.T)
+    assert np.max(np.abs(correlation - np.eye(6))) < 0.5
+    frequencies, densities = noise_spectra(CHAIN, circuit, LOWEST_NOISE_HZ, 0.5 / DT_S)
+    power = np.sum(
+        (densities[:, 1:] ** 2 + densities[:, :-1] ** 2) / 2 * np.diff(frequencies),
+        axis=1,
     )
-    # each strip its own noise
-    assert abs(np.mean(voltage[:, 0] * voltage[:, 1])) < 0.2 * voltage.var()
+    assert voltage.std(axis=(0, 2)) == pytest.approx(np.sqrt(power), rel=0.2)

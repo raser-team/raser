@@ -17,6 +17,27 @@ from .waveforms import append_waveforms
 LOWEST_NOISE_HZ = 1e3
 
 
+def noise_spectra(chain, circuit, lowest_hz, highest_hz):
+    """Noise spectrum of every output of the circuit, as
+    spice.output_noise_spectrum gives it, shape (outputs, frequencies) in
+    the order of circuit.outputs, with the frequencies: the outputs of one
+    group of circuit.alike take the spectrum of the middle one of the
+    group, the others their own. Each spectrum analysed takes the whole
+    circuit."""
+    outputs = list(circuit.outputs)
+    taken = {output: output for output in outputs}
+    for group in circuit.alike:
+        for output in group:
+            taken[output] = group[len(group) // 2]
+    analysed = list(dict.fromkeys(taken[output] for output in outputs))
+    frequencies, densities = output_noise_spectrum(
+        chain, circuit, lowest_hz, highest_hz, analysed
+    )
+    return frequencies, np.array(
+        [densities[analysed.index(taken[output])] for output in outputs]
+    )
+
+
 def write_waveforms(
     currents_path,
     waveforms_path,
@@ -38,8 +59,8 @@ def write_waveforms(
         noise of the circuit, which ngspice calculates once for the chain
         with the device and the load: every output of every event gets its
         own noise, in one sequence that the seed fixes. The noise of two
-        outputs has nothing in common. Outputs the circuit gives as alike
-        share the spectrum of the middle one.
+        outputs has nothing in common. Spectra are as noise_spectra gives
+        them.
     circuit_values : None, or the values the circuit is made of and where each
         is from, as device_circuit gives them: they are written to the file.
     pulse_edge : None, or the way the pulse of each output goes, as
@@ -50,15 +71,9 @@ def write_waveforms(
         os.remove(waveforms_path)
     if noise_seed is not None:
         generator = np.random.default_rng(noise_seed)
-        outputs = list(circuit.outputs)
-        frequencies, densities = output_noise_spectrum(
-            chain,
-            circuit,
-            LOWEST_NOISE_HZ,
-            0.5 / currents.dt,
-            [outputs[len(outputs) // 2]] if circuit.outputs_alike else outputs,
+        frequencies, densities = noise_spectra(
+            chain, circuit, LOWEST_NOISE_HZ, 0.5 / currents.dt
         )
-        densities = np.broadcast_to(densities, (len(outputs), densities.shape[1]))
     for event in currents.events:
         voltage = solve(chain, currents.electrodes, currents.dt, event.current, circuit)
         if noise_seed is not None:
