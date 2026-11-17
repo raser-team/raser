@@ -13,6 +13,7 @@ from .model_create import *
 
 from raser.core.model.impact_ionization import VAN_OVERSTRAETEN
 from raser.core.model.impact_ionization import hatakeyama
+from raser.core.model.recombination import TAT_FIELD_ENHANCEMENT
 
 # The field on an edge as the models of core/model take it: in the
 # thresholds as it is, elsewhere kept 1 V/cm above zero so that b/E stays
@@ -161,7 +162,7 @@ def CreateImpactModel_sic_custom(device,region):
     return Ion_coeff_n, Ion_coeff_p
     
 def CreateFESRH(device,region):
-    R_TAT="ifelse(abs(ElectricField)<F_sat,2*(3*3.14159)^0.5*abs(ElectricField)/3.9e4*exp((abs(ElectricField)/3.9e4)^2)*(U_const@n1),2*(3*3.14159)^0.5*abs(F_sat)/3.9e4*exp((F_sat/3.9e4)^2)*(U_const@n1))"
+    R_TAT="({0})*(U_const@n1)".format(TAT_FIELD_ENHANCEMENT.devsim(E="abs(ElectricField)", F_sat="F_sat"))
     CreateEdgeModel(device,region,"R_TAT",R_TAT)
     CreateEdgeModelDerivatives(device,region,"R_TAT",R_TAT,"Potential")
     CreateEdgeModelDerivatives(device,region,"R_TAT",R_TAT,"Electrons")

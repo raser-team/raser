@@ -2,7 +2,7 @@ import devsim
 
 from raser.core.model.band_structure import BAND_STRUCTURE
 from raser.core.model.material import RELATIVE_PERMITTIVITY
-from raser.core.model.recombination import SRH_LIFETIME
+from raser.core.model.recombination import SRH_LIFETIME, TAT_SATURATION_FIELD
 
 from . import model_create
 
@@ -120,10 +120,8 @@ def CreateFineExponentialModels(T, device, region):
     devsim.set_parameter(device=device, region=region, name="lambda_model_p", value=lambda_model_p)
 
 def CreateTAT(T, device, region):
-    '''trap assisted tunneling model for SiC'''
-    devsim.set_parameter(device=device, region=region, name="U_TAT", value=-1.9e11)
-    devsim.set_parameter(device=device, region=region, name="F_gamma", value=4.9e4)
-    devsim.set_parameter(device=device, region=region, name="F_sat", value=1e5)
+    '''saturation field of the trap assisted tunneling in SiC; a device file may set another'''
+    devsim.set_parameter(device=device, region=region, name="F_sat", value=TAT_SATURATION_FIELD)
 
 def delete_init(device, region):
     devsim.delete_node_model(device=device, region=region, name="IntrinsicElectrons")
