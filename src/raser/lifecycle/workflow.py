@@ -819,9 +819,14 @@ def _without_seed_folder(argv) -> list[str]:
 
 
 def _seed_of(root, label) -> int:
-    """The seed of the seed folder `label` of the experiment in `root`."""
-    for path in sorted(Path(root).glob(f"**/{label}/run.json")):
-        return int(json.loads(path.read_text())["seed"])
+    """The seed of the seed folder `label` of the experiment in `root`: in
+    the experiment or in one of its points, not in an experiment inside it."""
+    points = [Path(root)] + sorted(
+        place for place in Path(root).iterdir() if place.is_dir() and not (place / "config.json").exists()
+    )
+    for path in (place / label / "run.json" for place in points):
+        if path.is_file():
+            return int(json.loads(path.read_text())["seed"])
     raise ValueError(f"{root}: no seed folder {label} to go on in")
 
 

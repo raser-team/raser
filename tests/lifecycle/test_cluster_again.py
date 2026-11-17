@@ -180,3 +180,13 @@ def test_a_command_started_again_that_finds_its_folders_held_is_tried_again(
     workflow._run_job(TOY, {"job_dir": str(cluster["folder"]), "job_index": 0, "job_slices": "first,second"})
 
     assert len(tries) == 3
+
+
+def test_the_seed_of_a_timestamp_folder_comes_from_this_experiment_and_not_one_inside_it(tmp_path: Path) -> None:
+    label = "2026_1118_120000"
+    for place, seed in (("analysis", 7), ("x_2", 3)):
+        (tmp_path / place / label).mkdir(parents=True)
+        (tmp_path / place / label / "run.json").write_text(json.dumps({"seed": seed}))
+    (tmp_path / "analysis" / "config.json").write_text("{}")  # an experiment of its own
+
+    assert workflow._seed_of(tmp_path, label) == 3
