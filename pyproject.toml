@@ -111,6 +111,20 @@ source_modules = [
 forbidden_modules = ["raser.stages", "raser.bench", "raser.apps"]
 
 [[tool.importlinter.contracts]]
+name = "Nothing below the command line imports it"
+type = "forbidden"
+source_modules = [
+  "raser.core",
+  "raser.components",
+  "raser.supports",
+  "raser.lifecycle",
+  "raser.stages",
+  "raser.bench",
+  "raser.apps",
+]
+forbidden_modules = ["raser.cli"]
+
+[[tool.importlinter.contracts]]
 name = "A stage knows no bench or app"
 type = "forbidden"
 source_modules = ["raser.stages"]
