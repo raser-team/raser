@@ -7,13 +7,16 @@ import fcntl
 import json
 from pathlib import Path
 
+from raser.lifecycle import scheduler
 from raser.lifecycle import slices
+from raser.lifecycle.workflow import JOB_ENDED
 from raser.lifecycle.workflow import WORKFLOWS
 from raser.lifecycle.workflow import _outdated
 from raser.lifecycle.workflow import _points
+from raser.lifecycle.workflow import waited_for_by
 from raser.supports.paths import project_root_context
 
-STATES = ("done", "running", "failed", "waiting", "not started")
+STATES = ("done", "running", "submitted", "uncertain", "failed", "waiting", "not started")
 
 
 def _held(lock: Path) -> bool:
@@ -46,6 +49,24 @@ def job_state(done: bool, running: bool, logged: bool, upstream_done: bool) -> s
     return "not started"
 
 
+def _on_cluster(folder: Path, index: int, name: str, asked: dict) -> str | None:
+    """A job submitted for slice `name` that has not run it: "submitted" while
+    the cluster holds it; when it no more does, "failed", and its record goes;
+    "uncertain" when the scheduler cannot be asked. None: never submitted."""
+    record = folder / "batch" / f"{name}_{index}.submitted"
+    if not record.is_file():
+        return None
+    job = json.loads(record.read_text())["job"]
+    if job not in asked:
+        asked[job] = scheduler.job_alive(job)
+    if asked[job] is None:
+        return "uncertain"
+    if asked[job]:
+        return "submitted"
+    record.unlink(missing_ok=True)
+    return "failed"
+
+
 def folder_states(workflow, folder: Path, record: dict, ready=None) -> dict[str, dict[str, list[int]]]:
     """Per slice (or "job" for a workflow without slices), the job indices in each state.
 
@@ -57,9 +78,12 @@ def folder_states(workflow, folder: Path, record: dict, ready=None) -> dict[str,
     count = record.get("jobs") or 1
     pieces = workflow.slices or (None,)
     states: dict[str, dict[str, list[int]]] = {}
+    asked: dict = {}
     for i in range(count):
         running = _held(folder / "batch" / f"job_{i}.lock")
-        logged = (folder / "batch" / f"job_{i}.log").is_file()
+        log = folder / "batch" / f"job_{i}.log"
+        # A job that ran all it was asked, as only the deposits, did not fail.
+        logged = log.is_file() and (not workflow.slices or JOB_ENDED not in log.read_text(errors="replace"))
         done_of: dict[int, bool] = {}
         for k, piece in enumerate(pieces):
             name = piece.name if piece else "job"
@@ -71,6 +95,8 @@ def folder_states(workflow, folder: Path, record: dict, ready=None) -> dict[str,
             done_of[k] = done
             upstream = piece is None or all(done_of[j] for j in slices.upstream(workflow.slices, k))
             state = job_state(done, running, logged and not done, upstream)
+            if not done and not running:
+                state = _on_cluster(folder, i, name, asked) or state
             if piece is not None and piece.shared and ready is not None and not ready(piece):
                 state = "waiting" if not done else state
             states.setdefault(name, {s: [] for s in STATES})[state].append(i)
@@ -79,7 +105,11 @@ def folder_states(workflow, folder: Path, record: dict, ready=None) -> dict[str,
 
 def _folder_lines(workflow, folder: Path, record: dict, why: str | None, ready, note: str = "") -> list[str]:
     """The lines of one seed or point folder: its slices and their jobs."""
-    lines = [f"{folder}:" + (f" out of date ({why})" if why else "") + note]
+    held_in = record.get("held_in", {})
+    if workflow.slices and set(held_in) != {piece.name for piece in workflow.slices}:
+        # A run of an older raser, whose slices had other names.
+        return [f"{folder}: out of date (recorded with the slices {sorted(held_in)})" + note]
+    lines = [f"{folder}:" + (f" out of date ({why})" if why else "") + note, *waited_for_by(record)]
     for piece_name, by_state in folder_states(workflow, folder, record, ready).items():
         count = sum(len(jobs) for jobs in by_state.values())
         done = len(by_state["done"])

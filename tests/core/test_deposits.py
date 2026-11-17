@@ -1,3 +1,5 @@
+import pytest
+
 from raser.core.deposit.deposits import Deposits
 from raser.core.deposit.deposits import EventDeposits
 from raser.core.deposit.deposits import deposits_of_steps
@@ -20,6 +22,9 @@ def test_deposits_file_returns_each_event_with_its_own_deposits(tmp_path) -> Non
                 t=[2.35e-12, 2.85e-12, 3.36e-12],
                 e=[0.03, 0.04, 0.02],
                 pairs=[8300.0, 11100.0, 5600.0],
+                x_start=[500.0, 500.25, 500.75],
+                y_start=[400.0, 400.0, 400.0],
+                z_start=[301.0, 151.0, 1.0],
             ),
             EventDeposits(
                 event=4,
@@ -30,14 +35,32 @@ def test_deposits_file_returns_each_event_with_its_own_deposits(tmp_path) -> Non
                 t=[1.0e-12],
                 e=[0.06],
                 pairs=[16700.0],
+                x_start=[9.0],
+                y_start=[20.0],
+                z_start=[30.0],
             ),
         ],
+        generated_fraction=0.017,
     )
     path = tmp_path / "deposits.h5"
 
     write_deposits(path, deposits)
 
     assert read_deposits(path) == deposits
+
+    # where the steps start is kept for every event or for none, and a bad
+    # record leaves the file that was there as it was
+    kept = path.read_bytes()
+    deposits.events[1].x_start = None
+    with pytest.raises(ValueError, match="x_start"):
+        write_deposits(path, deposits)
+    assert path.read_bytes() == kept
+    # a column with a value too few for its event
+    deposits.events[1].x_start = [9.0]
+    deposits.events[0].t_fwhm, deposits.events[1].t_fwhm = [1e-12, 2e-12], [3e-12]
+    with pytest.raises(ValueError, match="2 values of t_fwhm"):
+        write_deposits(path, deposits)
+    assert path.read_bytes() == kept
 
 
 def test_deposits_of_steps_drop_steps_and_events_without_energy() -> None:

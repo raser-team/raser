@@ -7,11 +7,10 @@ Description:  detector_construction.py
 
 from raser.core.deposit.geant4.g4ppyy_runtime import g4b
 
+from ..simulate_deposits import world_half_side
+
 g4b.include("G4VUserDetectorConstruction.hh")
 g4b.include("G4UserLimits.hh")
-
-world_size = 25000
-# TODO: move this to setting
 
 
 class GeneralDetectorConstruction(g4b.G4VUserDetectorConstruction):
@@ -24,7 +23,7 @@ class GeneralDetectorConstruction(g4b.G4VUserDetectorConstruction):
         self.physical = {}
         self.compound_materials = {}
         self.checkOverlaps = True
-        self.create_world(g4_dic["world"])
+        self.create_world(g4_dic["world"], world_half_side(my_d, g4_dic))
         self.geant4_model = g4_dic["geant4_model"]
 
         if detector_material == "Si":
@@ -95,12 +94,13 @@ class GeneralDetectorConstruction(g4b.G4VUserDetectorConstruction):
 
         self.logical["Device"].SetUserLimits(self.fStepLimit)
 
-    def create_world(self, world_type):
+    def create_world(self, world_type, half_side):
+        """The world: a cube of world_type, half_side [um] from the centre."""
 
         self.nist = g4b.G4NistManager.Instance()
         material = self.nist.FindOrBuildMaterial(world_type)
         self.solid["world"] = g4b.G4Box(
-            "world", world_size * g4b.um, world_size * g4b.um, world_size * g4b.um
+            "world", half_side * g4b.um, half_side * g4b.um, half_side * g4b.um
         )
         self.logical["world"] = g4b.G4LogicalVolume(
             self.solid["world"], material, "world"
@@ -182,9 +182,13 @@ class GeneralDetectorConstruction(g4b.G4VUserDetectorConstruction):
                     f"Conflicting Geant4 material definition for {compound_name}"
                 )
         else:
+            # natoms_1 and natoms_2 are shares of the atoms; Geant4 takes a
+            # fraction given as a number as a share of the mass.
+            mass_1 = object["natoms_1"] * material_1.GetA()
+            mass_2 = object["natoms_2"] * material_2.GetA()
             compound = g4b.G4Material(compound_name, material_density, 2)
-            compound.AddElement(material_1, object["natoms_1"] * g4b.perCent)
-            compound.AddElement(material_2, object["natoms_2"] * g4b.perCent)
+            compound.AddElement(material_1, mass_1 / (mass_1 + mass_2))
+            compound.AddElement(material_2, mass_2 / (mass_1 + mass_2))
             self.compound_materials[compound_name] = (compound, compound_signature)
         translation = g4b.G4ThreeVector(
             object["position_x"] * g4b.um,

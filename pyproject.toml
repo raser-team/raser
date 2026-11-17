@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "raser"
-version = "5.0"
+dynamic = ["version"]
 description = "RASER simulation framework"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
@@ -17,6 +17,7 @@ classifiers = [
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
   "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS",
   "License :: OSI Approved :: MIT License"
 ]
 
@@ -26,11 +27,7 @@ dependencies = [
   "pandas",
   "matplotlib",
   "h5py",
-  "PyYAML",
-  "tqdm",
-  "numba",
-  "joblib",
-  "gmsh",
+  "gmsh; sys_platform != 'linux' or platform_machine != 'aarch64'",
   "psutil",
   "devsim",
   "g4ppyy",
@@ -55,6 +52,9 @@ raser = "raser.cli.raser:main"
 [tool.setuptools]
 package-dir = {"" = "src"}
 include-package-data = true
+
+[tool.setuptools.dynamic]
+version = {attr = "raser.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -91,6 +91,9 @@ root_package = "raser"
 name = "The chain: a stage may use the stages before it, not those after it"
 type = "layers"
 layers = [
+  "raser.core.analysis",
+  "raser.core.reconstruction",
+  "raser.core.digitizer",
   "raser.core.readout",
   "raser.core.current",
   "raser.core.deposit",

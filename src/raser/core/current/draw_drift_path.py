@@ -18,10 +18,12 @@ def draw_drift_path(my_d, particle_track, my_f, my_current, path):
 
     c1.cd(1)
     ROOT.gPad.SetMargin(0.15, 0.1, 0.1, 0.1)
-    n_bin=[int(my_d.l_x/50),int(my_d.l_y/50),int(my_d.l_z)]
-    structure = ROOT.TH3D("","",n_bin[0],0,my_d.l_x,
-                                n_bin[1],0,my_d.l_y,
-                                n_bin[2],0,my_d.l_z)
+    # an empty histogram that only draws the box of the device: one bin
+    # each way, since a bin of every 50 um of a row of strips 10 cm wide
+    # makes it too large for ROOT to write
+    structure = ROOT.TH3D("","",1,0,my_d.l_x,
+                                1,0,my_d.l_y,
+                                1,0,my_d.l_z)
         
     structure.SetFillColor(1)
     structure.GetXaxis().SetTitle("x axis [\mum]")
@@ -137,23 +139,25 @@ def draw_drift_path(my_d, particle_track, my_f, my_current, path):
                     del y_array[:]
                     del z_array[:]
     
-    # 绘制粒子径迹
+    # the deposits, as points: the deposits do not tell which particle made
+    # each, so a line through them would join different particles
     n = len(particle_track)
     if n > 0:
         x_array.extend([step[0] for step in particle_track])
         y_array.extend([step[1] for step in particle_track])
         z_array.extend([step[2] for step in particle_track])
-        gr = ROOT.TPolyLine3D(n, x_array, y_array, z_array)
-        gr.SetLineColor(1)
-        gr.SetLineStyle(1)
-        gr.SetLineWidth(4)
+        gr = ROOT.TPolyMarker3D(n)
+        for index, (x, y, z) in enumerate(zip(x_array, y_array, z_array)):
+            gr.SetPoint(index, x, y, z)
+        gr.SetMarkerColor(1)
+        gr.SetMarkerStyle(20)
+        gr.SetMarkerSize(0.6)
         gr.Draw("SAME")
         gr_2D = ROOT.TGraph(n, x_array, z_array)
         gr_2D.SetMarkerColor(1)
-        gr_2D.SetLineColor(1)
-        gr_2D.SetLineStyle(1)
-        gr_2D.SetLineWidth(4)
-        mg.Add(gr_2D)
+        gr_2D.SetMarkerStyle(20)
+        gr_2D.SetMarkerSize(0.6)
+        mg.Add(gr_2D, "P")
         del x_array[:]
         del y_array[:]
         del z_array[:]
@@ -186,10 +190,10 @@ def draw_drift_path(my_d, particle_track, my_f, my_current, path):
     dummy_electron = ROOT.TGraph()
     dummy_electron.SetLineColor(4)
     dummy_particle = ROOT.TGraph()
-    dummy_particle.SetLineColor(1)
-    dummy_particle.SetLineWidth(4)
-    
-    legend.AddEntry(dummy_particle, "Particle Track", "l")
+    dummy_particle.SetMarkerColor(1)
+    dummy_particle.SetMarkerStyle(20)
+
+    legend.AddEntry(dummy_particle, "Deposits", "p")
     legend.AddEntry(dummy_hole, "Holes", "l")
     legend.AddEntry(dummy_electron, "Electrons", "l")
     

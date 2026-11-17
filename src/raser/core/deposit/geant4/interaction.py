@@ -8,6 +8,7 @@ Description:  interaction.py
 from raser.core.deposit.geant4.g4ppyy_runtime import g4b
 
 from ..deposits import deposits_of_steps
+from ..generation import too_few
 from .detector_construction import GeneralDetectorConstruction
 from .action_initialization import GeneralActionInitialization
 
@@ -109,8 +110,14 @@ class GeneralG4Interaction:
             self.time_steps,
             self.events_angles,
         ) = [], [], [], [], [], []
+        # where each recorded step starts [um], in the coordinates of Geant4
+        self.start_steps = []
 
-        self.generated_events = int(g4_dic["total_events"])
+        # recorded_events: the run stops when this many events are recorded,
+        # and total_events is the most it generates for them; None: the run
+        # generates total_events.
+        self.recorded_events = g4_dic.get("recorded_events")
+        self.total_events = int(g4_dic["total_events"])
         self.edep_window = (g4_dic.get("edep_min"), g4_dic.get("edep_max"))
 
         # define action
@@ -130,6 +137,12 @@ class GeneralG4Interaction:
             self.edep_window,
             self.geant4_model,
             **({"particles": g4_dic["particles"]} if "particles" in g4_dic else {}),
+            **(
+                {"recorded_events": self.recorded_events}
+                if self.recorded_events is not None
+                else {}
+            ),
+            start_steps=self.start_steps,
             **(
                 {
                     "nuclides": {
@@ -160,6 +173,13 @@ class GeneralG4Interaction:
             ]
             for p_step in self.p_steps
         ]
+        self.start_steps_current = [
+            [
+                [step[0] + my_d.l_x / 2, step[1] + my_d.l_y / 2, step[2] - self.init_tz_device]
+                for step in start_step
+            ]
+            for start_step in self.start_steps
+        ]
         # change the coordinate system from Geant4 to device
 
         self._closed = False
@@ -170,10 +190,20 @@ class GeneralG4Interaction:
         UImanager.ApplyCommand("/process/em/verbose %d" % (verbose))
         UImanager.ApplyCommand("/process/had/verbose %d" % (verbose))
         UImanager.ApplyCommand("/run/initialize")
-        self.g4RunManager.BeamOn(self.generated_events)
+        self.g4RunManager.BeamOn(self.total_events)
+        if self.recorded_events is None:
+            self.generated_events = self.total_events
+            return
+        counted = self.action_initialization.event_action
+        self.generated_events = counted.ended
+        self.recorded = counted.recorded
 
     def deposits(self):
-        """The recorded events as Deposits in the coordinates of the device."""
+        """The recorded events as Deposits in the coordinates of the device.
+        Fewer recorded events than asked for is an error, raised here and not
+        in the run, so that the caller can still close this interaction."""
+        if self.recorded_events is not None and self.recorded < self.recorded_events:
+            raise too_few(self.recorded_events, self.recorded, self.generated_events)
         return deposits_of_steps(
             "Device",
             self.eventIDs,
@@ -182,6 +212,7 @@ class GeneralG4Interaction:
             self.time_steps,
             self.generated_events,
             *self.edep_window,
+            self.start_steps_current,
         )
 
     def close(self):

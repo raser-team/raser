@@ -32,10 +32,10 @@ def test_junction_capacitance_of_the_field_where_none_is_measured():
 
 
 def test_junction_capacitance_of_the_parallel_plate_where_there_is_no_other():
-    # 11.5 x 8.854e-12 F/m x (1.3 mm)^2 / 50 um
+    # 11.9 x 8.854e-12 F/m x (1.3 mm)^2 / 50 um, the permittivity of silicon in its material file
     farad, source = junction_capacitance(_device())
 
-    assert farad == pytest.approx(3.4416e-12, rel=1e-4, abs=0)
+    assert farad == pytest.approx(3.5613e-12, rel=1e-4, abs=0)
     assert source == "parallel plate"
 
 

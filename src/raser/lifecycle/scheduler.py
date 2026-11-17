@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import getpass
+import hashlib
 import grp
 import os
+import re
 import shlex
 import subprocess
 from dataclasses import dataclass
+from dataclasses import replace
 from pathlib import Path
 from typing import Sequence
 
@@ -42,6 +46,7 @@ class ClusterJobPlan:
     submit_command: tuple[str, ...]
     submit_file: Path | None = None
     submit_description: str | None = None
+    job_id: str | None = None  # what the scheduler named the job, once submitted
 
     def as_dict(self) -> dict:
         result = {
@@ -76,6 +81,8 @@ def worker_script(worker_command: Sequence[str], route: str | None) -> str:
         '    "${XDG_RUNTIME_DIR:-}"',
         '    "${XAUTHORITY:-}" "${APPTAINERENV_XAUTHORITY:-}" "${SINGULARITYENV_XAUTHORITY:-}")',
         "unset " + " ".join(_WORKER_UNSET),
+        # A job on the cluster may start the command again when it is done (lifecycle).
+        "export RASER_CLUSTER_JOB=1",
         "for raser_bind_name in " + " ".join(_WORKER_BIND_VARIABLES) + "; do",
         '    [ -n "${!raser_bind_name}" ] || continue',
         '    IFS=, read -r -a raser_binds <<< "${!raser_bind_name}"',
@@ -88,11 +95,22 @@ def worker_script(worker_command: Sequence[str], route: str | None) -> str:
         "    done",
         '    export "$raser_bind_name=$raser_filtered_binds"',
         "done",
-        f"cd {shlex.quote(str(REPO_ROOT))} || exit 1",
-        f". {setup} || exit $?",
+        # From a source tree the worker sets up its environment there; installed
+        # as a package it runs in the folder of the command, in the environment
+        # hep_sub hands on.
+        *(
+            [f"cd {shlex.quote(str(REPO_ROOT))} || exit 1", f". {setup} || exit $?"]
+            if REPO_ROOT is not None
+            else [f"cd {shlex.quote(os.getcwd())} || exit 1"]
+        ),
         shlex.join(worker_command),
     ]
     return "\n".join(lines)
+
+
+# The most bytes of a job's name, with room for ".job", ".sub", ".out" and the
+# ".<process>" condor and hep_sub add.
+_NAME_BYTES = 200
 
 
 def plan_job(destination_subfolder, command, batch_level, *, group=None):
@@ -104,6 +122,11 @@ def plan_job(destination_subfolder, command, batch_level, *, group=None):
     memory_mb = 8000 * batch_level
     directory = job_dir(destination_subfolder)
     command_name = "_".join(command_tokens).replace("/", "_")
+    if len(command_name.encode()) > _NAME_BYTES:
+        # A folder allows 255 bytes in a name: the start of the command and a
+        # digest of all of it, which keeps two long commands apart.
+        digest = hashlib.sha256(command_name.encode()).hexdigest()[:16]
+        command_name = f"{command_name.encode()[:_NAME_BYTES - 17].decode(errors='ignore')}_{digest}"
     job_file = directory / f"{command_name}.job"
     worker = ("raser", *command_tokens)
     scheduler = os.environ.get("RASER_SCHEDULER", "hep_sub")
@@ -179,8 +202,7 @@ def main(destination_subfolder, command, batch_level, is_test=False):
     if plan.submit_file is not None and plan.submit_description is not None:
         plan.submit_file.parent.mkdir(parents=True, exist_ok=True)
         plan.submit_file.write_text(plan.submit_description + "\n", encoding="utf-8")
-    submit_job(plan)
-    return plan
+    return replace(plan, job_id=submit_job(plan))
 
 
 def gen_job(jobfile_name, run_code):
@@ -191,14 +213,37 @@ def gen_job(jobfile_name, run_code):
     return path
 
 
-def submit_job(plan: ClusterJobPlan):
+def submit_job(plan: ClusterJobPlan) -> str | None:
+    """Submit the job; what the scheduler named it, or None when it is not
+    known: queued for the host, or not in what the scheduler printed."""
     queue = os.environ.get("RASER_SUBMIT_QUEUE")
     if queue:
         # The SIF has no scheduler client; raser() on the host submits the queue.
         with open(queue, "a", encoding="utf-8") as stream:
             stream.write(shlex.join(plan.submit_command) + "\n")
-        return
-    subprocess.run(plan.submit_command, shell=False, check=True)
+        return None
+    result = subprocess.run(plan.submit_command, shell=False, check=True, capture_output=True, text=True)
+    print(result.stdout, end="")
+    named = re.search(r"submitted to cluster (\d+)", result.stdout)
+    return named.group(1) if named else None
+
+
+def job_alive(job_id) -> bool | None:
+    """Whether the scheduler still holds the job `job_id`; None when it
+    cannot be asked."""
+    if os.environ.get("RASER_SCHEDULER", "hep_sub") == "hep_sub":
+        command = ["hep_q", "-u", getpass.getuser()]
+    else:
+        command = ["condor_q", str(job_id), "-af", "ClusterId"]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    rows = [line.split() for line in result.stdout.splitlines()]
+    held = {words[0].split(".")[0] for words in rows if words and words[0][:1].isdigit()}
+    return str(job_id) in held
 
 
 def run_cmd(command, is_test=False):

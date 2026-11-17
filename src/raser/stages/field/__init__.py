@@ -8,6 +8,7 @@ when any of that has changed.
 
 import argparse
 import copy
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -248,7 +249,7 @@ def run(kwargs):
     experiment = WORKFLOWS[config["workflow"]]
     folder = folder.resolve()
     with project_root_context(folder.parents[len(words) - 1], kwargs["_components_of"][words[0]]):
-        make_shared(experiment, {**kwargs, "det_name": config.get("device"), "scan": []}, folder)
+        make_shared(experiment, {**kwargs, "det_name": config.get("device")}, folder)
     return None
 
 
@@ -274,6 +275,18 @@ def ready(options, files):
     if outdated(old, {"options": old["options"], "files": {"device": device}}) is not None:
         return None
     return folder
+
+
+def stamp(options, files):
+    """What tells one solve of the field a point takes from another: a
+    digest of what its run.json records it was solved from, or None when
+    it is not ready. A solve at one more bias leaves it as it is."""
+    folder = ready(options, files)
+    if folder is None:
+        return None
+    record = json.loads((folder / "run.json").read_text())
+    made_from = {key: record.get(key) for key in ("commit", "options", "files", "read")}
+    return hashlib.sha256(json.dumps(made_from, sort_keys=True).encode()).hexdigest()[:16]
 
 
 def start(kwargs, options, files):
@@ -302,14 +315,16 @@ def start(kwargs, options, files):
     # jobs=1: each field is solved in a process of its own, as devsim holds
     # one device a process, and the command of the experiment never loads it.
     field_kwargs.update(
-        batch=kwargs["batch"], mem=kwargs["mem"], jobs=1, _argv=words, _entry_command_prefix=("field",)
+        batch=kwargs["batch"], mem=kwargs["mem"], jobs=1, _argv=words, _entry_command_prefix=("field",),
+        # the command of the experiment, which the field job starts again when it is done
+        _waiting=kwargs.get("_waiting"),
     )
     print("the field is not ready: " + " ".join(["raser", *words]))
     # The point is this experiment's, not one of the field's own scans.
     execute(WORKFLOW, field_kwargs, register=False)
 
 
-SHARED = Shared(ready=ready, start=start)
+SHARED = Shared(ready=ready, start=start, stamp=stamp)
 
 
 def register(subparsers):

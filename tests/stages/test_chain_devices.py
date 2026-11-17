@@ -52,11 +52,11 @@ def test_the_slices_of_two_devices_in_two_positions_each() -> None:
     names = [piece.name for piece in chain.expand(DEVICES)]
     assert names == [
         "deposit",
-        "field.A", "current.a1", "readout.a1", "current.a2", "readout.a2",
-        "field.B", "current.b1", "readout.b1", "current.b2", "readout.b2",
+        "field.A", "current.a1", "readout.a1", "reconstruction.a1", "current.a2", "readout.a2", "reconstruction.a2",
+        "field.B", "current.b1", "readout.b1", "reconstruction.b1", "current.b2", "readout.b2", "reconstruction.b2",
     ]
     needs = {piece.name: piece.needs for piece in chain.expand(DEVICES)}
-    assert needs["current.b2"] == ("deposit", "field.B") and needs["readout.b2"] == ("current.b2",)
+    assert needs["current.b2"] == ("deposit", "field.B") and needs["readout.b2"] == ("current.b2", "field.B")
 
 
 def test_another_bias_of_one_device_runs_its_field_and_positions_alone_again(two: dict[str, Any]) -> None:
@@ -65,7 +65,9 @@ def test_another_bias_of_one_device_runs_its_field_and_positions_alone_again(two
 
     execute(two["workflow"], _kwargs(**{"A.voltage": 200.0}))
 
-    assert two["ran"] == ["field.A", "current.a1", "readout.a1", "current.a2", "readout.a2"]
+    assert two["ran"] == [
+        "field.A", "current.a1", "readout.a1", "reconstruction.a1", "current.a2", "readout.a2", "reconstruction.a2"
+    ]
     record = json.loads((two["root"] / "seed_1" / "run.json").read_text())
     assert record["files"]["A"]["device"]["bias"]["voltage"] == 200.0
     assert record["files"]["B"]["device"]["bias"]["voltage"] == 100.0
@@ -87,3 +89,15 @@ def test_raser_status_lists_the_slices_of_every_position(two: dict[str, Any]) ->
 
     assert set(states) == {piece.name for piece in two["workflow"].slices}
     assert all(by_state["done"] == [0] for by_state in states.values())
+
+
+def test_the_field_of_each_device_is_stamped_as_that_device_sees_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    from raser.stages import field
+
+    monkeypatch.setattr(field, "stamp", lambda options, files: f"{files['device']['det_name']} at {options.get('voltage')}")
+    pieces = {piece.name: piece for piece in chain.expand(DEVICES)}
+    files = {"A": {"device": {"det_name": "devA"}}, "B": {"device": {"det_name": "devB"}}}
+    options = {"A.voltage": 100.0, "B.voltage": 200.0}
+
+    assert pieces["field.A"].shared.stamp(options, files) == "devA at 100.0"
+    assert pieces["field.B"].shared.stamp(options, files) == "devB at 200.0"
