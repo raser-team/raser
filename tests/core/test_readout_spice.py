@@ -60,12 +60,43 @@ def test_each_electrode_answers_its_own_current():
     step = np.where(times > 0, 1e-6, 0.0)
     after = np.clip(times, 0, None)
 
-    # the currents come in another order than the sensor names its electrodes
+    # the currents come in another order than the sensor names its outputs,
+    # which give the order of the voltages
     voltage = solve(ON_THE_LOAD, ["right", "left"], DT_S, [-2 * step, step], sensor)
 
     right = 2e-6 * LOAD_OHM * (1 - np.exp(-after / (2 * TAU_S)))
-    assert voltage[0] == pytest.approx(right, abs=1e-7)
-    assert voltage[1] == pytest.approx(_rc_step_response(times, 1e-6), abs=5e-8)
+    assert voltage[1] == pytest.approx(right, abs=1e-7)
+    assert voltage[0] == pytest.approx(_rc_step_response(times, 1e-6), abs=5e-8)
+
+
+def test_currents_on_cells_are_read_out_on_a_strip_they_lie_beside():
+    # two cells of a resistive layer, each with 1 pF to the back: the near one
+    # is under the strip, the far one 10 kOhm away from it. Each brings 1 fC;
+    # all of it leaves through the 50 Ohm load of the strip, that of the far
+    # cell later, after it has crossed the 10 kOhm
+    sensor = SensorCircuit(
+        lines=("Cnear strip 0 1p", "Cfar far 0 1p", "Rlayer far strip 10k"),
+        sources={"near": ("0", "strip"), "far": ("0", "far")},
+        outputs={"strip": "strip"},
+    )
+    dt = 20e-12
+    times = (np.arange(10000) + 0.5) * dt
+    pulse = np.where((times > 0.1e-9) & (times < 0.2e-9), 1e-15 / 0.1e-9, 0.0)
+    quiet = np.zeros(times.size)
+
+    near = solve(ON_THE_LOAD, ["near", "far"], dt, [pulse, quiet], sensor)
+    far = solve(ON_THE_LOAD, ["far", "near"], dt, [pulse, quiet], sensor)
+
+    assert near.shape == far.shape == (1, times.size)
+    for voltage in (near[0], far[0]):
+        assert np.sum(voltage) * dt / LOAD_OHM == pytest.approx(1e-15, rel=0.01)
+    # the far cell empties through 10 kOhm into the strip: in about 10 ns,
+    # the near one through the load in less than one
+    arrival = [np.sum(times * v[0]) / np.sum(v[0]) for v in (near, far)]
+    assert arrival[0] < 1e-9
+    assert arrival[1] == pytest.approx(10e-9, rel=0.1)
+    with pytest.raises(ValueError, match="current sources"):
+        solve(ON_THE_LOAD, ["strip"], dt, [pulse], sensor)
 
 
 def test_circuit_is_at_rest_before_a_current_that_fills_the_first_bin():
@@ -145,9 +176,7 @@ def test_output_noise_of_a_resistor_on_a_capacitor():
     )
     k_t = 1.380649e-23 * 300.15
 
-    frequencies, density = output_noise_spectrum(
-        ON_THE_LOAD, ["right", "left"], sensor, 1e3, 1e13
-    )
+    frequencies, density = output_noise_spectrum(ON_THE_LOAD, sensor, 1e3, 1e13)
 
     assert density[:, 0] == pytest.approx(np.sqrt(4 * k_t * LOAD_OHM), rel=1e-3)
     power = density**2
@@ -155,7 +184,7 @@ def test_output_noise_of_a_resistor_on_a_capacitor():
     rms = np.sqrt(
         np.sum((power[:, 1:] + power[:, :-1]) / 2 * np.diff(frequencies), axis=1)
     )
-    assert rms == pytest.approx(np.sqrt(k_t / np.array([40e-12, 10e-12])), rel=5e-3)
+    assert rms == pytest.approx(np.sqrt(k_t / np.array([10e-12, 40e-12])), rel=5e-3)
 
 
 def test_chain_without_a_stage_has_the_load_on_the_sensor():

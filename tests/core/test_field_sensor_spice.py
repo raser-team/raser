@@ -121,10 +121,11 @@ def test_electrodes_side_by_side_each_answer_with_their_own_sensor():
 
     into_short = short_circuit_currents(["far", "near"], DT_S, [2 * step, step], sensor)
 
+    # the shorts come in the order of the outputs of the sensor
     off_the_jump = (times < 0) | (times > DT_S)
     expected = np.where(times > 0, 1e-6, 0.0)[off_the_jump]
-    assert into_short[0][off_the_jump] == pytest.approx(2 * expected, abs=2e-9)
-    assert into_short[1][off_the_jump] == pytest.approx(
+    assert into_short[1][off_the_jump] == pytest.approx(2 * expected, abs=2e-9)
+    assert into_short[0][off_the_jump] == pytest.approx(
         expected * 1000 / 1010, abs=2e-9
     )
     with pytest.raises(ValueError, match="near"):

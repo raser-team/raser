@@ -317,7 +317,6 @@ def test_noiseless_resistor_loads_the_circuit_and_adds_no_noise(tmp_path):
 
     _, density = output_noise_spectrum(
         {"stages": {"quiet": stage}, "load": load},
-        ["top"],
         planar_sensor("top", 1e-12),
         1e3,
         1e6,
@@ -376,7 +375,7 @@ def test_broad_band_cividec_has_the_input_noise_its_maker_gives():
     chain = named_chain("BroadBandCividec+Termination50")
 
     frequencies, density = output_noise_spectrum(
-        chain, ["top"], planar_sensor("top", 1e-18), 1e3, 1e12
+        chain, planar_sensor("top", 1e-18), 1e3, 1e12
     )
 
     power = density[0] ** 2
@@ -414,7 +413,7 @@ def test_charge_sensitive_cremat_has_the_noise_slope_its_maker_gives():
 
     def electrons(sensor_f):
         frequencies, density = output_noise_spectrum(
-            chain, ["top"], planar_sensor("top", sensor_f), 1e1, 1e10
+            chain, planar_sensor("top", sensor_f), 1e1, 1e10
         )
         omega = 2 * np.pi * frequencies * shaping_s
         power = density[0] ** 2 * omega**2 / (1 + omega**2) ** 5

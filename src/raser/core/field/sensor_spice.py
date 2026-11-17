@@ -8,10 +8,12 @@ class SensorCircuit:
     """The sensor as it stands in the netlist: once, for all electrodes.
 
     lines : SPICE lines of its elements. Ground is node 0.
-    sources : for each electrode, by its name, the two nodes (from, to) of
-        its induced current source.
-    outputs : for each electrode, by its name, the node its first amplifier
-        stage reads.
+    sources : for each electrode a current is induced on, by its name, the
+        two nodes (from, to) of its induced current source.
+    outputs : for each read-out, by its name, the node its first amplifier
+        stage reads. The read-outs may be other than the electrodes of the
+        currents: those of a resistive layer are its strips, the currents
+        are those of its cells.
 
     The node names ``in<k>_<j>`` and ``out<k>`` belong to the stages.
     """

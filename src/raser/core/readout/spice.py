@@ -26,11 +26,10 @@ def _current_sources(electrodes, dt, currents, sensor):
     since_start = _bin_centres(dt, currents.shape[1])
     if len(electrodes) != len(currents):
         raise ValueError(f"{len(currents)} currents for {len(electrodes)} electrodes")
-    if not sorted(electrodes) == sorted(sensor.sources) == sorted(sensor.outputs):
+    if sorted(electrodes) != sorted(sensor.sources):
         raise ValueError(
             f"The currents are of the electrodes {list(electrodes)}; the sensor "
-            f"has current sources for {list(sensor.sources)} and outputs for "
-            f"{list(sensor.outputs)}"
+            f"has current sources for {list(sensor.sources)}"
         )
     lines = []
     for k, (electrode, current) in enumerate(zip(electrodes, currents), start=1):
@@ -78,9 +77,10 @@ def _run(netlist_text, raw, dt, bins):
     )
 
 
-def _chain(chain, electrodes, sensor):
+def _chain(chain, sensor):
     """Lines of the stages and the load behind each output of the sensor, with
-    the sensor itself, and the node of the load of each electrode."""
+    the sensor itself, and the node of the load of each output, in the order
+    of sensor.outputs."""
     stages = chain["stages"]
     if "load" in stages:
         raise ValueError('A stage cannot be named "load"')
@@ -94,10 +94,10 @@ def _chain(chain, electrodes, sensor):
     lines.extend(subcircuit(name, stage).rstrip() for name, stage in stages.items())
     lines.append(subcircuit("load", chain["load"]).rstrip())
     outputs = []
-    for k, electrode in enumerate(electrodes, start=1):
+    for k, output in enumerate(sensor.outputs.values(), start=1):
         # the output of a stage is the input of the next one; without a
         # stage the load is on the sensor itself
-        nodes = [sensor.outputs[electrode]]
+        nodes = [output]
         if stages:
             nodes.extend(f"in{k}_{j}" for j in range(2, len(stages) + 1))
             nodes.append(f"out{k}")
@@ -116,15 +116,16 @@ def write_netlist(chain, electrodes, dt, currents, sensor, raw):
     chain["stages"] holds the stages under their names, from the sensor to the
     load, and chain["load"] the load, each as circuit.subcircuit describes
     them: a stage with the ports "in" and "out", the load with the port "in".
-    Every electrode gets its own copy of each stage and of the load.
-    The models a stage or the load brings stand once in the netlist.
-    The first stage of the k-th electrode (from 1) reads the output node the
-    sensor gives for it; ``out<k>`` is the output of its last stage and the
-    input of its load. A chain without stages has the load on the output node
-    of the sensor. Ground is node 0.
+    Every output of the sensor gets its own copy of each stage and of the
+    load. The models a stage or the load brings stand once in the netlist.
+    The first stage of the k-th output (from 1) reads its node;
+    ``out<k>`` is the output of its last stage and the input of its load. A
+    chain without stages has the load on the output node of the sensor.
+    Ground is node 0.
 
-    electrodes : names of the electrodes, in the order of the rows of
-        currents. They have to be the electrodes of the sensor.
+    electrodes : names of the electrodes the currents are induced on, in the
+        order of the rows of currents. They have to be those the sensor has
+        current sources for; its outputs may be others.
     dt : width of a time bin of the induced currents [s].
     currents : induced currents [A], shape (electrodes, bins), each value the
         mean current in its bin. A positive current flows through the source
@@ -139,7 +140,7 @@ def write_netlist(chain, electrodes, dt, currents, sensor, raw):
     currents = np.atleast_2d(np.asarray(currents, dtype=np.float64))
     sources = _current_sources(electrodes, dt, currents, sensor)
 
-    lines, outputs = _chain(chain, electrodes, sensor)
+    lines, outputs = _chain(chain, sensor)
     lines.extend(sources)
     lines.extend(
         _transient(dt, currents.shape[1], raw, [f"v({node})" for node in outputs])
@@ -149,8 +150,8 @@ def write_netlist(chain, electrodes, dt, currents, sensor, raw):
 
 def solve(chain, electrodes, dt, currents, sensor):
     """Output voltages [V] on the bins of the induced currents, shape
-    (electrodes, bins), in the order of electrodes. The arguments are those of
-    write_netlist."""
+    (outputs, bins), in the order of sensor.outputs. The arguments are those
+    of write_netlist."""
     currents = np.atleast_2d(np.asarray(currents, dtype=np.float64))
     with tempfile.TemporaryDirectory() as folder:
         raw = Path(folder) / "out.raw"
@@ -162,13 +163,13 @@ def write_short_circuit_netlist(electrodes, dt, currents, sensor, raw):
     """Netlist of one transient run of the sensor alone, with each of its
     outputs shorted to ground. electrodes, dt, currents and sensor are those of
     write_netlist; raw is the file ngspice writes the currents in the shorts
-    to."""
+    to, in the order of sensor.outputs."""
     currents = np.atleast_2d(np.asarray(currents, dtype=np.float64))
     sources = _current_sources(electrodes, dt, currents, sensor)
     lines = ["sensor > short", *sources]
     shorts = []
-    for k, electrode in enumerate(electrodes, start=1):
-        lines.append(f"Vshort{k} {sensor.outputs[electrode]} 0 0")
+    for k, output in enumerate(sensor.outputs.values(), start=1):
+        lines.append(f"Vshort{k} {output} 0 0")
         shorts.append(f"i(Vshort{k})")
     lines.extend(sensor.lines)
     lines.extend(_transient(dt, currents.shape[1], raw, shorts))
@@ -177,8 +178,8 @@ def write_short_circuit_netlist(electrodes, dt, currents, sensor, raw):
 
 def short_circuit_currents(electrodes, dt, currents, sensor):
     """Currents [A] the sensor drives into a short at each of its outputs, on
-    the bins of the induced currents, shape (electrodes, bins), in the order
-    of electrodes. A positive current flows from the output node into the
+    the bins of the induced currents, shape (outputs, bins), in the order of
+    sensor.outputs. A positive current flows from the output node into the
     short."""
     currents = np.atleast_2d(np.asarray(currents, dtype=np.float64))
     with tempfile.TemporaryDirectory() as folder:
@@ -191,18 +192,19 @@ def short_circuit_currents(electrodes, dt, currents, sensor):
 PER_DECADE = 50
 
 
-def write_noise_netlist(chain, electrodes, sensor, lowest_hz, highest_hz, raws):
-    """Netlist of the noise analysis of each output. chain, electrodes and
-    sensor are those of write_netlist; raws are the files, one per electrode,
-    ngspice writes the spectra to."""
-    lines, outputs = _chain(chain, electrodes, sensor)
+def write_noise_netlist(chain, sensor, lowest_hz, highest_hz, raws):
+    """Netlist of the noise analysis of each output. chain and sensor are
+    those of write_netlist; raws are the files, one per output in the order
+    of sensor.outputs, ngspice writes the spectra to."""
+    lines, outputs = _chain(chain, sensor)
+    # the analysis asks for a source, which leaves the noise at the output
+    # as it is: the place of an induced current
+    source_from, source_to = next(iter(sensor.sources.values()))
+    lines.append(f"I1 {source_from} {source_to} dc 0 ac 1")
     control = [".control"]
-    for k, (electrode, node, raw) in enumerate(zip(electrodes, outputs, raws), 1):
-        # the analysis asks for a source: the place of the induced current
-        source_from, source_to = sensor.sources[electrode]
-        lines.append(f"I{k} {source_from} {source_to} dc 0 ac 1")
+    for k, (node, raw) in enumerate(zip(outputs, raws), 1):
         control.append(
-            f"noise v({node}) I{k} dec {PER_DECADE} {lowest_hz:.9g} {highest_hz:.9g}"
+            f"noise v({node}) I1 dec {PER_DECADE} {lowest_hz:.9g} {highest_hz:.9g}"
         )
         # every analysis leaves two plots: the spectra, then their integrals
         control.append(f"setplot noise{2 * k - 1}")
@@ -211,22 +213,22 @@ def write_noise_netlist(chain, electrodes, sensor, lowest_hz, highest_hz, raws):
     return "\n".join(lines) + "\n"
 
 
-def output_noise_spectrum(chain, electrodes, sensor, lowest_hz, highest_hz):
+def output_noise_spectrum(chain, sensor, lowest_hz, highest_hz):
     """Noise of the circuit at each output, as ngspice calculates it from the
     thermal noise of the resistors and the noise of the device models, at
     27 degrees Celsius: the frequencies [Hz], from lowest_hz to highest_hz, and
-    the amplitude spectral density at them [V / sqrt(Hz)], shape (electrodes,
-    frequencies). chain, electrodes and sensor are those of write_netlist; the
-    sensor and the load are part of the circuit.
+    the amplitude spectral density at them [V / sqrt(Hz)], shape (outputs,
+    frequencies), in the order of sensor.outputs. chain and sensor are those
+    of write_netlist; the sensor and the load are part of the circuit.
 
-    The noise of one output is taken by itself: what the outputs of several
-    electrodes have in common is not given.
+    The noise of one output is taken by itself: what several outputs have in
+    common is not given.
     """
     with tempfile.TemporaryDirectory() as folder:
-        raws = [Path(folder) / f"noise{k}.raw" for k in range(len(electrodes))]
+        raws = [Path(folder) / f"noise{k}.raw" for k in range(len(sensor.outputs))]
         netlist = Path(folder) / "noise.cir"
         netlist.write_text(
-            write_noise_netlist(chain, electrodes, sensor, lowest_hz, highest_hz, raws),
+            write_noise_netlist(chain, sensor, lowest_hz, highest_hz, raws),
             encoding="utf-8",
         )
         subprocess.run(
