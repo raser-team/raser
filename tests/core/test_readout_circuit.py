@@ -297,6 +297,24 @@ def test_chain_with_two_stages_of_one_name_from_two_folders(tmp_path):
     assert voltage == pytest.approx(expected, abs=5e-8)
 
 
+def test_chain_keeps_a_stage_whose_name_another_one_would_be_given(tmp_path):
+    # series, a second series, then a stage whose file is series_2: three
+    # stages, the second series under the first free name
+    files = _chain_files(tmp_path)
+    (tmp_path / "other").mkdir()
+    second = tmp_path / "other" / "series.cir"
+    second.write_text(".subckt series in out\nR1 in out 100\n.ends series\n")
+    third = tmp_path / "series_2.cir"
+    third.write_text(
+        ".subckt series_2 in out\nR1 in 0 100\nR2 in out 1u\n.ends series_2\n"
+    )
+
+    chain = read_chain([files["series"], second, third, files["load"]])
+
+    assert list(chain["stages"]) == ["series", "series_2", "series_2_2"]
+    assert chain["stages"]["series_2_2"]["elements"]["R1"]["between"] == ["in", "0"]
+
+
 def test_chain_that_does_not_end_in_its_only_load_is_refused(tmp_path):
     files = _chain_files(tmp_path)
 
