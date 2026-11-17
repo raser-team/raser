@@ -64,6 +64,26 @@ def _python(text):
     )
 
 
+def _substitute_in_conditions(text, values):
+    """`text` with the words in `values` replaced only in the conditions of its `ifelse`."""
+    match = re.search(r"(?<!\w)ifelse\(", text)
+    if match is None:
+        return text
+    opening = match.end() - 1
+    closing, commas = _closing(text, opening)
+    if len(commas) != 2:
+        raise ValueError(f"ifelse takes three arguments in {text!r}")
+    condition = _substitute(_substitute_in_conditions(text[opening + 1 : commas[0]], values), values)
+    branches = _substitute_in_conditions(text[commas[0] + 1 : closing], values)
+    return (
+        text[: opening + 1]
+        + condition
+        + "," + branches
+        + ")"
+        + _substitute_in_conditions(text[closing + 1 :], values)
+    )
+
+
 class Formula:
     """A formula of `variables`, its parameters put in as numbers.
 
@@ -82,8 +102,13 @@ class Formula:
             raise ValueError(f"the formula takes {self.variables}, not {tuple(variables)}")
         return eval(self._code, {"__builtins__": {}, **_FUNCTIONS}, variables)
 
-    def devsim(self, **variables):
-        """The text for devsim, each variable replaced by the solver's expression."""
+    def devsim(self, in_conditions=None, **variables):
+        """The text for devsim, each variable replaced by the solver's expression.
+
+        `in_conditions` may give another expression for a variable in the
+        conditions of `ifelse`: the solver's guard against dividing by zero
+        must not move a threshold.
+        """
         if set(variables) != set(self.variables):
             raise ValueError(f"the formula takes {self.variables}, not {tuple(variables)}")
-        return _substitute(self.text, variables)
+        return _substitute(_substitute_in_conditions(self.text, in_conditions or {}), variables)
