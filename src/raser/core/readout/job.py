@@ -17,40 +17,52 @@ from .waveforms import append_waveforms
 LOWEST_NOISE_HZ = 1e3
 
 
-# the outputs at the ends of a part of the circuit hold less than this of
-# its largest output, or the part grows
+# an output whose largest swing is less than this of the largest of its
+# event is not stored; and a part of the circuit is wide enough when
+# widening it moves no stored output by as much as this of that largest
 PART_EDGE = 1e-3
 
 
-def _solve_part(chain, currents, event, part_of):
-    """The outputs of the part of the circuit part_of gives for the
-    electrodes of an event with a current, as wide as write_waveforms says,
-    and their voltages, shape (outputs of the part, bins): none for an event
-    without current."""
-    hit = [
-        name
-        for name, current in zip(currents.electrodes, event.current, strict=True)
-        if np.any(current)
-    ]
-    if not hit:
-        return [], np.zeros((0, event.current.shape[1]))
+def _solve(chain, currents, event, circuit):
+    """The voltages of the outputs of a circuit for an event, by the names
+    of the outputs; the electrodes of the circuit are some of the currents."""
     row_of = {name: k for k, name in enumerate(currents.electrodes)}
-    margin, before = 1, None
+    electrodes = list(circuit.sources)
+    solved = solve(
+        chain,
+        electrodes,
+        currents.dt,
+        event.current[[row_of[name] for name in electrodes]],
+        circuit,
+    )
+    return dict(zip(circuit.outputs, solved, strict=True))
+
+
+def _solve_part(chain, currents, event, part_of, hit):
+    """The voltages of the outputs of the part of the circuit around the
+    electrodes `hit` that is wide enough, by their names: the part with a
+    margin of one is widened, its margin doubled each time, until widening
+    it moves no output that is stored by PART_EDGE of the largest one, a
+    new one counting as moved from zero, or it grows no more."""
+    margin = 1
+    part = part_of(hit, margin)
+    before = _solve(chain, currents, event, part)
     while True:
-        part = part_of(hit, margin)
-        electrodes = list(part.sources)
-        solved = solve(
-            chain,
-            electrodes,
-            currents.dt,
-            event.current[[row_of[name] for name in electrodes]],
-            part,
+        margin *= 2
+        wider = part_of(hit, margin)
+        if list(wider.outputs) == list(part.outputs):
+            return before
+        after = _solve(chain, currents, event, wider)
+        swing = {name: np.abs(voltage).max() for name, voltage in after.items()}
+        largest = max(swing.values())
+        moved = max(
+            np.abs(voltage - before.get(name, 0.0)).max()
+            for name, voltage in after.items()
+            if swing[name] >= PART_EDGE * largest
         )
-        peaks = np.abs(solved).max(axis=1)
-        if electrodes == before or max(peaks[0], peaks[-1]) < PART_EDGE * peaks.max():
-            break
-        margin, before = 2 * margin, electrodes
-    return list(part.outputs), solved
+        part, before = wider, after
+        if moved < PART_EDGE * largest:
+            return after
 
 
 def noise_spectra(chain, circuit, lowest_hz, highest_hz):
@@ -107,10 +119,12 @@ def write_waveforms(
         in an event and a margin, the part of the circuit around
         them that is solved: a circuit of some of the electrodes and
         outputs, by the same names, wider with a wider margin. The part
-        grows until its outputs at both ends hold less than PART_EDGE of the
-        largest output, or it grows no more. Only its outputs are written
-        for the event, each with its noise; the outputs outside it are not
-        there, and an event without current has no waveforms.
+        is widened as _solve_part says.
+
+    Of each event only the outputs whose largest swing is at least
+    PART_EDGE of the largest of the event are stored, each with its noise:
+    those the event hit, its charge or the crosstalk of it. An event without
+    current stores none, and no noise.
     """
     currents = read_currents(currents_path)
     if os.path.exists(waveforms_path):
@@ -123,13 +137,27 @@ def write_waveforms(
     outputs = list(circuit.outputs)
     place = {name: k for k, name in enumerate(outputs)}
     for event in currents.events:
-        if part_of is None:
-            names = outputs
-            voltage = solve(
-                chain, currents.electrodes, currents.dt, event.current, circuit
-            )
+        hit = [
+            name
+            for name, current in zip(currents.electrodes, event.current, strict=True)
+            if np.any(current)
+        ]
+        if not hit:
+            solved = {}
+        elif part_of is None:
+            solved = _solve(chain, currents, event, circuit)
         else:
-            names, voltage = _solve_part(chain, currents, event, part_of)
+            solved = _solve_part(chain, currents, event, part_of, hit)
+        swing = {name: np.abs(voltage).max() for name, voltage in solved.items()}
+        largest = max(swing.values(), default=0.0)
+        names = [
+            name
+            for name in outputs
+            if name in solved and largest > 0 and swing[name] >= PART_EDGE * largest
+        ]
+        voltage = np.array([solved[name] for name in names]).reshape(
+            len(names), event.current.shape[1]
+        )
         if noise_seed is not None and names:
             voltage = voltage + np.array(
                 [
