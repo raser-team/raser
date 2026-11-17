@@ -20,7 +20,10 @@ def ionized_fraction(material, element):
     terms = []
     parameters = {"g": dopant.degeneracy, "k": BOLTZMANN_EV_PER_K}
     for i, (energy, fraction) in enumerate(dopant.levels):
-        terms.append(f"f{i}/(1 + g*carriers/(N_band*exp(-E{i}/(k*T))))")
+        # f n1/(n1 + g carriers): n1 may underflow to zero at freeze-out;
+        # without carriers every dopant is ionized
+        n1 = f"N_band*exp(-E{i}/(k*T))"
+        terms.append(f"ifelse(carriers > 0, f{i}*{n1}/({n1} + g*carriers), f{i})")
         parameters[f"f{i}"] = fraction
         parameters[f"E{i}"] = energy
     return Formula(" + ".join(terms), ["carriers", "N_band", "T"], **parameters)
