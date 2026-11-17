@@ -12,14 +12,7 @@ DEFAULTS = json.loads((Path(__file__).parent / "charge_collection.json").read_te
 WORKFLOW = Workflow(
     name="cce",
     keys=chain.KEYS,
-    defaults={
-        "source": DEFAULTS["source"],
-        "fano": True,
-        "events_per_job": 10000,
-        "plots": 0,
-        "amplifier": DEFAULTS["afe"],
-        "g4setup": DEFAULTS["g4setup"],
-    },
+    defaults={**chain.DEFAULTS, **DEFAULTS, "events_per_job": 10000, "plots": 0},
     components=chain.COMPONENTS,
     in_file=chain.IN_FILE,
     slices=chain.SLICES,

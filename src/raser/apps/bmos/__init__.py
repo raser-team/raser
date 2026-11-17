@@ -11,14 +11,7 @@ from raser.lifecycle.workflow import Workflow
 WORKFLOW = Workflow(
     name="bmos",
     keys=chain.KEYS,
-    defaults={
-        "source": "bunch",
-        "g4setup": "device_alone",
-        "fano": True,
-        "amplifier": "SantaCruz+Gali52+Termination50",
-        "events_per_job": 1,
-        "plots": 0,
-    },
+    defaults={**chain.DEFAULTS, "source": "bunch", "plots": 0},
     components=chain.COMPONENTS,
     in_file=chain.IN_FILE,
     slices=chain.SLICES,

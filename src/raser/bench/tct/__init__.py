@@ -10,6 +10,7 @@ from pathlib import Path
 
 from raser.lifecycle.slices import Slice
 from raser.lifecycle.workflow import Workflow
+from raser.stages import chain
 
 DEFAULTS = json.loads(
     (Path(__file__).parent / "transient_current.json").read_text("utf-8")
@@ -44,7 +45,7 @@ def _waveforms(kwargs):
 WORKFLOW = Workflow(
     name="tct",
     keys=KEYS,
-    defaults={"laser": DEFAULTS["laser"], "amplifier": DEFAULTS["amplifier"]},
+    defaults={"laser": DEFAULTS["laser"], **chain.READOUT_DEFAULTS},
     components=COMPONENTS,
     in_file=IN_FILE,
     slices=(

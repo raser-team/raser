@@ -23,6 +23,11 @@ COMPONENTS = {"source": "source", "g4setup": "g4setup"}  # kind of file -> optio
 IN_FILE = {"voltage": "device.bias.voltage"}  # option -> where it sits in a file
 
 
+# The defaults of the options of each stage; an experiment declares only
+# those it sets otherwise.
+DEPOSIT_DEFAULTS = {"source": "decay/Sr90", "g4setup": "device_alone", "events_per_job": 1, "fano": True}
+
+
 def deposit_arguments(parser):
     parser.add_argument(
         "source",
@@ -47,14 +52,23 @@ def deposit_arguments(parser):
     )
 
 
+CURRENT_DEFAULTS = {"plots": 100}
+
+
 def current_arguments(parser):
     parser.add_argument("--plots", type=int, help="draw the first N recorded events of each job")
     parser.add_argument("-vol", "--voltage", type=float, help="bias voltage")
     parser.add_argument("-irr", "--irradiation", type=float, help="irradiation flux")
 
 
+READOUT_DEFAULTS = {"amplifier": "SantaCruz+Gali52+Termination50"}
+
+
 def readout_arguments(parser):
     parser.add_argument("-amp", "--amplifier", type=str, help="amplifier")
+
+
+DEFAULTS = {**DEPOSIT_DEFAULTS, **CURRENT_DEFAULTS, **READOUT_DEFAULTS}
 
 
 def add_arguments(parser):

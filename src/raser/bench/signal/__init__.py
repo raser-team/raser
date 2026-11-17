@@ -5,26 +5,14 @@ Description:  signal/__init__.py
 @version    : 2.0
 """
 
-import json
-from pathlib import Path
-
 from raser.lifecycle.workflow import Workflow
 from raser.stages import chain
-
-DEFAULTS = json.loads((Path(__file__).parent / "signal.json").read_text("utf-8"))
 
 
 WORKFLOW = Workflow(
     name="signal",
     keys=chain.KEYS,
-    defaults={
-        "source": DEFAULTS["source"],
-        "g4setup": "device_alone",
-        "fano": True,
-        "amplifier": DEFAULTS["afe"],
-        "events_per_job": 1,
-        "plots": 100,
-    },
+    defaults=chain.DEFAULTS,
     components=chain.COMPONENTS,
     in_file=chain.IN_FILE,
     slices=chain.SLICES,

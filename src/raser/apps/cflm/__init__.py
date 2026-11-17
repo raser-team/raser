@@ -52,7 +52,7 @@ SLICES = (
 WORKFLOW = Workflow(
     name="cflm",
     keys=("voltage", "irradiation", "plots", "amplifier"),
-    defaults={"amplifier": "SantaCruz+Gali52+Termination50", "plots": 0},
+    defaults={**chain.READOUT_DEFAULTS, "plots": 0},
     in_file=chain.IN_FILE,
     slices=SLICES,
 )

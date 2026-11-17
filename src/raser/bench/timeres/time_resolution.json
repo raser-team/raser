@@ -1,5 +1,3 @@
 {
-  "source": "decay/Sr90",
-  "afe": "SantaCruz+Gali52+Termination50",
   "g4setup": "time_resolution"
 }
