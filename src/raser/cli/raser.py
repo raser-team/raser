@@ -9,13 +9,11 @@ import sys
 from pathlib import Path
 from contextlib import contextmanager
 
+import raser
 from raser.supports import process
 from raser.supports.paths import infer_project_root
 from raser.supports.paths import project_root_context
 from raser.supports.paths import work_root
-
-
-VERSION = "5.0"
 
 APPLICATIONS = {  # command -> the module that registers it
     "analysis": "raser.stages.analysis",
@@ -50,7 +48,7 @@ def _context(kwargs):
 
 def build_parser():
     parser = argparse.ArgumentParser(prog="raser")
-    parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {raser.__version__}")
     parser.add_argument(
         "-b",
         "--batch",

@@ -161,3 +161,14 @@ def test_a_stage_command_given_inside_an_experiment_folder_is_not_taken_for_its_
     assert main([command, str(experiment), "--seed", "1", "--dry-run"]) == 0
 
     assert capsys.readouterr().out.splitlines()[0].startswith(f"{experiment / 'seed_1'}: ")
+
+
+def test_the_version_is_the_one_of_the_package(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
+    import raser
+
+    monkeypatch.setattr(raser, "__version__", "9.9")
+
+    with pytest.raises(SystemExit):
+        main(["--version"])
+
+    assert capsys.readouterr().out.strip() == "raser 9.9"
