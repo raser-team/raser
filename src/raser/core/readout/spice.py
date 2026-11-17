@@ -44,8 +44,11 @@ def _current_sources(electrodes, dt, currents, circuit):
 
 
 def _transient(dt, bins, raw, vectors):
-    """Control lines of the run: one bin more than the currents have."""
+    """Control lines of the run: one bin more than the currents have. Only
+    the vectors written are kept: ngspice keeps every node of every step
+    otherwise, which a row of some hundred strips does not fit in."""
     return [
+        f".save {' '.join(vectors)}",
         ".control",
         f"tran {dt:.9g} {dt * (bins + 1):.9g}",
         f"wrdata {raw} {' '.join(vectors)}",
