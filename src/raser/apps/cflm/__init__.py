@@ -37,14 +37,14 @@ def _waveforms(pad, kwargs):
 
 
 SLICES = (
-    Slice("deposits", _deposits),
+    Slice("deposit", _deposits),
     *(
-        Slice(f"currents.{pad}", partial(_currents, pad), keys=("voltage", "irradiation", "plots"))
+        Slice(f"current.{pad}", partial(_currents, pad), keys=("voltage", "irradiation", "plots"))
         for pad in PADS
     ),
     # The electronics works on what was measured: its points read the same currents.
     *(
-        Slice(f"waveforms.{pad}", partial(_waveforms, pad), keys=("amplifier",), new_events=False)
+        Slice(f"readout.{pad}", partial(_waveforms, pad), keys=("amplifier",), new_events=False)
         for pad in PADS
     ),
 )

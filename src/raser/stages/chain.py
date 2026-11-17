@@ -117,7 +117,7 @@ def _waveforms(kwargs):
 # it reads and no slice before it does.
 SLICES = (
     Slice(
-        "deposits",
+        "deposit",
         _deposits,
         keys=("source", "g4setup", "events_per_job", "edep_min", "edep_max", "fano"),
         kinds=("source", "g4setup"),
@@ -125,7 +125,7 @@ SLICES = (
     # The field is shared by the experiments of a device, in work/<device>/field;
     # the deposits do not read it.
     Slice("field", _field, keys=("voltage", "irradiation"), shared=field.SHARED),
-    Slice("currents", _currents, keys=("plots",)),
+    Slice("current", _currents, keys=("plots",)),
     # The electronics works on what was measured: its points read the same currents.
-    Slice("waveforms", _waveforms, keys=("amplifier",), new_events=False),
+    Slice("readout", _waveforms, keys=("amplifier",), new_events=False),
 )

@@ -30,7 +30,7 @@ def _job(folder, index, scale, count, seed):
     are spread over 1 ns."""
     batch = folder / "batch"
     batch.mkdir(parents=True, exist_ok=True)
-    held = {"deposits": "", "currents": "", "waveforms": ""}
+    held = {"deposit": "", "current": "", "readout": ""}
     (folder / "run.json").write_text(json.dumps({"point": "", "held_in": held}))
     rng = np.random.default_rng(seed)
     truths = rng.normal(0.0, 1.0e-9, count)
@@ -41,19 +41,19 @@ def _job(folder, index, scale, count, seed):
             EventDeposits(number, ["Device"], [0.0], [0.0], [1.0], [truths[number]], [0.1], [1000.0])
         )
         append_currents(
-            batch / f"currents_{index}.h5",
+            batch / f"current_{index}.h5",
             ["top"],
             1.0e-11,
             EventCurrents(number, 0.0, np.zeros((1, 2)), np.array([-900 * E]), 1000.0),
         )
         samples = np.concatenate([np.zeros(BEFORE), scale * TRIANGLE])
         append_waveforms(
-            batch / f"waveforms_{index}.h5",
+            batch / f"readout_{index}.h5",
             ["top"],
             DT,
             EventWaveforms(number, starts[number] - BEFORE * DT, np.array([samples])),
         )
-    write_deposits(str(batch / f"deposits_{index}.h5"), Deposits(50, None, None, deposits))
+    write_deposits(str(batch / f"deposit_{index}.h5"), Deposits(50, None, None, deposits))
 
 
 def test_thresholds_of_the_digitizer_are_in_millivolt(tmp_path) -> None:

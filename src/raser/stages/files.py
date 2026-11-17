@@ -3,9 +3,9 @@
 Written into batch/ of the seed folder that holds the slice, which is the
 one of another point when the slice does not read what makes this point
 differ; one file per job and slice:
-    deposits_<job>.h5    energy deposits and pairs of the recorded events
-    currents_<job>.h5    induced current of every electrode, event by event
-    waveforms_<job>.h5   output voltage of the electronics, event by event
+    deposit_<job>.h5    energy deposits and pairs of the recorded events
+    current_<job>.h5    induced current of every electrode, event by event
+    readout_<job>.h5   output voltage of the electronics, event by event
 """
 
 import os

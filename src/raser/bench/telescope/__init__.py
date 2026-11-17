@@ -24,8 +24,8 @@ def _currents(kwargs):
 # The layers are the detectors of one deposits file; the currents are one
 # file per layer.
 SLICES = (
-    Slice("deposits", _deposits, keys=("events_per_job", "mode")),
-    Slice("currents", _currents),
+    Slice("deposit", _deposits, keys=("events_per_job", "mode")),
+    Slice("current", _currents),
 )
 
 

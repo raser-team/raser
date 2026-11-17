@@ -44,7 +44,7 @@ def event_times(jobs, threshold, amplitude_threshold):
     names = ["job", "event", "ToA", "ToT", "amplitude", "baseline", "noise", "truth", "CoG"] + [f"CFD{round(100 * part)}" for part in CFD_FRACTIONS]
     events = []
     for place, (folder, index) in enumerate(jobs):
-        path = job_file(folder, index, "waveforms")
+        path = job_file(folder, index, "readout")
         if path is None:
             continue
         waveforms = read_waveforms(path)
@@ -53,7 +53,7 @@ def event_times(jobs, threshold, amplitude_threshold):
                 f"{path}: {len(waveforms.electrodes)} electrodes; "
                 "the time of an event with several electrodes is not settled"
             )
-        deposits = read_deposits(str(slice_file(folder, index, "deposits")))
+        deposits = read_deposits(str(slice_file(folder, index, "deposit")))
         earliest = {event.event: min(event.t) for event in deposits.events}
         for event in waveforms.events:
             if event.event not in earliest:

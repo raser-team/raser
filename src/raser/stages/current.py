@@ -28,17 +28,17 @@ def solved(my_d, kwargs):
 
 
 def currents(kwargs):
-    """The deposits drifted in the solved field of the device: currents_<job>.h5,
+    """The deposits drifted in the solved field of the device: current_<job>.h5,
     and the pictures of the first `plots` events in plots/job_<job>."""
     my_d = bdv.Detector(kwargs["det_name"], kwargs["_files"]["device"])
     write_induced_currents(
-        output(kwargs, "deposits"),
-        output(kwargs, "currents"),
+        output(kwargs, "deposit"),
+        output(kwargs, "current"),
         my_d,
         solved(my_d, kwargs),
         int(kwargs["plots"]),
         os.path.join(
-            os.path.dirname(kwargs["_slice_batch_paths"]["currents"]),
+            os.path.dirname(kwargs["_slice_batch_paths"]["current"]),
             "plots",
             "job_%s" % _job(kwargs),
         ),

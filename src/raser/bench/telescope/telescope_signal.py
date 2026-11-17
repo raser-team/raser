@@ -536,7 +536,7 @@ def collect_under(my_d, pairs, positions, step):
 
 
 def deposits(kwargs):
-    """The beam through the layers of telescope.json: deposits_<job>.h5.
+    """The beam through the layers of telescope.json: deposit_<job>.h5.
 
     The mode full is Geant4, fast is straight_tracks. Every generated
     event is recorded, also one that left nothing. The detector of a deposit
@@ -549,7 +549,7 @@ def deposits(kwargs):
         for record in events:
             record.pairs, _ = ionized_pairs(record, my_d.material)
         write_deposits(
-            _file(kwargs, "deposits"),
+            _file(kwargs, "deposit"),
             Deposits(int(kwargs["events_per_job"]), None, None, events),
         )
         return
@@ -578,7 +578,7 @@ def deposits(kwargs):
         record.pairs, _ = ionized_pairs(record, my_d.material)
         events.append(record)
     write_deposits(
-        _file(kwargs, "deposits"), Deposits(my_g4.generated_events, None, None, events)
+        _file(kwargs, "deposit"), Deposits(my_g4.generated_events, None, None, events)
     )
 
 
@@ -634,7 +634,7 @@ def currents(kwargs):
     setup = _setup()
     my_g4 = SimpleNamespace(ltz=setup["ltz"], seedcharge=setup["seedcharge"])
     paths = {
-        layer: _file(kwargs, "currents." + layer) for layer in setup["object"]["layer"]
+        layer: _file(kwargs, "current." + layer) for layer in setup["object"]["layer"]
     }
     if kwargs["mode"] == "fast":
         def collect(pairs, positions):
@@ -645,10 +645,10 @@ def currents(kwargs):
                 my_d, pairs, positions, setup["collection_window_s"], DIFFUSION_STEP
             )
     my_hit_charge = DiffusedCharge(
-        my_d, read_deposits(_file(kwargs, "deposits")).events, paths, collect
+        my_d, read_deposits(_file(kwargs, "deposit")).events, paths, collect
     )
     plots = os.path.join(
-        os.path.dirname(kwargs["_slice_batch_paths"]["currents"]),
+        os.path.dirname(kwargs["_slice_batch_paths"]["current"]),
         "plots",
         "job_%s" % (kwargs.get("job_index") or 0),
     )

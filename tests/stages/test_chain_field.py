@@ -70,10 +70,10 @@ def test_a_scanned_bias_gives_every_point_its_own_deposits(experiment: dict[str,
     execute(experiment["workflow"], _kwargs(scan=["voltage=100,300"]))
 
     for point in ("voltage_100", "voltage_300"):
-        assert _held_in(experiment["root"], point) == dict.fromkeys(("deposits", "field", "currents", "waveforms"), point)
-    assert experiment["ran"].count("deposits") == 2
+        assert _held_in(experiment["root"], point) == dict.fromkeys(("deposit", "field", "current", "readout"), point)
+    assert experiment["ran"].count("deposit") == 2
     # the points draw other numbers in the same job
-    drawn = {point: seed for name, point, seed in experiment["seeds"] if name == "deposits"}
+    drawn = {point: seed for name, point, seed in experiment["seeds"] if name == "deposit"}
     assert drawn["voltage_100"] != drawn["voltage_300"]
 
 
@@ -84,11 +84,11 @@ def test_with_same_seeds_the_points_of_a_bias_scan_share_one_run_of_the_deposits
 
     for point in ("voltage_100", "voltage_300"):
         held_in = _held_in(experiment["root"], point)
-        assert held_in["deposits"] == ""
-        assert [held_in[name] for name in ("field", "currents", "waveforms")] == [point] * 3
-    assert [experiment["ran"].count(name) for name in ("deposits", "field", "currents")] == [1, 2, 2]
+        assert held_in["deposit"] == ""
+        assert [held_in[name] for name in ("field", "current", "readout")] == [point] * 3
+    assert [experiment["ran"].count(name) for name in ("deposit", "field", "current")] == [1, 2, 2]
     # and the same numbers in the same job
-    drawn = {point: seed for name, point, seed in experiment["seeds"] if name == "currents"}
+    drawn = {point: seed for name, point, seed in experiment["seeds"] if name == "current"}
     assert drawn["voltage_100"] == drawn["voltage_300"]
 
 
@@ -100,7 +100,7 @@ def test_another_bias_runs_the_field_and_what_follows_it_but_not_the_deposits(
 
     execute(experiment["workflow"], _kwargs(voltage=100.0))
 
-    assert experiment["ran"] == ["field", "currents", "waveforms"]
+    assert experiment["ran"] == ["field", "current", "readout"]
 
 
 def test_a_field_not_ready_is_started_once_for_the_points_that_share_it_and_their_jobs_wait(

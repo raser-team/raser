@@ -21,9 +21,9 @@ def currents(kwargs):
     files = kwargs["_files"]
     my_d = bdv.Detector(kwargs["det_name"], files["device"])
     my_l = LaserInjection(my_d, dict(files["laser"]))
-    path = os.path.join(os.path.dirname(kwargs["_slice_batch_paths"]["currents"]), "plots")
+    path = os.path.join(os.path.dirname(kwargs["_slice_batch_paths"]["current"]), "plots")
     write_laser_currents(
-        output(kwargs, "currents"),
+        output(kwargs, "current"),
         my_d,
         solved(my_d, kwargs),
         my_l,

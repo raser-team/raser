@@ -16,7 +16,7 @@ E = 1.602176634e-19
 def _alone(folder):
     """The seed folder of an experiment without points: it holds its slices."""
     folder.mkdir(parents=True, exist_ok=True)
-    held = {"deposits": "", "currents": "", "waveforms": ""}
+    held = {"deposit": "", "current": "", "readout": ""}
     (folder / "run.json").write_text(json.dumps({"point": "", "held_in": held}))
 
 
@@ -28,7 +28,7 @@ def _job(folder, index, efficiencies):
     for number, efficiency in enumerate(efficiencies):
         charge = np.array([-1000 * E * efficiency])
         append_currents(
-            batch / f"currents_{index}.h5",
+            batch / f"current_{index}.h5",
             ["top"],
             1.0e-11,
             EventCurrents(number, 0.0, np.zeros((1, 2)), charge, 1000.0),
@@ -39,7 +39,7 @@ def _empty_job(folder, index, events):
     _alone(folder)
     batch = folder / "batch"
     batch.mkdir(parents=True, exist_ok=True)
-    write_deposits(str(batch / f"deposits_{index}.h5"), Deposits(50, None, None, events))
+    write_deposits(str(batch / f"deposit_{index}.h5"), Deposits(50, None, None, events))
 
 
 def test_point_takes_the_events_of_all_its_jobs(tmp_path) -> None:

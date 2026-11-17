@@ -7,8 +7,8 @@ from raser.core.deposit.deposits import read_deposits
 
 
 def slice_file(folder, index, name):
-    """Path of the file of the slice `name` ("deposits", "currents",
-    "waveforms") of a job of the seed folder `folder`.
+    """Path of the file of the slice `name` ("deposit", "current",
+    "readout") of a job of the seed folder `folder`.
 
     The file is in the seed folder of the same name in the point that holds
     the slice; run.json of the seed folder names that point for each slice.
@@ -20,13 +20,13 @@ def slice_file(folder, index, name):
 
 
 def job_file(folder, index, name):
-    """Path of the file `name` ("currents", "waveforms") of a job, or None for
+    """Path of the file `name` ("current", "readout") of a job, or None for
     a job that recorded no event: it has a deposits file without events and
     nothing after it."""
     path = slice_file(folder, index, name)
     if path.exists():
         return path
-    recorded = len(read_deposits(str(slice_file(folder, index, "deposits"))).events)
+    recorded = len(read_deposits(str(slice_file(folder, index, "deposit"))).events)
     if recorded:
         raise FileNotFoundError(
             f"{path}: job {index} recorded {recorded} events but left no {name} file"

@@ -18,7 +18,7 @@ def event_efficiencies(jobs):
     """
     efficiencies = []
     for folder, index in jobs:
-        path = job_file(folder, index, "currents")
+        path = job_file(folder, index, "current")
         if path is None:
             continue
         events = read_currents(path).events

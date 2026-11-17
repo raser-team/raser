@@ -1,4 +1,4 @@
-"""The deposits slice of a cflm job: deposits_<job>.h5.
+"""The deposits slice of a cflm job: deposit_<job>.h5.
 
 An event is one bunch: the lost electrons of cflm_p1.json shot into the beam
 pipe together. The pads are 24 detectors of the file, named <side>_<i>_<j>;
@@ -69,6 +69,6 @@ def deposits(kwargs):
     with open(app_file_path("apps/cflm", "cflm_p1.json")) as file:
         g4_dic = json.load(file)
     found = bunch_deposits(my_d, g4_dic, kwargs["seed"])
-    write_deposits(output(kwargs, "deposits"), found)
+    write_deposits(output(kwargs, "deposit"), found)
     if not found.events:
         raise Ended  # no bunch reached a pad

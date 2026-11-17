@@ -21,11 +21,11 @@ from raser.core.deposit.deposits import read_deposits
 
 
 def currents(kwargs, pad):
-    deposits_path = output(kwargs, "deposits")
+    deposits_path = output(kwargs, "deposit")
     if not any(pad in record.detector for record in read_deposits(deposits_path).events):
         return {"events": 0}
     my_d = bdv.Detector(kwargs["det_name"], kwargs["_files"]["device"])
-    name = f"currents.{pad}"
+    name = f"current.{pad}"
     write_induced_currents(
         deposits_path,
         output(kwargs, name),
@@ -43,14 +43,14 @@ def currents(kwargs, pad):
 
 
 def waveforms(kwargs, pad):
-    currents_path = output(kwargs, f"currents.{pad}")
+    currents_path = output(kwargs, f"current.{pad}")
     if not os.path.exists(currents_path):
         return {"events": 0}
     my_d = bdv.Detector(kwargs["det_name"], kwargs["_files"]["device"])
     sensor, values = device_sensor(my_d, electrode_names(my_d.read_out_contact, my_d.read_ele_num))
     write_waveforms(
         currents_path,
-        output(kwargs, f"waveforms.{pad}"),
+        output(kwargs, f"readout.{pad}"),
         named_chain(str(kwargs["amplifier"])),
         sensor,
         kwargs.get("seed"),

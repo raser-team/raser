@@ -21,7 +21,7 @@ OFFSET = 2.0e-3  # of the baseline [V]
 def _alone(folder):
     """The seed folder of an experiment without points: it holds its slices."""
     folder.mkdir(parents=True, exist_ok=True)
-    held = {"deposits": "", "currents": "", "waveforms": ""}
+    held = {"deposit": "", "current": "", "readout": ""}
     (folder / "run.json").write_text(json.dumps({"point": "", "held_in": held}))
 
 
@@ -48,9 +48,9 @@ def _job(folder, index, events, electrodes=("top",), truths=None):
             samples[-1] += 12.0e-3
         voltage = np.array([samples] * len(electrodes))
         append_waveforms(
-            batch / f"waveforms_{index}.h5", list(electrodes), DT, EventWaveforms(1000 * index + number, t0 - BEFORE * DT, voltage)
+            batch / f"readout_{index}.h5", list(electrodes), DT, EventWaveforms(1000 * index + number, t0 - BEFORE * DT, voltage)
         )
-    write_deposits(str(batch / f"deposits_{index}.h5"), Deposits(50, None, None, deposits))
+    write_deposits(str(batch / f"deposit_{index}.h5"), Deposits(50, None, None, deposits))
 
 
 def test_point_takes_the_quantities_of_the_events_above_the_amplitude_threshold(tmp_path) -> None:
@@ -59,7 +59,7 @@ def test_point_takes_the_quantities_of_the_events_above_the_amplitude_threshold(
     _job(first, 1, [(2.0e-10, 0.4)])  # 4 mV, below the amplitude threshold
     _job(second, 0, [(-1.0e-10, 2.0)])  # 20 mV: crosses 3 mV three quarters of a bin earlier
     _job(second, 2, [(5.0e-9, 1.0)])  # not among the finished jobs
-    write_deposits(str(second / "batch" / "deposits_1.h5"), Deposits(50, None, None, []))
+    write_deposits(str(second / "batch" / "deposit_1.h5"), Deposits(50, None, None, []))
 
     count, polarity, times = event_times([(first, 0), (first, 1), (second, 0), (second, 1)], 3.0e-3, 5.0e-3)
 
@@ -93,7 +93,7 @@ def test_event_that_is_not_among_the_deposits_is_an_error(tmp_path) -> None:
     _job(tmp_path, 0, [(0.0, 1.0)])
     _job(tmp_path, 1, [(0.0, 1.0)])
     batch = tmp_path / "batch"
-    (batch / "deposits_1.h5").write_bytes((batch / "deposits_0.h5").read_bytes())
+    (batch / "deposit_1.h5").write_bytes((batch / "deposit_0.h5").read_bytes())
 
     with pytest.raises(ValueError, match="event 1000 is not among the deposits"):
         event_times([(tmp_path, 0), (tmp_path, 1)], 3.0e-3, 5.0e-3)
@@ -128,7 +128,7 @@ def test_selected_event_without_a_time_is_counted_as_missing(tmp_path) -> None:
     # in one more event the pulse is in the first bin: nothing before it to cross
     samples = OFFSET + np.concatenate([[-10.0e-3], np.zeros(BEFORE + 12)])
     append_waveforms(
-        tmp_path / "batch" / "waveforms_0.h5", ["top"], DT, EventWaveforms(0, 0.0, np.array([samples]))
+        tmp_path / "batch" / "readout_0.h5", ["top"], DT, EventWaveforms(0, 0.0, np.array([samples]))
     )
 
     result = point_resolution([(tmp_path, 0)], 3.0e-3, 5.0e-3)

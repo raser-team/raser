@@ -49,8 +49,8 @@ WORKFLOW = Workflow(
     components=COMPONENTS,
     in_file=IN_FILE,
     slices=(
-        Slice("currents", _currents, keys=("laser", "voltage"), kinds=("laser",)),
-        Slice("waveforms", _waveforms, keys=("amplifier",), new_events=False),
+        Slice("current", _currents, keys=("laser", "voltage"), kinds=("laser",)),
+        Slice("readout", _waveforms, keys=("amplifier",), new_events=False),
     ),
     seeds=False,
 )

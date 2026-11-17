@@ -15,7 +15,7 @@ from raser.stages.files import output
 
 
 def deposits(kwargs):
-    """The source in the g4setup, or the device alone: deposits_<job>.h5.
+    """The source in the g4setup, or the device alone: deposit_<job>.h5.
     A job that recorded no event ends here."""
     files = kwargs["_files"]
     my_d = bdv.Detector(kwargs["det_name"], files["device"])
@@ -36,7 +36,7 @@ def deposits(kwargs):
         )
         raise SystemExit
     recorded = write_simulated_deposits(
-        output(kwargs, "deposits"),
+        output(kwargs, "deposit"),
         my_d,
         files["source"],
         files.get("g4setup"),

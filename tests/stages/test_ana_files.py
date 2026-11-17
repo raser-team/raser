@@ -12,23 +12,23 @@ def test_slice_file_is_in_the_point_that_holds_the_slice(tmp_path) -> None:
     # nothing above the experiment
     folder = tmp_path / "amplifier=B" / "seed_7"
     folder.mkdir(parents=True)
-    held = {"deposits": "", "currents": "amplifier=A", "waveforms": "amplifier=B"}
+    held = {"deposit": "", "current": "amplifier=A", "readout": "amplifier=B"}
     (folder / "run.json").write_text(json.dumps({"point": "amplifier=B", "held_in": held}))
 
-    assert slice_file(folder, 3, "deposits") == tmp_path / "seed_7" / "batch" / "deposits_3.h5"
+    assert slice_file(folder, 3, "deposit") == tmp_path / "seed_7" / "batch" / "deposit_3.h5"
     assert (
-        slice_file(folder, 3, "currents")
-        == tmp_path / "amplifier=A" / "seed_7" / "batch" / "currents_3.h5"
+        slice_file(folder, 3, "current")
+        == tmp_path / "amplifier=A" / "seed_7" / "batch" / "current_3.h5"
     )
-    assert slice_file(folder, 3, "waveforms") == folder / "batch" / "waveforms_3.h5"
+    assert slice_file(folder, 3, "readout") == folder / "batch" / "readout_3.h5"
 
 
 def test_job_without_events_is_known_from_the_deposits_of_the_point_that_holds_them(tmp_path) -> None:
     folder = tmp_path / "amplifier=B" / "seed_7"
     folder.mkdir(parents=True)
-    held = {"deposits": "", "currents": "", "waveforms": "amplifier=B"}
+    held = {"deposit": "", "current": "", "readout": "amplifier=B"}
     (folder / "run.json").write_text(json.dumps({"point": "amplifier=B", "held_in": held}))
     (tmp_path / "seed_7" / "batch").mkdir(parents=True)
-    write_deposits(str(tmp_path / "seed_7" / "batch" / "deposits_3.h5"), Deposits(50, None, None, []))
+    write_deposits(str(tmp_path / "seed_7" / "batch" / "deposit_3.h5"), Deposits(50, None, None, []))
 
-    assert job_file(folder, 3, "waveforms") is None
+    assert job_file(folder, 3, "readout") is None

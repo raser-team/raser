@@ -21,7 +21,7 @@ def test_dry_run_names_the_seed_folder_of_every_point_and_writes_nothing(
     lines = capsys.readouterr().out.splitlines()
 
     experiment = work_root / "HPK-Si-PiN" / "cce"
-    slices = [f"  {name:<12}jobs [0, 1]" for name in ("deposits", "field", "currents", "waveforms")]
+    slices = [f"  {name:<12}jobs [0, 1]" for name in ("deposit", "field", "current", "readout")]
     assert lines == [
         f"{experiment / 'seed_42'}: jobs [0, 1]",
         *slices,
@@ -45,7 +45,7 @@ def test_tct_dry_run_names_the_point_folders_under_the_tct_experiment(
     lines = capsys.readouterr().out.splitlines()
 
     experiment = work_root / "HPK-Si-PiN" / "tct"
-    slices = [f"  {name:<12}jobs [0]" for name in ("currents", "waveforms")]
+    slices = [f"  {name:<12}jobs [0]" for name in ("current", "readout")]
     assert lines == [
         f"{experiment}: jobs [0]",
         *slices,

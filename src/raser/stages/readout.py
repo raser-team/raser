@@ -10,15 +10,15 @@ from raser.stages.files import output
 
 def waveforms(kwargs):
     """The currents through the sensor circuit of the device and the chain the
-    amplifier names: waveforms_<job>.h5. The noise of the circuit is drawn
+    amplifier names: readout_<job>.h5. The noise of the circuit is drawn
     with the seed lifecycle gives the slice; a run without seeds has no noise."""
     my_d = bdv.Detector(kwargs["det_name"], kwargs["_files"]["device"])
     sensor, _ = device_sensor(
         my_d, electrode_names(my_d.read_out_contact, my_d.read_ele_num)
     )
     write_waveforms(
-        output(kwargs, "currents"),
-        output(kwargs, "waveforms"),
+        output(kwargs, "current"),
+        output(kwargs, "readout"),
         named_chain(str(kwargs["amplifier"])),
         sensor,
         kwargs.get("seed"),
