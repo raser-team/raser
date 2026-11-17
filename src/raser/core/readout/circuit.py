@@ -105,12 +105,12 @@ def read_subcircuit(path):
 
 def read_chain(paths):
     """Chain, as spice.solve takes it, of the stages in the SPICE files paths,
-    from the sensor to the load: each stage on the output of the one before,
-    the last file the load. The load alone is the sensor read out as it is.
+    from the device to the load: each stage on the output of the one before,
+    the last file the load. The load alone is the device read out as it is.
 
-    A stage is known in the chain by the name of its file; where the same
-    file stands in the chain again, by its name and which of them it is:
-    Gali52, then Gali52_2.
+    A stage is known in the chain by the name of its file; where that name
+    is already taken in the chain, by the name and the first number from 2
+    that frees it: Gali52, then Gali52_2.
     """
     *stage_paths, load_path = [Path(path) for path in paths]
     stages: dict = {}
@@ -121,8 +121,11 @@ def read_chain(paths):
                 f"{path} has no output: it can only be the load, the last of "
                 f"the chain, not its part {place} of {len(paths)}"
             )
-        before = stage_paths[: place - 1].count(path)
-        stages[f"{path.stem}_{before + 1}" if before else path.stem] = stage
+        name, number = path.stem, 1
+        while name in stages:
+            number += 1
+            name = f"{path.stem}_{number}"
+        stages[name] = stage
     load = read_subcircuit(load_path)
     if "out" in load["ports"]:
         raise ValueError(
@@ -134,7 +137,7 @@ def read_chain(paths):
 
 def named_chain(name):
     """Chain, as spice.solve takes it, that a name puts together: the names
-    of its stages from the sensor to the load, joined by "+", the last one the
+    of its stages from the device to the load, joined by "+", the last one the
     load, such as Gali52+Gali52+Termination50. Each is a SPICE file among the
     afe components."""
     return read_chain(

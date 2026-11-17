@@ -38,18 +38,30 @@ def test_a_script_g4setup_is_its_dictionary_with_its_name_and_the_hash_of_the_fi
     assert given["file"] == str(project / "world.py") and given["sha256"] == read["sha256"]
 
 
-def test_a_json_g4setup_reads_as_it_always_did(project: Path) -> None:
+def test_a_json_g4setup_is_refused_and_told_to_be_a_script(project: Path) -> None:
     (project / "old.json").write_text(json.dumps({"world": "G4_AIR", "maxstep": 1}))
-
-    assert loader.read_g4setup("old") == {"world": "G4_AIR", "maxstep": 1}
-
-
-def test_a_script_and_a_json_of_one_name_in_one_place_are_refused(project: Path) -> None:
     (project / "world.py").write_text(SCRIPT)
     (project / "world.json").write_text("{}")
 
-    with pytest.raises(ValueError, match="both world.py and world.json"):
+    with pytest.raises(ValueError, match="old.py"):
+        loader.read_g4setup("old")
+    with pytest.raises(ValueError, match="world.py"):
         loader.read_g4setup("world")
+    with pytest.raises(ValueError, match="a g4setup is a script now"):
+        loader.read_g4setup(str(project / "old.json"))
+
+
+
+def test_a_json_beside_a_script_of_a_root_searched_later_is_not_looked_at(
+    project: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    later = tmp_path / "later"
+    (later / "g4setup").mkdir(parents=True)
+    (later / "g4setup" / "world.json").write_text("{}")
+    monkeypatch.setenv("RASER_COMPONENT_PATH", str(later))
+    (project / "world.py").write_text(SCRIPT)
+
+    assert loader.read_g4setup("world")["world"] == "G4_Galactic"
 
 
 def test_a_script_of_one_path_and_content_runs_once(project: Path) -> None:
@@ -82,3 +94,25 @@ def test_a_change_of_the_script_alone_makes_a_run_out_of_date(
     execute(toy, kwargs)
 
     assert any("the old run is replaced" in line and "files" in line for line in lines)
+
+
+def test_a_script_changed_within_one_second_runs_as_its_recorded_digest_says(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import hashlib
+    import os
+    import sys
+
+    monkeypatch.setattr(sys, "dont_write_bytecode", False)  # as Python is run without -B
+
+    script = project / "edited.py"
+    script.write_text(SCRIPT)
+    stat = script.stat()
+    assert loader.read_g4setup("edited")["maxstep"] == 2
+
+    script.write_text(SCRIPT.replace('"maxstep": 2', '"maxstep": 3'))  # same size
+    os.utime(script, ns=(stat.st_atime_ns, stat.st_mtime_ns))  # and the same time
+
+    recorded = loader.read_g4setup("edited")
+    assert recorded["sha256"] == hashlib.sha256(script.read_bytes()).hexdigest()
+    assert recorded["maxstep"] == 3

@@ -1,9 +1,0 @@
-{
-  "name": "device_alone",
-  "description": "The device alone in vacuum",
-  "geant4_model": "device",
-  "object": {},
-  "world": "G4_Galactic",
-  "maxstep": 2,
-  "g4_vis": false
-}

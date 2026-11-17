@@ -117,3 +117,24 @@ def test_a_job_submitted_to_the_cluster_is_submitted_failed_or_uncertain_as_the_
     assert states["deposit"]["submitted"] == [0]
     assert states["deposit"]["failed"] == [1] and not (folder / "batch" / "deposit_1.submitted").exists()
     assert states["deposit"]["uncertain"] == [2] and (folder / "batch" / "deposit_2.submitted").exists()
+
+
+def test_a_job_that_ran_only_the_slices_it_was_asked_leaves_the_later_ones_not_started(tmp_path: Path) -> None:
+    folder, record = _folder(tmp_path, 2)
+    for i in (0, 1):
+        mark(folder, i, "deposit").touch()
+    (folder / "batch" / "job_0.log").write_text(f"{workflow_module.JOB_ENDED}: deposit\n")
+    (folder / "batch" / "job_1.log").write_text("RuntimeError: x\n")
+
+    states = status.folder_states(CHAIN, folder, record, ready=lambda piece: True)
+
+    assert states["field"]["not started"] == [0] and states["field"]["failed"] == [1]
+
+
+def test_a_run_recorded_with_the_slice_names_of_an_older_raser_is_out_of_date(tmp_path: Path, monkeypatch) -> None:
+    folder, record = _folder(tmp_path, 1)
+    record["held_in"] = dict.fromkeys(("deposits", "field", "currents"), "")
+
+    lines = status._folder_lines(CHAIN, folder, record, None, lambda piece: True)
+
+    assert lines == [f"{folder}: out of date (recorded with the slices ['currents', 'deposits', 'field'])"]

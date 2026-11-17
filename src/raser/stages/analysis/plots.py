@@ -5,8 +5,6 @@ import math
 import matplotlib.pyplot as plt
 import numpy as np
 
-from .timing import CFD_FRACTIONS
-
 PICOSECOND = 1.0e-12  # s
 MILLIVOLT = 1.0e-3  # V
 
@@ -76,8 +74,9 @@ def draw_differences(times, widths, path):
 
 def draw_fractions(widths, path):
     """Width of the core of CFD - truth against the fraction of the CFD."""
-    fractions = np.array(CFD_FRACTIONS)
-    chosen = [widths[f"CFD{round(100 * part)}"] for part in CFD_FRACTIONS]
+    names = [name for name in widths if name.startswith("CFD")]
+    fractions = np.array([int(name[3:]) / 100 for name in names])
+    chosen = [widths[name] for name in names]
     figure, axis = plt.subplots(figsize=(6, 4))
     axis.errorbar(
         fractions,

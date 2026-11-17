@@ -6,7 +6,7 @@ from raser.core.readout.circuit import read_chain
 from raser.core.readout.circuit import read_subcircuit
 from raser.core.readout.circuit import spice_number
 from raser.core.readout.circuit import subcircuit
-from raser.core.field.sensor_spice import planar_sensor
+from raser.core.field.device_circuit import planar_circuit
 from raser.core.readout.spice import output_noise_spectrum
 from raser.core.readout.spice import solve
 from raser.supports.paths import component_path
@@ -18,7 +18,7 @@ DT_S = 5e-12
 
 def test_stage_and_load_written_from_their_description():
     # the stage puts 100 Ohm and 10 pF across its input and reaches its output
-    # through 100 Ohm; with the 100 Ohm load and the 10 pF sensor the electrode
+    # through 100 Ohm; with the 100 Ohm load and the 10 pF device the electrode
     # sees 100 Ohm parallel to 200 Ohm and 20 pF, and the load half its voltage
     stage = {
         "ports": {"in": "a", "out": "b"},
@@ -40,7 +40,7 @@ def test_stage_and_load_written_from_their_description():
         ["top"],
         DT_S,
         [step],
-        planar_sensor("top", 10e-12),
+        planar_circuit("top", 10e-12),
     )
 
     after = np.clip(times, 0, None)
@@ -115,7 +115,7 @@ def test_stage_read_from_its_spice_file(tmp_path):
         ["top"],
         DT_S,
         [step],
-        planar_sensor("top", 10e-12),
+        planar_circuit("top", 10e-12),
     )
 
     assert stage["elements"]["Rshunt"] == {"between": ["in", "0"], "ohm": 100.0}
@@ -152,7 +152,7 @@ def test_santa_cruz_inverts_with_a_transimpedance_below_its_feedback_resistor():
         ["top"],
         dt,
         [impulse],
-        planar_sensor("top", 5e-12),
+        planar_circuit("top", 5e-12),
     )
 
     transimpedance = -voltage[0].sum() * dt / charge
@@ -169,7 +169,7 @@ Rout inner out 50
 
 
 def test_gain_follows_the_voltage_at_its_input(tmp_path):
-    # the 10 pF sensor sees the 50 Ohm of the input alone; the 50 Ohm load
+    # the 10 pF device sees the 50 Ohm of the input alone; the 50 Ohm load
     # gets half of three times that voltage
     path = tmp_path / "buffer.cir"
     path.write_text(BUFFER)
@@ -186,7 +186,7 @@ def test_gain_follows_the_voltage_at_its_input(tmp_path):
         ["top"],
         DT_S,
         [step],
-        planar_sensor("top", 10e-12),
+        planar_circuit("top", 10e-12),
     )
 
     assert stage["elements"]["E1"]["gain"] == 3.0
@@ -225,7 +225,7 @@ def test_gali52_has_the_gain_its_maker_gives(frequency_hz, gain_db):
     times = (np.arange(3000) + 0.5) * dt
     sine = np.sin(2 * np.pi * frequency_hz * times)
 
-    voltage = solve(chain, ["top"], dt, [1e-6 * sine], planar_sensor("top", 1e-15))
+    voltage = solve(chain, ["top"], dt, [1e-6 * sine], planar_circuit("top", 1e-15))
 
     settled = voltage[0][2000:]
     amplitude = (settled.max() - settled.min()) / 2
@@ -249,14 +249,14 @@ def _chain_files(folder):
 def _step_response(chain):
     times = -1e-9 + (np.arange(1000) + 0.5) * DT_S
     step = np.where(times > 0, 1e-6, 0.0)
-    voltage = solve(chain, ["top"], DT_S, [step], planar_sensor("top", 10e-12))
+    voltage = solve(chain, ["top"], DT_S, [step], planar_circuit("top", 10e-12))
     off_the_jump = (times < 0) | (times > DT_S)
     return np.clip(times, 0, None)[off_the_jump], voltage[0][off_the_jump]
 
 
 def test_chain_of_stages_in_the_order_of_their_files(tmp_path):
     # 100 Ohm in series, then 100 Ohm across the line, then the 300 Ohm load:
-    # the 10 pF sensor sees 175 Ohm, the load the voltage on the 75 Ohm
+    # the 10 pF device sees 175 Ohm, the load the voltage on the 75 Ohm
     files = _chain_files(tmp_path)
 
     chain = read_chain([files["series"], files["across"], files["load"]])
@@ -279,6 +279,40 @@ def test_chain_with_the_same_stage_twice(tmp_path):
     # 100 Ohm across the line, beside the 500 Ohm of the rest
     expected = 1e-6 * 50.0 * (1 - np.exp(-after / (500.0 / 6 * 10e-12)))
     assert voltage == pytest.approx(expected, abs=5e-8)
+
+
+def test_chain_with_two_stages_of_one_name_from_two_folders(tmp_path):
+    # the 100 Ohm in series, then a stage of the same name that lies across
+    # the line: as the series and the across stages of the first test
+    files = _chain_files(tmp_path)
+    (tmp_path / "other").mkdir()
+    other = tmp_path / "other" / "series.cir"
+    other.write_text(".subckt series in out\nR1 in 0 100\nR2 in out 1u\n.ends series\n")
+
+    chain = read_chain([files["series"], other, files["load"]])
+    after, voltage = _step_response(chain)
+
+    assert list(chain["stages"]) == ["series", "series_2"]
+    expected = 1e-6 * 75.0 * (1 - np.exp(-after / (175.0 * 10e-12)))
+    assert voltage == pytest.approx(expected, abs=5e-8)
+
+
+def test_chain_keeps_a_stage_whose_name_another_one_would_be_given(tmp_path):
+    # series, a second series, then a stage whose file is series_2: three
+    # stages, the second series under the first free name
+    files = _chain_files(tmp_path)
+    (tmp_path / "other").mkdir()
+    second = tmp_path / "other" / "series.cir"
+    second.write_text(".subckt series in out\nR1 in out 100\n.ends series\n")
+    third = tmp_path / "series_2.cir"
+    third.write_text(
+        ".subckt series_2 in out\nR1 in 0 100\nR2 in out 1u\n.ends series_2\n"
+    )
+
+    chain = read_chain([files["series"], second, third, files["load"]])
+
+    assert list(chain["stages"]) == ["series", "series_2", "series_2_2"]
+    assert chain["stages"]["series_2_2"]["elements"]["R1"]["between"] == ["in", "0"]
 
 
 def test_chain_that_does_not_end_in_its_only_load_is_refused(tmp_path):
@@ -317,8 +351,7 @@ def test_noiseless_resistor_loads_the_circuit_and_adds_no_noise(tmp_path):
 
     _, density = output_noise_spectrum(
         {"stages": {"quiet": stage}, "load": load},
-        ["top"],
-        planar_sensor("top", 1e-12),
+        planar_circuit("top", 1e-12),
         1e3,
         1e6,
     )
@@ -360,7 +393,7 @@ def test_broad_band_cividec_has_the_gain_its_maker_gives(frequency_hz, gain_db):
     times = (np.arange(3000) + 0.5) * dt
     sine = np.sin(2 * np.pi * frequency_hz * times)
 
-    voltage = solve(chain, ["top"], dt, [1e-6 * sine], planar_sensor("top", 1e-15))
+    voltage = solve(chain, ["top"], dt, [1e-6 * sine], planar_circuit("top", 1e-15))
 
     settled = voltage[0][2000:]
     amplitude = (settled.max() - settled.min()) / 2
@@ -376,7 +409,7 @@ def test_broad_band_cividec_has_the_input_noise_its_maker_gives():
     chain = named_chain("BroadBandCividec+Termination50")
 
     frequencies, density = output_noise_spectrum(
-        chain, ["top"], planar_sensor("top", 1e-18), 1e3, 1e12
+        chain, planar_circuit("top", 1e-18), 1e3, 1e12
     )
 
     power = density[0] ** 2
@@ -395,7 +428,7 @@ def test_charge_sensitive_cremat_has_the_step_its_maker_gives(sensor_pf):
     current[50] = -1e-15 / dt
 
     voltage = solve(
-        chain, ["top"], dt, [current], planar_sensor("top", sensor_pf * 1e-12)
+        chain, ["top"], dt, [current], planar_circuit("top", sensor_pf * 1e-12)
     )[0]
 
     assert voltage[-1] == pytest.approx(0.7e-3, rel=0.02)
@@ -414,7 +447,7 @@ def test_charge_sensitive_cremat_has_the_noise_slope_its_maker_gives():
 
     def electrons(sensor_f):
         frequencies, density = output_noise_spectrum(
-            chain, ["top"], planar_sensor("top", sensor_f), 1e1, 1e10
+            chain, planar_circuit("top", sensor_f), 1e1, 1e10
         )
         omega = 2 * np.pi * frequencies * shaping_s
         power = density[0] ** 2 * omega**2 / (1 + omega**2) ** 5

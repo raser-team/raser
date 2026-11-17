@@ -139,10 +139,35 @@ def test_an_installed_raser_records_its_version_and_runs_its_workers_in_the_fold
     from raser.lifecycle import workflow
 
     monkeypatch.setattr(workflow, "REPO_ROOT", None)
-    monkeypatch.setattr(workflow.importlib.metadata, "version", lambda name: "5.0")
-    assert workflow._commit() == "raser 5.0"
+    monkeypatch.setattr(workflow.raser, "__version__", "9.9")
+    assert workflow._commit() == "raser 9.9"
 
     monkeypatch.setattr(scheduler, "REPO_ROOT", None)
     monkeypatch.chdir(tmp_path)
     script = scheduler.worker_script(("raser", "signal", "dev"), None)
     assert f"cd {tmp_path} || exit 1" in script and "env/setup" not in script
+
+
+@pytest.mark.parametrize("scheduler_name", ["hep_sub", "condor"])
+def test_a_job_the_scheduler_lists_with_leading_spaces_is_alive_and_another_is_not(
+    monkeypatch: pytest.MonkeyPatch, scheduler_name: str
+) -> None:
+    monkeypatch.setenv("RASER_SCHEDULER", scheduler_name)
+    listing = "JOBID   OWNER  ST\n  123.0 user R\n  1234.0 user I\n"
+    monkeypatch.setattr(scheduler.subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=0, stdout=listing))
+
+    assert scheduler.job_alive("123") is True
+    assert scheduler.job_alive("12") is False
+
+
+def test_a_long_command_gets_a_job_name_a_folder_allows_and_two_of_them_stay_apart(project: Path) -> None:
+    slices = ",".join(f"current.I_{pad},readout.I_{pad}" for pad in range(24))
+    long = ["cflm", "/exp/seed_1", "--job-slices", slices, "--job", "0"]
+    other = [*long[:-1], "1"]
+
+    names = [scheduler.plan_job("cflm", command, 1).job_file.name for command in (long, other)]
+    short = scheduler.plan_job("signal", COMMAND, 1).job_file.name
+
+    assert all(len(name.encode()) <= 255 for name in names)
+    assert names[0] != names[1]
+    assert short == "signal_run.job"

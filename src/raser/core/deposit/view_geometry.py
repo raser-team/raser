@@ -80,7 +80,9 @@ def view_geometry(
                 command("/vis/ogl/set/printSize 2000 2000")
                 command(f"/vis/ogl/set/printFilename {output}")
 
-            self.g4RunManager.BeamOn(self.generated_events)
+            # view_geometry asks for generated events: the run generates them all
+            self.g4RunManager.BeamOn(self.total_events)
+            self.generated_events = self.total_events
 
             command("/vis/viewer/flush")
             if output and tsg:
@@ -94,7 +96,9 @@ def view_geometry(
     if driver.upper() not in _DRIVERS_WITHOUT_SESSION:
         session = g4b.G4UIExecutive(1, [os.getcwd()])
     my_g4 = ViewedG4Interaction(
-        my_d, g4_configuration(tilted(source, my_d.l_z), g4setup, events, None, None), g4_seed
+        my_d,
+        tilted(g4_configuration(source, g4setup, None, None, None, generated=events), my_d.l_z),
+        g4_seed,
     )
     try:
         if session is not None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import getpass
+import hashlib
 import grp
 import os
 import re
@@ -107,6 +108,11 @@ def worker_script(worker_command: Sequence[str], route: str | None) -> str:
     return "\n".join(lines)
 
 
+# The most bytes of a job's name, with room for ".job", ".sub", ".out" and the
+# ".<process>" condor and hep_sub add.
+_NAME_BYTES = 200
+
+
 def plan_job(destination_subfolder, command, batch_level, *, group=None):
     if batch_level <= 0:
         raise ValueError("Batch memory level must be positive")
@@ -116,6 +122,11 @@ def plan_job(destination_subfolder, command, batch_level, *, group=None):
     memory_mb = 8000 * batch_level
     directory = job_dir(destination_subfolder)
     command_name = "_".join(command_tokens).replace("/", "_")
+    if len(command_name.encode()) > _NAME_BYTES:
+        # A folder allows 255 bytes in a name: the start of the command and a
+        # digest of all of it, which keeps two long commands apart.
+        digest = hashlib.sha256(command_name.encode()).hexdigest()[:16]
+        command_name = f"{command_name.encode()[:_NAME_BYTES - 17].decode(errors='ignore')}_{digest}"
     job_file = directory / f"{command_name}.job"
     worker = ("raser", *command_tokens)
     scheduler = os.environ.get("RASER_SCHEDULER", "hep_sub")
@@ -230,7 +241,8 @@ def job_alive(job_id) -> bool | None:
         return None
     if result.returncode != 0:
         return None
-    held = {line.split()[0].split(".")[0] for line in result.stdout.splitlines() if line[:1].isdigit()}
+    rows = [line.split() for line in result.stdout.splitlines()]
+    held = {words[0].split(".")[0] for words in rows if words and words[0][:1].isdigit()}
     return str(job_id) in held
 
 
