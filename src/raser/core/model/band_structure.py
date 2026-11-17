@@ -21,8 +21,11 @@ def _material(n_c, n_v, e_g, n_i=None):
 
 BAND_STRUCTURE = {
     "Si": _material("2.82e19*pow(T/300, 1.5)", "1.83e19*pow(T/300, 1.5)", "1.12*1.6e-19"),
-    # 4H-SiC: N_c, N_v and n_i are taken as they are, without the
+    # 4H-SiC: N = 2 M_c (2 pi m k T / h^2)^(3/2) with M_c = 3 valleys of
+    # 0.37 m0 and holes of 1.0 m0 (TCAD Parameters for 4H-SiC: A Review,
+    # arXiv:2410.06798, section 6) gives 3.25e15 T^1.5 and 4.8e15 T^1.5,
+    # 1.69e19 and 2.49e19 at 300 K. n_i is taken as it is, without the
     # temperature.
-    "SiC": _material("3.25e15", "4.8e15", "3.26*1.6*1e-19", n_i="3.89e-9"),
+    "SiC": _material("3.25e15*pow(T, 1.5)", "4.8e15*pow(T, 1.5)", "3.26*1.6*1e-19", n_i="3.89e-9"),
     "Diamond": _material("1.8e19*pow(T/300, 1.5)", "1.5e19*pow(T/300, 1.5)", "5.47*1.6e-19"),
 }

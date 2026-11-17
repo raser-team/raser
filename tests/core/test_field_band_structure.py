@@ -43,6 +43,8 @@ def test_the_solver_takes_the_silicon_bands_of_core_model_as_they_were(
     [
         ("SiliconCarbide", "E_g", 3.26 * 1.6 * 1e-19),
         ("SiliconCarbide", "n_i", 3.89e-9),
+        # 4H-SiC at 254 K: 3.25e15 T^1.5, the effective density of states
+        ("SiliconCarbide", "N_c", 3.25e15 * pow(254.0, 1.5)),
         ("Diamond", "N_v", 1.5e19 * pow(254.0 / 300, 1.5)),
         ("Diamond", "n_i", pow(1.8e19 * pow(254.0 / 300, 1.5) * 1.5e19 * pow(254.0 / 300, 1.5), 0.5)
          * math.exp(-5.47 * 1.6e-19 / (2 * 1.3806503e-23 * 254.0))),
