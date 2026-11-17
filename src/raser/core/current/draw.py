@@ -51,18 +51,30 @@ def draw_currents(path, t0, dt, current, hole_current, electron_current,
         sum_cu.GetYaxis().SetTitleOffset(1.2)
         sum_cu.SetTitle("")
         sum_cu.SetNdivisions(5)
+        # the axis holds every curve, the ones of the parts included: on a
+        # neighbouring electrode they can be larger than the total
+        drawn = [current, hole_current, electron_current, gain_hole_current, gain_electron_current]
+        values = [part[electrode] for part in drawn if part is not None]
+        low = min(float(min(part)) for part in values)
+        high = max(float(max(part)) for part in values)
+        margin = 0.05 * (high - low)
+        if margin > 0:
+            sum_cu.SetMinimum(low - margin)
+            sum_cu.SetMaximum(high + margin)
+        # the total first and wide, the parts over it: where a part is the
+        # whole current, as the holes after the electrons are collected,
+        # both stay in sight
+        sum_cu.SetLineColor(418)#kGreen+2
+        sum_cu.SetLineWidth(5)
         sum_cu.Draw("HIST")
         positive_cu.Draw("SAME HIST")
         negative_cu.Draw("SAME HIST")
-        sum_cu.Draw("SAME HIST")
 
         positive_cu.SetLineColor(877)#kViolet-3
         negative_cu.SetLineColor(600)#kBlue
-        sum_cu.SetLineColor(418)#kGreen+2
 
         positive_cu.SetLineWidth(2)
         negative_cu.SetLineWidth(2)
-        sum_cu.SetLineWidth(2)
         c.Update()
 
         if gain_hole_current is not None:
