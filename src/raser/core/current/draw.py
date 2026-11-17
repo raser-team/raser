@@ -20,13 +20,18 @@ def _histogram(name, values, t0, dt):
 
 def draw_currents(path, t0, dt, current, hole_current, electron_current,
                   gain_hole_current=None, gain_electron_current=None, tag=""):
-    """Draw the currents of every electrode, one pdf and one root file each.
+    """Draw the currents of every electrode that has any, one pdf and one
+    root file each, named by the number of the electrode from 1.
 
     The currents are arrays (electrodes, bins) in A on the time axis that
     starts at `t0` with bins of `dt` [s]; the two of the gain are drawn
-    where given.
+    where given. An electrode without current, as most strips of a row are
+    for one particle, is not drawn.
     """
+    parts = [current, hole_current, electron_current, gain_hole_current, gain_electron_current]
     for electrode in range(len(current)):
+        if not any(part[electrode].any() for part in parts if part is not None):
+            continue
         c=ROOT.TCanvas("c","canvas1",1600,1300)
         c.cd()
         c.Update()
@@ -113,7 +118,10 @@ def charge_collection_strip(path, charge):
     """Draw the net charge [C] of every strip, in electrons, against its number."""
     electrons = array('d', [value / ELECTRON_CHARGE for value in charge])
     x = array('d', range(1, len(electrons) + 1))
-    logger.info("Collected charge per electrode (e): %s", list(electrons))
+    logger.info(
+        "Collected charge of the strips that have any (number from 1: e): %s",
+        {number: value for number, value in enumerate(electrons, start=1) if value},
+    )
     c1=ROOT.TCanvas("c1","canvas1",1000,1000)
     cce=ROOT.TGraph(len(electrons),x,electrons)
     cce.SetMarkerStyle(3)
@@ -132,7 +140,10 @@ def charge_collection_pixel(path, charge, x_ele_num, y_ele_num):
     cce=ROOT.TH2I("cce", "Charge Collection Efficiency", x_ele_num, 0, x_ele_num, y_ele_num, 0, y_ele_num)
     for i in range(x_ele_num*y_ele_num):
         cce.Fill(i%x_ele_num, i//x_ele_num, electrons[i])
-    logger.info("Collected charge per electrode (e): %s", electrons)
+    logger.info(
+        "Collected charge of the pixels that have any (number from 1: e): %s",
+        {number: value for number, value in enumerate(electrons, start=1) if value},
+    )
     cce.Draw("COLZ")
     cce.SetTitle("Charge Collection Efficiency")
     cce.GetXaxis().SetTitle("x_elenumber")
