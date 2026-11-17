@@ -1237,6 +1237,48 @@ def test_a_slice_that_ends_the_job_leaves_it_done_and_the_later_slices_unrun_in_
     assert ran == ["deposits", "currents", "waveforms"]
 
 
+def test_a_mark_cut_short_by_a_kill_leaves_the_slice_to_run_again_and_does_not_lose_its_end(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from raser.lifecycle import slices
+
+    ran: list[str] = []
+
+    def no_event(options) -> None:
+        ran.append("deposits")
+        raise slices.Ended
+
+    chain = (Slice("deposits", no_event), Slice("currents", lambda options: ran.append("currents")))
+    folders = {name: tmp_path for name in ("deposits", "currents")}
+    (tmp_path / "batch").mkdir()
+
+    def killed(self, text, *args, **kwargs):
+        open(self, "w").close()  # the file is opened, then the process is killed
+        raise KeyboardInterrupt
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "write_text", killed)
+        with pytest.raises(KeyboardInterrupt):
+            slices.run(chain, folders, 0, {}, ["deposits", "currents"], lambda piece: None)
+
+    assert slices.run(chain, folders, 0, {}, ["deposits", "currents"], lambda piece: None)
+    assert ran == ["deposits", "deposits"]
+
+
+def test_a_job_killed_after_its_last_slice_mark_is_done_at_the_next_command(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], ran: list[tuple[str, Any]], tmp_path: Path
+) -> None:
+    execute(_chain(ran), _chain_kwargs())
+    whole = tmp_path / "toy" / "seed_42" / "batch" / "job_0.done"
+    whole.unlink()
+    ran.clear()
+
+    execute(_chain(ran), _chain_kwargs())
+
+    assert ran == []
+    assert whole.exists()
+
+
 def test_a_file_read_by_a_function_of_the_app_is_judged_and_handed_to_the_job_as_it_was_read(
     started: list[Any], seeded: list[int], disk: dict[str, Any], ran: list[tuple[str, Any]]
 ) -> None:

@@ -302,6 +302,12 @@ def execute(workflow, kwargs, register=True):
     try:
         for folder, left, stale, record, run_again, before, names, (shared, options, files) in todo:
             slices.forget(run_again, folder)
+            if workflow.slices and not stale and (folder / "batch").is_dir():
+                # A job killed after the mark of its last slice and before its own.
+                held_by = _slice_folders(workflow, record, folder)
+                for i in range(kwargs.get("jobs") or 1):
+                    if all(slices.mark(held_by[piece.name], i, piece.name).exists() for piece in workflow.slices):
+                        _done(folder, i).touch()
             unready = [piece.name for piece in shared if piece.shared.ready(options, files) is None]
             waiting = [
                 i
@@ -688,11 +694,7 @@ def _run_one_job(workflow, kwargs, folder, index):
         _submitted(folder, index, "job").unlink(missing_ok=True)
         _start_again(workflow, record, folder, progress=True)
         return
-    # The seed folder of each slice: the one of this run in the point that holds it.
-    root = folder.parent if workflow.seeds else folder
-    root = root.parent if record["point"] else root
-    label = folder.name if workflow.seeds else ""
-    folders = {name: root / point / label for name, point in record["held_in"].items()}
+    folders = _slice_folders(workflow, record, folder)
     options["_slice_batch_paths"] = {name: str(place / "batch") for name, place in folders.items()}
     wanted = (kwargs.get("job_slices") or ",".join(folders)).split(",")
 
@@ -707,6 +709,14 @@ def _run_one_job(workflow, kwargs, folder, index):
     for name in now:
         _submitted(folder, index, name).unlink(missing_ok=True)
     _start_again(workflow, record, folder, progress=bool(now - marked))
+
+
+def _slice_folders(workflow, record, folder) -> dict[str, Path]:
+    """The seed folder of each slice: the one of this run in the point that holds it."""
+    root = folder.parent if workflow.seeds else folder
+    root = root.parent if record["point"] else root
+    label = folder.name if workflow.seeds else ""
+    return {name: root / point / label for name, point in record["held_in"].items()}
 
 
 def _submitted(folder, index, name) -> Path:
