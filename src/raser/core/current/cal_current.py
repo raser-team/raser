@@ -169,6 +169,12 @@ class CalCurrent:
                 starts.append((x, y, z, t))
                 pairs.append(n_pairs)
 
+        # the pairs the drift moves: born where the device does not conduct, by
+        # the test drift makes before the first step
+        self.sensitive_pairs = float(
+            sum(n_pairs for (x, y, z, _), n_pairs in zip(starts, pairs) if not my_f.get_conductive(x, y, z))
+        )
+
         logger.info(f"carriers inside the detector: {len(starts)} electrons, {len(starts)} holes")
         self.electron_system = self.drift_all(my_d, my_f, starts, [-n_pairs for n_pairs in pairs])
         self.hole_system = self.drift_all(my_d, my_f, starts, pairs)
@@ -640,6 +646,7 @@ def write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, pl
                 my_current.current,
                 my_current.charge,
                 my_current.pairs,
+                my_current.sensitive_pairs,
             ),
         )
         if drawn:
@@ -668,7 +675,8 @@ def write_laser_currents(currents_path, my_d, my_f, my_l, plot_path=None):
         my_current.electrodes,
         my_current.t_bin,
         EventCurrents(
-            0, my_current.t_start, my_current.current, my_current.charge, my_current.pairs
+            0, my_current.t_start, my_current.current, my_current.charge, my_current.pairs,
+            my_current.sensitive_pairs,
         ),
     )
     if plot_path is not None:

@@ -109,3 +109,22 @@ def test_bins_are_as_wide_as_the_written_bin_width_when_deposits_are_spread_in_t
     assert (current.t_end - current.t_start) / current.n_bin == pytest.approx(5e-12, rel=1e-12)
     assert current.n_bin == 1251
     assert current.t_end >= 3.3e-12 + 5e-9
+
+
+class _ConductingBelow10um(_UniformField):
+    def get_conductive(self, x, y, z):
+        return z < 10.0
+
+
+def test_sensitive_pairs_leave_out_the_pairs_born_where_the_device_conducts():
+    # 100 pairs at z = 5 um, in the conducting layer, stop where they are born;
+    # 40 at 25 um and 60 at 40 um drift; 7 above the device are not drifted at all
+    current = CalCurrent(
+        SimpleNamespace(**{**vars(_lgad()), "has_avalanche": False}),
+        _ConductingBelow10um(),
+        [100.0, 40.0, 60.0, 7.0],
+        [[50.0, 50.0, 5.0, 0.0], [50.0, 50.0, 25.0, 0.0], [50.0, 50.0, 40.0, 0.0], [50.0, 50.0, 60.0, 0.0]],
+    )
+
+    assert current.pairs == 207.0
+    assert current.sensitive_pairs == 100.0

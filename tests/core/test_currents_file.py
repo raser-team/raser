@@ -81,3 +81,19 @@ def test_currents_file_refuses_an_event_of_other_electrodes(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="holds currents of electrodes"):
         append_currents(path, ["right", "left"], 5.0e-12, record)
+
+
+def test_currents_file_keeps_the_sensitive_pairs_of_each_event(tmp_path) -> None:
+    path = tmp_path / "currents.h5"
+    for number, sensitive in ((3, 90.5), (7, 1750.0)):
+        append_currents(path, ["a"], 5.0e-12, EventCurrents(number, 0.0, np.ones((1, 2)), np.zeros(1), 2000.0, sensitive))
+
+    assert [record.sensitive_pairs for record in read_currents(path).events] == [90.5, 1750.0]
+
+
+def test_currents_file_refuses_an_event_without_sensitive_pairs_among_those_with(tmp_path) -> None:
+    path = tmp_path / "currents.h5"
+    append_currents(path, ["a"], 5.0e-12, EventCurrents(3, 0.0, np.ones((1, 2)), np.zeros(1), 2000.0, 90.5))
+
+    with pytest.raises(ValueError, match="holds sensitive pairs"):
+        append_currents(path, ["a"], 5.0e-12, EventCurrents(7, 0.0, np.ones((1, 2)), np.zeros(1), 2000.0))
