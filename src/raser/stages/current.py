@@ -3,6 +3,7 @@
 import os
 
 from raser.core.current.cal_current import write_induced_currents
+from raser.core.deposit.deposits import read_deposits
 from raser.core.device import build_device as bdv
 from raser.core.field import devsim_field as devfield
 from raser.core.field.solved import solved_field
@@ -27,19 +28,28 @@ def solved(my_d, kwargs):
     )
 
 
-def currents(kwargs):
+def currents(kwargs, position=None):
     """The deposits drifted in the solved field of the device: current_<job>.h5,
-    and the pictures of the first `plots` events in plots/job_<job>."""
+    and the pictures of the first `plots` events in plots/job_<job>.
+
+    With a position, the deposits of that position of the device: the slice
+    current.<position>, its file and pictures named so; a position with no
+    deposit in the job leaves no file and {"events": 0} with its mark."""
+    name = "current" if position is None else f"current.{position}"
+    if position is not None and not any(position in record.detector for record in read_deposits(output(kwargs, "deposit")).events):
+        return {"events": 0}
     my_d = bdv.Detector(kwargs["det_name"], kwargs["_files"]["device"])
     write_induced_currents(
         output(kwargs, "deposit"),
-        output(kwargs, "current"),
+        output(kwargs, name),
         my_d,
         solved(my_d, kwargs),
         int(kwargs["plots"]),
         os.path.join(
-            os.path.dirname(kwargs["_slice_batch_paths"]["current"]),
+            os.path.dirname(kwargs["_slice_batch_paths"][name]),
             "plots",
-            "job_%s" % _job(kwargs),
+            "job_%s" % _job(kwargs) + ("" if position is None else "_%s" % position),
         ),
+        **({} if position is None else {"detector": position}),
     )
+    return None
