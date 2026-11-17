@@ -13,8 +13,8 @@
     "l_Rayleigh": 18.0,
     "central_time": 1e-9,
 
-    "r_step": 1.0,
-    "h_step": 1.0,
+    "pairs_per_group": 1000,
+    "groups": 3200,
 
     "fx_rel": 0.5714285714,
     "fy_rel": 0.5,
