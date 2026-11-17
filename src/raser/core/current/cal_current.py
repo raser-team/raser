@@ -470,10 +470,10 @@ class CalCurrentGain(CalCurrent):
                     if max_carriers > 0:
                         capacity = max_carriers - len(gain_starts)
                         if capacity <= 0:
-                            if gain_starts:
-                                gain_pairs[-1] += pending_pairs
-                            logger.warning("Gain carrier generation reached configured limit (%d).", max_carriers)
-                            return
+                            raise ValueError(
+                                "the gain of {} makes more than gain_max_carriers = {} clusters "
+                                "of carriers: raise it in the device file".format(my_d.det_name, max_carriers)
+                            )
                         slices = min(slices, capacity)
                     for slice_idx in range(slices):
                         fraction = (slice_idx + 0.5) / slices
