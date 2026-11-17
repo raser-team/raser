@@ -18,10 +18,12 @@ def draw_drift_path(my_d, particle_track, my_f, my_current, path):
 
     c1.cd(1)
     ROOT.gPad.SetMargin(0.15, 0.1, 0.1, 0.1)
-    n_bin=[int(my_d.l_x/50),int(my_d.l_y/50),int(my_d.l_z)]
-    structure = ROOT.TH3D("","",n_bin[0],0,my_d.l_x,
-                                n_bin[1],0,my_d.l_y,
-                                n_bin[2],0,my_d.l_z)
+    # an empty histogram that only draws the box of the device: one bin
+    # each way, since a bin of every 50 um of a row of strips 10 cm wide
+    # makes it too large for ROOT to write
+    structure = ROOT.TH3D("","",1,0,my_d.l_x,
+                                1,0,my_d.l_y,
+                                1,0,my_d.l_z)
         
     structure.SetFillColor(1)
     structure.GetXaxis().SetTitle("x axis [\mum]")
