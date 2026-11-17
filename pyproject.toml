@@ -17,6 +17,7 @@ classifiers = [
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
   "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS",
   "License :: OSI Approved :: MIT License"
 ]
 
@@ -26,11 +27,7 @@ dependencies = [
   "pandas",
   "matplotlib",
   "h5py",
-  "PyYAML",
-  "tqdm",
-  "numba",
-  "joblib",
-  "gmsh",
+  "gmsh; sys_platform != 'linux' or platform_machine != 'aarch64'",
   "psutil",
   "devsim",
   "g4ppyy",
