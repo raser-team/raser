@@ -21,7 +21,7 @@ def _parsed(*words: str, folder: Path | str = "/no such folder") -> dict[str, An
     argv = ["field", "HPK-Si-PiN", *words]
     run = {"_run_path": str(folder), "_files": {"device": device_json("HPK-Si-PiN")}}
     parsed = vars(build_parser().parse_args(argv))
-    parsed["solution"] = parsed["solution"] or field.WORKFLOW.defaults["solution"]
+    parsed["mode"] = parsed["mode"] or field.WORKFLOW.defaults["mode"]
     return {**parsed, "_argv": argv, **run}
 
 
@@ -147,6 +147,6 @@ def test_emptying_devsim_keeps_the_linear_solver_it_had(
     assert parameters == chosen
 
 
-def test_a_solution_that_is_not_there_yet_is_refused() -> None:
-    with pytest.raises(NotImplementedError, match="semi_fast solution"):
-        field.solve(_parsed("--solution", "semi_fast"))
+def test_a_mode_that_is_not_there_yet_is_refused() -> None:
+    with pytest.raises(NotImplementedError, match="semi_fast mode"):
+        field.solve(_parsed("--mode", "semi_fast"))

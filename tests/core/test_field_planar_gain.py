@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from raser.core.current.cal_current import gain_algorithm
 from raser.core.current.model import Material
 from raser.core.field.devsim_field import DevsimField
 
@@ -133,3 +134,9 @@ def test_the_gain_is_integrated_once() -> None:
     field.get_potential = None  # a second integration would fail
 
     assert field.planar_gain(DEVICE) == first
+
+
+def test_gain_is_the_planar_integral_in_one_dimension_and_follows_drift_paths_elsewhere() -> None:
+    assert gain_algorithm(SimpleNamespace(axes=("z",))) == "planar_integral"
+    assert gain_algorithm(SimpleNamespace(axes=("x", "z"))) == "local_path"
+    assert gain_algorithm(SimpleNamespace(axes=("x", "y", "z"))) == "local_path"
