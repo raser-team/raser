@@ -17,9 +17,5 @@
 
     "fx_rel" : 0.5,
     "fy_rel" : 0.5,
-    "fz_rel" : 0 ,
-    "pos_points_num": 10,
-    "pos_start_fx": 0.286,
-    "pos_end_fx": 0.716
-    
+    "fz_rel" : 0
 }
