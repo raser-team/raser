@@ -1,5 +1,4 @@
 {
-    "geant4_model": "cflm",
     "pipe": {
         "name": "pipe",
         "material": "G4_Cu",
@@ -35,7 +34,6 @@
     },
     "world": "G4_AIR",
     "BeamOn": 1,
-    "seed": 3020122,
     "NumofGun": 3,
     "par_type": "e-",
     "par_energy": [
@@ -77,9 +75,5 @@
             24.7832
         ]
     ],
-    "maxStep": 2,
-    "DetModule": "NJU-PiN-cflm.json",
-    "vis": 0,
-    "EdepBaseName": "test.root",
-    "CurrentName": "test.root"
+    "maxStep": 2
 }
