@@ -18,7 +18,13 @@ LOWEST_NOISE_HZ = 1e3
 
 
 def write_waveforms(
-    currents_path, waveforms_path, chain, circuit, noise_seed, circuit_values=None
+    currents_path,
+    waveforms_path,
+    chain,
+    circuit,
+    noise_seed,
+    circuit_values=None,
+    pulse_edge=None,
 ):
     """Solve the chain for every event of the currents file and write the
     output voltages to the waveforms file, event by event.
@@ -36,6 +42,8 @@ def write_waveforms(
         share the spectrum of the middle one.
     circuit_values : None, or the values the circuit is made of and where each
         is from, as device_circuit gives them: they are written to the file.
+    pulse_edge : None, or the way the pulse of each output goes, as
+        pulse_edge.pulse_edges gives it: it is written to the file.
     """
     currents = read_currents(currents_path)
     if os.path.exists(waveforms_path):
@@ -68,4 +76,5 @@ def write_waveforms(
             currents.dt,
             EventWaveforms(event.event, event.t0, voltage),
             circuit_values,
+            pulse_edge,
         )

@@ -59,6 +59,8 @@ def test_currents_on_the_cells_of_a_resistive_layer_come_out_on_its_strips(tmp_p
 
     record = read_waveforms(tmp_path / "readout_0.h5")
     assert record.electrodes == ["left", "right"]
+    # the cells lie below the electrode on 740 V: they collect holes
+    assert record.pulse_edge == ["rising", "rising"]
     charge_fc = record.events[0].voltage.sum(axis=1) * DT_S / 50.0 * 1e15
     left_ohm, right_ohm = 25 + 50.0, 75 + 50.0
     assert charge_fc == pytest.approx(

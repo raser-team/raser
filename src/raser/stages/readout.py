@@ -11,6 +11,7 @@ from raser.core.field.circuit_parameters import device_grid
 from raser.core.field.circuit_parameters import device_row
 from raser.core.field.solved import solved_field
 from raser.core.readout.job import write_waveforms
+from raser.core.readout.pulse_edge import pulse_edges
 from raser.stages.files import output
 
 
@@ -18,6 +19,7 @@ def waveforms(kwargs, position=None):
     """The currents through the circuit of the device and the chain the
     amplifier names: readout_<job>.h5. The noise of the circuit is drawn
     with the seed lifecycle gives the slice; a run without seeds has no noise.
+    The file says which way the pulse of each output goes.
 
     A device with a resistive layer has its currents on the cells of the
     layer and is read out on the strips or the pads on it. Its sheet
@@ -55,12 +57,14 @@ def waveforms(kwargs, position=None):
         circuit, values = device_circuit(
             my_d, electrodes, row=row, solved_undepleted=undepleted
         )
+    chain = named_chain(str(kwargs["amplifier"]))
     write_waveforms(
         output(kwargs, current),
         output(kwargs, "readout" if position is None else f"readout.{position}"),
-        named_chain(str(kwargs["amplifier"])),
+        chain,
         circuit,
         kwargs.get("seed"),
         circuit_values=values,
+        pulse_edge=pulse_edges(my_d, chain, list(circuit.outputs)),
     )
     return None

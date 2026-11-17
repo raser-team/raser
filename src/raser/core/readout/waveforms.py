@@ -6,6 +6,9 @@ after another; ``count`` cuts them into events.
 Attributes of the file:
     electrodes  names of the electrodes, in the order of the columns
     dt          width of a time bin [s]
+    pulse_edge  for each electrode, in their order, "rising" or "falling":
+                which way its pulse goes, as the device and the chain make
+                it; not there when none was given
     device_circuit
                 values the circuit of the device is made of and where each
                 is from, as JSON; not there when none were given
@@ -37,10 +40,16 @@ class Waveforms:
     electrodes: list[str]
     dt: float
     events: list[EventWaveforms]
+    pulse_edge: list[str] | None = None
 
 
-def append_waveforms(path, electrodes, dt, record, circuit_values=None):
+def append_waveforms(
+    path, electrodes, dt, record, circuit_values=None, pulse_edge=None
+):
     """Add one event to the file, which is created with the first event.
+
+    pulse_edge : what is written as ``pulse_edge`` when the file is created,
+        one of "rising" and "falling" for each electrode; None writes none.
 
     circuit_values : what is written as ``device_circuit`` when the file is created;
         None writes none.
@@ -51,6 +60,14 @@ def append_waveforms(path, electrodes, dt, record, circuit_values=None):
             f"voltage has shape {voltage.shape}, expected ({len(electrodes)}, bins)"
         )
 
+    if pulse_edge is not None and (
+        len(pulse_edge) != len(electrodes)
+        or not set(pulse_edge) <= {"rising", "falling"}
+    ):
+        raise ValueError(
+            f"pulse_edge {list(pulse_edge)} is not one of rising and falling "
+            f"for each of the electrodes {list(electrodes)}"
+        )
     new = not os.path.exists(path)
     with h5py.File(str(path), "a") as file:
         if new:
@@ -58,6 +75,10 @@ def append_waveforms(path, electrodes, dt, record, circuit_values=None):
             file.attrs["dt"] = float(dt)
             if circuit_values is not None:
                 file.attrs["device_circuit"] = json.dumps(circuit_values)
+            if pulse_edge is not None:
+                file.attrs.create(
+                    "pulse_edge", list(pulse_edge), dtype=h5py.string_dtype()
+                )
             for name, kind in (
                 ("event", "int64"),
                 ("t0", "float64"),
@@ -97,6 +118,9 @@ def read_waveforms(path):
     with h5py.File(str(path), "r") as file:
         electrodes = file.attrs["electrodes"].tolist()
         dt = float(file.attrs["dt"])
+        pulse_edge = (
+            file.attrs["pulse_edge"].tolist() if "pulse_edge" in file.attrs else None
+        )
         numbers = file["event"][()]
         starts = file["t0"][()]
         counts = file["count"][()]
@@ -107,7 +131,7 @@ def read_waveforms(path):
         last = first + int(count)
         events.append(EventWaveforms(int(number), float(start), voltage[first:last].T))
         first = last
-    return Waveforms(electrodes, dt, events)
+    return Waveforms(electrodes, dt, events, pulse_edge)
 
 
 def read_circuit_values(path):
