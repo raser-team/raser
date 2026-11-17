@@ -25,12 +25,11 @@ from raser.core.current.diffusion import ELEMENTARY_CHARGE, collect_by_diffusion
 from raser.core.interaction.deposits import Deposits, EventDeposits
 from raser.core.interaction.deposits import read_deposits, write_deposits
 from raser.core.interaction.ionization import ionized_pairs
-from raser.supports.output import create_path
 from raser.supports.output import output
 from raser.supports.paths import app_file_path
 
 class Telescope:
-    def __init__(self,my_d,my_g4,my_c):
+    def __init__(self,my_d,my_g4,my_c,path):
         """
         Description:
             Telescope spatical resolution analysis, only consider vertical layer, ignore alignment
@@ -48,6 +47,8 @@ class Telescope:
         Resolution : dict
             key_name: LayerID->int
             key_value:  resolution ->list
+        path : str
+            folder of the residual pictures
         @Modify:
         ---------
             2023/08/18
@@ -61,6 +62,7 @@ class Telescope:
         self.pixelsize_z = my_d.l_z
         self.layer_z = my_g4.ltz
         self.seedcharge = my_g4.seedcharge
+        self.path = path
         
         #IO and mid paras
         self.Clusters = []
@@ -239,15 +241,8 @@ class Telescope:
         label.SetTextAlign(12)
         label.Draw()
         
-        now = time.strftime("%Y_%m%d_%H%M")
-        path = output(__file__, "taichu_v1", str(now))
-        #print(path)
-        
-        """ If the path does not exit, create the path"""
-        if not os.access(path, os.F_OK):
-            os.makedirs(path) 
-        
-        canvas.SaveAs(os.path.join(path, Name+".png"))
+        os.makedirs(self.path, exist_ok=True)
+        canvas.SaveAs(os.path.join(self.path, Name+".png"))
         return mean,sigma
     #get ave clustersize
     def _ave_cluster(self,Clustersize,AveClustersize):
@@ -560,7 +555,8 @@ class DiffusedCharge:
 
 def currents(kwargs):
     """The deposits of every layer collected by diffusion: currents.<layer>_<job>.h5,
-    one file per layer.
+    one file per layer. The charge of the last layer of the last event and the
+    residuals of every layer are drawn in plots/job_<job>.
 
     The hits, clusters and residuals are still made here, from the charges
     just collected, until the analysis reads the files.
@@ -577,13 +573,17 @@ def currents(kwargs):
         paths,
         setup["collection_window_s"],
     )
-    draw_charge(my_hit_charge)
-    Telescope(my_d, my_g4, my_hit_charge)
+    plots = os.path.join(
+        os.path.dirname(kwargs["_slice_batch_paths"]["currents"]),
+        "plots",
+        "job_%s" % (kwargs.get("job_index") or 0),
+    )
+    draw_charge(my_hit_charge, plots)
+    Telescope(my_d, my_g4, my_hit_charge, plots)
 
 
-def draw_charge(my_charge):
-    path = os.path.join("output", "telescope",)
-    create_path(path) 
+def draw_charge(my_charge, path):
+    os.makedirs(path, exist_ok=True)
     c=ROOT.TCanvas("c","canvas1",1000,1000)
     c.cd()
     c.Update()
@@ -617,6 +617,8 @@ def taichu_v2(label=""):
     psize = []
     N = 25
     MaxSize = 25.0
+    now = time.strftime("%Y_%m%d_%H%M")
+    path = output(__file__, "taichu_v2", str(now))
     for i in range(N):
         t_my_d = MyObject()
         t_my_d.p_x = MaxSize*(i+1)/N
@@ -627,7 +629,9 @@ def taichu_v2(label=""):
         t_my_g.ltz = [20000.0, 60000.0, 100000.0, 140000.0, 180000.0, 220000.0]
         psize.append(t_my_d.p_x)
         my_hit_test = PixelHitTest(t_my_d, t_my_g)
-        my_telescope_test = Telescope(t_my_d,t_my_g,my_hit_test)
+        my_telescope_test = Telescope(
+            t_my_d, t_my_g, my_hit_test, os.path.join(path, "pixel_%g" % t_my_d.p_x)
+        )
         res.append(my_telescope_test.Resolution_Tol[2][0])
 
     graph = ROOT.TGraph()
@@ -652,9 +656,4 @@ def taichu_v2(label=""):
 
     canvas.Draw()
     Name = "Res vs size"
-    now = time.strftime("%Y_%m%d_%H%M")
-    path = output(__file__, "taichu_v2", str(now))
-    """ If the path does not exit, create the path"""
-    if not os.access(path, os.F_OK):
-        os.makedirs(path) 
     canvas.SaveAs(os.path.join(path, Name+".png"))
