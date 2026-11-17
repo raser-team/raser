@@ -532,6 +532,24 @@ class CalCurrentG4P(CalCurrent):
         )
 
 
+def pulse_in_bins(time_pulse, fwhm, n_bin, bin_width):
+    """Share of a laser pulse in a time bin, for each offset of the bin.
+
+    `time_pulse(t)` [1/s] is the pulse shape, of integral 1, at the time t
+    [s] from its middle, and `fwhm` [s] its full width at half maximum.
+    Returns the integral of `time_pulse` over the bin of `bin_width` [s]
+    centred k bins from the middle, for k from -(n_bin - 1) to n_bin - 1.
+    The integral takes samples a twentieth of the width apart or closer, so
+    a pulse much shorter than a bin gives a share of 1 to the bin it lies in.
+    """
+    samples = max(1, math.ceil(20 * bin_width / fwhm))
+    offsets = np.arange(-(n_bin - 1), n_bin)
+    shares = np.zeros(len(offsets))
+    for sample in range(samples):
+        shares += time_pulse((offsets + (sample + 0.5) / samples - 0.5) * bin_width)
+    return shares * bin_width / samples
+
+
 class CalCurrentLaser(CalCurrent):
     def __init__(self, my_d, my_f, my_l, keep_drift_paths=True, diffusion=True):
         super().__init__(
@@ -545,8 +563,9 @@ class CalCurrentLaser(CalCurrent):
         
         # convolute the currents with the laser pulse shape in time
         bin_width = (self.t_end - self.t_start) / self.n_bin
+        shares = pulse_in_bins(my_l.timePulse, my_l.temporal_FWHM, self.n_bin, bin_width)
         bins = np.arange(self.n_bin)
-        pulse = my_l.timePulse((bins[:, None] - bins[None, :]) * bin_width) * bin_width
+        pulse = shares[bins[:, None] - bins[None, :] + self.n_bin - 1]
         convolved = [
             (self.hole_current, self.positive_cu),
             (self.electron_current, self.negative_cu),
