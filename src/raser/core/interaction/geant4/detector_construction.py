@@ -118,6 +118,20 @@ class GeneralDetectorConstruction(g4b.G4VUserDetectorConstruction):
         sidey = object["side_y"] * g4b.um
         sidez = object["side_z"] * g4b.um
         self.solid[name] = g4b.G4Box(name, sidex / 2.0, sidey / 2.0, sidez / 2.0)
+        if object.get("tub"):
+            # a hole along z through the middle: tub_radius, and tub_depth half its length [um]
+            self.solid[name + "box"] = self.solid[name]
+            self.solid[name + "tub"] = g4b.G4Tubs(
+                name + "tub",
+                0,
+                object["tub"]["tub_radius"] * g4b.um,
+                object["tub"]["tub_depth"] * g4b.um,
+                0,
+                360 * g4b.deg,
+            )
+            self.solid[name] = g4b.G4SubtractionSolid(
+                name, self.solid[name + "box"], self.solid[name + "tub"]
+            )
 
         self.logical[name] = g4b.G4LogicalVolume(self.solid[name], material_type, name)
         self.physical[name] = g4b.G4PVPlacement(

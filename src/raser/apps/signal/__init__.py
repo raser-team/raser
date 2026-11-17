@@ -14,6 +14,7 @@ from raser.lifecycle.workflow import Workflow
 DEFAULTS = json.loads((Path(__file__).parent / "signal.json").read_text("utf-8"))
 KEYS = (
     "source",
+    "g4setup",
     "events_per_job",
     "edep_min",
     "edep_max",
@@ -22,7 +23,7 @@ KEYS = (
     "irradiation",
     "amplifier",
 )
-COMPONENTS = {"source": "source"}  # kind of file -> option
+COMPONENTS = {"source": "source", "g4setup": "g4setup"}  # kind of file -> option
 IN_FILE = {"voltage": "device.bias.voltage"}  # option -> where it sits in a file
 
 
@@ -33,6 +34,7 @@ def add_arguments(parser):
         nargs="?",
         help="signal source or beam configuration",
     )
+    parser.add_argument("--g4setup", help="what surrounds the device in Geant4")
     parser.add_argument("-evt", "--events-per-job", type=int, help="events per job")
     parser.add_argument(
         "--edep-min", type=float, help="least energy deposited in the device [MeV]"
@@ -98,6 +100,7 @@ WORKFLOW = Workflow(
     keys=KEYS,
     defaults={
         "source": DEFAULTS["source"],
+        "g4setup": "device_alone",
         "amplifier": DEFAULTS["afe"],
         "events_per_job": 1,
         "plots": 100,
