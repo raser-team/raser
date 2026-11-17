@@ -19,6 +19,12 @@ except ImportError:
 
 from raser.supports.output import output
 
+from .impact_ionization import VAN_OVERSTRAETEN
+
+# Relative permittivity. Si: Sze and Ng, Physics of Semiconductor Devices,
+# 3rd ed. (2007), appendix G; 4H-SiC: 9.76, along the c axis; diamond: 5.7.
+RELATIVE_PERMITTIVITY = {"Si": 11.9, "SiC": 9.76, "Diamond": 5.7}
+
 class Material:
 
     def __init__(self,mat_name,mobility_model=None,avalanche_model=None):
@@ -32,14 +38,14 @@ class Material:
     def mat_database(self):
         m_e = 9.109e-31
         if self.mat_name == "Si":
-            self.permittivity=11.5
+            self.permittivity=RELATIVE_PERMITTIVITY["Si"]
             self.hole_mass = 0.386*m_e
             self.electron_mass = 0.26*m_e
             self.avalanche_model = "vanOverstraeten"
             self.mobility_model = 'Selberherr'
         if self.mat_name == "SiC":
             # 4H-SiC, use the longitudinal effective mass
-            self.permittivity=9.76
+            self.permittivity=RELATIVE_PERMITTIVITY["SiC"]
             self.hole_mass = 1.0*m_e
             self.electron_mass = 0.29*m_e
             self.avalanche_model = 'Hatakeyama'
@@ -47,7 +53,7 @@ class Material:
 
         if self.mat_name == "Diamond":
             # no avalanche model: an undoped MIM device has no gain
-            self.permittivity=5.7
+            self.permittivity=RELATIVE_PERMITTIVITY["Diamond"]
             self.avalanche_model = None
             self.mobility_model = 'Reggiani_diamond'
 
@@ -265,52 +271,10 @@ class Material:
 
         # van Overstraeten – de Man Model
         if(self.avalanche_model == 'vanOverstraeten'):
-
-            hbarOmega = 0.063 # eV
-            E0 = 4.0e5 # V/cm
-            T0 = 293.0 # K
-            k_T0 = 0.0257 # eV
-
-            # electron
-            if( charges < 0 ): 
-
-                a_low = 7.03e5 # cm-1
-                a_high = 7.03e5 # cm-1
-
-                b_low = 1.232e6 # cm-1
-                b_high = 1.232e6 # cm-1
-
-                #
-                # For BandgapDependence parameters
-                #
-
-                # Glambda = 62e-8 #cm
-                # beta_low = 0.678925 # 1
-                # beta_high = 0.678925 # 1
-
-            # hole
-            if( charges > 0 ): 
-
-                a_low = 1.582e6 # cm-1
-                a_high = 6.71e5 # cm-1
-
-                b_low = 2.036e6 # cm-1
-                b_high = 1.693e6 # cm-1
-
-                Glambda = 45e-8 #cm
-
-                beta_low = 0.815009 # 1
-                beta_high =  0.677706 # 1
-
-            Ggamma = math.tanh(hbarOmega/(2*k_T0))/math.tanh(hbarOmega/(2*k_T0*T/T0))
-            
-            if(E>1.75e05):
-                if(E>E0):
-                    coefficient = Ggamma*a_high*math.exp(-(Ggamma*b_high)/E)
-                else:
-                    coefficient = Ggamma*a_low*math.exp(-(Ggamma*b_low)/E)
-            else:
-                coefficient = 0.
+            if( charges < 0 ):
+                coefficient = VAN_OVERSTRAETEN["electron"].value(E=E, T=T)
+            if( charges > 0 ):
+                coefficient = VAN_OVERSTRAETEN["hole"].value(E=E, T=T)
 
         if(self.avalanche_model == 'Okuto'):
 
