@@ -1,7 +1,6 @@
 {
     "tech" : "SPA",
     "direction" : "edge",
-    "laser_model" : "SPA_edge_Si",
     
     "refractionIndex" : 3.51,
 

@@ -1,7 +1,6 @@
 {
     "tech" : "SPA",
     "direction" : "bottom",
-    "laser_model" : "SPA_bottom_Si",
     
     "refractionIndex" : 3.51,
 

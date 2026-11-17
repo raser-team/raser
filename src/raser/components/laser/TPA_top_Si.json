@@ -1,7 +1,6 @@
 {
     "tech": "TPA",
     "direction": "top",
-    "laser_model": "TPA_top_3D_pixel_P1_57V",
 
     "beta_2": 1.5E-11,
     "refractionIndex": 3.51,

@@ -1,7 +1,6 @@
 {
     "tech" : "SPA",
     "direction" : "top",
-    "laser_model" : "SPA_top_Si_IR",
     
     "refractionIndex" : 3.51,
 

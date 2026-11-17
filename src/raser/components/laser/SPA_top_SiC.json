@@ -1,7 +1,6 @@
 {
     "tech" : "SPA",
     "direction" : "top",
-    "laser_model" : "top_TCT",
     
     "alpha": 1000,
     "refractionIndex" : 3.124,

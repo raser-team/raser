@@ -57,7 +57,6 @@ class LaserInjection:
     """
     def __init__(self, my_d: Detector, laser_dic: dict):
         #technique used
-        self.model = laser_dic["laser_model"]
         self.tech = laser_dic["tech"]
         self.direction = laser_dic["direction"]
         #material parameters to certain wavelength of the beam
