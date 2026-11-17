@@ -15,6 +15,8 @@ KEYS = (
     "source",
     "g4setup",
     "events_per_job",
+    "generated_per_job",
+    "generated_limit",
     "edep_min",
     "edep_max",
     "fano",
@@ -45,7 +47,11 @@ def deposit_arguments(parser):
         help="signal source or beam configuration",
     )
     parser.add_argument("--g4setup", help="what surrounds the device in Geant4")
-    parser.add_argument("-evt", "--events-per-job", type=int, help="events per job")
+    parser.add_argument("-evt", "--events-per-job", type=int, help="events a job records")
+    parser.add_argument("-gen", "--generated-per-job", type=int, help="events a job generates, in place of -evt")
+    parser.add_argument(
+        "--generated-limit", type=int, help="the most events a job generates to record its -evt"
+    )
     parser.add_argument(
         "--edep-min", type=float, help="least energy deposited in the device [MeV]"
     )
@@ -175,7 +181,11 @@ def _shared_field(device):
     )
 
 
-DEPOSIT_KEYS = ("source", "g4setup", "events_per_job", "edep_min", "edep_max", "fano")
+DEPOSIT_KEYS = (
+    "source", "g4setup", "events_per_job", "generated_per_job", "generated_limit", "edep_min", "edep_max", "fano"
+)
+# A job records a number of events or generates one: one of the two is given.
+EXCLUSIVE = (("events_per_job", "generated_per_job"),)
 
 
 def expand(devices=None, deposit=_deposits) -> tuple:

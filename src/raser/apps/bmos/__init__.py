@@ -16,6 +16,7 @@ WORKFLOW = Workflow(
     readers=chain.READERS,
     in_file=chain.IN_FILE,
     slices=chain.SLICES,
+    exclusive=chain.EXCLUSIVE,
     command=chain.job_command,
 )
 
