@@ -1,15 +1,15 @@
 import numpy as np
 import pytest
 
-from raser.core.metrics.reconstruction import InputWaveform
-from raser.core.metrics.reconstruction import get_amplitude
-from raser.core.metrics.reconstruction import get_CFD50
-from raser.core.metrics.reconstruction import get_charge
-from raser.core.metrics.reconstruction import get_CoG
-from raser.core.metrics.reconstruction import get_ToA
-from raser.core.metrics.reconstruction import get_ToT
-from raser.core.metrics.reconstruction import net_pulse
-from raser.core.metrics.reconstruction import pulse_polarity
+from raser.core.reconstruction.event import InputWaveform
+from raser.core.reconstruction.event import get_amplitude
+from raser.core.reconstruction.event import get_CFD50
+from raser.core.reconstruction.event import get_charge
+from raser.core.reconstruction.event import get_CoG
+from raser.core.reconstruction.event import get_ToA
+from raser.core.reconstruction.event import get_ToT
+from raser.core.reconstruction.event import net_pulse
+from raser.core.reconstruction.event import pulse_polarity
 
 # a triangle: 2 per bin up to 10 in bin 6, then down again
 TRIANGLE = np.array([0.0, 0, 2, 4, 6, 8, 10, 8, 6, 4, 2, 0, 0])
