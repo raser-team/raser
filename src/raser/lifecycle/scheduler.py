@@ -88,8 +88,14 @@ def worker_script(worker_command: Sequence[str], route: str | None) -> str:
         "    done",
         '    export "$raser_bind_name=$raser_filtered_binds"',
         "done",
-        f"cd {shlex.quote(str(REPO_ROOT))} || exit 1",
-        f". {setup} || exit $?",
+        # From a source tree the worker sets up its environment there; installed
+        # as a package it runs in the folder of the command, in the environment
+        # hep_sub hands on.
+        *(
+            [f"cd {shlex.quote(str(REPO_ROOT))} || exit 1", f". {setup} || exit $?"]
+            if REPO_ROOT is not None
+            else [f"cd {shlex.quote(os.getcwd())} || exit 1"]
+        ),
         shlex.join(worker_command),
     ]
     return "\n".join(lines)
