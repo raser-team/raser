@@ -96,7 +96,8 @@ def test_way_of_a_chain_is_its_swing_from_where_its_output_rests():
     lifted = {
         "ports": {"in": "a", "out": "c"},
         "elements": {
-            **INVERTING["elements"],
+            "R1": {"between": ["a", "0"], "ohm": 50.0},
+            "E1": {"between": ["b", "0"], "follows": ["a", "0"], "gain": -10.0},
             "V1": {"between": ["c", "b"], "volt": 1.0},
         },
     }
