@@ -463,6 +463,7 @@ class CalCurrentGain(CalCurrent):
                         continue
                     active_pairs += new_pairs
                     pending_pairs += new_pairs
+                    last_growth = (x0, y0, z0, t0, x1, y1, z1, t1)
                     if pending_pairs < min_pairs:
                         continue
 
@@ -484,6 +485,18 @@ class CalCurrentGain(CalCurrent):
                         gain_pairs.append(pending_pairs / slices)
                     pending_pairs = 0.0
                     emitted_segments += 1
+
+                # pairs too few to emit by the end of the path start at the
+                # middle of the last segment they grew on
+                if pending_pairs > 0:
+                    if max_carriers > 0 and len(gain_starts) >= max_carriers:
+                        raise ValueError(
+                            "the gain of {} makes more than gain_max_carriers = {} clusters "
+                            "of carriers: raise it in the device file".format(my_d.det_name, max_carriers)
+                        )
+                    x0, y0, z0, t0, x1, y1, z1, t1 = last_growth
+                    gain_starts.append(((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2, (t0 + t1) / 2))
+                    gain_pairs.append(pending_pairs)
 
         logger.info("local gain emitted segments: %d", emitted_segments)
         if field_failures:
