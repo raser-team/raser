@@ -299,7 +299,7 @@ def _points(workflow, kwargs, config, given) -> tuple[dict, dict]:
         options do not make a measurement of its own (Slice.new_events)."""
         given_here = {**fixed, **values}
         options, files = _point(workflow, kwargs, given_here)
-        changed = [key for key in values if options[key] != base[key]]
+        changed = [key for key in values if options[key] != base.get(key)]
         name = "_".join(f"{label[key]}_{_text(options[key])}" for key in changed)
         if name not in points:
             points[name] = (options, files, given_here, held_in := [])

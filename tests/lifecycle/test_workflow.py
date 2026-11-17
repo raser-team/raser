@@ -464,6 +464,16 @@ def test_the_first_run_writes_its_scan_to_the_config_and_later_runs_repeat_it(
     ]
 
 
+def test_an_option_without_a_default_can_be_scanned_and_every_value_gets_a_folder(
+    started: list[Any], tmp_path: Path
+) -> None:
+    workflow = replace(GAIN, defaults={"width": 1.0})
+
+    execute(workflow, _kwargs(gain=None, width=None, scan=["gain=5,7"], jobs=2))
+
+    assert _folders(started, tmp_path / "toy") == ["gain_5/seed_42", "gain_7/seed_42"]
+
+
 def _kept(experiment: Path) -> list[Path]:
     return sorted(experiment.glob("seed_42_*"))
 
