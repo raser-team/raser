@@ -113,3 +113,25 @@ def test_position_reads_and_writes_the_files_of_its_own_slices(tmp_path) -> None
 
     assert list(read_event_table(batch / "reconstruction.left_0.h5").columns["event"]) == [7]
     assert not (batch / "reconstruction.right_0.h5").exists()
+
+
+def test_event_at_the_amplitude_threshold_is_selected_with_its_cluster(tmp_path) -> None:
+    # 10 mV exactly at the amplitude threshold
+    _job(tmp_path, [[1.0]], 2, seed=8)
+
+    rows = _run(tmp_path, 3, 10).columns
+
+    assert rows["selected"].all()
+    assert list(rows["cluster_size"]) == [1, 1]
+    assert rows["cluster_center"] == pytest.approx(np.zeros(2))
+
+
+def test_event_above_the_amplitude_cut_but_below_the_timing_threshold_is_selected_without_times(tmp_path) -> None:
+    # 10 mV: no amplitude cut, a timing threshold of 15 mV
+    _job(tmp_path, [[1.0]], 2, seed=9)
+
+    rows = _run(tmp_path, 15, 0).columns
+
+    assert rows["selected"].all()
+    assert rows["amplitude"][:, 0] == pytest.approx(np.full(2, 10.0e-3))
+    assert not rows["above"].any() and np.isnan(rows["ToA"]).all()

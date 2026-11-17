@@ -12,8 +12,8 @@ Attributes of the file:
                          positive before its quantities are taken
 Datasets, one row per event of the readout file:
     event           Geant4 event number
-    selected        its largest amplitude above threshold is not below
-                    amplitude_threshold
+    selected        the amplitude of one of its electrodes at least is not
+                    below amplitude_threshold: it has a cluster
     cluster_size    electrodes of its cluster, 0 when it has none
     cluster_center  amplitude-weighted place of the cluster, in electrodes
                     from the first one; NaN when it has none
@@ -44,7 +44,6 @@ import numpy as np
 from .event import get_amplitude
 from .event import get_CFD50
 from .event import get_CoG
-from .event import get_gravity_center_and_cluster_size
 from .event import get_ToA
 from .event import get_ToT
 from .event import net_pulse
@@ -91,13 +90,20 @@ def electrode_row(times, dt, net, threshold, fractions):
     return row, [nothing if time is None else time for time in constant]
 
 
-def cluster(amplitudes, above, amplitude_threshold):
+def cluster(amplitudes, threshold, amplitude_threshold):
     """Size and amplitude-weighted centre of the cluster of one event: the
-    electrodes above the amplitude threshold and their neighbours above the
-    threshold. (0, NaN) when no electrode is above the amplitude threshold."""
-    weights = [float(amplitude) if is_above else 0.0 for amplitude, is_above in zip(amplitudes, above)]
-    center, size = get_gravity_center_and_cluster_size(weights, amplitude_threshold)
-    return size, float("nan") if center is None else float(center)
+    electrodes whose amplitude is not below the amplitude threshold, and
+    their neighbours whose amplitude is not below the threshold. All of them
+    make one cluster. (0, NaN) when no electrode reaches the amplitude
+    threshold."""
+    seeds = [k for k, amplitude in enumerate(amplitudes) if amplitude >= amplitude_threshold]
+    members = sorted(
+        {j for k in seeds for j in (k - 1, k, k + 1) if j == k or (0 <= j < len(amplitudes) and amplitudes[j] >= threshold)}
+    )
+    if not members:
+        return 0, float("nan")
+    weights = np.array([amplitudes[j] for j in members], dtype="float64")
+    return len(members), float(np.dot(members, weights) / weights.sum())
 
 
 def event_table(waveforms, threshold, amplitude_threshold, fractions, edge):
@@ -126,12 +132,9 @@ def event_table(waveforms, threshold, amplitude_threshold, fractions, edge):
             row, fraction_times = electrode_row(times, waveforms.dt, polarity * net, threshold, fractions)
             rows.append(row)
             constant.append(fraction_times)
-        amplitudes = [row["amplitude"] for row in rows]
-        above = [row["above"] for row in rows]
-        size, center = cluster(amplitudes, above, amplitude_threshold)
+        size, center = cluster([row["amplitude"] for row in rows], threshold, amplitude_threshold)
         columns["event"].append(record.event)
-        largest = max((value for value, is_above in zip(amplitudes, above) if is_above), default=None)
-        columns["selected"].append(largest is not None and largest >= amplitude_threshold)
+        columns["selected"].append(size > 0)
         columns["cluster_size"].append(size)
         columns["cluster_center"].append(center)
         columns["baseline"].append([baseline for _, baseline, _ in pulses])
