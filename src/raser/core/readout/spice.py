@@ -1,10 +1,13 @@
 """Solve the device, the amplifier stages and the load in one ngspice netlist."""
 
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
 import numpy as np
+
+from raser.supports.dependency import MissingDependency
 
 from .circuit import subcircuit
 
@@ -57,13 +60,25 @@ def _transient(dt, bins, raw, vectors):
     ]
 
 
+def _ngspice():
+    """The ngspice program, or what is missing and how to get it."""
+    program = shutil.which("ngspice")
+    if program is None:
+        raise MissingDependency(
+            "ngspice is not installed",
+            "Install it with conda install -c conda-forge ngspice on x86 Linux, "
+            "or with env/install-ngspice.sh on macOS arm64 and Linux aarch64",
+        )
+    return program
+
+
 def _run(netlist_text, raw, dt, bins):
     """Run ngspice on the netlist and return the vectors it wrote to raw on
     the bins of the induced currents, shape (vectors, bins)."""
     netlist = Path(raw).with_name("run.cir")
     netlist.write_text(netlist_text, encoding="utf-8")
     subprocess.run(
-        ["ngspice", "-b", str(netlist)],
+        [_ngspice(), "-b", str(netlist)],
         check=True,
         capture_output=True,
         text=True,
@@ -244,7 +259,7 @@ def output_noise_spectrum(chain, circuit, lowest_hz, highest_hz, outputs=None):
             encoding="utf-8",
         )
         subprocess.run(
-            ["ngspice", "-b", str(netlist)], check=True, capture_output=True, text=True
+            [_ngspice(), "-b", str(netlist)], check=True, capture_output=True, text=True
         )
         spectra = [np.loadtxt(raw, dtype=np.float64, ndmin=2) for raw in raws.values()]
     return spectra[0][:, 0], np.array([spectrum[:, 1] for spectrum in spectra])
