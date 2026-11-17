@@ -295,9 +295,10 @@ def test_field_gives_a_planar_device_its_undepleted_bulk_for_its_area(tmp_path):
         )
     )
 
-    row, undepleted = field_circuit(tmp_path, device)
+    row, solved_f, undepleted = field_circuit(tmp_path, device)
 
     assert row is None
+    assert solved_f is None
     assert undepleted == (
         pytest.approx(9.4 / 0.0169, rel=1e-12),
         pytest.approx(262.0e-12 * 0.0169, rel=1e-12, abs=0),
@@ -315,8 +316,37 @@ def test_field_gives_a_row_of_strips_the_capacitances_it_stored(tmp_path):
 
     stored.parent.mkdir(parents=True)
     stored.write_text(json.dumps(ROW))
-    row, undepleted = field_circuit(tmp_path, device)
+    row, solved_f, undepleted = field_circuit(tmp_path, device)
 
     # a strip device of two dimensions has no slab of undepleted bulk
     assert row == ROW
+    assert solved_f is None
     assert undepleted is None
+
+
+def test_field_gives_a_device_the_capacitance_it_solved_at_its_bias(tmp_path):
+    # 200 pF per cm^2 of the mesh on the 0.0169 cm^2 of HPK-Si-PiN at 200 V;
+    # its file here has no measured capacitance
+    device = _device()
+    (tmp_path / "run.json").write_text(
+        json.dumps(
+            {
+                "files": {"device": {"det_name": "HPK-Si-PiN", "area_factor": 0.0169}},
+                "solved": {"undepleted": [200.0], "capacitance": [200.0]},
+            }
+        )
+    )
+    (tmp_path / "200.0V.undepleted.json").write_text(
+        json.dumps({"undepleted_width_um": 0.0})
+    )
+    (tmp_path / "200.0V.cv.json").write_text(
+        json.dumps({"specific_capacitance_pF": 200.0, "area_factor": 0.0169})
+    )
+
+    _, solved_f, _ = field_circuit(tmp_path, device)
+    _, values = device_circuit(device, ["top"], solved_f)
+
+    assert values["junction_capacitance"] == {
+        "farad": pytest.approx(200.0e-12 * 0.0169, rel=1e-12, abs=0),
+        "from": "field",
+    }

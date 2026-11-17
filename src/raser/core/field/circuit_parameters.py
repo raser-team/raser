@@ -11,6 +11,7 @@ from .resistive_layer import resistive_row
 from .device_circuit import planar_circuit
 from .device_circuit import row_of_electrodes
 from .device_circuit import side_by_side
+from .solved import solved_capacitance
 from .solved import solved_undepleted
 
 VACUUM_PERMITTIVITY_F_M = 8.8541878128e-12
@@ -101,12 +102,15 @@ def undepleted_layer_of(my_d, solved=None):
 
 def field_circuit(folder, my_d):
     """What the solved field in `folder` gives the circuit of a device at its
-    bias, as device_circuit takes it: (row, solved_undepleted).
+    bias, as device_circuit takes it: (row, solved_f, solved_undepleted).
 
     row : for a row of strips that repeats one read-out electrode, the
         capacitances of one strip the weighting field stored,
         weightingfield/<electrode>/Capacitance_<bias>V.json; None for other
         devices, whose field stores none.
+    solved_f : for a device that is not such a row, the capacitance [F] the
+        field solved at the bias, as solved.solved_capacitance gives it; None
+        where it solved none there, and the device keeps its estimate.
     solved_undepleted : for a device of one dimension, the resistance and
         capacitance of the bulk the bias leaves undepleted, as
         solved.solved_undepleted gives them, None when it depletes all; None
@@ -125,10 +129,16 @@ def field_circuit(folder, my_d):
                 f"field again with `raser field {my_d.det_name} -wf`"
             )
         row = json.loads(path.read_text(encoding="utf-8"))
+    capacitance = None
+    if row is None:
+        record = json.loads((Path(folder) / "run.json").read_text(encoding="utf-8"))
+        solved = record.get("solved", {}).get("capacitance", [])
+        if float(my_d.voltage) in solved:
+            capacitance = solved_capacitance(Path(folder), my_d.voltage)
     undepleted = None
     if int(my_d.dimension) == 1:
-        undepleted = solved_undepleted(folder, my_d.voltage)
-    return row, undepleted
+        undepleted = solved_undepleted(Path(folder), my_d.voltage)
+    return row, capacitance, undepleted
 
 
 def device_circuit(my_d, electrodes, solved_f=None, row=None, solved_undepleted=None):

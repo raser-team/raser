@@ -205,3 +205,51 @@ def test_a_row_of_strips_is_read_out_through_the_capacitances_its_field_stored(
         "farad": pytest.approx(0.5e-12, rel=1e-12, abs=0),
         "from": "field",
     }
+
+
+def test_a_device_without_a_measured_capacitance_takes_the_one_its_field_solved(
+    tmp_path, monkeypatch
+):
+    # HPK-Si-PiN without its measured 3.44 pF, its field solved at 200 V with
+    # 1000 pF per cm^2 on 0.0169 cm^2: 16.9 pF. 1 fC in 50 ps on 50 Ohm, far
+    # quicker than the 0.85 ns of 50 Ohm on 16.9 pF: the peak is Q / C
+    field = tmp_path / "field"
+    field.mkdir()
+    (field / "run.json").write_text(
+        json.dumps(
+            {
+                "files": {"device": {"det_name": "HPK-Si-PiN", "area_factor": 0.0169}},
+                "solved": {"undepleted": [200.0], "capacitance": [200.0]},
+            }
+        )
+    )
+    (field / "200.0V.undepleted.json").write_text(
+        json.dumps({"undepleted_width_um": 0.0})
+    )
+    (field / "200.0V.cv.json").write_text(
+        json.dumps({"specific_capacitance_pF": 1000.0, "area_factor": 0.0169})
+    )
+    monkeypatch.setattr(readout, "solved_field", lambda *_: field)
+    device = json.loads(device_file("HPK-Si-PiN").read_text(encoding="utf-8"))
+    device.pop("capacitance_pF")
+    dt = 5e-12
+    current = np.zeros((1, 400))
+    current[0, :10] = -1e-15 / (10 * dt)
+    append_currents(
+        tmp_path / "current_0.h5",
+        ["top"],
+        dt,
+        EventCurrents(0, 0.0, current, current.sum(axis=1) * dt, 0.0),
+    )
+
+    waveforms(
+        {
+            "det_name": "HPK-Si-PiN",
+            "_files": {"device": device},
+            "_slice_batch_paths": {"current": tmp_path, "readout": tmp_path},
+            "amplifier": "Termination50",
+        }
+    )
+
+    voltage = read_waveforms(tmp_path / "readout_0.h5").events[0].voltage[0]
+    assert -voltage.min() == pytest.approx(1e-15 / 16.9e-12, rel=0.1)

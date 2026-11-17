@@ -29,8 +29,8 @@ def waveforms(kwargs, position=None):
     Other devices take from the field at their bias the capacitances between
     strips of a row and the undepleted bulk of a planar device; the junction
     capacitance is the measured one of the device file, else that of the
-    row, else, for now, the estimate of the device, until the field gives
-    one at every bias.
+    row or the one the field solved at the bias, else, for now, the
+    estimate of the device, until the field solves one at every bias.
 
     With a position, the slice readout.<position> on the file of
     current.<position>; a position that left no currents leaves no file and
@@ -53,9 +53,11 @@ def waveforms(kwargs, position=None):
         flux = my_d.irradiation_flux
         if kwargs.get("irradiation") is not None:
             flux = float(kwargs["irradiation"])
-        row, undepleted = field_circuit(solved_field(my_d, my_d.voltage, flux), my_d)
+        row, solved_f, undepleted = field_circuit(
+            solved_field(my_d, my_d.voltage, flux), my_d
+        )
         circuit, values = device_circuit(
-            my_d, electrodes, row=row, solved_undepleted=undepleted
+            my_d, electrodes, solved_f, row=row, solved_undepleted=undepleted
         )
     chain = named_chain(str(kwargs["amplifier"]))
     write_waveforms(
