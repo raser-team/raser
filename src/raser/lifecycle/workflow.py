@@ -8,6 +8,7 @@ import fcntl
 import hashlib
 import itertools
 import json
+import re
 import secrets
 import subprocess
 import sys
@@ -152,6 +153,8 @@ def execute(workflow, kwargs, register=True):
         key, _, value = item.partition("=")
         fixed_here[address.get(key, key)] = _parse(value)
     scanned_here = {address.get(item.partition("=")[0], item.partition("=")[0]) for item in kwargs["scan"]}
+    for key, value in fixed_here.items():
+        _check_folder_names(key, [value])
     if both := sorted(scanned_here & set(fixed_here)):
         raise ValueError(f"{', '.join(both)}: given to --set and to --scan at once; give it to one of them")
     given = {**given, **fixed_here}
@@ -388,6 +391,8 @@ def _points(workflow, kwargs, config, given) -> tuple[dict, dict]:
         key, _, values = item.partition("=")
         scan[address.get(key, key)] = [_parse(value) for value in values.split(",")]
     scan = {key: values for key, values in scan.items() if key not in given}
+    for key, values in scan.items():
+        _check_folder_names(key, values)
     label = {key: _label(key, names) for key in scan}
     for key, other in itertools.combinations(scan, 2):
         if label[key] == label[other]:
@@ -618,6 +623,30 @@ def _label(key, names) -> str:
     """A scanned option in the name of a folder: the name the config gives it,
     else the last two steps of an address, else the option itself."""
     return names.get(key) or ".".join(key.split(".")[-2:])
+
+
+# The text a value names a folder with may hold only these.
+_FOLDER_TEXT = re.compile(r"[A-Za-z0-9._+-]+")
+
+
+def _check_folder_names(key, values) -> None:
+    """Refuse values of `key` that cannot name a folder, as an expression,
+    and two values that would name the same folder, as beam/muon and
+    other/muon. What is scanned or set is a number or a short name; an
+    expression, as a doping profile, becomes a parameter with a name in its
+    file, and that number is scanned."""
+    seen: dict[str, object] = {}
+    for value in values:
+        text = _text(value)
+        if not _FOLDER_TEXT.fullmatch(text):
+            raise ValueError(
+                f"{key} = {value!r}: the folder of this value would be named {text!r}, which "
+                "holds more than letters, digits and ._+-; scan or set a number or a short name, "
+                "and give an expression such as a doping profile a parameter with a name in its file"
+            )
+        if text in seen and seen[text] != value:
+            raise ValueError(f"{key}: {seen[text]!r} and {value!r} would both be the folder {text!r}")
+        seen[text] = value
 
 
 def _text(value) -> str:

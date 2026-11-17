@@ -187,12 +187,12 @@ def test_the_field_is_solved_for_the_device_as_the_point_changed_it(monkeypatch:
     monkeypatch.setattr(field, "execute", lambda flow, kwargs, register: asked.append((kwargs["scan"], register)))
     device = device_json("HPK-Si-PiN")
     device["bias"]["voltage"] = 300.0
-    device["doping"]["Acceptors"] = "1e13"
-    options = {"voltage": 300.0, "irradiation": None, "device.doping.Acceptors": "1e13", "device.bias.voltage": 300.0}
+    device["temperature"] = 280.0
+    options = {"voltage": 300.0, "irradiation": None, "device.temperature": 280.0, "device.bias.voltage": 300.0}
 
     field.start({"batch": False, "mem": 1}, options, {"device": device})
 
-    assert asked == [(['device.doping.Acceptors="1e13"'], False)]  # not one of the field's own scans
+    assert asked == [(["device.temperature=280.0"], False)]  # not one of the field's own scans
 
 
 def test_a_shared_slice_made_here_that_is_still_not_ready_stops_the_command(

@@ -1383,3 +1383,21 @@ def test_a_job_run_in_this_process_leaves_a_log_with_what_it_printed_and_why_it_
     log = (tmp_path / "toy" / "seed_42" / "batch" / "job_0.log").read_text()
     assert "collected 3 points" in capsys.readouterr().out and "collected 3 points" in log
     assert log.rstrip().endswith("RuntimeError: no event selected")
+
+
+@pytest.mark.parametrize(
+    "given",
+    [
+        {"scan": ["gain=5*(step(x)-1)"]},
+        {"set": ["gain=5*(step(x)-1)"]},
+    ],
+)
+def test_a_value_that_cannot_name_a_folder_is_refused(started: list[Any], given: dict[str, Any]) -> None:
+    with pytest.raises(ValueError, match="holds more than letters, digits and"):
+        execute(GAIN, _kwargs(gain=None, width=None, jobs=2, **given))
+    assert started == []
+
+
+def test_two_values_that_would_name_one_folder_are_refused(started: list[Any]) -> None:
+    with pytest.raises(ValueError, match="'beam/muon' and 'other/muon' would both be the folder 'muon'"):
+        execute(GAIN, _kwargs(gain=None, width=None, scan=["gain=beam/muon,other/muon"], jobs=2))
