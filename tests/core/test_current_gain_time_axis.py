@@ -252,3 +252,27 @@ def test_untrapped_carriers_are_kept_only_where_carriers_are_trapped_and_while_t
 
     assert untrapped.electron_system.remaining == [None]
     assert dropped.electron_system.remaining == [] and dropped.electron_system.paths == []
+
+
+class _TrappedNoFieldBelow10um(_Trapping):
+    def get_e_field_cached(self, x, y, z):
+        if z < 10.0:
+            raise ValueError("outside the mesh")
+        return (0.0, 0.0, 1.0e4)
+
+
+def test_the_carriers_that_find_no_field_are_counted_as_they_are_when_they_stop():
+    # of 100 electrons, 100 exp(-2e9 t) are left when they reach 10 um at t
+    current = CalCurrent(
+        SimpleNamespace(**{**vars(_lgad()), "has_avalanche": False, "irradiation_model": "constant"}),
+        _TrappedNoFieldBelow10um(),
+        [100.0],
+        [[50.0, 50.0, 25.0, 0.0]],
+        diffusion=False,
+    )
+
+    electron = current.electron_system
+    stop = electron.paths[0][-1][3]
+    assert current.carriers_without_field == pytest.approx(100.0 * math.exp(-2.0e9 * stop), rel=0.01)
+    assert current.carriers_without_field == current.ends["no_field"][1]
+    assert current.carriers_without_field < 95.0

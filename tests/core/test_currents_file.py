@@ -95,5 +95,15 @@ def test_currents_file_refuses_an_event_without_sensitive_pairs_among_those_with
     path = tmp_path / "currents.h5"
     append_currents(path, ["a"], 5.0e-12, EventCurrents(3, 0.0, np.ones((1, 2)), np.zeros(1), 2000.0, 90.5))
 
-    with pytest.raises(ValueError, match="holds sensitive pairs"):
+    with pytest.raises(ValueError, match="holds sensitive_pairs"):
         append_currents(path, ["a"], 5.0e-12, EventCurrents(7, 0.0, np.ones((1, 2)), np.zeros(1), 2000.0))
+
+
+def test_currents_file_keeps_the_carriers_that_found_no_field_of_each_event(tmp_path) -> None:
+    path = tmp_path / "currents.h5"
+    for number, lost in ((3, 0.0), (7, 41.5)):
+        append_currents(
+            path, ["a"], 5.0e-12, EventCurrents(number, 0.0, np.ones((1, 2)), np.zeros(1), 2000.0, 1990.0, lost)
+        )
+
+    assert [record.carriers_without_field for record in read_currents(path).events] == [0.0, 41.5]

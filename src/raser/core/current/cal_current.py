@@ -256,6 +256,8 @@ class CalCurrent:
         self.hole_current = hole_bins[:, 1:-1]
         self.electron_current = electron_bins[:, 1:-1]
         self.current = sum_bins[:, 1:-1]
+        # carriers of the clusters that stopped where the field has no value
+        self.carriers_without_field = float(self.ends.get("no_field", [0, 0.0])[1])
         # signed net charge of each electrode in C: all the induced charge, the part outside the time window included
         self.charge = sum_bins.sum(axis=1) * self.t_bin
 
@@ -331,14 +333,18 @@ class CalCurrent:
 
     def count_ends(self):
         """For each reason the clusters stopped for, how many and their
-        carriers, without sign: {reason: [clusters, carriers]}."""
+        carriers when they stopped, without sign and not yet trapped:
+        {reason: [clusters, carriers]}."""
         ends = {}
         for carrier_system in (self.electron_system, self.hole_system):
             if carrier_system is not None:
-                for reason, carriers in zip(carrier_system.reasons, carrier_system.carriers):
+                for reason, carriers, remaining in zip(
+                    carrier_system.reasons, carrier_system.carriers, carrier_system.remaining
+                ):
                     count = ends.setdefault(reason, [0, 0.0])
                     count[0] += 1
-                    count[1] += abs(carriers)
+                    # as they were when they stopped
+                    count[1] += abs(carriers if remaining is None or not len(remaining) else remaining[-1])
         return ends
 
     def first_without_field(self):
@@ -797,6 +803,7 @@ def write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, pl
                 my_current.charge,
                 my_current.pairs,
                 my_current.sensitive_pairs,
+                my_current.carriers_without_field,
             ),
         )
         if drawn:
@@ -828,7 +835,7 @@ def write_laser_currents(currents_path, my_d, my_f, my_l, plot_path=None):
         my_current.t_bin,
         EventCurrents(
             0, my_current.t_start, my_current.current, my_current.charge, my_current.pairs,
-            my_current.sensitive_pairs,
+            my_current.sensitive_pairs, my_current.carriers_without_field,
         ),
     )
     if plot_path is not None:
