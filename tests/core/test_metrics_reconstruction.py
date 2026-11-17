@@ -29,6 +29,19 @@ def test_quantities_of_a_triangle() -> None:
     assert get_charge(TRIANGLE) == 50.0
 
 
+def test_threshold_near_the_peak_is_crossed_by_the_bins_next_to_it() -> None:
+    # a sharp pulse: the edges are steep next to the peak and slow after,
+    # so a line through bins farther from the peak lands elsewhere
+    samples = np.array([0.0, 1, 2, 7, 10, 4, 3, 2, 1, 0])
+    times = (np.arange(len(samples)) + 0.5) * 1.0e-9
+    _, peak = get_amplitude(samples)
+
+    # 9 is a third of the way from 10 back to 7 (bins 4 and 3), and a sixth
+    # of the way from 10 down to 4 (bins 4 and 5)
+    assert get_ToA(times, samples, 9.0, peak) == pytest.approx((4.5 - 1 / 3) * 1.0e-9)
+    assert get_ToT(times, samples, 9.0, peak) == pytest.approx((1 / 3 + 1 / 6) * 1.0e-9)
+
+
 def test_one_electrode_event_takes_its_bins_from_t0_and_dt() -> None:
     event = InputWaveform([TRIANGLE], T0, DT, 0.0, 3.0, 5.0, 1300.0, 1300.0)
 
