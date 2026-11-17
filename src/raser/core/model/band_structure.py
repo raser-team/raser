@@ -2,8 +2,9 @@
 
 Formulas of the temperature T [K]: N_c, N_v and n_i in cm^-3, E_g in J
 (from eV times 1.6e-19, the value RASER has used for the charge here).
-These are the values the field solver has taken; their sources are not
-recorded in the code they come from.
+These are the values the field solver has taken; the sources of the Si and
+diamond coefficients are not recorded in the code they come from and have
+not been found. The band gaps do not depend on the temperature.
 """
 
 from .formula import Formula

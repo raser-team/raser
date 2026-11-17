@@ -7,8 +7,8 @@ from .formula import Formula
 
 # van Overstraeten and de Man, Solid-State Electronics 13 (1970) 583: a
 # Chynoweth law with a low- and a high-field set of a [1/cm] and b [V/cm],
-# the two met at E0, and the temperature dependence of the optical phonon
-# energy hbarOmega [eV] (k_T0 = k T0 [eV]). Below 1.75e5 V/cm, the lower
+# the two met at E0. The temperature dependence through the optical phonon
+# energy hbarOmega [eV] (k_T0 = k T0 [eV]) has no source found yet. Below 1.75e5 V/cm, the lower
 # end of the measured fit, the coefficient is taken to be zero.
 _VAN_OVERSTRAETEN = (
     "ifelse(E >= 1.75e5, "
@@ -45,10 +45,12 @@ VAN_OVERSTRAETEN = {
 }
 
 
-# Hatakeyama et al., Appl. Phys. Lett. 85 (2004) 1380: the anisotropic
-# Chynoweth law of 4H-SiC for a field `angle` off the <0001> axis, from the
-# coefficients along <0001> and <11-20>, with the temperature dependence
-# of the optical phonon energy hbarOmega [eV] (k_T0 = k T0 [eV]). For a
+# Hatakeyama et al., Appl. Phys. Lett. 85 (2004) 1380: the coefficients of
+# 4H-SiC along <0001> and <11-20>; Hatakeyama, Nishio, Ota and Shinohe,
+# SISPAD 2005, "Physical modeling and scaling properties of 4H-SiC power
+# devices", appendix: the law for a field `angle` off <0001> between them.
+# The temperature dependence through the optical phonon energy hbarOmega
+# [eV] (k_T0 = k T0 [eV]) has no source found yet. For a
 # field at a fixed angle B and a are numbers; b depends on the field
 # through its second term. Below 1e4 V/cm the coefficient is taken to be
 # zero.

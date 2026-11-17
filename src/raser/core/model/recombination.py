@@ -14,8 +14,9 @@ SRH = Formula(
 )
 
 # The lifetimes [s] the field solver has taken; their sources are not
-# recorded in the code they come from. The trap is taken at midgap:
-# n1 = p1 = n_i.
+# recorded in the code they come from and have not been found. The trap is
+# taken at the intrinsic level: n1 = p1 = n_i (at midgap n1/p1 would be
+# N_c/N_v).
 SRH_LIFETIME = {
     "Si": {"tau_n": 7e-3, "tau_p": 7e-3},
     "SiC": {"tau_n": 2.5e-6, "tau_p": 0.5e-6},
