@@ -296,12 +296,12 @@ class CalCurrent:
             numbers.append(count - 1 if here == first_edge + count * pitch else number)
         return numbers
 
-    def drift_all(self, my_d, my_f, starts, charges):
+    def drift_all(self, my_d, my_f, starts, carriers):
         """Drift a cluster from each of `starts` (x, y, z [um], t [s]); None without any."""
         if not starts:
             return None
         mobility = Material(my_d.material).cal_mobility
-        clusters = [Cluster.starting(x, y, z, t, charge) for (x, y, z, t), charge in zip(starts, charges)]
+        clusters = [Cluster.starting(x, y, z, t, number) for (x, y, z, t), number in zip(starts, carriers)]
         # one cluster after another, each to its end: the order of the random draws
         for cluster in clusters:
             while cluster.reason is None:
@@ -310,7 +310,7 @@ class CalCurrent:
             # six times the memory, too much to keep for every cluster at once
             cluster.path = np.array(cluster.path)
         return Drifted(
-            list(charges),
+            list(carriers),
             [cluster.path for cluster in clusters],
             [cluster.reason for cluster in clusters],
         )
@@ -361,13 +361,13 @@ class CalCurrent:
         if carrier_system is None:
             return bins
         bin_width = (self.t_end - self.t_start) / self.n_bin
-        for charge, path in zip(carrier_system.charges, carrier_system.paths):
+        for carriers, path in zip(carrier_system.carriers, carrier_system.paths):
             if len(path) < 2:
                 continue
             if my_d.irradiation_model is not None:
-                charge = surviving(path, charge, my_f)
+                carriers = surviving(path, carriers, my_f)
             for number, in_field, offset in self.electrodes_near(path[0][0], path[0][1], my_d, my_f):
-                induced = induced_charges(path, charge, my_f, in_field, offset)
+                induced = induced_charges(path, carriers, my_f, in_field, offset)
                 for value, t_from, t_to in zip(induced, path[:-1, 3], path[1:, 3]):
                     spread_over_bins(
                         bins[number], value / self.t_bin, t_from, t_to, self.t_start, bin_width
@@ -457,10 +457,10 @@ class CalCurrentGain(CalCurrent):
         # each cluster multiplies where it stops: its pairs start at the gain
         # layer at that time, as many as the depth it was made at gives
         gain_depth = my_f.planar_gain_depth(my_d)
-        for charge, path in zip(source_system.charges, source_system.paths):
+        for carriers, path in zip(source_system.carriers, source_system.paths):
             x, y, _, t = path[-1]
             gain_starts.append((x, y, gain_depth, t))
-            gain_pairs.append(abs(charge) * my_f.planar_gain_at(my_d, path[0][2]))
+            gain_pairs.append(abs(carriers) * my_f.planar_gain_at(my_d, path[0][2]))
 
     def _build_local_gain_carriers(self, my_d, my_f, my_current, gain_starts, gain_pairs):
         cal_coefficient = Material(my_d.material, avalanche_model=my_d.avalanche_model).cal_coefficient
@@ -496,11 +496,11 @@ class CalCurrentGain(CalCurrent):
                 if len(path) < 2:
                     continue
 
-                active_pairs = abs(carrier_system.charges[carrier_idx])
+                active_pairs = abs(carrier_system.carriers[carrier_idx])
                 pending_pairs = 0.0
                 if active_pairs <= 0:
                     continue
-                charge_sign = -1 if carrier_system.charges[carrier_idx] < 0 else 1
+                charge_sign = -1 if carrier_system.carriers[carrier_idx] < 0 else 1
                 for point0, point1 in zip(path[:-1], path[1:]):
                     x0, y0, z0, t0 = point0
                     x1, y1, z1, t1 = point1

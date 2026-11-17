@@ -63,8 +63,8 @@ def test_pairs_too_few_to_emit_on_the_way_are_emitted_at_the_end_of_the_path() -
 
     current = CalCurrent(_device(gain_pair_threshold=1e30), _Field(), PAIRS, STARTS, diffusion=False)
 
-    assert sum(current.gain_current.hole_system.charges) == pytest.approx(expected, rel=1e-6)
-    assert len(current.gain_current.hole_system.charges) == 6
+    assert sum(current.gain_current.hole_system.carriers) == pytest.approx(expected, rel=1e-6)
+    assert len(current.gain_current.hole_system.carriers) == 6
     # each path's pairs start on its last step: the electrons' near z = 0, the holes' near 50 um
     births = sorted(float(path[0][2]) for path in current.gain_current.hole_system.paths)
     assert max(births[:3]) < 3.0 and min(births[3:]) > 47.0
@@ -112,6 +112,6 @@ def test_gain_pairs_too_few_to_emit_start_in_the_layer_they_grew_in() -> None:
     )
 
     gain = current.gain_current.hole_system
-    births = sorted((float(path[0][2]), charge) for charge, path in zip(gain.charges, gain.paths))
+    births = sorted((float(path[0][2]), charge) for charge, path in zip(gain.carriers, gain.paths))
     assert len(births) == 2
     assert 9.0 < births[0][0] < 12.5 and 29.0 < births[1][0] < 32.5
