@@ -41,3 +41,27 @@ def test_waveforms_file_refuses_an_event_of_other_electrodes(tmp_path):
 
     with pytest.raises(ValueError, match="holds waveforms of electrodes"):
         append_waveforms(path, ["right", "left"], 5.0e-12, record)
+
+
+def test_each_event_keeps_the_electrodes_it_has_a_signal_on(tmp_path):
+    electrodes = ["s1", "s2", "s3", "s4", "s5"]
+    events = [
+        EventWaveforms(
+            0, 0.0, np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]), ["s4", "s2"]
+        ),
+        EventWaveforms(1, 1e-9, np.zeros((0, 2)), []),
+        EventWaveforms(2, 2e-9, np.array([[7.0, 8.0]]), ["s5"]),
+    ]
+    path = tmp_path / "waveforms.h5"
+    for record in events:
+        append_waveforms(path, electrodes, 5.0e-12, record, pulse_edge=["rising"] * 5)
+
+    read = read_waveforms(path).events
+
+    assert [record.electrodes for record in read] == [["s4", "s2"], [], ["s5"]]
+    for got, written in zip(read, events, strict=True):
+        np.testing.assert_array_equal(got.voltage, written.voltage)
+    with pytest.raises(ValueError, match="not each once of the electrodes"):
+        append_waveforms(
+            path, electrodes, 5.0e-12, EventWaveforms(3, 0.0, np.zeros((1, 2)), ["s9"])
+        )

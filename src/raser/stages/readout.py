@@ -34,7 +34,7 @@ def waveforms(kwargs, position=None):
     estimate of the device, until the field solves one at every bias.
     A row of strips solves, for each event, only the strips hit and those
     their charge reaches, as job.write_waveforms widens the part of the row
-    part_of_row gives.
+    part_of_row gives, and the file holds those strips of the event alone.
 
     With a position, the slice readout.<position> on the file of
     current.<position>; a position that left no currents leaves no file and

@@ -22,14 +22,14 @@ LOWEST_NOISE_HZ = 1e3
 PART_EDGE = 1e-3
 
 
-def _solve_part(chain, currents, event, outputs, part_of):
-    """Output voltages of an event, shape (outputs, bins), with the part of
-    the circuit part_of gives for its electrodes with a current solved, as
-    wide as write_waveforms says, and the other outputs on zero."""
-    voltage = np.zeros((len(outputs), event.current.shape[1]))
+def _solve_part(chain, currents, event, part_of):
+    """The outputs of the part of the circuit part_of gives for the
+    electrodes of an event with a current, as wide as write_waveforms says,
+    and their voltages, shape (outputs of the part, bins): none for an event
+    without current."""
     hit = [k for k, current in enumerate(event.current) if np.any(current)]
     if not hit:
-        return voltage
+        return [], np.zeros((0, event.current.shape[1]))
     row_of = {name: k for k, name in enumerate(currents.electrodes)}
     margin, before = 1, None
     while True:
@@ -46,10 +46,7 @@ def _solve_part(chain, currents, event, outputs, part_of):
         if electrodes == before or max(peaks[0], peaks[-1]) < PART_EDGE * peaks.max():
             break
         margin, before = 2 * margin, electrodes
-    place = {name: k for k, name in enumerate(outputs)}
-    for name, output in zip(part.outputs, solved):
-        voltage[place[name]] = output
-    return voltage
+    return list(part.outputs), solved
 
 
 def noise_spectra(chain, circuit, lowest_hz, highest_hz):
@@ -107,8 +104,9 @@ def write_waveforms(
         them that is solved: a circuit of some of the electrodes and
         outputs, by the same names, wider with a wider margin. The part
         grows until its outputs at both ends hold less than PART_EDGE of the
-        largest output, or it grows no more. The outputs outside it get no
-        signal, only their noise; an event without current solves nothing.
+        largest output, or it grows no more. Only its outputs are written
+        for the event, each with its noise; the outputs outside it are not
+        there, and an event without current has no waveforms.
     """
     currents = read_currents(currents_path)
     if os.path.exists(waveforms_path):
@@ -119,27 +117,33 @@ def write_waveforms(
             chain, circuit, LOWEST_NOISE_HZ, 0.5 / currents.dt
         )
     outputs = list(circuit.outputs)
+    place = {name: k for k, name in enumerate(outputs)}
     for event in currents.events:
         if part_of is None:
+            names = outputs
             voltage = solve(
                 chain, currents.electrodes, currents.dt, event.current, circuit
             )
         else:
-            voltage = _solve_part(chain, currents, event, outputs, part_of)
-        if noise_seed is not None:
+            names, voltage = _solve_part(chain, currents, event, part_of)
+        if noise_seed is not None and names:
             voltage = voltage + np.array(
                 [
                     noise_from_spectrum(
-                        frequencies, density, voltage.shape[1], currents.dt, generator
+                        frequencies,
+                        densities[place[name]],
+                        voltage.shape[1],
+                        currents.dt,
+                        generator,
                     )
-                    for density in densities
+                    for name in names
                 ]
             )
         append_waveforms(
             waveforms_path,
-            list(circuit.outputs),
+            outputs,
             currents.dt,
-            EventWaveforms(event.event, event.t0, voltage),
+            EventWaveforms(event.event, event.t0, voltage, names),
             circuit_values,
             pulse_edge,
         )

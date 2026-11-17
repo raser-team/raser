@@ -217,43 +217,52 @@ def test_part_of_a_row_is_the_strips_hit_and_its_margin_as_far_as_the_row_goes()
     assert list(part_of_row(my_d, names, [1, 9], 2, row=row).outputs) == names[0:12]
 
 
-def test_row_solved_in_its_part_that_the_charge_reaches_is_as_the_whole(tmp_path):
-    # 1 fC on the middle one of 41 strips; the part grows from one strip on
-    # each side until what reaches its ends is below a thousandth
+def test_row_holds_in_each_event_only_the_strips_the_charge_reaches(tmp_path):
+    # 1 fC on the middle one of 41 strips, then an event without current;
+    # the part grows from one strip on each side until what reaches its ends
+    # is below a thousandth
     my_d, names, row = _row_of(41)
     circuit, _ = device_circuit(my_d, names, row=row)
     current = np.zeros((41, 600))
     current[20, 20:40] = 1e-15 / (20 * DT_S)
     currents_path = tmp_path / "currents_0.h5"
-    append_currents(
-        currents_path,
-        names,
-        DT_S,
-        EventCurrents(0, 0.0, current, current.sum(axis=1) * DT_S, 0.0),
-    )
+    for number, event_current in ((0, current), (1, np.zeros_like(current))):
+        append_currents(
+            currents_path,
+            names,
+            DT_S,
+            EventCurrents(
+                number, 0.0, event_current, event_current.sum(axis=1) * DT_S, 0.0
+            ),
+        )
 
-    def read(path, **part):
+    def read(path, seed=None, **part):
         write_waveforms(
             currents_path,
             path,
             CHAIN,
             circuit,
-            None,
+            seed,
             pulse_edge=["rising"] * 41,
             **part,
         )
-        return read_waveforms(path).events[0].voltage
+        return read_waveforms(path).events
 
-    whole = read(tmp_path / "whole.h5")
-    part = read(
-        tmp_path / "part.h5",
-        part_of=lambda hit, margin: part_of_row(my_d, names, hit, margin, row=row),
-    )
+    def part_of(hit, margin):
+        return part_of_row(my_d, names, hit, margin, row=row)
 
-    peak = np.abs(whole[20]).max()
-    solved = np.flatnonzero(np.abs(part).max(axis=1))
-    # a part, not the row, and the strip hit not the only one in it
-    assert 20 in solved and 3 <= len(solved) < 41
-    assert np.abs(part[19]).max() > 0.05 * peak
-    # inside the part as the whole row, outside little
-    assert np.abs(part - whole).max() < 1e-3 * peak
+    whole = read(tmp_path / "whole.h5")[0]
+    hit, quiet = read(tmp_path / "part.h5", part_of=part_of)
+
+    assert whole.electrodes == names
+    # a part around the strip hit, not the row, and not that strip alone
+    first, last = names.index(hit.electrodes[0]), names.index(hit.electrodes[-1])
+    assert hit.electrodes == names[first : last + 1]
+    assert first < 19 and last > 21 and last - first + 1 < 41
+    # each strip of it as in the whole row
+    peak = np.abs(whole.voltage[20]).max()
+    assert np.abs(hit.voltage - whole.voltage[first : last + 1]).max() < 1e-3 * peak
+    # the event without current has no waveforms, not even noise
+    assert quiet.electrodes == [] and quiet.voltage.shape == (0, 600)
+    noisy, quiet = read(tmp_path / "noisy.h5", seed=3, part_of=part_of)
+    assert noisy.electrodes == hit.electrodes and quiet.electrodes == []
