@@ -141,19 +141,6 @@ def net_pulse(samples, baseline_points=BASELINE_POINTS):
     noise = samples[:baseline_points].std()
     return samples - baseline, baseline, noise
 
-def pulse_polarity(nets):
-    """Sign of the pulses of one electrode over many events, +1 or -1: the
-    sign of the sum of the sample farthest from the baseline of each event.
-    One event alone does not tell it when its pulse is not far above the
-    noise: there the farthest sample is often noise of the other sign.
-
-    nets : one array of samples without baseline per event
-    """
-    farthest = sum(net[np.argmax(np.abs(net))] for net in nets)
-    if farthest == 0:
-        raise ValueError("the farthest samples of the events cancel: no polarity")
-    return 1.0 if farthest > 0 else -1.0
-
 def crossing(times, samples, threshold, below, above):
     """Where the line between the centres of the bins `below` and `above`,
     one below and one not below the threshold, crosses the threshold."""

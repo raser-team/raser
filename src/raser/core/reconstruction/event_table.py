@@ -7,8 +7,9 @@ Attributes of the file:
     threshold            of the times and the charge [V], above the baseline
     amplitude_threshold  of the selected events [V], above the baseline
     fractions            of the constant-fraction times, (fractions,)
-    polarity             +1 or -1: the waveforms times it have their pulses
-                         positive
+    edge                 "rising" or "falling": the edge the thresholds are
+                         set on, as on a scope; a falling pulse is turned
+                         positive before its quantities are taken
 Datasets, one row per event of the readout file:
     event           Geant4 event number
     selected        its largest amplitude above threshold is not below
@@ -50,10 +51,10 @@ from .event import get_gravity_center_and_cluster_size
 from .event import get_ToA
 from .event import get_ToT
 from .event import net_pulse
-from .event import pulse_polarity
 
 ELECTRODE_COLUMNS = ("baseline", "noise", "amplitude", "above", "ToA", "ToT", "CoG", "charge", "net_charge")
 EVENT_COLUMNS = ("event", "selected", "cluster_size", "cluster_center", "deposit_time", "pairs")
+EDGE_SIGN = {"rising": 1.0, "falling": -1.0}
 KINDS = {"event": "int64", "selected": "bool", "above": "bool", "cluster_size": "int64"}
 
 
@@ -63,7 +64,7 @@ class EventTable:
     threshold: float  # [V]
     amplitude_threshold: float  # [V]
     fractions: tuple[float, ...]
-    polarity: float
+    edge: str
     # each name of EVENT_COLUMNS, ELECTRODE_COLUMNS and "CFD" to its array
     columns: dict[str, np.ndarray]
 
@@ -102,7 +103,7 @@ def cluster(amplitudes, above, amplitude_threshold):
     return size, float("nan") if center is None else float(center)
 
 
-def event_table(waveforms, truth, threshold, amplitude_threshold, fractions, polarity=None):
+def event_table(waveforms, truth, threshold, amplitude_threshold, fractions, edge):
     """The rows of the events of one job.
 
     waveforms : the readout of the job, as `read_waveforms` gives it
@@ -110,9 +111,12 @@ def event_table(waveforms, truth, threshold, amplitude_threshold, fractions, pol
         signed net charge of each electrode [C])
     threshold, amplitude_threshold : in the unit of the waveforms [V]
 
-    polarity : the sign that turns the pulses positive; None takes it from
-        all events and electrodes of the job together
+    edge : "rising" or "falling", the edge of the pulses the thresholds
+        are set on
     """
+    if edge not in EDGE_SIGN:
+        raise ValueError(f"edge {edge!r}: the thresholds are set on a rising or a falling edge")
+    polarity = EDGE_SIGN[edge]
     if not waveforms.events:
         raise ValueError("the readout holds no event")
     nets = []
@@ -120,8 +124,6 @@ def event_table(waveforms, truth, threshold, amplitude_threshold, fractions, pol
         if record.event not in truth:
             raise ValueError(f"event {record.event} of the readout has no deposits or currents")
         nets.append([net_pulse(samples) for samples in record.voltage])
-    if polarity is None:
-        polarity = pulse_polarity([net for pulses in nets for net, _, _ in pulses])
     width = len(waveforms.electrodes)
     columns: dict[str, list] = {name: [] for name in (*EVENT_COLUMNS, *ELECTRODE_COLUMNS, "CFD")}
     for record, pulses in zip(waveforms.events, nets):
@@ -154,7 +156,7 @@ def event_table(waveforms, truth, threshold, amplitude_threshold, fractions, pol
     arrays["CFD"] = arrays["CFD"].reshape(len(waveforms.events), width, len(fractions))
     return EventTable(
         list(waveforms.electrodes), float(threshold), float(amplitude_threshold),
-        tuple(float(part) for part in fractions), polarity, arrays,
+        tuple(float(part) for part in fractions), edge, arrays,
     )
 
 
@@ -164,7 +166,7 @@ def write_event_table(path, table):
         file.attrs["threshold"] = table.threshold
         file.attrs["amplitude_threshold"] = table.amplitude_threshold
         file.attrs["fractions"] = np.array(table.fractions, dtype="float64")
-        file.attrs["polarity"] = table.polarity
+        file.attrs["edge"] = table.edge
         for name, values in table.columns.items():
             file[name] = values
 
@@ -176,6 +178,6 @@ def read_event_table(path):
             float(file.attrs["threshold"]),
             float(file.attrs["amplitude_threshold"]),
             tuple(float(part) for part in file.attrs["fractions"]),
-            float(file.attrs["polarity"]),
+            str(file.attrs["edge"]),
             {name: file[name][()] for name in file},
         )

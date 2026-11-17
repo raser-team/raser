@@ -15,13 +15,14 @@ from .timing import time_widths
 MILLIVOLT = 1.0e-3  # V
 
 
-def write_point(jobs, digitizer, folder):
+def write_point(jobs, digitizer, edge, folder):
     """Write the results of a point into `folder`: result.json, events.h5 and
     the plots.
 
     jobs : (seed folder, job index) pairs, as lifecycle hands them out.
     digitizer : content of a file of components/adc: `threshold` and
         `amplitude_threshold` [mV]
+    edge : "rising" or "falling", the edge of the pulses they are set on
 
     result.json:
         digitizer   as given
@@ -42,7 +43,7 @@ def write_point(jobs, digitizer, folder):
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     tables = point_tables(
-        jobs, digitizer["threshold"] * MILLIVOLT, digitizer["amplitude_threshold"] * MILLIVOLT
+        jobs, digitizer["threshold"] * MILLIVOLT, digitizer["amplitude_threshold"] * MILLIVOLT, edge
     )
     efficiencies = event_efficiencies(tables)
     result = {"digitizer": digitizer}

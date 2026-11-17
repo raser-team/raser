@@ -9,7 +9,6 @@ from raser.core.reconstruction.event import get_CoG
 from raser.core.reconstruction.event import get_ToA
 from raser.core.reconstruction.event import get_ToT
 from raser.core.reconstruction.event import net_pulse
-from raser.core.reconstruction.event import pulse_polarity
 
 # a triangle: 2 per bin up to 10 in bin 6, then down again
 TRIANGLE = np.array([0.0, 0, 2, 4, 6, 8, 10, 8, 6, 4, 2, 0, 0])
@@ -106,13 +105,3 @@ def test_net_pulse_is_the_samples_about_the_mean_of_the_first_ones() -> None:
 def test_waveform_without_samples_after_the_baseline_is_an_error() -> None:
     with pytest.raises(ValueError, match="200 samples, not more than the 200"):
         net_pulse(np.zeros(200))
-
-
-def test_polarity_is_of_the_events_together_not_of_the_most_events() -> None:
-    # two events with a pulse of -10; in three small ones of -2 the noise
-    # reaches +3: most events have their farthest sample above the baseline
-    large = np.array([0.0, 1.0, -10.0, -1.0])
-    small = np.array([0.0, 3.0, -2.0, 0.0])
-
-    assert pulse_polarity([large, small, small, large, small]) == -1.0
-    assert pulse_polarity([-large, -small, -small, -large, -small]) == 1.0

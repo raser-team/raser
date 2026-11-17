@@ -62,7 +62,7 @@ def test_thresholds_of_the_digitizer_are_in_millivolt(tmp_path) -> None:
     _job(seed, 1, 0.4, 300, seed=5)  # 4 mV, below the amplitude threshold
 
     digitizer = {"threshold": 3, "amplitude_threshold": 5}
-    error = write_point([(seed, 0), (seed, 1)], digitizer, tmp_path / "out")
+    error = write_point([(seed, 0), (seed, 1)], digitizer, "falling", tmp_path / "out")
 
     assert error is None
     result = json.loads((tmp_path / "out" / "result.json").read_text())
@@ -87,7 +87,7 @@ def test_point_with_too_few_selected_events_keeps_its_efficiency_and_tells_why(t
     _job(seed, 0, 1.0, 10, seed=4)
     _job(seed, 1, 0.4, 300, seed=5)
 
-    error = write_point([(seed, 0), (seed, 1)], {"threshold": 3, "amplitude_threshold": 5}, tmp_path / "out")
+    error = write_point([(seed, 0), (seed, 1)], {"threshold": 3, "amplitude_threshold": 5}, "falling", tmp_path / "out")
 
     assert error == "no time resolution: 10 values, fewer than 20"
     result = json.loads((tmp_path / "out" / "result.json").read_text())
@@ -100,7 +100,7 @@ def test_point_without_selected_events_is_a_result_not_a_failure(tmp_path, monke
     root = tmp_path / "work" / "device" / "cce"
     _job(root / "seed_1", 0, 0.4, 100, seed=5)  # 4 mV, below the amplitude threshold
     monkeypatch.setattr(ana, "finished_in", lambda folder: [("", {}, [(root / "seed_1", 0)])])
-    options = {"experiment": str(root), "_run_path": str(tmp_path / "out"), "_files": {"adc": {"threshold": 3, "amplitude_threshold": 5}}}
+    options = {"experiment": str(root), "_run_path": str(tmp_path / "out"), "_files": {"adc": {"threshold": 3, "amplitude_threshold": 5}}, "edge": "falling"}
 
     ana.collect(options)
 
@@ -114,7 +114,7 @@ def test_point_with_fewer_than_two_events_is_a_result_not_a_failure(tmp_path, mo
     root = tmp_path / "work" / "device" / "timeres"
     _job(root / "seed_1", 0, 1.0, count, seed=4)
     monkeypatch.setattr(ana, "finished_in", lambda folder: [("", {}, [(root / "seed_1", 0)])])
-    options = {"experiment": str(root), "_run_path": str(tmp_path / "out"), "_files": {"adc": {"threshold": 3, "amplitude_threshold": 5}}}
+    options = {"experiment": str(root), "_run_path": str(tmp_path / "out"), "_files": {"adc": {"threshold": 3, "amplitude_threshold": 5}}, "edge": "falling"}
 
     ana.collect(options)
 

@@ -47,11 +47,11 @@ def _job(folder, scales, count, seed):
     return truths, starts
 
 
-def _run(folder, threshold, amplitude_threshold):
+def _run(folder, threshold, amplitude_threshold, edge="falling"):
     batch = str(folder / "batch")
     kwargs = {
         "_slice_batch_paths": {name: batch for name in ("deposit", "current", "readout", "reconstruction")},
-        "threshold": threshold, "amplitude_threshold": amplitude_threshold, "fractions": FRACTIONS,
+        "threshold": threshold, "amplitude_threshold": amplitude_threshold, "fractions": FRACTIONS, "edge": edge,
     }
     reconstruction.run(kwargs)
     return read_event_table(folder / "batch" / "reconstruction_0.h5")
@@ -64,7 +64,7 @@ def test_every_event_has_a_row_and_the_large_ones_are_selected(tmp_path) -> None
     table = _run(tmp_path, 3, 5)
 
     rows = table.columns
-    assert (len(table), table.polarity) == (60, -1.0)
+    assert (len(table), table.edge) == (60, "falling")
     assert list(rows["event"]) == list(range(60))
     assert list(np.flatnonzero(rows["selected"])) == list(range(0, 60, 2))
     assert rows["amplitude"][:, 0] == pytest.approx(np.tile([10.0e-3, 4.0e-3], 30))
@@ -105,3 +105,15 @@ def test_event_below_both_thresholds_has_no_cluster(tmp_path) -> None:
     assert list(rows["cluster_size"]) == [0] * 3
     assert np.isnan(rows["cluster_center"]).all()
     assert rows["amplitude"][:, 0] == pytest.approx(np.full(3, 2.0e-3))
+
+
+def test_thresholds_on_the_other_edge_see_no_pulse(tmp_path) -> None:
+    _job(tmp_path, [[1.0]], 3, seed=7)  # 10 mV, falling
+
+    rising = _run(tmp_path, 3, 5, "rising").columns
+
+    assert not rising["above"].any() and not rising["selected"].any()
+    # turned over the falling pulse is a dip: nothing rises above the baseline
+    assert rising["amplitude"][:, 0] == pytest.approx(np.zeros(3))
+    with pytest.raises(ValueError, match="edge 'down'"):
+        _run(tmp_path, 3, 5, "down")

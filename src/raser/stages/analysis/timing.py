@@ -4,8 +4,7 @@ import numpy as np
 
 from raser.core.analysis.resolution import core_width
 from raser.core.readout.waveforms import read_waveforms
-from raser.core.reconstruction.event import net_pulse
-from raser.core.reconstruction.event import pulse_polarity
+from raser.core.reconstruction.event_table import EDGE_SIGN
 from raser.stages.reconstruction import job_table
 
 from .files import job_file
@@ -15,30 +14,25 @@ from .files import slice_file
 CFD_FRACTIONS = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9)
 
 
-def point_tables(jobs, threshold, amplitude_threshold):
+def point_tables(jobs, threshold, amplitude_threshold, edge):
     """The reconstruction of each finished job of a point that recorded
     events, as (place of the job in `jobs`, its table). Until the chain has
     the reconstruction slice the tables are made here, from the files of
-    the jobs, with the fractions CFD_FRACTIONS and one sign of the pulses
-    for the point, taken from all its events.
+    the jobs, with the fractions CFD_FRACTIONS.
 
     jobs : (seed folder, job index) pairs, as lifecycle hands them out.
     threshold, amplitude_threshold : in the unit of the waveforms [V]
+    edge : "rising" or "falling", the edge of the pulses they are set on
     """
-    readouts = []
+    tables = []
     for place, (folder, index) in enumerate(jobs):
         path = job_file(folder, index, "readout")
-        if path is not None:
-            readouts.append((place, folder, index, read_waveforms(path)))
-    if not readouts:
-        return []
-    polarity = pulse_polarity(
-        [net_pulse(samples)[0] for *_, waveforms in readouts for event in waveforms.events for samples in event.voltage]
-    )
-    tables = []
-    for place, folder, index, waveforms in readouts:
+        if path is None:
+            continue
         files = [slice_file(folder, index, name) for name in ("deposit", "current")]
-        tables.append((place, job_table(waveforms, *files, threshold, amplitude_threshold, CFD_FRACTIONS, polarity)))
+        tables.append(
+            (place, job_table(read_waveforms(path), *files, threshold, amplitude_threshold, CFD_FRACTIONS, edge))
+        )
     return tables
 
 
@@ -84,7 +78,7 @@ def event_times(tables):
         for k, part in enumerate(table.fractions):
             columns.setdefault(f"CFD{round(100 * part)}", []).append(rows["CFD"][chosen, 0, k])
     count = sum(len(table) for _, table in tables)
-    return count, tables[0][1].polarity, {name: np.concatenate(values) for name, values in columns.items()}
+    return count, EDGE_SIGN[tables[0][1].edge], {name: np.concatenate(values) for name, values in columns.items()}
 
 
 def time_widths(times):
@@ -98,7 +92,7 @@ def time_widths(times):
     return widths
 
 
-def point_resolution(jobs, threshold, amplitude_threshold):
+def point_resolution(jobs, threshold, amplitude_threshold, edge):
     """Time resolution of one point: for every time of `event_times`, the
     width of the core of time - truth over the events above the amplitude
     threshold.
@@ -109,7 +103,7 @@ def point_resolution(jobs, threshold, amplitude_threshold):
         polarity  sign of the pulses, +1 or -1
         times     what `time_widths` gives for the selected events
     """
-    count, polarity, times = event_times(point_tables(jobs, threshold, amplitude_threshold))
+    count, polarity, times = event_times(point_tables(jobs, threshold, amplitude_threshold, edge))
     return {
         "events": count,
         "selected": len(times["truth"]),

@@ -26,7 +26,7 @@ def collect(options):
         if not jobs:
             failed.append(f"  {root / name}: no finished job")
             continue
-        error = write_point(jobs, digitizer, folder / name)
+        error = write_point(jobs, digitizer, options["edge"], folder / name)
         # too few events for a width or an efficiency is a result of the point
         if error is not None:
             print(f"{folder / name}: {error}")
@@ -42,8 +42,8 @@ def collect(options):
 WORKFLOW = Workflow(
     name="analysis",
     job=collect,
-    keys=("adc", "threshold", "amplitude_threshold"),
-    defaults={"adc": "scope", "threshold": None, "amplitude_threshold": None},
+    keys=("adc", "threshold", "amplitude_threshold", "edge"),
+    defaults={"adc": "scope", "threshold": None, "amplitude_threshold": None, "edge": "falling"},
     components={"adc": "adc"},
     in_file={"threshold": "adc.threshold", "amplitude_threshold": "adc.amplitude_threshold"},
     device=False,

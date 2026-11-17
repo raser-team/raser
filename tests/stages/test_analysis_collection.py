@@ -46,7 +46,7 @@ def _job(folder, index, efficiencies):
 
 
 def point_efficiency(jobs):
-    return efficiency_spread(event_efficiencies(point_tables(jobs, 3.0e-3, 5.0e-3)))
+    return efficiency_spread(event_efficiencies(point_tables(jobs, 3.0e-3, 5.0e-3, "falling")))
 
 
 def _empty_job(folder, index, events):
