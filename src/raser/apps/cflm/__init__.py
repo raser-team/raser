@@ -50,7 +50,7 @@ SLICES = (
 )
 
 WORKFLOW = Workflow(
-    name="lumi",
+    name="cflm",
     keys=("voltage", "irradiation", "plots", "amplifier"),
     defaults={"amplifier": signal.DEFAULTS["afe"], "plots": 0},
     in_file=signal.IN_FILE,
@@ -59,7 +59,7 @@ WORKFLOW = Workflow(
 
 
 def register(subparsers):
-    parser = subparsers.add_parser("lumi", help="CEPC Fast Luminosity Monitor")
+    parser = subparsers.add_parser("cflm", help="CEPC Fast Luminosity Monitor")
     parser.add_argument("det_name", help="Device project")
     parser.add_argument("--plots", type=int, help="draw the first N recorded bunches of each pad")
     parser.add_argument("-vol", "--voltage", type=float, help="bias voltage")

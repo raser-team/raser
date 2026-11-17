@@ -124,7 +124,7 @@ type = "independence"
 modules = [
   "raser.apps.bmos",
   "raser.apps.cce",
-  "raser.apps.lumi",
+  "raser.apps.cflm",
   "raser.apps.signal",
   "raser.apps.tct",
   "raser.apps.telescope",
@@ -134,9 +134,9 @@ ignore_imports = [
   "raser.apps.bmos -> raser.apps.signal",
   "raser.apps.cce -> raser.apps.signal",
   "raser.apps.timeres -> raser.apps.signal",
-  "raser.apps.lumi -> raser.apps.signal",
-  "raser.apps.lumi.signals -> raser.apps.signal.gen_signal",
-  "raser.apps.lumi.deposits -> raser.apps.signal.gen_signal",
+  "raser.apps.cflm -> raser.apps.signal",
+  "raser.apps.cflm.signals -> raser.apps.signal.gen_signal",
+  "raser.apps.cflm.deposits -> raser.apps.signal.gen_signal",
   "raser.apps.tct.tct_signal -> raser.apps.signal.gen_signal",
 ]
 

@@ -181,4 +181,4 @@ def draw_spd_dis(h1, h2, pdf_name, X_label, styles, ratio_range_bin):
     legend.AddEntry(h2, styles['label2'], "l")
     legend.Draw()
 
-    c1.SaveAs(f"src/raser/apps/lumi/figs/{pdf_name}.pdf")
+    c1.SaveAs(f"src/raser/apps/cflm/figs/{pdf_name}.pdf")

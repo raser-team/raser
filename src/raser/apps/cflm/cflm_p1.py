@@ -221,7 +221,7 @@ class cflmDetectorConstruction(g4b.G4VUserDetectorConstruction):
             self.compound.AddElement(self.nist.FindOrBuildElement("Si", False), 50 * g4b.perCent)
             self.compound.AddElement(self.nist.FindOrBuildElement("C", False), 50 * g4b.perCent)
         else:
-            raise ValueError(f"the Geant4 of lumi builds pads of Si or SiC, not of {material}")
+            raise ValueError(f"the Geant4 of cflm builds pads of Si or SiC, not of {material}")
 
     def Construct(self): 
         self.fStepLimit.SetMaxAllowedStep(self.maxStep)

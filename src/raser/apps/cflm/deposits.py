@@ -1,4 +1,4 @@
-"""The deposits slice of a lumi job: deposits_<job>.h5.
+"""The deposits slice of a cflm job: deposits_<job>.h5.
 
 An event is one bunch: the lost electrons of cflm_p1.json shot into the beam
 pipe together. The pads are 24 detectors of the file, named <side>_<i>_<j>;
@@ -66,7 +66,7 @@ def bunch_deposits(my_d, g4_dic, seed):
 
 def deposits(kwargs):
     my_d = bdv.Detector(kwargs["det_name"], kwargs["_files"]["device"])
-    with open(app_file_path("lumi", "cflm_p1.json")) as file:
+    with open(app_file_path("cflm", "cflm_p1.json")) as file:
         g4_dic = json.load(file)
     found = bunch_deposits(my_d, g4_dic, kwargs["seed"])
     write_deposits(output(kwargs, "deposits"), found)

@@ -22,7 +22,7 @@ APPLICATIONS = {  # command -> the module that registers it
     "bmos": "raser.apps.bmos",
     "cce": "raser.apps.cce",
     "field": "raser.stages.field",
-    "lumi": "raser.apps.lumi",
+    "cflm": "raser.apps.cflm",
     "signal": "raser.apps.signal",
     "tct": "raser.apps.tct",
     "telescope": "raser.apps.telescope",
