@@ -32,6 +32,7 @@ def test_deposits_file_returns_each_event_with_its_own_deposits(tmp_path) -> Non
                 pairs=[16700.0],
             ),
         ],
+        generated_fraction=0.017,
     )
     path = tmp_path / "deposits.h5"
 

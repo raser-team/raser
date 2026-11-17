@@ -61,6 +61,14 @@ def g4_configuration(
     return configuration
 
 
+def generated_fraction(source: dict) -> float:
+    """The part of what the source emits that is generated: of a source of
+    nuclides with par_cone [degree], the directions within the cone."""
+    if "nuclides" in source and source.get("par_cone") is not None:
+        return (1 - math.cos(math.radians(source["par_cone"]))) / 2
+    return 1.0
+
+
 def world_half_side(my_d, configuration: dict) -> float:
     """Half the side [um] of the cube of the Geant4 world, centred where
     the device's face z = 0 has its middle.
@@ -145,6 +153,7 @@ def simulate_deposits(
     g4_seed. The source comes at its par_angle [degree], see `tilted`.
     """
     deposits = _energy_deposits(my_d, source, g4setup, events, g4_seed, edep_min, edep_max)
+    deposits.generated_fraction = generated_fraction(source)
     for event in deposits.events:
         event.pairs, _ = ionized_pairs(event, my_d.material, fano)
     return deposits

@@ -5,6 +5,7 @@ import pytest
 
 from raser.core.deposit.simulate_deposits import simulate_deposits
 from raser.core.deposit.simulate_deposits import g4_configuration
+from raser.core.deposit.simulate_deposits import generated_fraction
 from raser.core.deposit.simulate_deposits import tilted
 from raser.core.deposit.simulate_deposits import world_half_side
 from raser.core.deposit.simulate_deposits import WORLD_HALF_SIDE
@@ -110,3 +111,11 @@ def test_world_holds_the_device_the_objects_and_the_source() -> None:
     assert world_half_side(small, {"particles": [{"par_in": [0, -26000, 0]}]}) == 52000
     # a disk of a source reaches by its radius
     assert world_half_side(small, {"par_in": [24000, 0, 0], "par_radius": 2000}) == 52000
+
+
+def test_generated_fraction_is_the_solid_angle_of_the_cone() -> None:
+    sr90 = {"nuclides": [[38, 90]], "par_cone": 15}
+    # (1 - cos 15 degrees) / 2 of all directions
+    assert generated_fraction(sr90) == pytest.approx(0.017037, rel=1e-4)
+    assert generated_fraction({"nuclides": [[38, 90]]}) == 1.0
+    assert generated_fraction(SOURCE) == 1.0

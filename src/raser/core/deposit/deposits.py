@@ -13,8 +13,11 @@ Datasets, one value per deposit:
     e         deposited energy [MeV]
     pairs     electron-hole pairs the deposit created
 
-Attributes of the file: generated_events, and edep_min, edep_max [MeV]
-where the window has that bound.
+Attributes of the file: generated_events, the events the source generated;
+recorded_events, those of them the file holds; generated_fraction, the part
+of what the source emits that was generated, such as the directions within
+the cone of a radioactive source; and edep_min, edep_max [MeV] where the
+window has that bound.
 """
 
 from __future__ import annotations
@@ -46,6 +49,8 @@ class Deposits:
     edep_min: float | None
     edep_max: float | None
     events: list[EventDeposits]
+    # the part of what the source emits that was generated
+    generated_fraction: float = 1.0
 
 
 def deposits_of_steps(
@@ -96,6 +101,8 @@ def write_deposits(path: str, deposits: Deposits) -> None:
             )
     with h5py.File(str(path), "w") as file:
         file.attrs["generated_events"] = deposits.generated_events
+        file.attrs["recorded_events"] = len(events)
+        file.attrs["generated_fraction"] = deposits.generated_fraction
         for bound in ("edep_min", "edep_max"):
             if getattr(deposits, bound) is not None:
                 file.attrs[bound] = getattr(deposits, bound)
@@ -116,6 +123,7 @@ def write_deposits(path: str, deposits: Deposits) -> None:
 def read_deposits(path: str) -> Deposits:
     with h5py.File(str(path), "r") as file:
         generated_events = int(file.attrs["generated_events"])
+        generated_fraction = float(file.attrs["generated_fraction"])
         edep_min, edep_max = (
             float(file.attrs[bound]) if bound in file.attrs else None
             for bound in ("edep_min", "edep_max")
@@ -136,4 +144,4 @@ def read_deposits(path: str) -> Deposits:
             )
         )
         first = last
-    return Deposits(generated_events, edep_min, edep_max, events)
+    return Deposits(generated_events, edep_min, edep_max, events, generated_fraction)
