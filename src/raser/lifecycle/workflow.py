@@ -98,6 +98,11 @@ class Workflow:
     # out the others of its group from the layers below; two of a group in
     # one layer are an error.
     exclusive: tuple = ()
+    # More than one device: name -> (its device, None for the one the command
+    # names; the positions it takes). Each device file is files[name]["device"],
+    # its options at the addresses <name>.device.... One device is the one the
+    # command names, in files["device"].
+    devices: Mapping = field(default_factory=dict)
 
     def __post_init__(self):
         _one_of_each_group(self.exclusive, self.defaults, f"the defaults of {self.name}")
@@ -482,7 +487,10 @@ def _point(workflow, kwargs, options) -> tuple[dict, dict]:
 
     # The json files the run uses: the device, and the files its options name.
     files = {}
-    if workflow.device:
+    if workflow.device and len(workflow.devices) > 1:
+        for name, (device, _) in workflow.devices.items():
+            files[name] = {"device": device_json(kwargs["det_name"] if device is None else device)}
+    elif workflow.device:
         files["device"] = device_json(kwargs["det_name"])
     for kind, key in workflow.components.items():
         read = workflow.readers.get(kind)
