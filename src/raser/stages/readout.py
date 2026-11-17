@@ -21,13 +21,14 @@ def waveforms(kwargs):
     electrodes = electrode_names(my_d.read_out_contact, my_d.read_ele_num)
     if "resistive_layer" in my_d.device_dict:
         build = device_grid if my_d.is_pixel else device_row
-        sensor, _ = build(my_d, electrodes)
+        sensor, values = build(my_d, electrodes)
     else:
-        sensor, _ = device_sensor(my_d, electrodes)
+        sensor, values = device_sensor(my_d, electrodes)
     write_waveforms(
         output(kwargs, "current"),
         output(kwargs, "readout"),
         named_chain(str(kwargs["amplifier"])),
         sensor,
         kwargs.get("seed"),
+        sensor_values=values,
     )
