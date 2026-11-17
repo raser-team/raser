@@ -70,6 +70,31 @@ def test_an_inverting_stage_turns_the_pulse_over():
     assert pulse_edges(_device("HPK-Si-PiN"), inverted, ["a"]) == ["rising"]
 
 
+@pytest.mark.ngspice
+def test_way_of_a_chain_is_its_swing_from_where_its_output_rests():
+    # the inverting stage with its output lifted by 1 V: the pulse dips from
+    # +1 V and stays above zero
+    lifted = {
+        "ports": {"in": "a", "out": "c"},
+        "elements": {
+            **INVERTING["elements"],
+            "V1": {"between": ["c", "b"], "volt": 1.0},
+        },
+    }
+    # the input on 50 Ohm, the output on its own 50 Ohm: nothing passes
+    dead = {
+        "ports": {"in": "a", "out": "b"},
+        "elements": {
+            "R1": {"between": ["a", "0"], "ohm": 50.0},
+            "R2": {"between": ["b", "0"], "ohm": 50.0},
+        },
+    }
+
+    assert chain_sign({"stages": {"lifted": lifted}, "load": LOAD}) == -1
+    with pytest.raises(ValueError, match="does not answer"):
+        chain_sign({"stages": {"dead": dead}, "load": LOAD})
+
+
 def test_pulse_edge_of_each_electrode_is_kept_in_the_file(tmp_path):
     record = EventWaveforms(0, 0.0, np.zeros((2, 3)))
 

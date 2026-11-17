@@ -27,15 +27,28 @@ def collected_charge_sign(my_d):
     return -1 if above > 0 else 1
 
 
+# a chain whose output moves less than this for 1 fC does not answer it [V]
+NO_ANSWER_V = 1e-9
+
+
 def chain_sign(chain):
     """+1 when the chain answers a positive charge on its input with a pulse
-    whose largest swing is positive, -1 when that swing is negative: the
-    chain inverts. Found by solving the chain on 1 pF for 1 fC."""
+    whose largest swing from where its output rests is upwards, -1 when it
+    is downwards: the chain inverts. Found by solving the chain on 1 pF for
+    1 fC; a chain that does not answer is an error."""
     dt = 10e-12
     current = np.zeros((1, 2000))
     current[0, 5] = 1e-15 / dt
     voltage = solve(chain, ["probe"], dt, current, planar_circuit("probe", 1e-12))[0]
-    return 1 if voltage[np.argmax(np.abs(voltage))] > 0 else -1
+    # the first bin is before the charge: the output at rest
+    swing = voltage - voltage[0]
+    largest = swing[np.argmax(np.abs(swing))]
+    if abs(largest) < NO_ANSWER_V:
+        raise ValueError(
+            f"The chain moves its output by {largest:.3g} V for 1 fC: it does "
+            "not answer, so the way its pulses go is not known"
+        )
+    return 1 if largest > 0 else -1
 
 
 def pulse_edges(my_d, chain, outputs):
