@@ -12,6 +12,8 @@ from .detector_construction import GeneralDetectorConstruction
 from .action_initialization import GeneralActionInitialization
 
 g4b.include("G4RunManager.hh")
+g4b.include("G4RadioactiveDecayPhysics.hh")
+g4b.include("G4HadronicParameters.hh")
 
 verbose = 0
 
@@ -88,6 +90,15 @@ class GeneralG4Interaction:
         self.physics_list = g4b.FTFP_BERT()
         self.step_limiter_physics = g4b.G4StepLimiterPhysics()
         self.physics_list.RegisterPhysics(self.step_limiter_physics)
+        # A source of nuclides: Geant4 decays them, whatever their lifetime.
+        self.nuclides = g4_dic.get("nuclides")
+        self.decay_physics = None
+        if self.nuclides is not None:
+            self.decay_physics = g4b.G4RadioactiveDecayPhysics()
+            self.physics_list.RegisterPhysics(self.decay_physics)
+            g4b.G4HadronicParameters.Instance().SetTimeThresholdForRadioactiveDecay(
+                1.0e60 * g4b.year
+            )
         self.g4RunManager.SetUserInitialization(self.physics_list)
 
         (
@@ -108,8 +119,8 @@ class GeneralG4Interaction:
             g4_dic["par_out"],
             g4_dic.get("par_randx", 0),
             g4_dic.get("par_randy", 0),
-            g4_dic["par_type"],
-            g4_dic["par_energy"],
+            g4_dic.get("par_type"),
+            g4_dic.get("par_energy"),
             self.eventIDs,
             self.edep_devices,
             self.p_steps,
@@ -119,6 +130,19 @@ class GeneralG4Interaction:
             self.edep_window,
             self.geant4_model,
             **({"particles": g4_dic["particles"]} if "particles" in g4_dic else {}),
+            **(
+                {
+                    "nuclides": {
+                        "nuclides": self.nuclides,
+                        "par_in": g4_dic["par_in"],
+                        "par_out": g4_dic["par_out"],
+                        "radius": g4_dic.get("par_radius", 0),
+                        "cone": g4_dic.get("par_cone"),
+                    }
+                }
+                if self.nuclides is not None
+                else {}
+            ),
         )
         self.g4RunManager.SetUserInitialization(self.action_initialization)
 
@@ -168,6 +192,7 @@ class GeneralG4Interaction:
         _release_cppyy_ownership(vars(detector).values())
         _release_cppyy_ownership(detector)
         _release_cppyy_ownership(self.step_limiter_physics)
+        _release_cppyy_ownership(self.decay_physics)
         _release_cppyy_ownership(self.physics_list)
         for action in self.action_initialization.actions:
             _release_cppyy_ownership(vars(action).values())

@@ -14,12 +14,17 @@ from .run_action import GeneralRunAction
 from .event_action import GeneralEventAction
 from .stepping_action import GeneralSteppingAction
 from .primary_generator_action import GeneralPrimaryGeneratorAction
+from .nuclide_source import DecayStackingAction
+from .nuclide_source import NuclideGeneratorAction
+from .nuclide_source import axis_and_plane
 
 class GeneralActionInitialization(g4b.G4VUserActionInitialization):
     def __init__(self, par_in, par_out, par_randx, par_randy, par_type, par_energy,
-                 eventIDs, edep_devices, p_steps, energy_steps, time_steps, events_angles, edep_window, geant4_model, particles=None,):
+                 eventIDs, edep_devices, p_steps, energy_steps, time_steps, events_angles, edep_window, geant4_model, particles=None, nuclides=None,):
         super().__init__()
         self.particles = particles
+        # nuclides: what NuclideGeneratorAction takes, for a source of nuclides
+        self.nuclides = nuclides
         self.par_in = par_in
         self.par_out = par_out
         self.par_type = par_type
@@ -39,14 +44,23 @@ class GeneralActionInitialization(g4b.G4VUserActionInitialization):
         self.actions = []
 
     def Build(self):
-        primary_action = GeneralPrimaryGeneratorAction(self.par_in,
-                                                    self.par_out,
-                                                    self.par_randx, 
-                                                    self.par_randy,
-                                                    self.par_type,
-                                                    self.par_energy,
-                                                    self.geant4_model,
-                                                    self.particles,)
+        if self.nuclides is not None:
+            primary_action = NuclideGeneratorAction(**self.nuclides)
+            stacking_action = DecayStackingAction(
+                *axis_and_plane(self.nuclides["par_in"], self.nuclides["par_out"]),
+                self.nuclides["cone"],
+            )
+            self.actions.append(stacking_action)
+            self.SetUserAction(stacking_action)
+        else:
+            primary_action = GeneralPrimaryGeneratorAction(self.par_in,
+                                                        self.par_out,
+                                                        self.par_randx, 
+                                                        self.par_randy,
+                                                        self.par_type,
+                                                        self.par_energy,
+                                                        self.geant4_model,
+                                                        self.particles,)
         self.actions.append(primary_action)
         self.SetUserAction(primary_action)
         # global myRA_action
