@@ -284,6 +284,9 @@ def execute(workflow, kwargs):
                     _done(folder, i).unlink(missing_ok=True)
             if left:
                 (folder / "batch").mkdir(parents=True, exist_ok=True)
+                # The most jobs the seed folder was asked for, for raser status;
+                # it does not make a run out of date: -s 5 after -s 3 adds two.
+                record["jobs"] = max(record.get("jobs", 0), kwargs.get("jobs") or 1)
                 _write(folder / "run.json", record)
                 try:
                     _start(workflow, {**kwargs, "job_slices": names}, folder, left, alone=len(todo) == 1)
