@@ -45,6 +45,11 @@ class Material:
             self.avalanche_model = 'Hatakeyama'
             self.mobility_model = 'Das'
 
+        if self.mat_name == "Diamond":
+            # no avalanche model: an undoped MIM device has no gain
+            self.permittivity=5.7
+            self.avalanche_model = None
+            self.mobility_model = 'Reggiani_diamond'
 
     def cal_mobility(self, temperature, input_doping, charge, electric_field):
         """ Define Mobility Model """
@@ -87,6 +92,35 @@ class Material:
                     beta_n = 1 * math.pow(t, 0.66)
                     v_sat_n = 2e7 * math.pow(t, 0.87)
                     mu_LIF_n = mu_LI_n / (math.pow(1.0 + math.pow(mu_LI_n * E / v_sat_n, beta_n), 1.0/beta_n))
+
+                    mu = mu_LIF_n
+
+        # Diamond mobility
+        if(self.mat_name == 'Diamond'):
+            if self.mobility_model == "Reggiani_diamond":
+                Neff = abs(Neff)
+                if(charge>0):
+                    mu_L_p = 1200 * math.pow(t, -2.5)
+                    mu_min_p = 50 / t
+
+                    C_ref_p = 1.0e17
+                    mu_LI_p = mu_min_p + mu_L_p/(1.0 + math.pow(Neff / C_ref_p, 0.5))
+
+                    beta_p = 1.5 * math.pow(t, 0.2)
+                    v_sat_p = 1.0e7 * math.pow(t, -0.5)
+                    mu_LIF_p = mu_LI_p / (math.pow(1.0 + math.pow(mu_LI_p * E / v_sat_p, beta_p), 1.0 / beta_p))
+
+                    mu = mu_LIF_p
+                else:
+                    mu_L_n = 1800 * math.pow(t, -2.5)
+                    mu_min_n = 100 / t
+
+                    C_ref_n = 2.0e17
+                    mu_LI_n = mu_min_n + mu_L_n/(1.0 + math.pow(Neff / C_ref_n, 0.5))
+
+                    beta_n = 1.0 * math.pow(t, 0.3)
+                    v_sat_n = 2.7e7 * math.pow(t, -0.5)
+                    mu_LIF_n = mu_LI_n / (math.pow(1.0 + math.pow(mu_LI_n * E / v_sat_n, beta_n), 1.0 / beta_n))
 
                     mu = mu_LIF_n
 

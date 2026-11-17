@@ -92,6 +92,7 @@ def simulate_deposits(
     g4_seed: int,
     edep_min: float | None = None,
     edep_max: float | None = None,
+    fano: bool = True,
 ) -> Deposits:
     """Deposits of `events` generated events of `source` in the device,
     each with the electron-hole pairs it created in the material of the device.
@@ -99,12 +100,14 @@ def simulate_deposits(
     source and g4setup are the contents of the component files; g4setup
     None is the device alone in vacuum. edep_min and edep_max [MeV] bound
     the energy deposited in the device; events outside are not recorded.
+    fano draws the number of pairs of each deposit with the Fano variance;
+    without, it is energy / pair energy.
     A toy MIP takes only the step limit from the g4setup and does not use
     g4_seed.
     """
     deposits = _energy_deposits(my_d, source, g4setup, events, g4_seed, edep_min, edep_max)
     for event in deposits.events:
-        event.pairs, _ = ionized_pairs(event, my_d.material)
+        event.pairs, _ = ionized_pairs(event, my_d.material, fano)
     return deposits
 
 
@@ -140,9 +143,12 @@ def write_simulated_deposits(
     g4_seed: int,
     edep_min: float | None = None,
     edep_max: float | None = None,
+    fano: bool = True,
 ) -> int:
     """simulate_deposits, written to the deposits file; a file an earlier
     start left there is replaced. Returns the number of recorded events."""
-    deposits = simulate_deposits(my_d, source, g4setup, events, g4_seed, edep_min, edep_max)
+    deposits = simulate_deposits(
+        my_d, source, g4setup, events, g4_seed, edep_min, edep_max, fano
+    )
     write_deposits(deposits_path, deposits)
     return len(deposits.events)

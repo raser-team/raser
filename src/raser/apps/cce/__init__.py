@@ -15,6 +15,7 @@ WORKFLOW = Workflow(
     defaults={
         "source": DEFAULTS["source"],
         "tilt": 0,
+        "fano": True,
         "events_per_job": 10000,
         "plots": 0,
         "amplifier": DEFAULTS["afe"],

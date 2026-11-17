@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from raser.core import seeding
+from raser.core.interaction import ionization
 from raser.core.interaction.deposits import EventDeposits
 from raser.core.interaction.ionization import ionized_pairs
 
@@ -21,7 +22,11 @@ def _deposits(energies: list[float]) -> EventDeposits:
 
 @pytest.mark.parametrize(
     ("material", "energy_mev", "mean", "variance"),
-    [("Si", 0.036, 10000.0, 1150.0), ("SiC", 0.084, 10000.0, 1280.0)],
+    [
+        ("Si", 0.036, 10000.0, 1150.0),
+        ("SiC", 0.084, 10000.0, 1280.0),
+        ("Diamond", 0.131, 10000.0, 3820.0),
+    ],
 )
 def test_ionized_pairs_have_the_mean_and_the_fano_variance(
     material: str, energy_mev: float, mean: float, variance: float
@@ -39,3 +44,23 @@ def test_ionized_pairs_keep_position_and_time_of_each_deposit() -> None:
     _, positions = ionized_pairs(_deposits([0.036, 0.084]), "Si")
 
     assert positions == [[1.0, 3.0, 5.0, 7.0e-12], [2.0, 4.0, 6.0, 8.0e-12]]
+
+
+def test_without_fano_the_pairs_are_energy_over_pair_energy() -> None:
+    seeding.seed_generators(3)
+
+    pairs, _ = ionized_pairs(_deposits([0.131, 5.54]), "Diamond", fano=False)
+
+    assert pairs == pytest.approx([10000.0, 5.54e6 / 13.1])
+
+
+def test_without_fano_a_material_needs_no_fano_factor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(ionization.PAIR_ENERGY_EV, "Unmeasured", 10.0)
+
+    pairs, _ = ionized_pairs(_deposits([0.01]), "Unmeasured", fano=False)
+
+    assert pairs == pytest.approx([1000.0])
+    with pytest.raises(ValueError, match="no Fano factor"):
+        ionized_pairs(_deposits([0.01]), "Unmeasured")
