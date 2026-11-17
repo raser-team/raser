@@ -93,6 +93,14 @@ class Workflow:
     # the options of a command -> its experiment folder, for an experiment that
     # is not at work/<device>/<words>, such as one inside another experiment
     folder: Callable | None = None
+    # Groups of keys of which one is given: a key of a group given in a layer
+    # (the command line, then the config's "set", then the defaults) leaves
+    # out the others of its group from the layers below; two of a group in
+    # one layer are an error.
+    exclusive: tuple = ()
+
+    def __post_init__(self):
+        _one_of_each_group(self.exclusive, self.defaults, f"the defaults of {self.name}")
 
     @property
     def words(self):
@@ -410,6 +418,14 @@ def _points(workflow, kwargs, config, given) -> tuple[dict, dict]:
     One point for every combination of the scanned values. A point's folder is
     named by the scanned options that differ from the unscanned run."""
     fixed = {**workflow.defaults, **config.get("set", {}), **given}
+    # Of a group of keys of which one is given, the highest layer that gives
+    # one decides; the others of the group from the layers below are left out.
+    layers = (("the command line", given), ('the "set" of config.json', config.get("set", {})), ("the defaults", workflow.defaults))
+    for group in workflow.exclusive:
+        top = next((layer for where, layer in layers if _one_of_each_group([group], layer, where)), None)
+        for key in group:
+            if top is not None and top.get(key) is None:
+                fixed.pop(key, None)
     same_seeds = kwargs.get("same_seeds") or config.get("same_seeds", False)
     # "names" in the config gives an address a short name: the scan may be
     # written with it, and the folders are named by it.
@@ -652,6 +668,18 @@ def _label(key, names) -> str:
     """A scanned option in the name of a folder: the name the config gives it,
     else the last two steps of an address, else the option itself."""
     return names.get(key) or ".".join(key.split(".")[-2:])
+
+
+def _one_of_each_group(groups, layer, where) -> bool:
+    """Whether `layer` gives a key of the one group in `groups`; two keys of
+    a group in it are an error that names them and `where` they are."""
+    gives = False
+    for group in groups:
+        present = [key for key in group if layer.get(key) is not None]
+        if len(present) > 1:
+            raise ValueError(f"{present[0]} and {present[1]} are given at once in {where}; give one of them")
+        gives = gives or bool(present)
+    return gives
 
 
 # The text a value names a folder with may hold only these.
