@@ -54,8 +54,13 @@ def solved_field(my_d, voltage, irradiation_flux, mode=DEFAULT_MODE):
             f"in {root} (flux and mode of those solved: {have}); "
             f"solve it with `{again} -irr {irradiation_flux:g}`"
         )
-    folder, record = next(iter(at_flux.items()))
-    differing = changed(record["read"], my_d) if "read" in record else ["nothing solved yet"]
+    # Of those, the one solved for the device as it is now; the first when none was.
+    differing_in = {
+        folder: changed(record["read"], my_d) if "read" in record else ["nothing solved yet"]
+        for folder, record in at_flux.items()
+    }
+    folder = next((folder for folder, differing in differing_in.items() if not differing), next(iter(at_flux)))
+    record, differing = at_flux[folder], differing_in[folder]
     if differing:
         raise ValueError(
             f"the field in {folder} was solved for another device ({', '.join(differing)}); "

@@ -117,9 +117,10 @@ def test_a_field_not_ready_is_started_once_for_the_points_that_share_it_and_thei
     assert experiment["ran"] == []
 
 
-def _solved_field(project: Path, device: dict[str, Any]) -> Path:
-    """A field of `device` solved at 200 V, as `raser field` records it."""
-    folder = project / "field"
+def _solved_field(project: Path, device: dict[str, Any], point: str = "") -> Path:
+    """A field of `device` solved at 200 V, as `raser field` records it, in
+    the folder of a point of the field experiment."""
+    folder = project / "field" / point
     folder.mkdir(parents=True)
     record = {
         "options": {"irradiation_flux": None, "mode": DEFAULT_MODE},
@@ -151,3 +152,53 @@ def test_the_field_is_ready_only_as_raser_field_would_leave_it(
     lower["bias"]["voltage"] = 100.0
     assert field.ready(options, {"device": lower}) is None  # not solved at this bias
     assert field.ready({**options, "irradiation": 1e14}, {"device": device}) is None  # another flux
+
+
+def test_of_the_fields_at_a_flux_the_one_of_this_device_is_taken(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RASER_PROJECT_PATH", str(tmp_path))
+    device = device_json("HPK-Si-PiN")
+    device["bias"]["voltage"] = 200.0
+    doped = json.loads(json.dumps(device))
+    doped["doping"]["Acceptors"] = "1e13"
+    plain = _solved_field(tmp_path, device)
+    other = _solved_field(tmp_path, doped, "doping.Acceptors_1e13")
+    options = {"voltage": 200.0, "irradiation": None}
+
+    assert field.ready(options, {"device": device}) == plain
+    assert field.ready(options, {"device": doped}) == other
+
+
+def test_a_change_of_the_device_that_the_field_does_not_read_takes_the_field_there_is(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("RASER_PROJECT_PATH", str(tmp_path))
+    device = device_json("HPK-Si-PiN")
+    device["bias"]["voltage"] = 200.0
+    folder = _solved_field(tmp_path, device)
+
+    longer = {**device, "l_y": 2 * device["l_y"]}  # not read by this field
+    assert field.ready({"voltage": 200.0, "irradiation": None, "device.l_y": longer["l_y"]}, {"device": longer}) == folder
+
+
+def test_the_field_is_solved_for_the_device_as_the_point_changed_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    asked: list[list[str]] = []
+    monkeypatch.setattr(field, "execute", lambda flow, kwargs: asked.append(kwargs["scan"]))
+    device = device_json("HPK-Si-PiN")
+    device["bias"]["voltage"] = 300.0
+    device["doping"]["Acceptors"] = "1e13"
+    options = {"voltage": 300.0, "irradiation": None, "device.doping.Acceptors": "1e13", "device.bias.voltage": 300.0}
+
+    field.start({"batch": False, "mem": 1}, options, {"device": device})
+
+    assert asked == [['device.doping.Acceptors="1e13"']]
+
+
+def test_a_shared_slice_made_here_that_is_still_not_ready_stops_the_command(
+    experiment: dict[str, Any],
+) -> None:
+    experiment["state"]["ready"] = False
+
+    with pytest.raises(RuntimeError, match="still not ready"):
+        execute(experiment["workflow"], _kwargs())

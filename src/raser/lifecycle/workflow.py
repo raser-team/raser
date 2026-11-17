@@ -209,6 +209,11 @@ def execute(workflow, kwargs):
             if same not in started and piece.shared.ready(options, files) is None:
                 started.add(same)
                 piece.shared.start(kwargs, options, files)
+                if not kwargs["batch"] and not kwargs["dry_run"] and piece.shared.ready(options, files) is None:
+                    raise RuntimeError(
+                        f"{piece.name} was made in this process and is still not ready for a point of "
+                        f"{root}: waiting would not help"
+                    )
     failed: list = []
     for folder, left, stale, record, run_again, before, names, (shared, options, files) in todo:
         slices.forget(run_again, folder)

@@ -269,6 +269,16 @@ def start(kwargs, options, files):
     flux = _flux_of_run(my_d, options)
     if flux != float(my_d.irradiation_flux):
         words += ["--scan", f"irradiation_flux={flux:g}"]
+    # What the point changed in the device file, the field is solved for too,
+    # in a folder of its own; the bias is -bias.
+    for address in sorted(key for key in options if key.startswith("device.") and key != "device.bias.voltage"):
+        value = json.dumps(options[address])
+        if "," in value:
+            raise ValueError(
+                f"{address} = {value}: a value with a comma cannot be handed to `raser field --scan`; "
+                f"solve the field of this device yourself, with the device file changed"
+            )
+        words += ["--scan", f"{address}={value}"]
     parser = argparse.ArgumentParser(prog="raser")
     register(parser.add_subparsers(dest="_command"))
     field_kwargs = vars(parser.parse_args(words))
