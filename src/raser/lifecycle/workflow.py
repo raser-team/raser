@@ -334,7 +334,14 @@ def _execute(workflow, kwargs, register, root, config, identity, release):
         raise
     release()
     try:
-        _make_shared(kwargs, [need for *_, need in todo], root)
+        # On the cluster, a shared slice made for this command starts it again
+        # in its seed folder when it is done.
+        waiting = {
+            "command": _without_seed_folder(kwargs.get("_argv") or []),
+            "cwd": os.getcwd(),
+            "seed_folder": label or None,
+        }
+        _make_shared({**kwargs, "_waiting": waiting} if kwargs["batch"] else kwargs, [need for *_, need in todo], root)
         for folder, left, stale, record, run_again, before, names, (shared, options, files) in todo:
             _stamp(workflow, record, options, files)  # of what was made just now
         failed = _run_points(workflow, kwargs, todo, label)
@@ -426,7 +433,11 @@ def _run_points(workflow, kwargs, todo, label) -> list:
             slices.forget(workflow.slices, folder)
             for i in left:
                 _done(folder, i).unlink(missing_ok=True)
-        if left:
+        if kwargs.get("_waiting") is not None and left:
+            # The commands that wait for this job, kept over a new run of it.
+            listed = _read(folder / "run.json").get("waiting", [])
+            record["waiting"] = listed + [kwargs["_waiting"]] * (kwargs["_waiting"] not in listed)
+        if left or (waiting and kwargs["batch"]):  # a run whose jobs all wait goes on from its record
             (folder / "batch").mkdir(parents=True, exist_ok=True)
             # The most jobs the seed folder was asked for, for raser status;
             # it does not make a run out of date: -s 5 after -s 3 adds two.
@@ -801,6 +812,8 @@ def _run_job(workflow, kwargs):
 
 def _run_one_job(workflow, kwargs, folder, index):
     record = _read(folder / "run.json")
+    for line in waited_for_by(record):
+        print(line)
     options = {**kwargs, **record["options"]}
     options["_run_path"] = str(folder)
     options["_run_batch_path"] = str(folder / "batch")
@@ -937,26 +950,55 @@ def _start_again(workflow, record, folder, progress) -> None:
     of the run again, in the same seed folder, so that the jobs that wait
     for this one are submitted. As many starts deep as the chain has slices,
     no more."""
-    if not os.environ.get("RASER_CLUSTER_JOB") or not progress or not record.get("command"):
+    if not os.environ.get("RASER_CLUSTER_JOB") or not progress:
         return
     depth = int(os.environ.get("RASER_RESUBMIT_DEPTH", "0"))
-    if depth >= max(1, len(workflow.slices)):
+    # The commands that wait for this job, as for a field others share; what
+    # they start counts its own depth from here.
+    for entry in _read(folder / "run.json").get("waiting", []):
+        words = [*entry["command"], *(["--seed-folder", entry["seed_folder"]] if entry["seed_folder"] else [])]
+        if depth >= _WAITING_DEPTH:
+            print(f"not starting raser {' '.join(words)}: {depth} starts deep")
+        elif _run_again(words, entry["cwd"], depth):
+            done = _read(folder / "run.json")
+            done["waiting"] = [other for other in done.get("waiting", []) if other != entry]
+            _write(folder / "run.json", done)
+    # Its own command, for the jobs of the run that wait for this one; a job
+    # of a workflow without slices leaves none waiting.
+    if not workflow.slices or not record.get("command"):
+        return
+    if depth >= len(workflow.slices):
         print(f"not starting the command again: {depth} starts deep, as many as the slices of the chain")
         return
-    words = [*record["command"], *(["--seed-folder", folder.name] if workflow.seeds else [])]
+    _run_again([*record["command"], *(["--seed-folder", folder.name] if workflow.seeds else [])], record["cwd"], depth)
+
+
+def waited_for_by(record) -> list[str]:
+    """A line for each command that waits for the jobs of `record`."""
+    return [
+        f"  waited for by: (in {entry['cwd']}) raser "
+        + " ".join([*entry["command"], *(["--seed-folder", entry["seed_folder"]] if entry["seed_folder"] else [])])
+        for entry in record.get("waiting", [])
+    ]
+
+
+def _run_again(words, cwd, depth) -> bool:
+    """Start `raser <words>` in `cwd` one start deeper; whether it started."""
     print("starting the command again: raser " + " ".join(words))
     environment = {**os.environ, "RASER_RESUBMIT_DEPTH": str(depth + 1)}
     # Another job that ended at the same time may hold the folders: try again a few times.
     for attempt in range(_STARTS):
         if attempt:
             time.sleep(_PAUSE)
-        started = subprocess.run([sys.executable, "-m", "raser.cli.raser", *words], cwd=record["cwd"], env=environment, check=False)
+        started = subprocess.run([sys.executable, "-m", "raser.cli.raser", *words], cwd=cwd, env=environment, check=False)
         if getattr(started, "returncode", 0) == 0:
-            return
+            return True
     print(f"the command did not start again in {_STARTS} tries: give it again when the jobs it waits for are done")
+    return False
 
 
 _STARTS, _PAUSE = 4, 30  # tries to start a command again on the cluster, and seconds between
+_WAITING_DEPTH = 8  # the most starts deep a job starts the commands that wait for it
 
 
 def _without_seed_folder(argv) -> list[str]:

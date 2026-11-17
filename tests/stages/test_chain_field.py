@@ -283,3 +283,14 @@ def test_a_field_that_another_command_is_solving_makes_the_points_wait(
     with pytest.raises(SystemExit, match="wait for field, shared with other experiments"):
         execute(replace(experiment["workflow"], slices=pieces), _kwargs())
     assert experiment["ran"] == []
+
+
+def test_a_field_started_for_an_experiment_hands_its_job_the_command_that_waits(monkeypatch: pytest.MonkeyPatch) -> None:
+    handed: list[Any] = []
+    monkeypatch.setattr(field, "execute", lambda flow, kwargs, register: handed.append(kwargs["_waiting"]))
+    device = device_json("HPK-Si-PiN")
+    waiting = {"command": ["-b", "signal", "HPK-Si-PiN"], "cwd": "/work", "seed_folder": "seed_1"}
+
+    field.start({"batch": True, "mem": 1, "_waiting": waiting}, {"voltage": None, "irradiation": None}, {"device": device})
+
+    assert handed == [waiting]

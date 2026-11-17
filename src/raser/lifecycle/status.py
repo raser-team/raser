@@ -13,6 +13,7 @@ from raser.lifecycle.workflow import JOB_ENDED
 from raser.lifecycle.workflow import WORKFLOWS
 from raser.lifecycle.workflow import _outdated
 from raser.lifecycle.workflow import _points
+from raser.lifecycle.workflow import waited_for_by
 from raser.supports.paths import project_root_context
 
 STATES = ("done", "running", "submitted", "uncertain", "failed", "waiting", "not started")
@@ -108,7 +109,7 @@ def _folder_lines(workflow, folder: Path, record: dict, why: str | None, ready, 
     if workflow.slices and set(held_in) != {piece.name for piece in workflow.slices}:
         # A run of an older raser, whose slices had other names.
         return [f"{folder}: out of date (recorded with the slices {sorted(held_in)})" + note]
-    lines = [f"{folder}:" + (f" out of date ({why})" if why else "") + note]
+    lines = [f"{folder}:" + (f" out of date ({why})" if why else "") + note, *waited_for_by(record)]
     for piece_name, by_state in folder_states(workflow, folder, record, ready).items():
         count = sum(len(jobs) for jobs in by_state.values())
         done = len(by_state["done"])
