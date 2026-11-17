@@ -82,3 +82,25 @@ def test_a_change_of_the_script_alone_makes_a_run_out_of_date(
     execute(toy, kwargs)
 
     assert any("the old run is replaced" in line and "files" in line for line in lines)
+
+
+def test_a_script_changed_within_one_second_runs_as_its_recorded_digest_says(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import hashlib
+    import os
+    import sys
+
+    monkeypatch.setattr(sys, "dont_write_bytecode", False)  # as Python is run without -B
+
+    script = project / "edited.py"
+    script.write_text(SCRIPT)
+    stat = script.stat()
+    assert loader.read_g4setup("edited")["maxstep"] == 2
+
+    script.write_text(SCRIPT.replace('"maxstep": 2', '"maxstep": 3'))  # same size
+    os.utime(script, ns=(stat.st_atime_ns, stat.st_mtime_ns))  # and the same time
+
+    recorded = loader.read_g4setup("edited")
+    assert recorded["sha256"] == hashlib.sha256(script.read_bytes()).hexdigest()
+    assert recorded["maxstep"] == 3

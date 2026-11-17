@@ -4,7 +4,6 @@ components that are Python files, as the g4setups."""
 from __future__ import annotations
 
 import hashlib
-import importlib.util
 import json
 from pathlib import Path
 from types import ModuleType
@@ -62,14 +61,16 @@ def load_python_component(kind: str, selector: str | Path) -> tuple[Path, Module
     under a name of its own and is not put into sys.modules, so two
     experiments' scripts of one name do not take each other's place."""
     path = component_file_path(kind, selector, ".py") if _explicit(selector) else component_path(kind, f"{selector}.py")
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    # The bytes are read once: what runs is what the digest is of, never a
+    # cached bytecode of the file as it was before.
+    source = path.read_bytes()
+    digest = hashlib.sha256(source).hexdigest()
     key = (str(path.resolve()), digest)
     if key not in _LOADED:
-        spec = importlib.util.spec_from_file_location(f"raser_{kind}_{digest[:16]}", path)
-        if spec is None or spec.loader is None:
-            raise ImportError(f"{path}: not a Python file to load")
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+        module = ModuleType(f"raser_{kind}_{digest[:16]}")
+        module.__file__ = str(path)
+        exec(compile(source, str(path), "exec"), module.__dict__)
+        module.SHA256 = digest
         _LOADED[key] = module
     return path, _LOADED[key]
 
@@ -97,4 +98,4 @@ def read_g4setup(selector: str | Path) -> dict[str, Any]:
             if script.is_file():
                 break
     path, module = load_python_component("g4setup", selector)
-    return {**module.G4SETUP, "file": str(selector), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+    return {**module.G4SETUP, "file": str(selector), "sha256": module.SHA256}
