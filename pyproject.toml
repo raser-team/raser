@@ -64,7 +64,8 @@ raser = [
   "components/**/*",
   "apps/*/*.json",
   "apps/*/components/**/*",
-  "apps/bmos/*.cir",
+  "bench/*/*.json",
+  "bench/*/components/**/*",
 ]
 
 [tool.pytest.ini_options]
