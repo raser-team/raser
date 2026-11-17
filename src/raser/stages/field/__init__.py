@@ -299,8 +299,10 @@ def start(kwargs, options, files):
     parser = argparse.ArgumentParser(prog="raser")
     register(parser.add_subparsers(dest="_command"))
     field_kwargs = vars(parser.parse_args(words))
+    # jobs=1: each field is solved in a process of its own, as devsim holds
+    # one device a process, and the command of the experiment never loads it.
     field_kwargs.update(
-        batch=kwargs["batch"], mem=kwargs["mem"], _argv=words, _entry_command_prefix=("field",)
+        batch=kwargs["batch"], mem=kwargs["mem"], jobs=1, _argv=words, _entry_command_prefix=("field",)
     )
     print("the field is not ready: " + " ".join(["raser", *words]))
     # The point is this experiment's, not one of the field's own scans.

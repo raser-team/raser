@@ -184,7 +184,7 @@ def test_a_change_of_the_device_that_the_field_does_not_read_takes_the_field_the
 
 def test_the_field_is_solved_for_the_device_as_the_point_changed_it(monkeypatch: pytest.MonkeyPatch) -> None:
     asked: list[tuple[list[str], bool]] = []
-    monkeypatch.setattr(field, "execute", lambda flow, kwargs, register: asked.append((kwargs["scan"], register)))
+    monkeypatch.setattr(field, "execute", lambda flow, kwargs, register: asked.append((kwargs["scan"], register, kwargs["jobs"])))
     device = device_json("HPK-Si-PiN")
     device["bias"]["voltage"] = 300.0
     device["temperature"] = 280.0
@@ -192,7 +192,8 @@ def test_the_field_is_solved_for_the_device_as_the_point_changed_it(monkeypatch:
 
     field.start({"batch": False, "mem": 1}, options, {"device": device})
 
-    assert asked == [(["device.temperature=280.0"], False)]  # not one of the field's own scans
+    # not one of the field's own scans, and solved in a process of its own
+    assert asked == [(["device.temperature=280.0"], False, 1)]
 
 
 def test_a_shared_slice_made_here_that_is_still_not_ready_stops_the_command(
