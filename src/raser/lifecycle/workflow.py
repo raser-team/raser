@@ -288,8 +288,9 @@ def _execute(workflow, kwargs, register, root, config, identity, release):
             left = sorted(set().union(*(to_run[piece.name] for piece in wanted)))
         aside = "kept aside" if workflow.seeds else "replaced"
         print(f"{folder}: jobs {left}" + (f", the old run is {aside}: {why}" if stale else ""))
+        width = max([12, *(len(piece.name) + 1 for piece in wanted)])  # a long name keeps a space after it
         for piece in wanted:
-            print(f"  {piece.name:<12}" + (f"jobs {to_run[piece.name]}" if to_run[piece.name] else "reused"))
+            print(f"  {piece.name:<{width}}" + (f"jobs {to_run[piece.name]}" if to_run[piece.name] else "reused"))
         again = again if old and not stale else set()  # nothing to run again in place
         # What the jobs wrote into run.json themselves stays while the run is not out of date.
         if not stale:

@@ -109,7 +109,7 @@ def test_a_stage_command_on_an_experiment_with_a_slice_per_position_runs_all_of_
 
     assert main(["current", str(experiment), "--seed", "1", "--dry-run"]) == 0
 
-    ran = [name.removesuffix("jobs").removesuffix("reused") for name in _slices(capsys.readouterr().out)]
+    ran = _slices(capsys.readouterr().out)
     assert ran[:2] == ["deposit", "field"]
     assert ran[2:] == [f"current.{pad}" for pad in PADS]
 
