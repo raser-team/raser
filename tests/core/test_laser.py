@@ -164,3 +164,15 @@ def test_single_photon_share_grows_when_the_pulse_energy_falls() -> None:
         return one / (both - one)
 
     assert share(5e-12) == pytest.approx(10.0 * share(50e-12), rel=1e-3)
+
+
+def test_two_photon_pairs_are_made_over_a_shorter_time_than_the_pulse() -> None:
+    # one photon follows the Gaussian pulse I(t), two follow I(t)², whose FWHM
+    # is that of the pulse divided by sqrt(2)
+    laser = _tpa(alpha=100.0)
+    widths = np.array(laser.time_FWHM)
+    pairs = np.array(laser.ionized_pairs)
+    one = sum(_tpa(alpha=100.0, temporal_FWHM=1e-3).ionized_pairs)  # the single-photon pairs alone
+
+    assert set(np.round(widths / 60e-15, 6)) == {1.0, round(1 / math.sqrt(2), 6)}
+    assert pairs[np.isclose(widths, 60e-15, rtol=1e-6, atol=0)].sum() == pytest.approx(one, rel=1e-6)

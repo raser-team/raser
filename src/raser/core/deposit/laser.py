@@ -99,12 +99,18 @@ class LaserInjection:
 
         self.track_position = []
         self.ionized_pairs = []
+        # FWHM [s] of the times at which the pairs of each group are made,
+        # around central_time: one photon follows the pulse I(t), two photons
+        # follow I(t)², a Gaussian narrower by sqrt(2)
+        self.time_FWHM = []
         photon_energy = 6.626e-34 * 2.998e8 / (self.wavelength * 1e-6) # J
         photons = self.pulse_energy / photon_energy
         if self.alpha != 0:
             # one pair per absorbed photon: α * photons * exp(-α s) per metre
             self._add_groups(
-                lambda s, w2: self.alpha * photons * np.exp(-self.alpha * s * 1e-6), 2
+                lambda s, w2: self.alpha * photons * np.exp(-self.alpha * s * 1e-6),
+                2,
+                self.temporal_FWHM,
             )
         if self.tech == "TPA":
             # β_2 * ∫I(t)² dt / (2 hν) over the cross section of the beam is
@@ -115,6 +121,7 @@ class LaserInjection:
                 lambda s, w2: self.beta_2 * pulse_squared * self.pulse_energy ** 2
                 * np.exp(-2 * self.alpha * s * 1e-6) / (2 * photon_energy * np.pi * w2 * 1e-12),
                 4,
+                self.temporal_FWHM / 2**0.5,
             )
         elif self.tech != "SPA":
             raise NameError(self.tech)
@@ -137,13 +144,14 @@ class LaserInjection:
                     lambda s, u, v: (s, u, v))
         raise NameError(self.direction)
 
-    def _add_groups(self, pairs_per_metre, radial_exponent):
+    def _add_groups(self, pairs_per_metre, radial_exponent, time_FWHM):
         """Groups of carriers that hold the same number of pairs each.
 
         pairs_per_metre(s, w²) is the number of pairs made per metre of path at
         the path s [um], where the beam has the radius w [um], summed over the
         cross section. Across the beam the pairs follow exp(-k r² / w²) with
-        k = radial_exponent: 2 for one photon, 4 for two.
+        k = radial_exponent: 2 for one photon, 4 for two. The pairs of every
+        group are made over time_FWHM [s] around central_time.
 
         The path is cut where the pairs made so far reach equal shares, the
         cross section into rings and sectors of equal shares, and a group sits
@@ -178,6 +186,7 @@ class LaserInjection:
         for position in np.transpose([x, y, z, np.full(len(x), self.central_time)]):
             self.track_position.append(position)
             self.ionized_pairs.append(total / (slabs * rings * sectors))
+            self.time_FWHM.append(time_FWHM)
 
     def timePulse(self, t):
         # to reduce run time, convolute the time pulse function with the signal after the signal is calculated
