@@ -201,7 +201,13 @@ def execute(workflow, kwargs, register=True):
         runs = {until} | slices.upstream(workflow.slices, until)
     # A slice is held by the run of the point that differs from this one only
     # in what the slice reads: the points that hold slices of others come first.
-    order = sorted(points, key=lambda name: points[name][3].index(name) if workflow.slices else 0)
+    # A point that holds none of its slices, as one whose two roots are held by
+    # two others, comes after them.
+    def depth(name) -> int:
+        holders = set(points[name][3]) - {name}
+        return 1 + max(map(depth, holders)) if holders else 0
+
+    order = sorted(points, key=lambda name: (depth(name), points[name][3].index(name) if name in points[name][3] else 0))
     for name in order:
         options, files, given_here, held_in = points[name]
         folder = root / name / label
