@@ -162,3 +162,27 @@ def test_fraction_outside_zero_to_one_is_refused(tmp_path) -> None:
     with pytest.raises(ValueError, match=r"fractions \[1.2\]: a constant fraction lies between 0 and 1"):
         reconstruction.run(kwargs)
     assert not (tmp_path / "batch" / "reconstruction_0.h5").exists()
+
+
+def test_rising_edge_takes_a_positive_pulse(tmp_path) -> None:
+    starts = _job(tmp_path, [[-1.0]], 3, seed=12)  # the triangle upside up: +10 mV
+
+    rows = _run(tmp_path, 3, 5, "rising").columns
+
+    assert rows["selected"].all()
+    assert rows["amplitude"][:, 0] == pytest.approx(np.full(3, 10.0e-3))
+    assert rows["ToA"][:, 0] == pytest.approx(starts + 3.0e-9)
+
+
+def test_centre_of_gravity_of_a_lopsided_pulse_is_not_its_peak(tmp_path) -> None:
+    batch = tmp_path / "batch"
+    batch.mkdir()
+    # 4, 10, 6, 4 mV above the 3 mV threshold in bins 1 ... 4 after the 200 before
+    samples = np.concatenate([np.zeros(BEFORE), -1.0e-3 * np.array([0.0, 4, 10, 6, 4, 2, 0, 0])])
+    append_waveforms(batch / "readout_0.h5", ["top"], DT, EventWaveforms(0, 0.0, np.array([samples])))
+
+    rows = _run(tmp_path, 3, 5).columns
+
+    centres = (BEFORE + np.arange(1, 5) + 0.5) * DT
+    assert rows["CoG"][0, 0] == pytest.approx(np.dot(centres, [4, 10, 6, 4]) / 24)
+    assert rows["CoG"][0, 0] > (BEFORE + 2.5) * DT  # later than the peak

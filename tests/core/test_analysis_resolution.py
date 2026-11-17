@@ -28,6 +28,16 @@ def test_fit_of_a_tail_without_a_core_keeps_its_mean_inside_the_window() -> None
     assert sigma < 1.0
 
 
+def test_fit_of_a_tail_towards_the_lower_edge_keeps_its_mean_inside_the_window() -> None:
+    # the values of the test before, mirrored: they rise towards the lower edge
+    values = -np.log(np.random.default_rng(4).uniform(np.exp(-3.0), 1.0, 2000)) / 3.0
+
+    mean, _, sigma, _ = truncated_gaussian(values, 0.0, 1.0)
+
+    assert 0.0 <= mean <= 1.0
+    assert sigma < 1.0
+
+
 def test_core_width_is_the_width_of_the_core_under_a_wide_tail() -> None:
     rng = np.random.default_rng(2)
     values = np.concatenate([rng.normal(100.0, 30.0, 20000), rng.normal(100.0, 600.0, 4000)])
