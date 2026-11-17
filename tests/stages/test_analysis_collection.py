@@ -3,7 +3,7 @@ import json
 import numpy as np
 import pytest
 
-from raser.stages.ana.collection import point_efficiency
+from raser.stages.analysis.collection import point_efficiency
 from raser.core.current.currents import EventCurrents
 from raser.core.current.currents import append_currents
 from raser.core.deposit.deposits import Deposits

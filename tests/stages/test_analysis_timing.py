@@ -3,8 +3,8 @@ import json
 import numpy as np
 import pytest
 
-from raser.stages.ana.timing import event_times
-from raser.stages.ana.timing import point_resolution
+from raser.stages.analysis.timing import event_times
+from raser.stages.analysis.timing import point_resolution
 from raser.core.readout.waveforms import EventWaveforms
 from raser.core.readout.waveforms import append_waveforms
 from raser.core.deposit.deposits import Deposits
