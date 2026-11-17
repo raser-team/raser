@@ -88,6 +88,8 @@ def core_width(values, window=None):
     values = np.asarray(values, dtype="float64")
     if values.ndim != 1:
         raise ValueError(f"values have shape {values.shape}, expected (events,)")
+    if len(values) < MINIMUM_EVENTS:
+        raise ValueError(f"{len(values)} values, fewer than {MINIMUM_EVENTS}")
     if window is None:
         median = np.median(values)
         deviation = np.median(np.abs(values - median))

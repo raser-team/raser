@@ -96,6 +96,19 @@ def test_point_with_too_few_selected_events_keeps_its_efficiency_and_tells_why(t
     assert not (tmp_path / "out" / "time_difference.png").exists()
 
 
+def test_point_without_selected_events_is_a_result_not_a_failure(tmp_path, monkeypatch, capsys) -> None:
+    root = tmp_path / "work" / "device" / "cce"
+    _job(root / "seed_1", 0, 0.4, 100, seed=5)  # 4 mV, below the amplitude threshold
+    monkeypatch.setattr(ana, "finished_in", lambda folder: [("", {}, [(root / "seed_1", 0)])])
+    options = {"experiment": str(root), "_run_path": str(tmp_path / "out"), "_files": {"adc": {"threshold": 3, "amplitude_threshold": 5}}}
+
+    ana.collect(options)
+
+    timing = json.loads((tmp_path / "out" / "result.json").read_text())["timing"]
+    assert timing == {"events": 100, "selected": 0, "polarity": -1.0, "error": "0 values, fewer than 20"}
+    assert "no time resolution: 0 values, fewer than 20" in capsys.readouterr().out
+
+
 def test_every_point_of_the_analysis_holds_the_results_of_the_points_it_analyses(
     tmp_path, monkeypatch
 ) -> None:

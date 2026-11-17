@@ -48,6 +48,12 @@ def test_core_width_is_the_width_of_the_core_under_a_wide_tail() -> None:
 
 
 def test_first_window_with_too_few_values_is_an_error() -> None:
-    values = np.random.default_rng(3).normal(0.0, 1.0, 19)
-    with pytest.raises(ValueError, match="19 of 19 values .* fewer than 20"):
-        core_width(values)
+    values = np.random.default_rng(3).normal(0.0, 1.0, 100)
+    inside = int(np.sum((values >= 1.5) & (values <= 4.0)))
+    with pytest.raises(ValueError, match=f"{inside} of 100 values .* fewer than 20"):
+        core_width(values, window=(1.5, 4.0))
+
+
+def test_no_values_is_an_error_that_says_so() -> None:
+    with pytest.raises(ValueError, match="^0 values, fewer than 20$"):
+        core_width(np.empty(0))
