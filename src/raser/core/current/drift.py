@@ -41,6 +41,9 @@ def drift(x, y, z, t, charge, my_d, my_f, mobility, delta_t, diffusion=True):
         low_field    the field is not above min_intensity
         no_field     the field has no value at the position
         time_out     max_drift_time has passed
+
+    A field that is not finite where the cluster is raises ValueError,
+    which names the position.
     """
     size = (my_d.l_x, my_d.l_y, my_d.l_z)
     sign = 1 if charge > 0 else -1
@@ -59,6 +62,11 @@ def drift(x, y, z, t, charge, my_d, my_f, mobility, delta_t, diffusion=True):
         except ValueError:
             reason = "no_field"
             break
+        if not all(math.isfinite(component) for component in field):
+            raise ValueError(
+                "the field at x, y, z = {:.4f}, {:.4f}, {:.4f} um is {} V/cm: "
+                "a carrier cannot drift in it".format(*position, field)
+            )
         intensity = math.hypot(*field)
         if intensity <= min_intensity:
             reason = "low_field"

@@ -148,6 +148,22 @@ def test_a_pair_collected_between_two_electrodes_induces_its_charge_on_each() ->
     )
 
 
+class _Hole(_Field):
+    """The x component of the field has no value below z = 20 um, as the
+    two-dimensional interpolation gives at points of a coarse mesh."""
+
+    def get_e_field_cached(self, x, y, z):
+        return (float("nan") if z < 20.0 else 0.0, 0.0, FIELD)
+
+
+def test_drift_stops_with_an_error_naming_the_place_where_the_field_is_not_finite() -> None:
+    with pytest.raises(ValueError, match=r"x, y, z = 50.0000, 50.0000, 19.0000 um"):
+        drift(
+            50.0, 50.0, 25.0, 0.0, -100.0, _device(), _Hole(), _mobility, 3.0e-11,
+            diffusion=False,
+        )
+
+
 class _Strips(_Field):
     """Strips 30 um apart along x; the field holds the one centred at x = 50 um.
 
