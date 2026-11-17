@@ -14,7 +14,7 @@ from raser.apps import signal
 from raser.lifecycle.slices import Slice
 from raser.lifecycle.workflow import Workflow
 
-# side I at x = -31 mm, side II at +31 mm; rows i along y, columns j along the beam
+# side I at -x, side II at +x of the beam pipe; rows i along y, columns j along the beam
 PADS = tuple(f"{side}_{i}_{j}" for side in ("I", "II") for i in range(-3, 3) for j in range(2))
 
 

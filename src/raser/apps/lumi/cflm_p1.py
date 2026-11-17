@@ -101,7 +101,7 @@ class cflmDetectorConstruction(g4b.G4VUserDetectorConstruction):
         self.create_pipe(g4_dic['pipe'])
 
         self.pad_material(my_d.material)
-        self.pads(my_d)
+        self.pads(my_d, g4_dic['pipe']['Rmax'], g4_dic['pads_from_z_mm'])
         self.create_vacuum(g4_dic['vacuum'])
 
         self.fStepLimit = g4b.G4UserLimits(self.maxStep)
@@ -191,18 +191,19 @@ class cflmDetectorConstruction(g4b.G4VUserDetectorConstruction):
         self.fStepLimit.SetMaxAllowedStep(self.maxStep)       
         return self.physical['world']     
         
-    def pads(self, my_d):
-        """Two sides of 6 x 2 pads on the faces x = -/+31 mm of the beam pipe:
-        rows i along y, columns j along the beam from z = 225 mm, each pad a
-        device of l_x along y, l_y along the beam and l_z thick."""
+    def pads(self, my_d, surface, from_z):
+        """Two sides of 6 x 2 pads touching the outer surface of the beam pipe,
+        at x = -/+surface [mm]: rows i along y, columns j along the beam from
+        z = from_z [mm], each pad a device of l_x along y, l_y along the beam
+        and l_z thick."""
         for side, sign in (("I", -1), ("II", 1)):
             for i in pixelAreaYIndex:
                 for j in pixelAreaZIndex:
                     name = f"detector_{side}_{i}_{j}"
                     translation = g4b.G4ThreeVector(
-                        sign * (31 * g4b.mm + my_d.l_z * g4b.um / 2),
+                        sign * (surface * g4b.mm + my_d.l_z * g4b.um / 2),
                         (i + 0.5) * my_d.l_x * g4b.um,
-                        225 * g4b.mm + (j + 0.5) * my_d.l_y * g4b.um,
+                        from_z * g4b.mm + (j + 0.5) * my_d.l_y * g4b.um,
                     )
                     # the rotation turns the box: its x runs along y, its y along x
                     self.solid[name] = g4b.G4Box(
