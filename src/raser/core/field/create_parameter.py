@@ -1,7 +1,6 @@
-import math
-
 import devsim
 
+from raser.core.model.band_structure import BAND_STRUCTURE
 from raser.core.model.material import RELATIVE_PERMITTIVITY
 
 from . import model_create
@@ -40,18 +39,17 @@ def CreateGasConstant(T, device, region):
 
 def CreateSiliconCarbideConstant(T, device, region):
     # define SiliconCarbide parameters
-    N_c = 3.25e15
-    N_v = 4.8e15
-    devsim.set_parameter(device=device, region=region, name="N_c", value=N_c)
-    devsim.set_parameter(device=device, region=region, name="N_v", value=N_v)
+    band = {name: formula.value(T=T) for name, formula in BAND_STRUCTURE["SiC"].items()}
+    devsim.set_parameter(device=device, region=region, name="N_c", value=band["N_c"])
+    devsim.set_parameter(device=device, region=region, name="N_v", value=band["N_v"])
 
-    E_g = 3.26 * 1.6 * 1e-19
+    E_g = band["E_g"]
     devsim.set_parameter(device=device, region=region, name="E_g", value=E_g)
 
     devsim.set_parameter(device=device, region=region, name="eps", value=RELATIVE_PERMITTIVITY["SiC"])
     eps_0 = 8.85e-14
     devsim.set_parameter(device=device, region=region, name="Permittivity", value=RELATIVE_PERMITTIVITY["SiC"] * eps_0)
-    N_i = 3.89e-9
+    N_i = band["n_i"]
     devsim.set_parameter(device=device, region=region, name="n_i", value=N_i)
 
     devsim.set_parameter(device=device, region=region, name="mu_n", value=1100)
@@ -64,19 +62,17 @@ def CreateSiliconCarbideConstant(T, device, region):
 
 def CreateDiamondConstant(T, device, region):
     # define Diamond parameters
-    N_c = 1.8e19 * pow(T / 300, 1.5)
-    N_v = 1.5e19 * pow(T / 300, 1.5)
-    devsim.set_parameter(device=device, region=region, name="N_c", value=N_c)
-    devsim.set_parameter(device=device, region=region, name="N_v", value=N_v)
+    band = {name: formula.value(T=T) for name, formula in BAND_STRUCTURE["Diamond"].items()}
+    devsim.set_parameter(device=device, region=region, name="N_c", value=band["N_c"])
+    devsim.set_parameter(device=device, region=region, name="N_v", value=band["N_v"])
 
-    E_g = 5.47 * 1.6e-19
+    E_g = band["E_g"]
     devsim.set_parameter(device=device, region=region, name="E_g", value=E_g)
 
     devsim.set_parameter(device=device, region=region, name="eps", value=RELATIVE_PERMITTIVITY["Diamond"])
     eps_0 = 8.85e-14
     devsim.set_parameter(device=device, region=region, name="Permittivity", value=RELATIVE_PERMITTIVITY["Diamond"] * eps_0)
-    k = 1.3806503e-23  # J/K
-    N_i = pow(N_c * N_v, 0.5) * math.exp(-E_g / (2 * k * T))
+    N_i = band["n_i"]
     devsim.set_parameter(device=device, region=region, name="n_i", value=N_i)
 
     devsim.set_parameter(device=device, region=region, name="mu_n", value=110)
@@ -89,19 +85,17 @@ def CreateDiamondConstant(T, device, region):
 
 def CreateSiliconConstant(T, device, region):
     # define Silicon parameters
-    N_c = 2.82e19 * pow(T / 300, 1.5)
-    N_v = 1.83e19 * pow(T / 300, 1.5)
-    devsim.set_parameter(device=device, region=region, name="N_c", value=N_c)
-    devsim.set_parameter(device=device, region=region, name="N_v", value=N_v)
+    band = {name: formula.value(T=T) for name, formula in BAND_STRUCTURE["Si"].items()}
+    devsim.set_parameter(device=device, region=region, name="N_c", value=band["N_c"])
+    devsim.set_parameter(device=device, region=region, name="N_v", value=band["N_v"])
 
-    E_g = 1.12 * 1.6e-19
+    E_g = band["E_g"]
     devsim.set_parameter(device=device, region=region, name="E_g", value=E_g)
 
     devsim.set_parameter(device=device, region=region, name="eps", value=RELATIVE_PERMITTIVITY["Si"])
     eps_0 = 8.85e-14
     devsim.set_parameter(device=device, region=region, name="Permittivity", value=RELATIVE_PERMITTIVITY["Si"] * eps_0)
-    k = 1.3806503e-23  # J/K
-    N_i = pow(N_c * N_v, 0.5) * math.exp(-E_g / (2 * k * T))
+    N_i = band["n_i"]
     devsim.set_parameter(device=device, region=region, name="n_i", value=N_i)
 
     devsim.set_parameter(device=device, region=region, name="mu_n", value=1450)
