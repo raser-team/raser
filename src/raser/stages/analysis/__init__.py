@@ -26,7 +26,8 @@ def collect(options):
             failed.append(f"  {root / name}: no finished job")
             continue
         error = write_point(jobs, folder / name)
-        # too few events for a width or an efficiency is a result of the point
+        # too few events for a width or an efficiency is a result of the point;
+        # a fit that fails with enough events raises
         if error is not None:
             print(f"{folder / name}: {error}")
         print(f"{folder / name / 'result.json'}")

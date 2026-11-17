@@ -4,6 +4,7 @@ import numpy as np
 
 from raser.core.current.currents import read_currents
 from raser.core.analysis.collection import collection_efficiency
+from raser.core.analysis.resolution import TooFewValues
 
 from .files import job_file
 
@@ -37,7 +38,7 @@ def efficiency_spread(efficiencies):
     standard deviation."""
     count = len(efficiencies)
     if count < 2:
-        raise ValueError(f"{count} events in the point, a mean and a spread need at least 2")
+        raise TooFewValues(f"{count} events in the point, a mean and a spread need at least 2")
     spread = float(np.std(efficiencies, ddof=1))
     return {
         "events": count,

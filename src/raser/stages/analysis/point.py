@@ -5,6 +5,8 @@ from pathlib import Path
 
 import h5py
 
+from raser.core.analysis.resolution import TooFewValues
+
 from . import plots
 from .collection import efficiency_spread
 from .collection import event_efficiencies
@@ -36,7 +38,8 @@ def write_point(jobs, folder):
     events.h5: one dataset per quantity of `event_times`, one value per
     selected event; the times are in s, the voltages in V.
 
-    Returns what the point has no result of and why, or None.
+    Returns what the point has no result of for too few events, or None. A
+    fit that fails with enough events is an error.
     """
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
@@ -51,7 +54,7 @@ def write_point(jobs, folder):
     missing = []
     try:
         result["collection"] = efficiency_spread(efficiencies)
-    except ValueError as too_few:
+    except TooFewValues as too_few:
         result["collection"] = {"events": len(efficiencies), "error": str(too_few)}
         missing.append(f"no efficiency: {too_few}")
     else:
@@ -70,7 +73,7 @@ def write_point(jobs, folder):
     plots.draw_amplitudes(times["amplitude"], tables[0][3].amplitude_threshold, count, folder / "amplitude.png")
     try:
         widths = time_widths(times)
-    except ValueError as too_few:
+    except TooFewValues as too_few:
         result["timing"]["error"] = str(too_few)
         missing.append(f"no time resolution: {too_few}")
     else:

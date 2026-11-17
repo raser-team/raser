@@ -24,7 +24,7 @@ DT = 1.0e-9
 BEFORE = 200  # bins before the triangle
 
 
-def _job(folder, index, scale, count, seed, amplitude_threshold=5):
+def _job(folder, index, scale, count, seed, amplitude_threshold=5, jitter=3.0e-11, spread=1.0e-9):
     """A job of `count` events in a seed folder that holds its slices. Each
     event has 1000 pairs, collects 90 % of them and gives the triangle times
     `scale`; the pulse starts within 30 ps of the deposit, and the deposits
@@ -35,8 +35,8 @@ def _job(folder, index, scale, count, seed, amplitude_threshold=5):
     held = {"deposit": "", "current": "", "readout": "", "reconstruction": ""}
     (folder / "run.json").write_text(json.dumps({"point": "", "held_in": held}))
     rng = np.random.default_rng(seed)
-    truths = rng.normal(0.0, 1.0e-9, count)
-    starts = truths + rng.normal(0.0, 3.0e-11, count)
+    truths = rng.normal(0.0, spread, count)
+    starts = truths + rng.normal(0.0, jitter, count)
     deposits = []
     for number in range(count):
         deposits.append(
@@ -132,6 +132,15 @@ def test_point_with_fewer_than_two_events_is_a_result_not_a_failure(tmp_path, mo
     assert (result["timing"]["events"], result["timing"]["selected"], result["timing"]["error"]) == (count, count, why)
     printed = capsys.readouterr().out
     assert f"no efficiency: {count} events in the point" in printed and f"no time resolution: {why}" in printed
+
+
+def test_enough_events_whose_fit_fails_are_an_error(tmp_path) -> None:
+    # every deposit at 0 and every pulse starting there: time - truth is one value
+    seed = tmp_path / "seed_1"
+    _job(seed, 0, 1.0, 30, seed=4, jitter=0.0, spread=0.0)
+
+    with pytest.raises(ValueError, match=r"the window \[.*\] is empty"):
+        write_point([(seed, 0)], tmp_path / "out")
 
 
 def test_currents_and_reconstruction_of_other_events_are_refused(tmp_path) -> None:

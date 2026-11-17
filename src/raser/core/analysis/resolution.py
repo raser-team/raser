@@ -9,6 +9,11 @@ ROUNDS = 6
 MINIMUM_EVENTS = 20
 
 
+class TooFewValues(ValueError):
+    """Fewer values than a width or a mean needs: a result of the sample,
+    not a failure of the fit."""
+
+
 def truncated_gaussian(values, low, high):
     """Unbinned maximum likelihood of a Gaussian seen only inside [low, high]:
     the density is the Gaussian over the part of it inside the window, so the
@@ -89,7 +94,7 @@ def core_width(values, window=None):
     if values.ndim != 1:
         raise ValueError(f"values have shape {values.shape}, expected (events,)")
     if len(values) < MINIMUM_EVENTS:
-        raise ValueError(f"{len(values)} values, fewer than {MINIMUM_EVENTS}")
+        raise TooFewValues(f"{len(values)} values, fewer than {MINIMUM_EVENTS}")
     if window is None:
         median = np.median(values)
         deviation = np.median(np.abs(values - median))
@@ -106,7 +111,7 @@ def core_width(values, window=None):
         inside = values[(values >= low) & (values <= high)]
         if len(inside) < MINIMUM_EVENTS:
             if fit is None:
-                raise ValueError(
+                raise TooFewValues(
                     f"{len(inside)} of {len(values)} values are inside "
                     f"[{low}, {high}], fewer than {MINIMUM_EVENTS}"
                 )
