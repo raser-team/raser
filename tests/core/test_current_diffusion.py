@@ -37,7 +37,10 @@ def test_a_time_lies_in_the_bin_whose_left_edge_is_at_or_before_it() -> None:
     assert time_bin(0.0, 0.0, 50e-12) == 0
     # 29 steps after t0: the quotient is 28.999999999999996 in floating point
     assert time_bin(29 * 50e-12, 0.0, 50e-12) == 29
-    assert time_bin(29 * 50e-12 - 1e-21, 0.0, 50e-12) == 28
+    assert time_bin(29 * 50e-12 - 1e-3 * 50e-12, 0.0, 50e-12) == 28
+    # before t0, and far from the origin of time, where t0 + step rounds to t0
+    assert time_bin(-0.4 * 50e-12, 0.0, 50e-12) == -1
+    assert time_bin(1e6, 1e6, 50e-12) == 0
 
 
 def test_pairs_made_inside_a_collection_region_arrive_in_the_bin_of_their_time() -> None:

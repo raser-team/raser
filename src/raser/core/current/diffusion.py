@@ -28,13 +28,12 @@ BOLTZMANN = 8.617385e-5  # eV/K
 def time_bin(t, t0, step):
     """The number k of the time bin [t0 + k step, t0 + (k + 1) step) that
     holds the time t [s]: t0 is the left edge of the first bin. A quotient
-    that floating point puts on the wrong side of an edge, as 28.999999999999996
-    for 29 steps, is set right."""
-    k = math.floor((t - t0) / step)
-    if t0 + (k + 1) * step <= t:
+    within 1e-9 below a whole number, as 28.999999999999996 for 29 steps in
+    floating point, is taken as on that edge."""
+    quotient = (t - t0) / step
+    k = math.floor(quotient)
+    if quotient - k > 1 - 1e-9:
         k += 1
-    elif t0 + k * step > t:
-        k -= 1
     return k
 
 
