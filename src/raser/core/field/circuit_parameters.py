@@ -276,7 +276,10 @@ def device_row(my_d, cells, solved_f=None, sheet_ohm=None):
 
     The strips are those of resistive_layer in the device file: for each its
     name with the numbers (from 0) of its first and last cell. Its grounded
-    contacts are given the same way.
+    contacts are given the same way. With coupling there, thickness [um] and
+    permittivity of a dielectric under the strips, the strips are coupled
+    through it to the layer, which goes on under them, as the pads of
+    device_grid are.
     """
     farad, capacitance_from = junction_capacitance(my_d, solved_f)
     ohm, resistance_from = sheet_resistance(my_d, sheet_ohm)
@@ -292,14 +295,42 @@ def device_row(my_d, cells, solved_f=None, sheet_ohm=None):
         .get("grounded", {})
         .items()
     }
-    circuit = resistive_row(
-        cells, width_m, length_m, ohm, farad / (width_m * length_m), strips, grounded
-    )
+    layer = my_d.device_dict["resistive_layer"]
+    per_area = farad / (width_m * length_m)
+    if "coupling" in layer:
+        # a row is a grid one cell long along the strips
+        coupling = _coupling_per_area(layer)
+        circuit = resistive_grid(
+            cells,
+            (len(cells), 1),
+            (width_m, length_m),
+            ohm,
+            per_area,
+            {name: (first, last, 0, 0) for name, (first, last) in strips.items()},
+            coupling,
+            {name: [(first, last, 0, 0)] for name, (first, last) in grounded.items()},
+        )
+    else:
+        coupling = None
+        circuit = resistive_row(
+            cells, width_m, length_m, ohm, per_area, strips, grounded
+        )
     values = {
         "cell_capacitance": {"farad": farad, "from": capacitance_from},
         "sheet_resistance": {"ohm": ohm, "from": resistance_from},
+        "coupling_per_area_f_m2": coupling,
     }
     return circuit, values
+
+
+def _coupling_per_area(layer):
+    """Capacitance per area [F / m^2] of the dielectric under the strips or
+    pads of a resistive layer: coupling, its thickness [um] and permittivity."""
+    return (
+        VACUUM_PERMITTIVITY_F_M
+        * float(layer["coupling"]["permittivity"])
+        / (float(layer["coupling"]["thickness"]) * 1e-6)
+    )
 
 
 def device_grid(my_d, cells, solved_f=None, sheet_ohm=None):
@@ -320,13 +351,7 @@ def device_grid(my_d, cells, solved_f=None, sheet_ohm=None):
     farad, capacitance_from = junction_capacitance(my_d, solved_f)
     ohm, resistance_from = sheet_resistance(my_d, sheet_ohm)
     widths_m = (float(my_d.p_x) * 1e-6, float(my_d.p_y) * 1e-6)
-    coupling = None
-    if "coupling" in layer:
-        coupling = (
-            VACUUM_PERMITTIVITY_F_M
-            * float(layer["coupling"]["permittivity"])
-            / (float(layer["coupling"]["thickness"]) * 1e-6)
-        )
+    coupling = _coupling_per_area(layer) if "coupling" in layer else None
     circuit = resistive_grid(
         cells,
         (my_d.x_ele_num, my_d.y_ele_num),

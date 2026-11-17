@@ -178,6 +178,7 @@ def test_strips_of_a_device_share_the_charge_through_the_layer_it_gives():
             "from": "device file",
         },
         "sheet_resistance": {"ohm": 1000.0, "from": "device file"},
+        "coupling_per_area_f_m2": None,
     }
     # each cell with the capacitance of the device under it
     assert "Clayer_c8 layer_c8 0 1.23e-14" in circuit.lines
@@ -234,3 +235,25 @@ def test_pad_off_the_layer_is_refused_whether_in_contact_or_coupled(span):
             resistive_grid(
                 ["a", "b"], (2, 1), (1e-4, 1e-4), 1e3, 1e-5, {"pad": span}, coupling
             )
+
+
+def test_strips_on_a_dielectric_over_a_grounded_layer_carry_no_net_charge():
+    # the row of the tests above, the layer held on ground at the cell 19,
+    # the strips over 0.5 um of oxide: the charge leaves through the ground,
+    # the strips see it pass. In contact they take what the ring does not
+    coupled = _rsd_strips(
+        sheet_resistance=1000.0,
+        grounded={"ring": [19, 19]},
+        coupling={"thickness": 0.5, "permittivity": 3.9},
+    )
+    cells = [f"c{k}" for k in range(20)]
+
+    circuit, values = device_row(coupled, cells)
+    to_left, to_right = _charges(circuit, "c8")
+
+    assert values["coupling_per_area_f_m2"] == pytest.approx(6.906e-5, rel=1e-3)
+    assert abs(to_left) < 0.01 and abs(to_right) < 0.01
+    in_contact, _ = device_row(
+        _rsd_strips(sheet_resistance=1000.0, grounded={"ring": [19, 19]}), cells
+    )
+    assert sum(_charges(in_contact, "c8")) > 0.5
