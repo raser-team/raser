@@ -3,7 +3,6 @@
 import json
 from pathlib import Path
 
-from raser.core.reconstruction.event_table import EDGE_SIGN
 from raser.lifecycle.workflow import Workflow
 from raser.lifecycle.workflow import execute
 from raser.lifecycle.workflow import finished_in
@@ -14,17 +13,11 @@ from .across_points import write_points
 
 
 def collect(options):
-    """The job of one point of `raser ana`: the results of every point of the
-    analysed experiment as the digitizer of this point sees them, each in the
-    folder of its name inside the folder of this point, and of several of
-    them side by side in the folder of this point itself."""
-    if options.get("edge") not in EDGE_SIGN:
-        raise SystemExit(
-            f"edge {options.get('edge')!r}: give the edge the thresholds are set on, "
-            "--set edge=rising (positive pulses) or --set edge=falling (negative pulses)"
-        )
+    """The job of `raser ana`: the results of every point of the analysed
+    experiment, from the reconstruction tables of its jobs, each in the
+    folder of its name inside the analysis folder, and of several of them
+    side by side in the analysis folder itself."""
     root, folder = Path(options["experiment"]), Path(options["_run_path"])
-    digitizer = options["_files"]["adc"]
     points = finished_in(root)
     failed = []
     done, results = [], []
@@ -32,7 +25,7 @@ def collect(options):
         if not jobs:
             failed.append(f"  {root / name}: no finished job")
             continue
-        error = write_point(jobs, digitizer, options["edge"], folder / name)
+        error = write_point(jobs, folder / name)
         # too few events for a width or an efficiency is a result of the point
         if error is not None:
             print(f"{folder / name}: {error}")
@@ -48,10 +41,9 @@ def collect(options):
 WORKFLOW = Workflow(
     name="analysis",
     job=collect,
-    keys=("adc", "threshold", "amplitude_threshold", "edge"),
-    defaults={"adc": "scope", "threshold": None, "amplitude_threshold": None, "edge": None},
-    components={"adc": "adc"},
-    in_file={"threshold": "adc.threshold", "amplitude_threshold": "adc.amplitude_threshold"},
+    # the thresholds and the edge are those of the reconstruction slice
+    keys=(),
+    defaults={},
     device=False,
     seeds=False,
     # the analysis is an experiment inside the experiment it analyses

@@ -5,8 +5,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-from .timing import CFD_FRACTIONS
-
 PICOSECOND = 1.0e-12  # s
 
 
@@ -68,9 +66,8 @@ def write_points(points, results, folder):
     left.set_xlabel(key)
     left.set_ylabel("charge collection efficiency")
     left.grid(alpha=0.3)
-    timed = [row for row in rows if "CFD50" in row]
-    for part in CFD_FRACTIONS:
-        name = f"CFD{round(100 * part)}"
+    timed = [row for row in rows if "ToA" in row]
+    for name in [name for name in timed[0] if name.startswith("CFD")] if timed else []:
         right.errorbar(
             [row[key] for row in timed],
             [row[name]["sigma"] / PICOSECOND for row in timed],

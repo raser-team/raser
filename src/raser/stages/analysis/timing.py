@@ -4,36 +4,35 @@ import numpy as np
 
 from raser.core.analysis.resolution import core_width
 from raser.core.deposit.deposits import read_deposits
-from raser.core.readout.waveforms import read_waveforms
 from raser.core.reconstruction.event_table import EDGE_SIGN
-from raser.core.reconstruction.event_table import event_table
+from raser.core.reconstruction.event_table import read_event_table
 
 from .files import job_file
 from .files import slice_file
 
 
-CFD_FRACTIONS = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9)
-
-
-def point_tables(jobs, threshold, amplitude_threshold, edge):
-    """The reconstruction of each finished job of a point that recorded
-    events, as (place of the job in `jobs`, the deposits file of the job,
-    its table). Until the chain has
-    the reconstruction slice the tables are made here, from the files of
-    the jobs, with the fractions CFD_FRACTIONS.
+def point_tables(jobs):
+    """The reconstruction tables of the finished jobs of a point that
+    recorded events, as (place of the job in `jobs`, seed folder, job index,
+    table). The tables of a point were made with the same thresholds,
+    fractions and edge.
 
     jobs : (seed folder, job index) pairs, as lifecycle hands them out.
-    threshold, amplitude_threshold : in the unit of the waveforms [V]
-    edge : "rising" or "falling", the edge of the pulses they are set on
     """
     tables = []
     for place, (folder, index) in enumerate(jobs):
-        path = job_file(folder, index, "readout")
-        if path is None:
-            continue
-        table = event_table(read_waveforms(path), threshold, amplitude_threshold, CFD_FRACTIONS, edge)
-        tables.append((place, slice_file(folder, index, "deposit"), table))
+        path = job_file(folder, index, "reconstruction")
+        if path is not None:
+            tables.append((place, folder, index, read_event_table(path)))
+    settings = {table_setting(table) for *_, table in tables}
+    if len(settings) > 1:
+        raise ValueError(f"the jobs of the point were reconstructed with different settings: {sorted(settings)}")
     return tables
+
+
+def table_setting(table):
+    """Thresholds [mV], fractions and edge of a table, as one hashable value."""
+    return (round(table.threshold / 1.0e-3, 9), round(table.amplitude_threshold / 1.0e-3, 9), table.fractions, table.edge)
 
 
 def event_times(tables):
@@ -59,7 +58,7 @@ def event_times(tables):
     """
     if not tables:
         raise ValueError("the jobs recorded no event")
-    for _, _, table in tables:
+    for *_, table in tables:
         if len(table.electrodes) > 1:
             raise NotImplementedError(
                 f"{len(table.electrodes)} electrodes; "
@@ -67,7 +66,8 @@ def event_times(tables):
             )
     names = ["job", "event", "ToA", "ToT", "amplitude", "baseline", "noise", "truth", "CoG"]
     columns = {name: [] for name in names}
-    for place, deposits, table in tables:
+    for place, folder, index, table in tables:
+        deposits = slice_file(folder, index, "deposit")
         earliest = {event.event: min(event.t) for event in read_deposits(str(deposits)).events}
         rows = table.columns
         chosen = rows["selected"]
@@ -81,22 +81,22 @@ def event_times(tables):
         columns["truth"].append(np.array([earliest[number] for number in rows["event"][chosen]], dtype="float64"))
         for k, part in enumerate(table.fractions):
             columns.setdefault(f"CFD{round(100 * part)}", []).append(rows["CFD"][chosen, 0, k])
-    count = sum(len(table) for _, _, table in tables)
-    return count, EDGE_SIGN[tables[0][2].edge], {name: np.concatenate(values) for name, values in columns.items()}
+    count = sum(len(table) for *_, table in tables)
+    return count, EDGE_SIGN[tables[0][3].edge], {name: np.concatenate(values) for name, values in columns.items()}
 
 
 def time_widths(times):
     """For ToA, CoG, CFD10 ... CFD90 of `event_times` what `core_width` gives
     for time - truth [s], and `missing`: the events that have no such time."""
     widths = {}
-    for name in ["ToA", "CoG"] + [f"CFD{round(100 * part)}" for part in CFD_FRACTIONS]:
+    for name in ["ToA", "CoG"] + [name for name in times if name.startswith("CFD")]:
         difference = times[name] - times["truth"]
         found = ~np.isnan(difference)
         widths[name] = {**core_width(difference[found]), "missing": int(np.sum(~found))}
     return widths
 
 
-def point_resolution(jobs, threshold, amplitude_threshold, edge):
+def point_resolution(jobs):
     """Time resolution of one point: for every time of `event_times`, the
     width of the core of time - truth over the events above the amplitude
     threshold.
@@ -107,7 +107,7 @@ def point_resolution(jobs, threshold, amplitude_threshold, edge):
         polarity  sign of the pulses, +1 or -1
         times     what `time_widths` gives for the selected events
     """
-    count, polarity, times = event_times(point_tables(jobs, threshold, amplitude_threshold, edge))
+    count, polarity, times = event_times(point_tables(jobs))
     return {
         "events": count,
         "selected": len(times["truth"]),

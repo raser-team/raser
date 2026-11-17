@@ -6,6 +6,7 @@ import pytest
 from raser.stages.analysis.timing import event_times
 from raser.stages.analysis.timing import point_resolution
 from raser.stages.analysis.timing import point_tables
+from raser.stages.reconstruction import reconstruct
 from raser.core.readout.waveforms import EventWaveforms
 from raser.core.readout.waveforms import append_waveforms
 from raser.core.deposit.deposits import Deposits
@@ -22,8 +23,21 @@ OFFSET = 2.0e-3  # of the baseline [V]
 def _alone(folder):
     """The seed folder of an experiment without points: it holds its slices."""
     folder.mkdir(parents=True, exist_ok=True)
-    held = {"deposit": "", "current": "", "readout": ""}
+    held = {"deposit": "", "current": "", "readout": "", "reconstruction": ""}
     (folder / "run.json").write_text(json.dumps({"point": "", "held_in": held}))
+
+
+def _reconstructed(jobs):
+    """The jobs, once each job with a readout has its reconstruction: 3 mV
+    and 5 mV on the falling edge, CFD at 10 % ... 90 %."""
+    for folder, index in jobs:
+        batch = folder / "batch"
+        if (batch / f"readout_{index}.h5").exists():
+            reconstruct(
+                batch / f"readout_{index}.h5", batch / f"reconstruction_{index}.h5", 3, 5,
+                tuple(k / 10 for k in range(1, 10)), "falling",
+            )
+    return jobs
 
 
 def _job(folder, index, events, electrodes=("top",), truths=None):
@@ -62,7 +76,7 @@ def test_point_takes_the_quantities_of_the_events_above_the_amplitude_threshold(
     _job(second, 2, [(5.0e-9, 1.0)])  # not among the finished jobs
     write_deposits(str(second / "batch" / "deposit_1.h5"), Deposits(50, None, None, []))
 
-    count, polarity, times = event_times(point_tables([(first, 0), (first, 1), (second, 0), (second, 1)], 3.0e-3, 5.0e-3, "falling"))
+    count, polarity, times = event_times(point_tables(_reconstructed([(first, 0), (first, 1), (second, 0), (second, 1)])))
 
     assert count == 4
     # the 12 mV above the baseline are not the pulse of the second event
@@ -87,7 +101,7 @@ def test_several_electrodes_are_refused(tmp_path) -> None:
     _job(tmp_path, 0, [(0.0, 1.0)], electrodes=("left", "right"))
 
     with pytest.raises(NotImplementedError, match="2 electrodes"):
-        event_times(point_tables([(tmp_path, 0)], 3.0e-3, 5.0e-3, "falling"))
+        event_times(point_tables(_reconstructed([(tmp_path, 0)])))
 
 
 def test_event_that_is_not_among_the_deposits_is_an_error(tmp_path) -> None:
@@ -97,7 +111,7 @@ def test_event_that_is_not_among_the_deposits_is_an_error(tmp_path) -> None:
     (batch / "deposit_1.h5").write_bytes((batch / "deposit_0.h5").read_bytes())
 
     with pytest.raises(ValueError, match="event 1000 is not among the deposits"):
-        event_times(point_tables([(tmp_path, 0), (tmp_path, 1)], 3.0e-3, 5.0e-3, "falling"))
+        event_times(point_tables(_reconstructed([(tmp_path, 0), (tmp_path, 1)])))
 
 
 def test_resolution_is_the_width_of_time_minus_truth(tmp_path) -> None:
@@ -109,7 +123,7 @@ def test_resolution_is_the_width_of_time_minus_truth(tmp_path) -> None:
     # 4 mV, below the amplitude threshold
     _job(tmp_path, 1, [(t0, 0.4) for t0 in starts[300:]], truths=truths[300:])
 
-    result = point_resolution([(tmp_path, 0), (tmp_path, 1)], 3.0e-3, 5.0e-3, "falling")
+    result = point_resolution(_reconstructed([(tmp_path, 0), (tmp_path, 1)]))
 
     assert (result["events"], result["selected"], result["polarity"]) == (600, 300, -1.0)
     half = result["times"]["CFD50"]
@@ -132,7 +146,7 @@ def test_selected_event_without_a_time_is_counted_as_missing(tmp_path) -> None:
         tmp_path / "batch" / "readout_0.h5", ["top"], DT, EventWaveforms(0, 0.0, np.array([samples]))
     )
 
-    result = point_resolution([(tmp_path, 0)], 3.0e-3, 5.0e-3, "falling")
+    result = point_resolution(_reconstructed([(tmp_path, 0)]))
 
     assert (result["events"], result["selected"]) == (101, 101)
     half = result["times"]["CFD50"]

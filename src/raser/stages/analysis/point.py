@@ -1,4 +1,4 @@
-"""The results of one point of an experiment, as one digitizer sees it."""
+"""The results of one point of an experiment, from the reconstruction of its jobs."""
 
 import json
 from pathlib import Path
@@ -10,26 +10,24 @@ from .collection import efficiency_spread
 from .collection import event_efficiencies
 from .timing import event_times
 from .timing import point_tables
+from .timing import table_setting
 from .timing import time_widths
 
-MILLIVOLT = 1.0e-3  # V
 
-
-def write_point(jobs, digitizer, edge, folder):
+def write_point(jobs, folder):
     """Write the results of a point into `folder`: result.json, events.h5 and
     the plots.
 
     jobs : (seed folder, job index) pairs, as lifecycle hands them out.
-    digitizer : content of a file of components/adc: `threshold` and
-        `amplitude_threshold` [mV]
-    edge : "rising" or "falling", the edge of the pulses they are set on
 
     result.json:
-        digitizer   as given
+        reconstruction  threshold and amplitude_threshold [mV], fractions
+                    and edge the tables of the jobs were made with; not
+                    there when the jobs recorded no event
         collection  what `efficiency_spread` gives for the events of the
                     point; the efficiency is of the currents and does not
-                    see the digitizer. With fewer than 2 events, `events`
-                    and `error` in place of the rest
+                    see the reconstruction. With fewer than 2 events,
+                    `events` and `error` in place of the rest
         timing      events, selected, polarity and times, as
                     `point_resolution` gives them [s]; or `error` in place of
                     `times` when the selected events give no width, and of
@@ -42,11 +40,14 @@ def write_point(jobs, digitizer, edge, folder):
     """
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
-    tables = point_tables(
-        jobs, digitizer["threshold"] * MILLIVOLT, digitizer["amplitude_threshold"] * MILLIVOLT, edge
-    )
-    efficiencies = event_efficiencies(jobs)
-    result = {"digitizer": digitizer}
+    tables = point_tables(jobs)
+    efficiencies = event_efficiencies(tables)
+    result = {}
+    if tables:
+        threshold, amplitude_threshold, fractions, edge = table_setting(tables[0][3])
+        result["reconstruction"] = {
+            "threshold": threshold, "amplitude_threshold": amplitude_threshold, "fractions": list(fractions), "edge": edge,
+        }
     missing = []
     try:
         result["collection"] = efficiency_spread(efficiencies)
@@ -66,7 +67,7 @@ def write_point(jobs, digitizer, edge, folder):
         for name, values in times.items():
             file[name] = values.astype("int64") if name in ("job", "event") else values
     result["timing"] = {"events": count, "selected": len(times["truth"]), "polarity": polarity}
-    plots.draw_amplitudes(times["amplitude"], digitizer["amplitude_threshold"] * MILLIVOLT, count, folder / "amplitude.png")
+    plots.draw_amplitudes(times["amplitude"], tables[0][3].amplitude_threshold, count, folder / "amplitude.png")
     try:
         widths = time_widths(times)
     except ValueError as too_few:
