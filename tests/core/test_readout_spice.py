@@ -89,7 +89,7 @@ def test_currents_on_cells_are_read_out_on_a_strip_they_lie_beside():
 
     assert near.shape == far.shape == (1, times.size)
     for voltage in (near[0], far[0]):
-        assert np.sum(voltage) * dt / LOAD_OHM == pytest.approx(1e-15, rel=0.01)
+        assert np.sum(voltage) * dt / LOAD_OHM == pytest.approx(1e-15, rel=0.01, abs=0)
     # the far cell empties through 10 kOhm into the strip: in about 10 ns,
     # the near one through the load in less than one
     arrival = [np.sum(times * v[0]) / np.sum(v[0]) for v in (near, far)]

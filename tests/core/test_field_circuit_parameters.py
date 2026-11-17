@@ -21,7 +21,7 @@ def _device(**keys):
 def test_junction_capacitance_is_the_measured_one_before_any_other():
     farad, source = junction_capacitance(_device(capacitance_pF=4.2), 3.9e-12)
 
-    assert farad == pytest.approx(4.2e-12)
+    assert farad == pytest.approx(4.2e-12, abs=0)
     assert source == "device file"
 
 
@@ -33,7 +33,7 @@ def test_junction_capacitance_of_the_parallel_plate_where_there_is_no_other():
     # 11.5 x 8.854e-12 F/m x (1.3 mm)^2 / 50 um
     farad, source = junction_capacitance(_device())
 
-    assert farad == pytest.approx(3.4416e-12, rel=1e-4)
+    assert farad == pytest.approx(3.4416e-12, rel=1e-4, abs=0)
     assert source == "parallel plate"
 
 
@@ -62,7 +62,10 @@ def test_sensor_of_a_device_has_its_junction_capacitance_on_every_electrode():
     )
 
     assert values == {
-        "junction_capacitance": {"farad": pytest.approx(20e-12), "from": "device file"},
+        "junction_capacitance": {
+            "farad": pytest.approx(20e-12, abs=0),
+            "from": "device file",
+        },
         "between_electrodes": None,
         "bias_resistance": None,
         "coupling_capacitance": None,
@@ -103,9 +106,9 @@ def test_charge_through_the_coupling_capacitance_is_what_the_bias_resistance_lea
     )
 
     assert values["bias_resistance"] == {"ohm": 200.0}
-    assert values["coupling_capacitance"] == {"farad": pytest.approx(30e-12)}
+    assert values["coupling_capacitance"] == {"farad": pytest.approx(30e-12, abs=0)}
     assert voltage[0].sum() * dt_s == pytest.approx(
-        50.0 * 30e-12 * 1e-6 * 200.0, rel=2e-3
+        50.0 * 30e-12 * 1e-6 * 200.0, rel=2e-3, abs=0
     )
     assert abs(voltage[0][-1]) < 1e-7
 
@@ -145,7 +148,7 @@ def test_charge_on_a_device_not_fully_depleted_is_held_back_by_its_undepleted_la
 
     assert values["undepleted_layer"] == {
         "ohm": 2e3,
-        "farad": pytest.approx(60e-12),
+        "farad": pytest.approx(60e-12, abs=0),
         "from": "device file",
     }
     assert of_field["undepleted_layer"] == {
@@ -217,11 +220,14 @@ def test_charge_on_one_strip_of_a_row_is_shared_by_the_capacitances_between_them
     )
 
     assert values["junction_capacitance"] == {
-        "farad": pytest.approx(0.5e-12),
+        "farad": pytest.approx(0.5e-12, abs=0),
         "from": "field",
     }
     assert values["between_electrodes"] == {
-        "farad": [pytest.approx(0.125e-12), pytest.approx(0.03125e-12)],
+        "farad": [
+            pytest.approx(0.125e-12, abs=0),
+            pytest.approx(0.03125e-12, abs=0),
+        ],
         "from": "field",
     }
     near, far = 0.125e-12, 0.03125e-12
