@@ -28,7 +28,7 @@ TPA = {"pulse_energy": 50e-12, "temporal_FWHM": 60e-15, "spacial_FWHM": 1.0, "l_
 
 
 def _tpa(size: tuple[float, float, float] = (50.0, 50.0, 50.0), **changes):
-    return _laser("TPA_edge_Si", size, **{**TPA, **changes})
+    return _laser("TPA1550_edge_Si", size, **{**TPA, **changes})
 
 
 def _tpa_pairs_without_end(energy: float, fwhm: float) -> float:
@@ -81,7 +81,7 @@ def test_rayleigh_length_follows_from_the_spot_when_the_file_gives_none() -> Non
 def test_pairs_of_a_fully_absorbed_pulse_are_its_photons() -> None:
     # 1 pJ at 660 nm is 3.32e6 photons; with 1/α = 1 um all of them are
     # absorbed in a sensor 50 um thick, one pair each
-    laser = _laser("SPA_top_Si", size=(100.0, 100.0, 50.0), alpha=1e6, pulse_energy=1e-12)
+    laser = _laser("LA01R_top_Si", size=(100.0, 100.0, 50.0), alpha=1e6, pulse_energy=1e-12)
 
     assert sum(laser.ionized_pairs) == pytest.approx(3.32e6, rel=2e-3)
 
@@ -89,7 +89,7 @@ def test_pairs_of_a_fully_absorbed_pulse_are_its_photons() -> None:
 def test_weak_pulse_keeps_its_pairs() -> None:
     # 1 fJ at 1064 nm is 5356 photons; silicon 50 um thick absorbs
     # 1 - exp(-974 /m * 50 um) = 4.75 % of them
-    laser = _laser("SPA_top_Si_IR", pulse_energy=1e-15)
+    laser = _laser("LA01IR_top_Si", pulse_energy=1e-15)
 
     assert sum(laser.ionized_pairs) == pytest.approx(255.0, rel=2e-3)
 
@@ -97,8 +97,8 @@ def test_weak_pulse_keeps_its_pairs() -> None:
 def test_absorbed_light_makes_its_pairs_near_the_face_it_enters() -> None:
     # 1/α = 5 um: 1 - exp(-1) = 63.2 % of the pairs within 5 um of the face,
     # which is z = 0 from the top and z = 50 um from the bottom
-    top = np.array(_laser("SPA_top_Si", alpha=2e5).track_position)[:, 2]
-    bottom = np.array(_laser("SPA_bottom_Si", alpha=2e5).track_position)[:, 2]
+    top = np.array(_laser("LA01R_top_Si", alpha=2e5).track_position)[:, 2]
+    bottom = np.array(_laser("LA01R_bottom_Si", alpha=2e5).track_position)[:, 2]
 
     assert np.mean(top < 5.0) == pytest.approx(0.632, abs=0.01)
     assert np.mean(bottom > 45.0) == pytest.approx(0.632, abs=0.01)
@@ -106,14 +106,14 @@ def test_absorbed_light_makes_its_pairs_near_the_face_it_enters() -> None:
 
 def test_light_beside_the_detector_makes_no_pairs() -> None:
     # the focus on the edge x = 0 of the detector: half of the spot is outside
-    whole = sum(_laser("SPA_top_Si_IR").ionized_pairs)
-    half = sum(_laser("SPA_top_Si_IR", fx_rel=0.0).ionized_pairs)
+    whole = sum(_laser("LA01IR_top_Si").ionized_pairs)
+    half = sum(_laser("LA01IR_top_Si", fx_rel=0.0).ionized_pairs)
 
     assert half == pytest.approx(whole / 2)
 
 
 def test_no_group_holds_more_pairs_than_the_laser_file_allows() -> None:
-    laser = _laser("SPA_top_Si", pairs_per_group=200, pulse_energy=1e-12)
+    laser = _laser("LA01R_top_Si", pairs_per_group=200, pulse_energy=1e-12)
 
     assert max(laser.ionized_pairs) <= 200
     assert sum(laser.ionized_pairs) == pytest.approx(3.31e6, rel=2e-2)
@@ -130,15 +130,15 @@ def test_silicon_does_not_absorb_band_to_band_beyond_the_table() -> None:
 
 
 def test_laser_without_alpha_takes_the_absorption_of_the_material() -> None:
-    assert _laser("SPA_top_Si_IR").alpha == pytest.approx(974.0, rel=1e-3)
+    assert _laser("LA01IR_top_Si").alpha == pytest.approx(974.0, rel=1e-3)
 
 
 def test_alpha_of_the_laser_file_replaces_the_table() -> None:
-    assert _laser("SPA_top_Si_IR", alpha=5000.0).alpha == 5000.0
+    assert _laser("LA01IR_top_Si", alpha=5000.0).alpha == 5000.0
 
 
 def test_material_without_a_table_needs_alpha_in_the_laser_file() -> None:
-    with open(component_path("laser", "SPA_top_Si_IR.json")) as file:
+    with open(component_path("laser", "LA01IR_top_Si.json")) as file:
         laser = json.load(file)
     detector = SimpleNamespace(l_x=50.0, l_y=50.0, l_z=50.0, material="Diamond")
 
