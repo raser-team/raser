@@ -5,22 +5,29 @@ every event. The slices are those of the signal app; the default source is
 the bunch in components/source of this app.
 """
 
-from raser.apps import signal
+from raser.stages import chain
 from raser.lifecycle.workflow import Workflow
 
 WORKFLOW = Workflow(
     name="bmos",
-    keys=signal.KEYS,
-    defaults={**signal.WORKFLOW.defaults, "source": "bunch", "plots": 0},
-    components=signal.COMPONENTS,
-    in_file=signal.IN_FILE,
-    slices=signal.SLICES,
-    command=signal.job_command,
+    keys=chain.KEYS,
+    defaults={
+        "source": "bunch",
+        "g4setup": "device_alone",
+        "fano": True,
+        "amplifier": "SantaCruz+Gali52+Termination50",
+        "events_per_job": 1,
+        "plots": 0,
+    },
+    components=chain.COMPONENTS,
+    in_file=chain.IN_FILE,
+    slices=chain.SLICES,
+    command=chain.job_command,
 )
 
 
 def register(subparsers):
     parser = subparsers.add_parser("bmos", help="Beam Monitor Online System")
-    signal.add_arguments(parser)
+    chain.add_arguments(parser)
     WORKFLOW.attach(parser)
     parser.set_defaults(_project="det_name", _components=("bmos",))

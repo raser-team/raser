@@ -10,9 +10,9 @@ time resolution study of the same SiC PIN (Yang et al., Front. Phys. 10
 
 from functools import partial
 
-from raser.apps import signal
 from raser.lifecycle.slices import Slice
 from raser.lifecycle.workflow import Workflow
+from raser.stages import chain
 
 # side I at -x, side II at +x of the beam pipe; rows i along y, columns j along the beam
 PADS = tuple(f"{side}_{i}_{j}" for side in ("I", "II") for i in range(-3, 3) for j in range(2))
@@ -52,8 +52,8 @@ SLICES = (
 WORKFLOW = Workflow(
     name="cflm",
     keys=("voltage", "irradiation", "plots", "amplifier"),
-    defaults={"amplifier": signal.DEFAULTS["afe"], "plots": 0},
-    in_file=signal.IN_FILE,
+    defaults={"amplifier": "SantaCruz+Gali52+Termination50", "plots": 0},
+    in_file=chain.IN_FILE,
     slices=SLICES,
 )
 

@@ -130,15 +130,6 @@ modules = [
   "raser.apps.telescope",
   "raser.apps.timeres",
 ]
-ignore_imports = [
-  "raser.apps.bmos -> raser.apps.signal",
-  "raser.apps.cce -> raser.apps.signal",
-  "raser.apps.timeres -> raser.apps.signal",
-  "raser.apps.cflm -> raser.apps.signal",
-  "raser.apps.cflm.signals -> raser.apps.signal.gen_signal",
-  "raser.apps.cflm.deposits -> raser.apps.signal.gen_signal",
-  "raser.apps.tct.tct_signal -> raser.apps.signal.gen_signal",
-]
 
 [tool.mypy]
 python_version = "3.11"

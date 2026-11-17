@@ -9,7 +9,7 @@ no record in it.
 
 import json
 
-from raser.apps.signal.gen_signal import output
+from raser.stages.files import output
 from raser.core.device import build_device as bdv
 from raser.core.deposit.deposits import Deposits
 from raser.core.deposit.deposits import EventDeposits

@@ -9,8 +9,8 @@ leave {"events": 0} with their marks.
 
 import os
 
-from raser.apps.signal.gen_signal import output
-from raser.apps.signal.gen_signal import solved
+from raser.stages.current import solved
+from raser.stages.files import output
 from raser.core.current.cal_current import electrode_names
 from raser.core.current.cal_current import write_induced_currents
 from raser.core.device import build_device as bdv

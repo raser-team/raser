@@ -7,10 +7,12 @@ Written into batch/ of the point folder:
 
 import os
 
-from raser.apps.signal import gen_signal
 from raser.core.current.cal_current import write_laser_currents
 from raser.core.device import build_device as bdv
 from raser.core.deposit.laser import LaserInjection
+from raser.stages import current
+from raser.stages import files
+from raser.stages import readout
 
 
 def currents(kwargs):
@@ -21,9 +23,9 @@ def currents(kwargs):
     my_l = LaserInjection(my_d, dict(files["laser"]))
     path = os.path.join(os.path.dirname(kwargs["_slice_batch_paths"]["currents"]), "plots")
     write_laser_currents(
-        gen_signal.output(kwargs, "currents"),
+        files.output(kwargs, "currents"),
         my_d,
-        gen_signal.solved(my_d, kwargs),
+        current.solved(my_d, kwargs),
         my_l,
         path,
     )
@@ -31,4 +33,4 @@ def currents(kwargs):
     my_l.draw_nocarrier2D(path)
 
 
-waveforms = gen_signal.waveforms
+waveforms = readout.waveforms
