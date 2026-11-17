@@ -2,6 +2,8 @@ import math
 
 import devsim
 
+from raser.core.model.material import RELATIVE_PERMITTIVITY
+
 from . import model_create
 
 '''  
@@ -26,7 +28,6 @@ def CreateGlobalConstant(T, device, region):
     vel_mean = 1e7
     devsim.set_parameter(device=device, region=region, name="vel_mean", value=vel_mean)
 
-    T = 300.0  # K
     devsim.set_parameter(device=device, region=region, name="T", value=T)
     devsim.set_parameter(device=device, region=region, name="k_T", value=k * T)
     devsim.set_parameter(device=device, region=region, name="Volt_thermal", value=k * T / q)
@@ -47,9 +48,9 @@ def CreateSiliconCarbideConstant(T, device, region):
     E_g = 3.26 * 1.6 * 1e-19
     devsim.set_parameter(device=device, region=region, name="E_g", value=E_g)
 
-    devsim.set_parameter(device=device, region=region, name="eps", value=9.76)
+    devsim.set_parameter(device=device, region=region, name="eps", value=RELATIVE_PERMITTIVITY["SiC"])
     eps_0 = 8.85e-14
-    devsim.set_parameter(device=device, region=region, name="Permittivity", value=9.76 * eps_0)
+    devsim.set_parameter(device=device, region=region, name="Permittivity", value=RELATIVE_PERMITTIVITY["SiC"] * eps_0)
     N_i = 3.89e-9
     devsim.set_parameter(device=device, region=region, name="n_i", value=N_i)
 
@@ -71,9 +72,9 @@ def CreateDiamondConstant(T, device, region):
     E_g = 5.47 * 1.6e-19
     devsim.set_parameter(device=device, region=region, name="E_g", value=E_g)
 
-    devsim.set_parameter(device=device, region=region, name="eps", value=5.7)
+    devsim.set_parameter(device=device, region=region, name="eps", value=RELATIVE_PERMITTIVITY["Diamond"])
     eps_0 = 8.85e-14
-    devsim.set_parameter(device=device, region=region, name="Permittivity", value=5.7 * eps_0)
+    devsim.set_parameter(device=device, region=region, name="Permittivity", value=RELATIVE_PERMITTIVITY["Diamond"] * eps_0)
     k = 1.3806503e-23  # J/K
     N_i = pow(N_c * N_v, 0.5) * math.exp(-E_g / (2 * k * T))
     devsim.set_parameter(device=device, region=region, name="n_i", value=N_i)
@@ -96,9 +97,9 @@ def CreateSiliconConstant(T, device, region):
     E_g = 1.12 * 1.6e-19
     devsim.set_parameter(device=device, region=region, name="E_g", value=E_g)
 
-    devsim.set_parameter(device=device, region=region, name="eps", value=11.9)
+    devsim.set_parameter(device=device, region=region, name="eps", value=RELATIVE_PERMITTIVITY["Si"])
     eps_0 = 8.85e-14
-    devsim.set_parameter(device=device, region=region, name="Permittivity", value=11.9 * eps_0)
+    devsim.set_parameter(device=device, region=region, name="Permittivity", value=RELATIVE_PERMITTIVITY["Si"] * eps_0)
     k = 1.3806503e-23  # J/K
     N_i = pow(N_c * N_v, 0.5) * math.exp(-E_g / (2 * k * T))
     devsim.set_parameter(device=device, region=region, name="n_i", value=N_i)
@@ -124,7 +125,6 @@ def CreateFineExponentialModels(T, device, region):
     devsim.set_parameter(device=device, region=region, name="lambda_model_p", value=lambda_model_p)
 
 def CreateHatakeyamaImpact(T, device, region):
-    T = 300  # K
 
     hbarOmega = 0.19  # eV
     _theta = 1  # 1
@@ -160,38 +160,6 @@ def CreateHatakeyamaImpact(T, device, region):
     devsim.set_parameter(device=device, region=region, name="p_a_1120", value=p_a_1120)
     devsim.set_parameter(device=device, region=region, name="p_b_1120", value=p_b_1120)
 
-def CreateVanOvenstraetenImpact(T, device, region):
-    T = 300  # K
-
-    hbarOmega = 0.063  # eV
-    E0 = 4.0e5  # V/cm
-    T0 = 293.0  # K
-    k_T0 = 0.0257  # eV
-    gamma = math.tanh(hbarOmega / (2 * k_T0)) / math.tanh(hbarOmega / (2 * k_T0 * T / T0))
-
-    n_a_low = 7.03e5  # cm-1
-    n_a_high = 7.03e5  # cm-1
-
-    n_b_low = 1.232e6  # cm-1
-    n_b_high = 1.232e6  # cm-1
-
-    p_a_low = 1.582e6  # cm-1
-    p_a_high = 6.71e5  # cm-1
-
-    p_b_low = 2.036e6  # cm-1
-    p_b_high = 1.693e6  # cm-1
-
-    devsim.set_parameter(device=device, region=region, name="gamma", value=gamma)
-    devsim.set_parameter(device=device, region=region, name="n_a_high", value=n_a_high)
-    devsim.set_parameter(device=device, region=region, name="n_b_high", value=n_b_high)
-    devsim.set_parameter(device=device, region=region, name="p_a_high", value=p_a_high)
-    devsim.set_parameter(device=device, region=region, name="p_b_high", value=p_b_high)
-
-    devsim.set_parameter(device=device, region=region, name="n_a_low", value=n_a_low)
-    devsim.set_parameter(device=device, region=region, name="n_b_low", value=n_b_low)
-    devsim.set_parameter(device=device, region=region, name="p_a_low", value=p_a_low)
-    devsim.set_parameter(device=device, region=region, name="p_b_low", value=p_b_low)
-
 def CreateTAT(T, device, region):
     '''trap assisted tunneling model for SiC'''
     devsim.set_parameter(device=device, region=region, name="U_TAT", value=-1.9e11)
@@ -216,7 +184,6 @@ def create_parameter(MyDetector, device, region):
         CreateTAT(T, device, region)
     elif devsim.get_material(device=device, region=region) == "Silicon":
         CreateSiliconConstant(T, device, region)
-        CreateVanOvenstraetenImpact(T, device, region)
     elif devsim.get_material(device=device, region=region) == "Diamond":
         CreateDiamondConstant(T, device, region)
     elif devsim.get_material(device=device, region=region) == "gas":
