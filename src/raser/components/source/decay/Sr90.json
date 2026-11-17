@@ -5,6 +5,7 @@
     "nuclides" : [[38, 90], [39, 90]],
     "par_in" : [0, 0, 17000],
     "par_out" : [0, 0, -17000],
+    "par_angle" : 0,
     "par_radius" : 2500,
     "par_cone" : 15
 }

@@ -7,6 +7,7 @@ import os
 from raser.supports.paths import component_path
 
 from .simulate_deposits import g4_configuration
+from .simulate_deposits import tilted
 
 # Drivers that write a file and open no window.
 _DRIVERS_WITHOUT_SESSION = {
@@ -93,7 +94,7 @@ def view_geometry(
     if driver.upper() not in _DRIVERS_WITHOUT_SESSION:
         session = g4b.G4UIExecutive(1, [os.getcwd()])
     my_g4 = ViewedG4Interaction(
-        my_d, g4_configuration(source, g4setup, events, None, None), g4_seed
+        my_d, g4_configuration(tilted(source, my_d.l_z), g4setup, events, None, None), g4_seed
     )
     try:
         if session is not None:
