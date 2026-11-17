@@ -290,14 +290,16 @@ def execute(workflow, kwargs, register=True):
         # A scan or a --set given to an experiment that exists joins its config,
         # under its address as _points reads it, in place of what the config
         # had there; later commands repeat it.
-        # A key given leaves out what the config had for it, scanned or set.
+        # A key given leaves out what the config had for it and for the
+        # other keys of its group, scanned or set.
         written = dict(config.get("scan", {}))
         kept = dict(config.get("set", {}))
 
         def leave_out(key) -> None:
             nonlocal written, kept
-            written = {old: v for old, v in written.items() if address.get(old, old) != key}
-            kept = {old: v for old, v in kept.items() if address.get(old, old) != key}
+            group = next((group for group in workflow.exclusive if key in group), (key,))
+            written = {old: v for old, v in written.items() if address.get(old, old) not in group}
+            kept = {old: v for old, v in kept.items() if address.get(old, old) not in group}
 
         for item in kwargs["scan"]:
             key, _, values = item.partition("=")
@@ -480,6 +482,23 @@ def _points(workflow, kwargs, config, given) -> tuple[dict, dict]:
         key, _, values = item.partition("=")
         scan[address.get(key, key)] = [_parse(value) for value in values.split(",")]
     scan = {key: values for key, values in scan.items() if key not in given}
+    # A key of a group that is scanned is the one of its group: the others'
+    # values below the command line are left out. The command line decides
+    # over a scan of the config.
+    on_command_line = {address.get(item.partition("=")[0], item.partition("=")[0]) for item in kwargs["scan"]}
+    for group in workflow.exclusive:
+        scanned = [key for key in group if key in scan]
+        if any(key in given for key in group):
+            for key in scanned:
+                if key in on_command_line:
+                    raise ValueError(f"{key} is scanned and another key of its group is given; give one of them")
+                del scan[key]
+        elif len(scanned) > 1:
+            raise ValueError(f"{scanned[0]} and {scanned[1]} are scanned at once; scan one of them")
+        elif scanned:
+            for key in group:
+                if key != scanned[0]:
+                    fixed.pop(key, None)
     for key, values in scan.items():
         _check_folder_names(key, values)
     label = {key: _label(key, names) for key in scan}

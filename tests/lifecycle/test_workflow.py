@@ -1567,6 +1567,30 @@ def test_the_command_line_decides_a_group_over_the_set_of_the_config(started: li
     assert options["a"] == 2 and "b" not in options
 
 
+def test_a_key_of_a_group_scanned_leaves_out_the_default_of_the_other_in_every_point(
+    started: list[Any], tmp_path: Path
+) -> None:
+    execute(EITHER, _kwargs(scan=["b=2,3"]))
+
+    points = [_options(tmp_path / "toy" / name / "seed_42") for name in ("b_2", "b_3")]
+    assert [(options["b"], "a" in options) for options in points] == [(2, False), (3, False)]
+
+
+def test_a_key_of_a_group_set_replaces_the_other_in_the_config_and_the_next_command_runs(
+    started: list[Any], tmp_path: Path
+) -> None:
+    experiment = tmp_path / "toy"
+    experiment.mkdir()
+    (experiment / "config.json").write_text(json.dumps({"workflow": "toy", "set": {"a": 1}, "scan": {}}))
+
+    execute(EITHER, _kwargs(set=["b=2"]))
+    execute(EITHER, _kwargs(seed=43))
+
+    assert json.loads((experiment / "config.json").read_text())["set"] == {"b": 2}
+    options = _options(experiment / "seed_43")
+    assert options["b"] == 2 and "a" not in options
+
+
 def test_a_value_set_for_a_scanned_option_ends_its_scan_for_the_next_commands(
     started: list[Any], tmp_path: Path
 ) -> None:
