@@ -8,7 +8,6 @@ import itertools
 import json
 import secrets
 import subprocess
-import sys
 import time
 import traceback
 from dataclasses import dataclass
@@ -429,12 +428,18 @@ def _start(workflow, kwargs, folder, left, alone) -> None:
         mem=kwargs["mem"],
         destination=workflow.words[0],
         indices=left,
+        log_folder=None if kwargs["batch"] else Path(folder) / "batch",
     )
 
 
 def _own_process(workflow, kwargs, words) -> None:
-    """Run the command `words`, the single job of one point, in another process."""
-    subprocess.run([sys.executable, "-m", "raser.cli.raser", *words], check=True)
+    """Run the command `words`, the single job of one point, in another
+    process; what it prints goes to the terminal and to batch/job_0.log."""
+    log = Path(words[-1]) / "batch" / "job_0.log"
+    try:
+        jobs._run_local_job(tuple(words), log)
+    except subprocess.CalledProcessError as error:
+        raise RuntimeError(f"the job failed: {jobs.last_line(log)} ({log})") from error
 
 
 def _run_job(workflow, kwargs):

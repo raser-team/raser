@@ -157,3 +157,28 @@ def test_chosen_indices_run_alone_and_failures_name_the_task_index(
         rerun(use_cluster=False)
     assert submitted == ["2", "3"]
     assert sorted(started) == ["2", "3"]
+
+
+def test_a_local_job_with_a_log_prints_to_the_terminal_and_the_log_and_a_failure_names_both(
+    tmp_path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(jobs, "ProcessPoolExecutor", ThreadPoolExecutor)
+
+    with pytest.raises(RuntimeError) as failure:
+        jobs.run_indexed_jobs(
+            ["no-such-command"], [], 1, use_cluster=False, mem=1, destination="x", log_folder=tmp_path
+        )
+
+    log = tmp_path / "job_0.log"
+    printed = capsys.readouterr().out
+    assert "invalid choice: 'no-such-command'" in log.read_text()
+    assert printed == log.read_text()
+    assert f"job 0: {jobs.last_line(log)} ({log})" in str(failure.value)
+
+
+def test_why_a_job_failed_is_its_last_exception_not_what_was_printed_after_it(tmp_path) -> None:
+    log = tmp_path / "job_1.log"
+    log.write_text("Traceback (most recent call last):\n  File x\nRuntimeError: injected\n[G4PPYY] : Imported all definitions.\n")
+    assert jobs.last_line(log) == "RuntimeError: injected"
+    (tmp_path / "plain.log").write_text("first\nlast\n\n")
+    assert jobs.last_line(tmp_path / "plain.log") == "last"
