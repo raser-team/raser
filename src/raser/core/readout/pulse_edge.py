@@ -7,22 +7,21 @@ from raser.core.field.device_circuit import planar_circuit
 from .spice import solve
 
 
-def collected_charge_sign(my_d):
-    """Sign of the charge the read-out electrodes of a device collect: -1
-    for electrons, which the electrode at the higher potential collects, +1
-    for holes.
+def collected_charge_sign(my_d, electrode):
+    """Sign of the charge a read-out electrode of a device collects: -1 for
+    electrons, which the electrode at the higher potential collects, +1 for
+    holes.
 
     The bias of the device file is on its electrode "electrode" at "voltage";
     the other electrodes are on ground.
     """
     bias = my_d.device_dict["bias"]
     voltage = float(bias["voltage"])
-    read_out = {contact["name"] for contact in my_d.read_out_contact}
-    # the read-out electrodes over the other one
-    above = voltage if bias["electrode"] in read_out else -voltage
+    # the read-out electrode over the other one
+    above = voltage if bias["electrode"] == electrode else -voltage
     if above == 0:
         raise ValueError(
-            f"{my_d.det_name} has its read-out and its other electrode at one potential"
+            f"{electrode} of {my_d.det_name} and its other electrode are at one potential"
         )
     return -1 if above > 0 else 1
 
@@ -53,7 +52,23 @@ def chain_sign(chain):
 
 def pulse_edges(my_d, chain, outputs):
     """For each output, in their order: "rising" when its pulse goes up,
-    "falling" when it goes down, as the charge the device collects and the
-    sign of the chain make it."""
-    up = collected_charge_sign(my_d) * chain_sign(chain) > 0
-    return ["rising" if up else "falling"] * len(outputs)
+    "falling" when it goes down, as the charge its electrode collects and
+    the sign of the chain make it.
+
+    A device that lists one read-out electrode for each output has them in
+    the order of the outputs; one that repeats a single electrode, along a
+    row or over the cells of a resistive layer, reads that one everywhere.
+    """
+    contacts = [contact["name"] for contact in my_d.read_out_contact]
+    if len(contacts) == 1:
+        contacts = contacts * len(outputs)
+    if len(contacts) != len(outputs):
+        raise ValueError(
+            f"{my_d.det_name} lists the read-out electrodes {contacts}, not one "
+            f"for each of the outputs {list(outputs)}"
+        )
+    sign = chain_sign(chain)
+    return [
+        "rising" if collected_charge_sign(my_d, contact) * sign > 0 else "falling"
+        for contact in contacts
+    ]

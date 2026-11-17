@@ -71,6 +71,25 @@ def test_an_inverting_stage_turns_the_pulse_over():
 
 
 @pytest.mark.ngspice
+def test_each_electrode_read_out_has_the_pulse_of_the_charge_it_collects():
+    # both electrodes of HPK-Si-PiN read out, the top on +200 V: the top
+    # collects electrons, the back holes
+    content = json.loads(device_file("HPK-Si-PiN").read_text(encoding="utf-8"))
+    content.update(
+        {
+            "electrodes": "strip",
+            "read_ele_num": 2,
+            "p_x": 1300,
+            "read_out_contact": [{"name": "bot"}, {"name": "top"}],
+        }
+    )
+    both = Detector("HPK-Si-PiN", content)
+    plain = {"stages": {"wire": WIRE}, "load": LOAD}
+
+    assert pulse_edges(both, plain, ["bot", "top"]) == ["rising", "falling"]
+
+
+@pytest.mark.ngspice
 def test_way_of_a_chain_is_its_swing_from_where_its_output_rests():
     # the inverting stage with its output lifted by 1 V: the pulse dips from
     # +1 V and stays above zero
@@ -99,11 +118,15 @@ def test_pulse_edge_of_each_electrode_is_kept_in_the_file(tmp_path):
     record = EventWaveforms(0, 0.0, np.zeros((2, 3)))
 
     append_waveforms(
-        tmp_path / "a.h5", ["left", "right"], 1e-12, record, pulse_edge=["rising"] * 2
+        tmp_path / "a.h5",
+        ["left", "right"],
+        1e-12,
+        record,
+        pulse_edge=["rising", "falling"],
     )
     append_waveforms(tmp_path / "b.h5", ["left", "right"], 1e-12, record)
 
-    assert read_waveforms(tmp_path / "a.h5").pulse_edge == ["rising", "rising"]
+    assert read_waveforms(tmp_path / "a.h5").pulse_edge == ["rising", "falling"]
     assert read_waveforms(tmp_path / "b.h5").pulse_edge is None
     with pytest.raises(ValueError, match="pulse_edge"):
         append_waveforms(
