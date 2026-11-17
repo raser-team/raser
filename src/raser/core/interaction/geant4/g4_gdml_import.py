@@ -205,7 +205,7 @@ class GDMLDetectorConstruction(GeneralDetectorConstruction):
             }
             self.create_elemental(detector)
 
-        if detector_material == 'SiC' and self.geant4_model != 'cflm':
+        if detector_material == 'SiC':
             detector = {
                 'name': 'Device',
                 'material_1': 'Si',
