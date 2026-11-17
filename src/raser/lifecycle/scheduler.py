@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import getpass
 import grp
 import os
+import re
 import shlex
 import subprocess
 from dataclasses import dataclass
+from dataclasses import replace
 from pathlib import Path
 from typing import Sequence
 
@@ -42,6 +45,7 @@ class ClusterJobPlan:
     submit_command: tuple[str, ...]
     submit_file: Path | None = None
     submit_description: str | None = None
+    job_id: str | None = None  # what the scheduler named the job, once submitted
 
     def as_dict(self) -> dict:
         result = {
@@ -76,6 +80,8 @@ def worker_script(worker_command: Sequence[str], route: str | None) -> str:
         '    "${XDG_RUNTIME_DIR:-}"',
         '    "${XAUTHORITY:-}" "${APPTAINERENV_XAUTHORITY:-}" "${SINGULARITYENV_XAUTHORITY:-}")',
         "unset " + " ".join(_WORKER_UNSET),
+        # A job on the cluster may start the command again when it is done (lifecycle).
+        "export RASER_CLUSTER_JOB=1",
         "for raser_bind_name in " + " ".join(_WORKER_BIND_VARIABLES) + "; do",
         '    [ -n "${!raser_bind_name}" ] || continue',
         '    IFS=, read -r -a raser_binds <<< "${!raser_bind_name}"',
@@ -185,8 +191,7 @@ def main(destination_subfolder, command, batch_level, is_test=False):
     if plan.submit_file is not None and plan.submit_description is not None:
         plan.submit_file.parent.mkdir(parents=True, exist_ok=True)
         plan.submit_file.write_text(plan.submit_description + "\n", encoding="utf-8")
-    submit_job(plan)
-    return plan
+    return replace(plan, job_id=submit_job(plan))
 
 
 def gen_job(jobfile_name, run_code):
@@ -197,14 +202,36 @@ def gen_job(jobfile_name, run_code):
     return path
 
 
-def submit_job(plan: ClusterJobPlan):
+def submit_job(plan: ClusterJobPlan) -> str | None:
+    """Submit the job; what the scheduler named it, or None when it is not
+    known: queued for the host, or not in what the scheduler printed."""
     queue = os.environ.get("RASER_SUBMIT_QUEUE")
     if queue:
         # The SIF has no scheduler client; raser() on the host submits the queue.
         with open(queue, "a", encoding="utf-8") as stream:
             stream.write(shlex.join(plan.submit_command) + "\n")
-        return
-    subprocess.run(plan.submit_command, shell=False, check=True)
+        return None
+    result = subprocess.run(plan.submit_command, shell=False, check=True, capture_output=True, text=True)
+    print(result.stdout, end="")
+    named = re.search(r"submitted to cluster (\d+)", result.stdout)
+    return named.group(1) if named else None
+
+
+def job_alive(job_id) -> bool | None:
+    """Whether the scheduler still holds the job `job_id`; None when it
+    cannot be asked."""
+    if os.environ.get("RASER_SCHEDULER", "hep_sub") == "hep_sub":
+        command = ["hep_q", "-u", getpass.getuser()]
+    else:
+        command = ["condor_q", str(job_id), "-af", "ClusterId"]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    held = {line.split()[0].split(".")[0] for line in result.stdout.splitlines() if line[:1].isdigit()}
+    return str(job_id) in held
 
 
 def run_cmd(command, is_test=False):

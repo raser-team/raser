@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -25,11 +26,12 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 @pytest.fixture
 def submitted(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, ...]]:
     commands: list[tuple[str, ...]] = []
-    monkeypatch.setattr(
-        scheduler.subprocess,
-        "run",
-        lambda command, **kwargs: commands.append(tuple(command)),
-    )
+
+    def run(command, **kwargs):
+        commands.append(tuple(command))
+        return SimpleNamespace(stdout="1 job(s) submitted to cluster 7.\n")
+
+    monkeypatch.setattr(scheduler.subprocess, "run", run)
     return commands
 
 
