@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from raser.core.current.cal_current import gain_algorithm
-from raser.core.current.model import Material
+from raser.core.model.material import Material
 from raser.core.field.devsim_field import DevsimField
 
 DEVICE = SimpleNamespace(

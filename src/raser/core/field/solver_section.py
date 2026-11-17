@@ -19,7 +19,7 @@ import numpy as np
 if __name__ == "__main__":
     __package__ = "raser.core.field"
 
-from ..current.model import Material
+from ..model.material import Material
 from ..device.build_device import Detector
 from .create_mesh import DevsimMesh
 from .create_mesh import mesh_axes

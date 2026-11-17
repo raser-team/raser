@@ -19,7 +19,7 @@ import numpy as np
 import ROOT
 from scipy.spatial import Delaunay
 from scipy.spatial import cKDTree
-from ..current.model import Material
+from ..model.material import Material
 from .assets import field_pickle_path
 from .gradient import gradient
 from .interpolation import interpolate_1d

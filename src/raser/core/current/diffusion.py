@@ -19,7 +19,7 @@ import numpy as np
 
 from raser.core.seeding import stream
 
-from .model import Material
+from ..model.material import Material
 
 ELEMENTARY_CHARGE = 1.602176634e-19  # C
 BOLTZMANN = 8.617385e-5  # eV/K

@@ -1,6 +1,6 @@
 import pytest
 
-from raser.core.current.model import Material
+from raser.core.model.material import Material
 
 
 @pytest.mark.parametrize(("charge", "low_field"), [(+1, 1250.0), (-1, 1900.0)])

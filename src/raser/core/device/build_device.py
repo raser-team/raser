@@ -13,7 +13,7 @@ import json
 from functools import cached_property
 from pathlib import Path
 
-from ..current.model import Material
+from ..model.material import Material
 from raser.supports.paths import component_file_path
 from raser.supports.paths import work_root
 

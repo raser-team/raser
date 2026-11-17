@@ -98,11 +98,7 @@ layers = [
   "raser.core.interaction",
   "raser.core.field",
   "raser.core.device",
-]
-ignore_imports = [
-  "raser.core.field.solver_section -> raser.core.current.model",
-  "raser.core.field.devsim_field -> raser.core.current.model",
-  "raser.core.device.build_device -> raser.core.current.model",
+  "raser.core.model",
 ]
 
 [[tool.importlinter.contracts]]

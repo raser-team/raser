@@ -16,7 +16,7 @@ import numpy as np
 import ROOT
 ROOT.gROOT.SetBatch(True)
 
-from .model import Material
+from ..model.material import Material
 from .drift import Drifted, drift, induced_charges, surviving
 from . import draw
 from .draw_drift_path import draw_drift_path
