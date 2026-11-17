@@ -3,9 +3,9 @@
 The file is HDF5 and grows event by event. An event holds the waveforms of
 the electrodes it has a signal on, its traces, which may be some of the
 electrodes of the file only: the strips of a row the charge of the event
-reaches. The traces of all events lie one after another, and the bins of
-all traces; ``traces`` cuts them into events, ``count`` each trace into
-its bins.
+reaches; the others are not stored. As the currents file: ``stored`` cuts
+``index`` into events, and every stored electrode has the ``count`` bins
+of its event in ``voltage``, one stored electrode after another.
 
 Attributes of the file:
     electrodes  names of all the electrodes it may hold traces of
@@ -20,10 +20,11 @@ Datasets, one row per event:
     event       Geant4 event number
     t0          left edge of the first time bin of the event [s]
     count       number of time bins of each trace of the event
-    traces      number of traces of the event; 0 for an event with no signal
-Dataset, one row per trace:
-    electrode   number, from 0, of its electrode in electrodes
-Dataset, one row per bin of each trace:
+    stored      number of electrodes of the event that are stored; 0 for an
+                event with no signal
+Dataset, one value per stored electrode:
+    index       its place among the electrodes, from 0
+Dataset, one value per time bin of a stored electrode:
     voltage     output voltage at the centre of the bin [V]
 """
 
@@ -103,8 +104,8 @@ def append_waveforms(
                 ("event", "int64"),
                 ("t0", "float64"),
                 ("count", "int64"),
-                ("traces", "int64"),
-                ("electrode", "int64"),
+                ("stored", "int64"),
+                ("index", "int64"),
             ):
                 file.create_dataset(name, shape=(0,), maxshape=(None,), dtype=kind)
             file.create_dataset(
@@ -126,8 +127,8 @@ def append_waveforms(
             "event": np.array([int(record.event)]),
             "t0": np.array([float(record.t0)]),
             "count": np.array([voltage.shape[1]]),
-            "traces": np.array([len(names)]),
-            "electrode": np.array(
+            "stored": np.array([len(names)]),
+            "index": np.array(
                 [electrodes.index(name) for name in names], dtype="int64"
             ),
             "voltage": voltage.reshape(-1),
@@ -153,19 +154,19 @@ def read_waveforms(path):
         numbers = file["event"][()]
         starts = file["t0"][()]
         counts = file["count"][()]
-        traces = file["traces"][()]
-        of_trace = file["electrode"][()]
+        stored = file["stored"][()]
+        index = file["index"][()]
         voltage = file["voltage"][()]
     events = []
     trace, sample = 0, 0
-    for number, start, count, many in zip(numbers, starts, counts, traces, strict=True):
+    for number, start, count, many in zip(numbers, starts, counts, stored, strict=True):
         size = int(many) * int(count)
         events.append(
             EventWaveforms(
                 int(number),
                 float(start),
                 voltage[sample : sample + size].reshape(int(many), int(count)),
-                [electrodes[k] for k in of_trace[trace : trace + int(many)]],
+                [electrodes[k] for k in index[trace : trace + int(many)]],
             )
         )
         trace, sample = trace + int(many), sample + size
