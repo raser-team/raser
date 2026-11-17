@@ -225,3 +225,12 @@ def test_pads_of_a_device_are_coupled_through_the_dielectric_it_gives():
     # 3.9 x 8.854e-12 F/m over 0.5 um, on a cell of 100 um x 100 um
     assert values["coupling_per_area_f_m2"] == pytest.approx(6.906e-5, rel=1e-3)
     assert "Cpad_a layer_a pad_pad 6.906" in "\n".join(circuit.lines)
+
+
+@pytest.mark.parametrize("span", [(2, 2, 0, 0), (1, 2, 0, 0), (0, 0, -1, 0)])
+def test_pad_off_the_layer_is_refused_whether_in_contact_or_coupled(span):
+    for coupling in (None, 1e-4):
+        with pytest.raises(ValueError, match="layer has 2 by 1 cells"):
+            resistive_grid(
+                ["a", "b"], (2, 1), (1e-4, 1e-4), 1e3, 1e-5, {"pad": span}, coupling
+            )

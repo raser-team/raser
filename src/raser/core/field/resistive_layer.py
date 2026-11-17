@@ -91,17 +91,22 @@ def resistive_row(
     )
 
 
+def _inside(span, counts):
+    """Refuse a span (x_first, x_last, y_first, y_last) not wholly on the
+    cells of the layer."""
+    x_first, x_last, y_first, y_last = span
+    if not (0 <= x_first <= x_last < counts[0] and 0 <= y_first <= y_last < counts[1]):
+        raise ValueError(
+            f"A contact lies on the cells {x_first} to {x_last} by {y_first} to "
+            f"{y_last}, and the layer has {counts[0]} by {counts[1]} cells"
+        )
+
+
 def _on(node, spans, name, counts):
     """Give the cells inside each span (x_first, x_last, y_first, y_last) the
     node `name`; a cell may lie under one contact only."""
     for x_first, x_last, y_first, y_last in spans:
-        if not (
-            0 <= x_first <= x_last < counts[0] and 0 <= y_first <= y_last < counts[1]
-        ):
-            raise ValueError(
-                f"A contact lies on the cells {x_first} to {x_last} by {y_first} to "
-                f"{y_last}, and the layer has {counts[0]} by {counts[1]} cells"
-            )
+        _inside((x_first, x_last, y_first, y_last), counts)
         for i in range(x_first, x_last + 1):
             for j in range(y_first, y_last + 1):
                 if not node[i][j].startswith("layer_"):
@@ -158,6 +163,7 @@ def resistive_grid(
         if coupling_per_area_f_m2 is None:
             _on(node, [span], f"{pad}_pad", counts)
         else:
+            _inside(span, counts)
             x_first, x_last, y_first, y_last = span
             for i in range(x_first, x_last + 1):
                 for j in range(y_first, y_last + 1):
