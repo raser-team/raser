@@ -932,6 +932,56 @@ def test_an_option_of_a_later_slice_runs_that_slice_and_the_ones_after_it_again_
     assert _record(tmp_path / "toy" / "seed_42")["options"][key] == value
 
 
+@pytest.mark.parametrize("changed", [{"amplifier": "other"}, {"source": "alpha"}])
+def test_a_change_to_a_seed_folder_whose_job_runs_is_refused_and_leaves_it_as_it_was(
+    started: list[Any],
+    seeded: list[int],
+    disk: dict[str, Any],
+    ran: list[tuple[str, Any]],
+    tmp_path: Path,
+    changed: dict[str, Any],
+) -> None:
+    execute(_chain(ran), _chain_kwargs())
+    folder = tmp_path / "toy" / "seed_42"
+    before = (folder / "run.json").read_text()
+    marks = sorted(path.name for path in (folder / "batch").glob("*.done"))
+    del ran[:]
+    held = workflow_module._lock(folder / "batch" / "job_0.lock", "job 0")  # job 0 runs
+
+    with pytest.raises(SystemExit) as stopped:
+        execute(_chain(ran), _chain_kwargs(**changed))
+    held.close()
+
+    assert stopped.value.code not in (0, None)
+    assert f"{folder}" in str(stopped.value) and "did not take effect" in str(stopped.value)
+    assert ran == [] and _kept(tmp_path / "toy") == []
+    assert (folder / "run.json").read_text() == before
+    assert sorted(path.name for path in (folder / "batch").glob("*.done")) == marks
+
+
+def test_a_job_whose_run_json_changed_while_it_ran_marks_nothing_and_sets_its_output_aside(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], tmp_path: Path
+) -> None:
+    folder = tmp_path / "toy" / "seed_42"
+
+    def waveforms(options: dict[str, Any]) -> None:
+        (folder / "batch" / "waveforms_0.h5").write_text("made with the old amplifier")
+        record = json.loads((folder / "run.json").read_text())
+        record["options"]["amplifier"] = "other"  # another command, meanwhile
+        (folder / "run.json").write_text(json.dumps(record))
+
+    chain = _chain([])
+    workflow = replace(chain, slices=(*chain.slices[:2], replace(chain.slices[2], run=waveforms)))
+
+    with pytest.raises(RuntimeError, match="run.json changed"):
+        execute(workflow, _chain_kwargs())
+
+    assert not (folder / "batch" / "waveforms_0.done").exists()
+    assert not (folder / "batch" / "waveforms_0.h5").exists()
+    assert (folder / "batch" / "waveforms_0.h5.stale").read_text() == "made with the old amplifier"
+    assert (folder / "batch" / "currents_0.done").exists()
+
+
 def test_an_option_of_the_first_slice_runs_the_whole_job_again_and_keeps_the_old_run(
     started: list[Any], seeded: list[int], disk: dict[str, Any], ran: list[tuple[str, Any]], tmp_path: Path
 ) -> None:

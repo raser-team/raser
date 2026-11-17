@@ -61,6 +61,20 @@ def _lock(path, what) -> object | None:
     return handle
 
 
+def _running_jobs(folder) -> list[int]:
+    """The jobs of a seed or point folder whose lock another process holds."""
+    running = []
+    for path in sorted(Path(folder).glob("batch/job_*.lock")):
+        with open(path, "a") as handle:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                running.append(int(path.stem.split("_")[1]))
+            except OSError:
+                pass  # a file system that cannot lock tells nothing
+    return sorted(running)
+
+
 def _folder_lock(folder) -> Path:
     """The lock of a seed or point folder, beside it, so that it holds when the folder is put aside."""
     folder = Path(folder)
@@ -322,6 +336,15 @@ def execute(workflow, kwargs, register=True):
     held = [_lock(_folder_lock(folder), folder) for folder, *_ in todo]
     try:
         for folder, left, stale, record, run_again, before, names, (shared, options, files) in todo:
+            if (stale or run_again) and (running := _running_jobs(folder)):
+                # A job that runs read the old settings: the folder stays as it is.
+                said = (
+                    f"{folder}: jobs {running} run there now; the new settings did not take effect "
+                    "there; run the command again when they are done"
+                )
+                print(said)
+                failed.append(f"  {said}")
+                continue
             slices.forget(run_again, folder)
             if workflow.slices and not stale and (folder / "batch").is_dir():
                 # A job killed after the mark of its last slice and before its own.
@@ -763,14 +786,32 @@ def _run_one_job(workflow, kwargs, folder, index):
         if workflow.seeds:
             seed(piece.name)
 
+    read = _what_a_job_reads(record)
+
+    def publish(piece) -> bool:
+        """Whether the output of `piece` is of the run.json there is now; if
+        another command changed it meanwhile, the output is set aside."""
+        if _what_a_job_reads(_read(folder / "run.json")) == read:
+            return True
+        for path in (folders[piece.name] / "batch").glob(f"{piece.name}_{index}.*"):
+            if path.suffix not in (".done", ".submitted", ".part", ".stale"):
+                path.rename(path.with_name(path.name + ".stale"))
+        return False
+
     marked = {name for name in wanted if slices.mark(folders[name], index, name).exists()}
-    if slices.run(workflow.slices, folders, index, options, wanted, before):
+    if slices.run(workflow.slices, folders, index, options, wanted, before, publish):
         _done(folder, index).touch()
     now = {name for name in wanted if slices.mark(folders[name], index, name).exists()}
     for name in now:
         _submitted(folder, index, name).unlink(missing_ok=True)
     print(f"{JOB_ENDED}: {','.join(wanted)}")
     _start_again(workflow, record, folder, progress=bool(now - marked))
+
+
+def _what_a_job_reads(record) -> str:
+    """The part of a run.json that a job runs by, without what the command
+    keeps there for itself: what the jobs asked for, and how to start it again."""
+    return json.dumps({key: value for key, value in record.items() if key not in ("jobs", "command", "cwd")}, sort_keys=True)
 
 
 # The line a job of slices prints when it ran them all; a log without it is
