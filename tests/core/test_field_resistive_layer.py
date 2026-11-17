@@ -170,7 +170,7 @@ def _rsd_strips(**layer):
 
 def test_strips_of_a_device_share_the_charge_through_the_layer_it_gives():
     cells = [f"c{k}" for k in range(20)]
-    circuit, values = device_row(_rsd_strips(sheet_resistance_ohm=1000.0), cells)
+    circuit, values = device_row(_rsd_strips(sheet_resistance=1000.0), cells)
 
     assert values == {
         "cell_capacitance": {
@@ -188,10 +188,10 @@ def test_strips_of_a_device_share_the_charge_through_the_layer_it_gives():
 
 
 def test_sheet_resistance_of_the_implanted_layer_where_the_device_gives_none():
-    implanted = {"implanted_cm2": 3e15, "thickness_um": 0.3, "anneal_c": 1775.0}
+    implanted = {"implanted": 3e15, "thickness": 0.3, "anneal": 1775.0}
 
     ohm, source = sheet_resistance(_rsd_strips(**implanted))
-    given, _ = sheet_resistance(_rsd_strips(sheet_resistance_ohm=500.0, **implanted))
+    given, _ = sheet_resistance(_rsd_strips(sheet_resistance=500.0, **implanted))
 
     assert source == "implanted layer"
     assert ohm == implanted_aluminium.sheet_resistance(3e15, 0.3e-4, 1775.0, 300.0)
@@ -212,10 +212,10 @@ def test_pads_of_a_device_are_coupled_through_the_dielectric_it_gives():
             "y_ele_num": 2,
             "capacitance_pF": 0.1,
             "resistive_layer": {
-                "sheet_resistance_ohm": 1000.0,
+                "sheet_resistance": 1000.0,
                 "pads": {"pad": [0, 0, 0, 0]},
                 "grounded": {"ring": [[1, 1, 1, 1]]},
-                "coupling": {"thickness_um": 0.5, "permittivity": 3.9},
+                "coupling": {"thickness": 0.5, "permittivity": 3.9},
             },
         },
     )

@@ -205,22 +205,22 @@ def sheet_resistance(my_d, chosen_ohm=None):
 
     "chosen" : chosen_ohm, a value the run is given in place of that of the
         device file, such as a point of a scan;
-    "device file" : sheet_resistance_ohm of resistive_layer in the device
+    "device file" : sheet_resistance [Ohm] of resistive_layer in the device
         file, a measured or a chosen value;
-    "implanted layer" : that of the implanted aluminium, from implanted_cm2,
-        thickness_um and anneal_c of resistive_layer, taken when the device
-        file has no sheet_resistance_ohm.
+    "implanted layer" : that of the implanted aluminium, from implanted
+        [cm^-2], thickness [um] and anneal [C] of resistive_layer, taken
+        when the device file has no sheet_resistance.
     """
     layer = my_d.device_dict["resistive_layer"]
     if chosen_ohm is not None:
         return float(chosen_ohm), "chosen"
-    if "sheet_resistance_ohm" in layer:
-        return float(layer["sheet_resistance_ohm"]), "device file"
+    if "sheet_resistance" in layer:
+        return float(layer["sheet_resistance"]), "device file"
     return (
         implanted_aluminium.sheet_resistance(
-            float(layer["implanted_cm2"]),
-            float(layer["thickness_um"]) * 1e-4,
-            float(layer["anneal_c"]),
+            float(layer["implanted"]),
+            float(layer["thickness"]) * 1e-4,
+            float(layer["anneal"]),
             float(my_d.device_dict["temperature"]),
         ),
         "implanted layer",
@@ -277,7 +277,7 @@ def device_grid(my_d, cells, solved_f=None, sheet_ohm=None):
     sheet_ohm : as device_row takes it.
 
     The pads and the grounded contacts are those of resistive_layer in the
-    device file. With coupling there, thickness_um and permittivity of the
+    device file. With coupling there, thickness [um] and permittivity of the
     dielectric under the pads, the pads are coupled through it.
     """
     layer = my_d.device_dict["resistive_layer"]
@@ -289,7 +289,7 @@ def device_grid(my_d, cells, solved_f=None, sheet_ohm=None):
         coupling = (
             VACUUM_PERMITTIVITY_F_M
             * float(layer["coupling"]["permittivity"])
-            / (float(layer["coupling"]["thickness_um"]) * 1e-6)
+            / (float(layer["coupling"]["thickness"]) * 1e-6)
         )
     circuit = resistive_grid(
         cells,

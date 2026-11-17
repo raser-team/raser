@@ -30,7 +30,7 @@ def _resistive_strips(tmp_path):
             "l_y": 1000,
             "capacitance_pF": 0.0123,
             "resistive_layer": {
-                "sheet_resistance_ohm": 1000.0,
+                "sheet_resistance": 1000.0,
                 "strips": {"left": [2, 4], "right": [15, 17]},
             },
         }
@@ -71,7 +71,7 @@ def test_sheet_resistance_given_to_the_slice_takes_the_place_of_the_device_file(
     # the same hit, the layer at 4 kOhm a square instead of the 1 kOhm of the
     # file: 100 and 300 Ohm of layer to the two strips
     kwargs = _resistive_strips(tmp_path)
-    kwargs["sheet_resistance_ohm"] = 4000.0
+    kwargs["sheet_resistance"] = 4000.0
 
     waveforms(kwargs)
 
@@ -93,7 +93,7 @@ def test_sheet_resistance_for_a_device_without_a_resistive_layer_is_refused(
 ):
     kwargs = _resistive_strips(tmp_path)
     kwargs["_files"]["device"].pop("resistive_layer")
-    kwargs["sheet_resistance_ohm"] = 4000.0
+    kwargs["sheet_resistance"] = 4000.0
 
     with pytest.raises(ValueError, match="no resistive layer"):
         waveforms(kwargs)

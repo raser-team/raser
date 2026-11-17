@@ -19,7 +19,7 @@ def waveforms(kwargs, position=None):
 
     A device with a resistive layer has its currents on the cells of the
     layer and is read out on the strips or the pads on it. Its sheet
-    resistance is that of its file unless sheet_resistance_ohm [Ohm] is
+    resistance is that of its file unless sheet_resistance [Ohm] is
     given; a device without a resistive layer takes none.
 
     With a position, the slice readout.<position> on the file of
@@ -30,7 +30,7 @@ def waveforms(kwargs, position=None):
         return {"events": 0}
     my_d = bdv.Detector(kwargs["det_name"], kwargs["_files"]["device"])
     electrodes = electrode_names(my_d.read_out_contact, my_d.read_ele_num)
-    sheet_ohm = kwargs.get("sheet_resistance_ohm")
+    sheet_ohm = kwargs.get("sheet_resistance")
     if "resistive_layer" in my_d.device_dict:
         build = device_grid if my_d.is_pixel else device_row
         circuit, values = build(my_d, electrodes, sheet_ohm=sheet_ohm)
