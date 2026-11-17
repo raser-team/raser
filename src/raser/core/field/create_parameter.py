@@ -28,7 +28,6 @@ def CreateGlobalConstant(T, device, region):
     vel_mean = 1e7
     devsim.set_parameter(device=device, region=region, name="vel_mean", value=vel_mean)
 
-    T = 300.0  # K
     devsim.set_parameter(device=device, region=region, name="T", value=T)
     devsim.set_parameter(device=device, region=region, name="k_T", value=k * T)
     devsim.set_parameter(device=device, region=region, name="Volt_thermal", value=k * T / q)
@@ -126,7 +125,6 @@ def CreateFineExponentialModels(T, device, region):
     devsim.set_parameter(device=device, region=region, name="lambda_model_p", value=lambda_model_p)
 
 def CreateHatakeyamaImpact(T, device, region):
-    T = 300  # K
 
     hbarOmega = 0.19  # eV
     _theta = 1  # 1
