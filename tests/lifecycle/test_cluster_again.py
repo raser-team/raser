@@ -163,6 +163,8 @@ def test_through_the_queue_of_the_host_nothing_is_recorded_and_the_command_says_
 
     assert "is not started again by itself" in capsys.readouterr().out
     assert not list((cluster["folder"] / "batch").glob("*.submitted"))
+    monkeypatch.setenv("RASER_CLUSTER_JOB", "1")
+    assert _job(cluster, monkeypatch) == []  # its job, done, starts nothing
 
 
 def test_a_command_started_again_that_finds_its_folders_held_is_tried_again(

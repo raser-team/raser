@@ -351,7 +351,11 @@ def execute(workflow, kwargs, register=True):
                 # The most jobs the seed folder was asked for, for raser status;
                 # it does not make a run out of date: -s 5 after -s 3 adds two.
                 record["jobs"] = max(record.get("jobs", 0), kwargs.get("jobs") or 1)
-                if kwargs["batch"]:
+                if kwargs["batch"] and os.environ.get("RASER_SUBMIT_QUEUE"):
+                    # Jobs the host submits are not recorded: a job that started the
+                    # command again would submit them all once more.
+                    record.pop("command", None)
+                elif kwargs["batch"]:
                     # What a job on the cluster starts again when it is done.
                     record["command"] = _without_seed_folder(kwargs.get("_argv") or [])
                     record["cwd"] = os.getcwd()
