@@ -61,6 +61,14 @@ def build_parser():
     )
     for module in APPLICATIONS.values():
         importlib.import_module(module).register(subparsers)
+    # The component roots each command registers: `raser ana` finds the files
+    # of an experiment as the command that ran it does.
+    parser.set_defaults(
+        _components_of={
+            name: tuple(command.get_default("_components") or ())
+            for name, command in subparsers.choices.items()
+        }
+    )
 
     return parser
 

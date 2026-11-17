@@ -60,7 +60,7 @@ def run(kwargs):
     # the experiment is work/<device>/<words>; its files and the digitizer are
     # found as its own command finds them
     project = root.parents[len(words) - 1]
-    with project_root_context(project, (words[0], "signal")):
+    with project_root_context(project, kwargs["_components_of"][words[0]]):
         return execute(WORKFLOW, {**kwargs, "experiment": str(root)})
 
 

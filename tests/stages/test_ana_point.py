@@ -122,6 +122,7 @@ def test_every_point_of_the_analysis_holds_the_results_of_the_points_it_analyses
     monkeypatch.setattr(workflow, "_own_process", own_process)
     kwargs: dict = {"experiment": str(root), "adc": None, "threshold": None, "amplitude_threshold": None}
     kwargs.update(jobs=None, batch=False, mem=1, dry_run=False, _entry_command_prefix=("raser",))
+    kwargs["_components_of"] = {"timeres": ()}  # the component roots the commands register
 
     # the digitizer's 5 mV select the first point only; with 2 mV both are selected
     with pytest.raises(SystemExit, match="2 of 2 points failed"):
