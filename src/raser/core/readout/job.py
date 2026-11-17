@@ -27,7 +27,11 @@ def _solve_part(chain, currents, event, part_of):
     electrodes of an event with a current, as wide as write_waveforms says,
     and their voltages, shape (outputs of the part, bins): none for an event
     without current."""
-    hit = [k for k, current in enumerate(event.current) if np.any(current)]
+    hit = [
+        name
+        for name, current in zip(currents.electrodes, event.current, strict=True)
+        if np.any(current)
+    ]
     if not hit:
         return [], np.zeros((0, event.current.shape[1]))
     row_of = {name: k for k, name in enumerate(currents.electrodes)}
@@ -99,8 +103,8 @@ def write_waveforms(
     pulse_edge : None, or the way the pulse of each output goes, as
         pulse_edge.pulse_edges gives it: it is written to the file.
     part_of : None to solve the whole circuit for every event. Otherwise a
-        function that gives, for the numbers of the electrodes with a
-        current in an event and a margin, the part of the circuit around
+        function that gives, for the names of the electrodes with a current
+        in an event and a margin, the part of the circuit around
         them that is solved: a circuit of some of the electrodes and
         outputs, by the same names, wider with a wider margin. The part
         grows until its outputs at both ends hold less than PART_EDGE of the

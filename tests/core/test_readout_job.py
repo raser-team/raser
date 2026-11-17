@@ -212,9 +212,13 @@ def _row_of(count):
 def test_part_of_a_row_is_the_strips_hit_and_its_margin_as_far_as_the_row_goes():
     my_d, names, row = _row_of(15)
 
-    assert list(part_of_row(my_d, names, [7], 2, row=row).outputs) == names[5:10]
-    # two strips hit, one near an end: up to the end, and all between
-    assert list(part_of_row(my_d, names, [1, 9], 2, row=row).outputs) == names[0:12]
+    assert list(part_of_row(my_d, names, ["top8"], 2, row=row).outputs) == names[5:10]
+    # two strips hit, one near an end, named in any order: up to the end,
+    # and all between
+    assert (
+        list(part_of_row(my_d, names, ["top10", "top2"], 2, row=row).outputs)
+        == (names[0:12])
+    )
 
 
 def test_row_holds_in_each_event_only_the_strips_the_charge_reaches(tmp_path):
@@ -266,3 +270,44 @@ def test_row_holds_in_each_event_only_the_strips_the_charge_reaches(tmp_path):
     assert quiet.electrodes == [] and quiet.voltage.shape == (0, 600)
     noisy, quiet = read(tmp_path / "noisy.h5", seed=3, part_of=part_of)
     assert noisy.electrodes == hit.electrodes and quiet.electrodes == []
+
+
+def test_currents_in_another_order_than_the_row_are_solved_where_they_are(tmp_path):
+    # the file names the strips from the last to the first; 1 fC on top25,
+    # the 17th in the file
+    my_d, names, row = _row_of(41)
+    circuit, _ = device_circuit(my_d, names, row=row)
+    in_file = names[::-1]
+    current = np.zeros((41, 400))
+    current[in_file.index("top25"), 20:40] = 1e-15 / (20 * DT_S)
+    currents_path = tmp_path / "currents_0.h5"
+    append_currents(
+        currents_path,
+        in_file,
+        DT_S,
+        EventCurrents(0, 0.0, current, current.sum(axis=1) * DT_S, 0.0),
+    )
+
+    asked = []
+
+    def part_of(hit, margin):
+        asked.append(list(hit))
+        return part_of_row(my_d, names, hit, margin, row=row)
+
+    path = tmp_path / "readout_0.h5"
+    write_waveforms(
+        currents_path,
+        path,
+        CHAIN,
+        circuit,
+        None,
+        pulse_edge=["rising"] * 41,
+        part_of=part_of,
+    )
+    event = read_waveforms(path).events[0]
+
+    # the part is asked around the strip by its name, wherever the file has it
+    assert asked[0] == ["top25"]
+    assert "top25" in event.electrodes and len(event.electrodes) < 41
+    place = np.argmax(np.abs(event.voltage).max(axis=1))
+    assert event.electrodes[place] == "top25"
