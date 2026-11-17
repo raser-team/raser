@@ -125,3 +125,11 @@ def test_defects_absorb_their_share_of_the_photons_along_the_whole_beam() -> Non
     laser = _tpa_laser(1e-3, alpha=100.0, fx_rel=0.5, r_step=0.25, h_step=1.0)
 
     assert sum(laser.ionized_pairs) == pytest.approx(0.005 * 3.90e8, rel=2e-2)
+
+
+def test_weak_pulse_keeps_the_pairs_of_cells_with_less_than_one_pair() -> None:
+    # 1 fJ at 1064 nm is 5356 photons; silicon 50 um thick absorbs
+    # 1 - exp(-974 /m * 50 um) = 4.75 % of them: 255 pairs over 28800 cells
+    laser = _spa_laser("Si", pulse_energy=1e-15, fz_rel=0.0)
+
+    assert sum(laser.ionized_pairs) == pytest.approx(255.0, rel=1e-2)

@@ -150,10 +150,13 @@ class LaserInjection:
 
         # seperate the carrier groups to simulate diffusion
         group_unit = 1000 # the max number of carriers in one group
-        cut = 1
+        # the weakest cells, together a thousandth of the pairs, are left out
+        ascending = np.sort(self.ionized_pairs)
+        below = np.cumsum(ascending) <= 1e-3 * ascending.sum()
+        cut = ascending[below][-1] if below.any() else -np.inf
         temp_position, temp_pairs = [],[]
         for position, pairs in zip(self.track_position, self.ionized_pairs):
-            if pairs < cut:
+            if pairs <= cut:
                 continue
             else:
                 k = int(pairs//group_unit + 1) # divide the carrier pairs into k groups
