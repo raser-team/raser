@@ -17,8 +17,6 @@ Datasets, one row per event of the readout file:
     cluster_size    electrodes of its cluster, 0 when it has none
     cluster_center  amplitude-weighted place of the cluster, in electrodes
                     from the first one; NaN when it has none
-    deposit_time    time of its earliest deposit [s]
-    pairs           electron-hole pairs it gave to the current, before gain
 Datasets, one row per event and one column per electrode:
     baseline        mean of the samples before the pulse [V]
     noise           their standard deviation [V]
@@ -29,7 +27,6 @@ Datasets, one row per event and one column per electrode:
                     0 when it does not fall below it before the record ends
     CoG             centre of gravity in time of the part above threshold [s]
     charge          integral of the waveform above the baseline [V s]
-    net_charge      signed net charge of the current [C]
 Dataset, one row per event, one column per electrode and one per fraction:
     CFD             where the rising edge crosses the fraction of the
                     amplitude [s]
@@ -52,8 +49,8 @@ from .event import get_ToA
 from .event import get_ToT
 from .event import net_pulse
 
-ELECTRODE_COLUMNS = ("baseline", "noise", "amplitude", "above", "ToA", "ToT", "CoG", "charge", "net_charge")
-EVENT_COLUMNS = ("event", "selected", "cluster_size", "cluster_center", "deposit_time", "pairs")
+ELECTRODE_COLUMNS = ("baseline", "noise", "amplitude", "above", "ToA", "ToT", "CoG", "charge")
+EVENT_COLUMNS = ("event", "selected", "cluster_size", "cluster_center")
 EDGE_SIGN = {"rising": 1.0, "falling": -1.0}
 KINDS = {"event": "int64", "selected": "bool", "above": "bool", "cluster_size": "int64"}
 
@@ -103,14 +100,11 @@ def cluster(amplitudes, above, amplitude_threshold):
     return size, float("nan") if center is None else float(center)
 
 
-def event_table(waveforms, truth, threshold, amplitude_threshold, fractions, edge):
+def event_table(waveforms, threshold, amplitude_threshold, fractions, edge):
     """The rows of the events of one job.
 
     waveforms : the readout of the job, as `read_waveforms` gives it
-    truth : Geant4 event number -> (time of its earliest deposit [s], pairs,
-        signed net charge of each electrode [C])
     threshold, amplitude_threshold : in the unit of the waveforms [V]
-
     edge : "rising" or "falling", the edge of the pulses the thresholds
         are set on
     """
@@ -119,11 +113,7 @@ def event_table(waveforms, truth, threshold, amplitude_threshold, fractions, edg
     polarity = EDGE_SIGN[edge]
     if not waveforms.events:
         raise ValueError("the readout holds no event")
-    nets = []
-    for record in waveforms.events:
-        if record.event not in truth:
-            raise ValueError(f"event {record.event} of the readout has no deposits or currents")
-        nets.append([net_pulse(samples) for samples in record.voltage])
+    nets = [[net_pulse(samples) for samples in record.voltage] for record in waveforms.events]
     width = len(waveforms.electrodes)
     columns: dict[str, list] = {name: [] for name in (*EVENT_COLUMNS, *ELECTRODE_COLUMNS, "CFD")}
     for record, pulses in zip(waveforms.events, nets):
@@ -133,9 +123,6 @@ def event_table(waveforms, truth, threshold, amplitude_threshold, fractions, edg
             row, fraction_times = electrode_row(times, waveforms.dt, polarity * net, threshold, fractions)
             rows.append(row)
             constant.append(fraction_times)
-        deposit_time, pairs, net_charge = truth[record.event]
-        if len(net_charge) != width:
-            raise ValueError(f"event {record.event} has the net charge of {len(net_charge)} electrodes, not {width}")
         amplitudes = [row["amplitude"] for row in rows]
         above = [row["above"] for row in rows]
         size, center = cluster(amplitudes, above, amplitude_threshold)
@@ -144,13 +131,10 @@ def event_table(waveforms, truth, threshold, amplitude_threshold, fractions, edg
         columns["selected"].append(largest is not None and largest >= amplitude_threshold)
         columns["cluster_size"].append(size)
         columns["cluster_center"].append(center)
-        columns["deposit_time"].append(deposit_time)
-        columns["pairs"].append(pairs)
         columns["baseline"].append([baseline for _, baseline, _ in pulses])
         columns["noise"].append([noise for _, _, noise in pulses])
         for name in ("amplitude", "above", "ToA", "ToT", "CoG", "charge"):
             columns[name].append([row[name] for row in rows])
-        columns["net_charge"].append(list(net_charge))
         columns["CFD"].append(constant)
     arrays = {name: np.array(values, dtype=KINDS.get(name, "float64")) for name, values in columns.items()}
     arrays["CFD"] = arrays["CFD"].reshape(len(waveforms.events), width, len(fractions))

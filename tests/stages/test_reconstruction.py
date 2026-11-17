@@ -1,19 +1,11 @@
-import json
-
 import numpy as np
 import pytest
 
-from raser.core.current.currents import EventCurrents
-from raser.core.current.currents import append_currents
-from raser.core.deposit.deposits import Deposits
-from raser.core.deposit.deposits import EventDeposits
-from raser.core.deposit.deposits import write_deposits
 from raser.core.readout.waveforms import EventWaveforms
 from raser.core.readout.waveforms import append_waveforms
 from raser.core.reconstruction.event_table import read_event_table
 from raser.stages import reconstruction
 
-E = 1.602176634e-19
 # a negative triangle [V]: 2 mV per bin up to 10 mV in bin 6, then down again
 TRIANGLE = 1.0e-3 * np.array([0.0, 0, -2, -4, -6, -8, -10, -8, -6, -4, -2, 0, 0])
 DT = 1.0e-9
@@ -22,35 +14,24 @@ FRACTIONS = (0.2, 0.5)
 
 
 def _job(folder, scales, count, seed):
-    """Job 0 of `count` events in a seed folder that holds its slices; the
-    electrodes carry the triangle times `scales`, and event k collects
-    900 + k pairs on the first one."""
+    """The readout of job 0 of `count` events in a seed folder; the
+    electrodes carry the triangle times `scales`. Returns the start of the
+    triangle of each event."""
     batch = folder / "batch"
     batch.mkdir(parents=True, exist_ok=True)
-    held = {"deposit": "", "current": "", "readout": ""}
-    (folder / "run.json").write_text(json.dumps({"point": "", "held_in": held}))
     names = [f"strip_{k}" for k in range(len(scales[0]))]
-    rng = np.random.default_rng(seed)
-    truths = rng.normal(0.0, 1.0e-9, count)
-    starts = truths + rng.normal(0.0, 3.0e-11, count)
-    deposits = []
+    starts = np.random.default_rng(seed).normal(0.0, 1.0e-9, count)
     for number in range(count):
-        deposits.append(EventDeposits(number, ["Device"], [0.0], [0.0], [1.0], [truths[number]], [0.1], [1000.0]))
-        charge = np.zeros(len(names))
-        charge[0] = -(900 + number) * E
-        append_currents(batch / "current_0.h5", names, 1.0e-11,
-                        EventCurrents(number, 0.0, np.zeros((len(names), 2)), charge, 1000.0))
         samples = [np.concatenate([np.zeros(BEFORE), scale * TRIANGLE]) for scale in scales[number % len(scales)]]
         append_waveforms(batch / "readout_0.h5", names, DT,
                          EventWaveforms(number, starts[number] - BEFORE * DT, np.array(samples)))
-    write_deposits(str(batch / "deposit_0.h5"), Deposits(count, None, None, deposits))
-    return truths, starts
+    return starts
 
 
 def _run(folder, threshold, amplitude_threshold, edge="falling"):
     batch = str(folder / "batch")
     kwargs = {
-        "_slice_batch_paths": {name: batch for name in ("deposit", "current", "readout", "reconstruction")},
+        "_slice_batch_paths": {name: batch for name in ("readout", "reconstruction")},
         "threshold": threshold, "amplitude_threshold": amplitude_threshold, "fractions": FRACTIONS, "edge": edge,
     }
     reconstruction.run(kwargs)
@@ -59,7 +40,7 @@ def _run(folder, threshold, amplitude_threshold, edge="falling"):
 
 def test_every_event_has_a_row_and_the_large_ones_are_selected(tmp_path) -> None:
     # 10 mV and 4 mV in turn; 5 mV selects the first ones
-    truths, starts = _job(tmp_path, [[1.0], [0.4]], 60, seed=4)
+    starts = _job(tmp_path, [[1.0], [0.4]], 60, seed=4)
 
     table = _run(tmp_path, 3, 5)
 
@@ -78,8 +59,6 @@ def test_every_event_has_a_row_and_the_large_ones_are_selected(tmp_path) -> None
     assert rows["CFD"][0::2, 0, 0] == pytest.approx(starts[0::2] + 2.5e-9)
     assert rows["CFD"][:, 0, 1] == pytest.approx(starts + 4.0e-9)
     assert rows["charge"][0::2, 0] == pytest.approx(np.full(30, 50.0e-3 * DT))
-    assert rows["deposit_time"] == pytest.approx(truths)
-    assert rows["net_charge"][:, 0] == pytest.approx(-(900 + np.arange(60)) * E)
 
 
 def test_cluster_of_three_strips_weighs_the_strips_above_the_threshold(tmp_path) -> None:

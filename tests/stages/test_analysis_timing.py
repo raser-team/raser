@@ -6,8 +6,6 @@ import pytest
 from raser.stages.analysis.timing import event_times
 from raser.stages.analysis.timing import point_resolution
 from raser.stages.analysis.timing import point_tables
-from raser.core.current.currents import EventCurrents
-from raser.core.current.currents import append_currents
 from raser.core.readout.waveforms import EventWaveforms
 from raser.core.readout.waveforms import append_waveforms
 from raser.core.deposit.deposits import Deposits
@@ -45,10 +43,6 @@ def _job(folder, index, events, electrodes=("top",), truths=None):
                 1000 * index + number, ["Device"] * 2, [0.0] * 2, [0.0] * 2, [1.0, 2.0],
                 [earliest + 5.0e-12, earliest], [0.1] * 2, [1000.0] * 2,
             )
-        )
-        append_currents(
-            batch / f"current_{index}.h5", list(electrodes), 1.0e-11,
-            EventCurrents(1000 * index + number, 0.0, np.zeros((len(electrodes), 2)), np.zeros(len(electrodes)), 1000.0),
         )
         samples = OFFSET + np.concatenate([np.zeros(BEFORE), scale * TRIANGLE])
         if number == 1:
@@ -103,7 +97,7 @@ def test_event_that_is_not_among_the_deposits_is_an_error(tmp_path) -> None:
     (batch / "deposit_1.h5").write_bytes((batch / "deposit_0.h5").read_bytes())
 
     with pytest.raises(ValueError, match="event 1000 is not among the deposits"):
-        point_tables([(tmp_path, 0), (tmp_path, 1)], 3.0e-3, 5.0e-3, "falling")
+        event_times(point_tables([(tmp_path, 0), (tmp_path, 1)], 3.0e-3, 5.0e-3, "falling"))
 
 
 def test_resolution_is_the_width_of_time_minus_truth(tmp_path) -> None:

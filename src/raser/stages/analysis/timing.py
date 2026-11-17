@@ -3,9 +3,10 @@
 import numpy as np
 
 from raser.core.analysis.resolution import core_width
+from raser.core.deposit.deposits import read_deposits
 from raser.core.readout.waveforms import read_waveforms
 from raser.core.reconstruction.event_table import EDGE_SIGN
-from raser.stages.reconstruction import job_table
+from raser.core.reconstruction.event_table import event_table
 
 from .files import job_file
 from .files import slice_file
@@ -16,7 +17,8 @@ CFD_FRACTIONS = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9)
 
 def point_tables(jobs, threshold, amplitude_threshold, edge):
     """The reconstruction of each finished job of a point that recorded
-    events, as (place of the job in `jobs`, its table). Until the chain has
+    events, as (place of the job in `jobs`, the deposits file of the job,
+    its table). Until the chain has
     the reconstruction slice the tables are made here, from the files of
     the jobs, with the fractions CFD_FRACTIONS.
 
@@ -29,10 +31,8 @@ def point_tables(jobs, threshold, amplitude_threshold, edge):
         path = job_file(folder, index, "readout")
         if path is None:
             continue
-        files = [slice_file(folder, index, name) for name in ("deposit", "current")]
-        tables.append(
-            (place, job_table(read_waveforms(path), *files, threshold, amplitude_threshold, CFD_FRACTIONS, edge))
-        )
+        table = event_table(read_waveforms(path), threshold, amplitude_threshold, CFD_FRACTIONS, edge)
+        tables.append((place, slice_file(folder, index, "deposit"), table))
     return tables
 
 
@@ -59,7 +59,7 @@ def event_times(tables):
     """
     if not tables:
         raise ValueError("the jobs recorded no event")
-    for _, table in tables:
+    for _, _, table in tables:
         if len(table.electrodes) > 1:
             raise NotImplementedError(
                 f"{len(table.electrodes)} electrodes; "
@@ -67,18 +67,22 @@ def event_times(tables):
             )
     names = ["job", "event", "ToA", "ToT", "amplitude", "baseline", "noise", "truth", "CoG"]
     columns = {name: [] for name in names}
-    for place, table in tables:
+    for place, deposits, table in tables:
+        earliest = {event.event: min(event.t) for event in read_deposits(str(deposits)).events}
         rows = table.columns
         chosen = rows["selected"]
+        for number in rows["event"]:
+            if number not in earliest:
+                raise ValueError(f"{deposits}: event {number} is not among the deposits of the job")
         columns["job"].append(np.full(int(np.sum(chosen)), float(place)))
         columns["event"].append(rows["event"][chosen].astype("float64"))
         for name in ("ToA", "ToT", "amplitude", "baseline", "noise", "CoG"):
             columns[name].append(rows[name][chosen, 0])
-        columns["truth"].append(rows["deposit_time"][chosen])
+        columns["truth"].append(np.array([earliest[number] for number in rows["event"][chosen]], dtype="float64"))
         for k, part in enumerate(table.fractions):
             columns.setdefault(f"CFD{round(100 * part)}", []).append(rows["CFD"][chosen, 0, k])
-    count = sum(len(table) for _, table in tables)
-    return count, EDGE_SIGN[tables[0][1].edge], {name: np.concatenate(values) for name, values in columns.items()}
+    count = sum(len(table) for _, _, table in tables)
+    return count, EDGE_SIGN[tables[0][2].edge], {name: np.concatenate(values) for name, values in columns.items()}
 
 
 def time_widths(times):

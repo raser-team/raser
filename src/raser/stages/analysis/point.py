@@ -45,7 +45,7 @@ def write_point(jobs, digitizer, edge, folder):
     tables = point_tables(
         jobs, digitizer["threshold"] * MILLIVOLT, digitizer["amplitude_threshold"] * MILLIVOLT, edge
     )
-    efficiencies = event_efficiencies(tables)
+    efficiencies = event_efficiencies(jobs)
     result = {"digitizer": digitizer}
     missing = []
     try:

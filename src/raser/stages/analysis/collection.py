@@ -2,18 +2,31 @@
 
 import numpy as np
 
+from raser.core.current.currents import read_currents
 from raser.core.analysis.collection import collection_efficiency
 
+from .files import job_file
 
-def event_efficiencies(tables):
-    """Efficiency of every event of a point, from the net charge and the
-    pairs of its row.
 
-    tables : (place of the job, table) of each job that recorded events
+def event_efficiencies(jobs):
+    """Efficiency of every event of the finished jobs of a point.
+
+    jobs : (seed folder, job index) pairs, as lifecycle hands them out.
+
+    A job that recorded no event has a deposits file without events and no
+    currents file; it adds nothing.
     """
-    efficiencies = [
-        collection_efficiency(table.columns["net_charge"], table.columns["pairs"]) for _, table in tables
-    ]
+    efficiencies = []
+    for folder, index in jobs:
+        path = job_file(folder, index, "current")
+        if path is None:
+            continue
+        events = read_currents(path).events
+        efficiencies.append(
+            collection_efficiency(
+                [event.charge for event in events], [event.pairs for event in events]
+            )
+        )
     return np.concatenate(efficiencies) if efficiencies else np.empty(0)
 
 
@@ -30,3 +43,8 @@ def efficiency_spread(efficiencies):
         "mean_error": spread / np.sqrt(count),
         "spread": spread,
     }
+
+
+def point_efficiency(jobs):
+    """`efficiency_spread` of the events of a point."""
+    return efficiency_spread(event_efficiencies(jobs))
