@@ -52,6 +52,7 @@ def _job(folder, index, scale, count, seed):
             ["top"],
             DT,
             EventWaveforms(number, starts[number] - BEFORE * DT, np.array([samples])),
+            pulse_edge=["rising"],
         )
     write_deposits(str(batch / f"deposit_{index}.h5"), Deposits(50, None, None, deposits))
 

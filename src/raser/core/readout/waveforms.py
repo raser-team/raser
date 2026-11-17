@@ -8,7 +8,7 @@ Attributes of the file:
     dt          width of a time bin [s]
     pulse_edge  for each electrode, in their order, "rising" or "falling":
                 which way its pulse goes, as the device and the chain make
-                it; not there when none was given
+                it; the readout writes it, and a file without it is not read
     device_circuit
                 values the circuit of the device is made of and where each
                 is from, as JSON; not there when none were given
@@ -40,7 +40,7 @@ class Waveforms:
     electrodes: list[str]
     dt: float
     events: list[EventWaveforms]
-    pulse_edge: list[str] | None = None
+    pulse_edge: list[str]
 
 
 def append_waveforms(
@@ -118,9 +118,12 @@ def read_waveforms(path):
     with h5py.File(str(path), "r") as file:
         electrodes = file.attrs["electrodes"].tolist()
         dt = float(file.attrs["dt"])
-        pulse_edge = (
-            file.attrs["pulse_edge"].tolist() if "pulse_edge" in file.attrs else None
-        )
+        if "pulse_edge" not in file.attrs:
+            raise ValueError(
+                f"{path} has no pulse_edge: the readout of this version did "
+                "not write it; run the readout again"
+            )
+        pulse_edge = file.attrs["pulse_edge"].tolist()
         numbers = file["event"][()]
         starts = file["t0"][()]
         counts = file["count"][()]

@@ -48,10 +48,14 @@ def test_each_event_of_the_currents_file_gets_its_waveform(tmp_path):
 
     values = {"junction_capacitance": {"farad": 10e-12, "from": "device file"}}
 
-    write_waveforms(currents_path, waveforms_path, CHAIN, circuit, None)
+    write_waveforms(
+        currents_path, waveforms_path, CHAIN, circuit, None, pulse_edge=["rising"]
+    )
     assert read_circuit_values(waveforms_path) is None
     # a second start of the job replaces the file instead of adding to it
-    write_waveforms(currents_path, waveforms_path, CHAIN, circuit, None, values)
+    write_waveforms(
+        currents_path, waveforms_path, CHAIN, circuit, None, values, ["rising"]
+    )
     waveforms = read_waveforms(waveforms_path)
 
     assert read_circuit_values(waveforms_path) == values
@@ -84,7 +88,9 @@ def test_noise_of_the_circuit_is_added_to_every_event(tmp_path):
 
     def noise(seed):
         path = tmp_path / f"waveforms_{seed}.h5"
-        write_waveforms(currents_path, path, CHAIN, circuit, seed)
+        write_waveforms(
+            currents_path, path, CHAIN, circuit, seed, pulse_edge=["rising"]
+        )
         return np.array([record.voltage[0] for record in read_waveforms(path).events])
 
     first = noise(3)
@@ -114,7 +120,7 @@ def test_outputs_that_differ_each_have_the_noise_of_their_own_circuit(tmp_path):
     )
 
     path = tmp_path / "waveforms_0.h5"
-    write_waveforms(currents_path, path, CHAIN, circuit, 5)
+    write_waveforms(currents_path, path, CHAIN, circuit, 5, pulse_edge=["rising"] * 2)
     voltage = np.array([record.voltage for record in read_waveforms(path).events])
 
     k_t = 1.380649e-23 * 300.15
@@ -172,7 +178,7 @@ def test_every_strip_draws_noise_of_its_own(tmp_path):
     _quiet_events(currents_path, names, 40, 400)
 
     path = tmp_path / "waveforms_0.h5"
-    write_waveforms(currents_path, path, CHAIN, circuit, 5)
+    write_waveforms(currents_path, path, CHAIN, circuit, 5, pulse_edge=["rising"] * 6)
     voltage = np.array([record.voltage for record in read_waveforms(path).events])
 
     # at one time, across the 40 events: no two strips alike

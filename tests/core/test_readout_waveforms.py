@@ -22,8 +22,8 @@ def test_waveforms_file_returns_each_event_with_its_own_bins(tmp_path):
     )
     path = tmp_path / "waveforms.h5"
 
-    append_waveforms(path, electrodes, 5.0e-12, first)
-    append_waveforms(path, electrodes, 5.0e-12, second)
+    append_waveforms(path, electrodes, 5.0e-12, first, pulse_edge=["falling"] * 2)
+    append_waveforms(path, electrodes, 5.0e-12, second, pulse_edge=["falling"] * 2)
     waveforms = read_waveforms(path)
 
     assert waveforms.electrodes == electrodes
