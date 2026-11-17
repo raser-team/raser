@@ -261,24 +261,7 @@ def execute(workflow, kwargs, register=True):
             written = {old: v for old, v in written.items() if address.get(old, old) != key}
             written[key] = [_parse(value) for value in values.split(",")]
         _write(root / "config.json", {**config, "scan": written, "set": {**config.get("set", {}), **fixed_here}})
-    # What the points share and is not ready is made first, once for all the
-    # points that read the same of it.
-    started = set()
-    for *_, (shared, options, files) in todo:
-        for piece in shared:
-            same = json.dumps([piece.name, {key: options.get(key) for key in piece.keys}, files.get("device")])
-            if same not in started and piece.shared.ready(options, files) is None:
-                started.add(same)
-                try:
-                    piece.shared.start(kwargs, options, files)
-                except Running as running:  # another command makes it: the point waits
-                    print(f"{piece.name}: {running}")
-                    continue
-                if not kwargs["batch"] and not kwargs["dry_run"] and piece.shared.ready(options, files) is None:
-                    raise RuntimeError(
-                        f"{piece.name} was made in this process and is still not ready for a point of "
-                        f"{root}: waiting would not help"
-                    )
+    _make_shared(kwargs, [need for *_, need in todo], root)
     failed: list = []
     # No other command writes these folders while this one does.
     held = [_lock(_folder_lock(folder), folder) for folder, *_ in todo]
@@ -326,6 +309,45 @@ def execute(workflow, kwargs, register=True):
     if failed:
         raise SystemExit("\n".join([f"{len(failed)} of {len(todo)} points failed:", *failed]))
     return None
+
+
+def _make_shared(kwargs, needs, root) -> None:
+    """Make what the points share and is not ready, once for all the points
+    that read the same of it. `needs` holds, per point, (its shared slices,
+    its options, its files). A shared slice that another command is making
+    is left to it: the points wait."""
+    started = set()
+    for shared, options, files in needs:
+        for piece in shared:
+            same = json.dumps([piece.name, {key: options.get(key) for key in piece.keys}, files.get("device")])
+            if same not in started and piece.shared.ready(options, files) is None:
+                started.add(same)
+                try:
+                    piece.shared.start(kwargs, options, files)
+                except Running as running:  # another command makes it: the point waits
+                    print(f"{piece.name}: {running}")
+                    continue
+                if not kwargs["batch"] and not kwargs["dry_run"] and piece.shared.ready(options, files) is None:
+                    raise RuntimeError(
+                        f"{piece.name} was made in this process and is still not ready for a point of "
+                        f"{root}: waiting would not help"
+                    )
+
+
+def make_shared(workflow, kwargs, root) -> None:
+    """What every point of the experiment in `root` shares and is not ready,
+    made as a command of the experiment makes it before its jobs start, as
+    raser field <experiment> does; no job of the experiment runs."""
+    _, points, asked = _points(workflow, kwargs, _read(Path(root) / "config.json"), {})
+    shared = [piece for piece in workflow.slices if piece.shared]
+    needs = [(shared, *points[name][:2]) for name in asked]
+    if kwargs["dry_run"]:
+        for _, options, files in needs:
+            for piece in shared:
+                state = "ready" if piece.shared.ready(options, files) is not None else "to be made"
+                print(f"{root}: {piece.name} {state} for {options}")
+        return
+    _make_shared(kwargs, needs, root)
 
 
 def finished(workflow, kwargs, root) -> list[tuple[str, dict, list[tuple[Path, int]]]]:
