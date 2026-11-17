@@ -1,38 +1,26 @@
 """Beam monitor: the pulses that the bunches of a beam leave in one detector.
 
-An event is one bunch. Its slices are those of the signal app; only the
-deposits are its own, until the Geant4 entry of core/interaction shoots
-several particles in one event.
+An event is one bunch: a source whose "particles" are fired together in
+every event. The slices are those of the signal app; the default source is
+the bunch in components/source of this app.
 """
 
 from raser.apps import signal
-from raser.lifecycle.slices import Slice
 from raser.lifecycle.workflow import Workflow
-
-
-def _deposits(kwargs):
-    from . import deposits
-
-    deposits.deposits(kwargs)
-
-
-SLICES = (Slice("deposits", _deposits), *signal.SLICES[1:])
 
 WORKFLOW = Workflow(
     name="bmos",
-    keys=("voltage", "irradiation", "plots", "amplifier"),
-    defaults={"amplifier": signal.DEFAULTS["afe"], "plots": 0},
+    keys=signal.KEYS,
+    defaults={**signal.WORKFLOW.defaults, "source": "bunch", "plots": 0},
+    components=signal.COMPONENTS,
     in_file=signal.IN_FILE,
-    slices=SLICES,
+    slices=signal.SLICES,
+    command=signal.job_command,
 )
 
 
 def register(subparsers):
     parser = subparsers.add_parser("bmos", help="Beam Monitor Online System")
-    parser.add_argument("det_name", help="Device project")
-    parser.add_argument("--plots", type=int, help="draw the first N recorded bunches of each job")
-    parser.add_argument("-vol", "--voltage", type=float, help="bias voltage")
-    parser.add_argument("-irr", "--irradiation", type=float, help="irradiation flux")
-    parser.add_argument("-amp", "--amplifier", type=str, help="amplifier")
+    signal.add_arguments(parser)
     WORKFLOW.attach(parser)
-    parser.set_defaults(_project="det_name")
+    parser.set_defaults(_project="det_name", _components=("bmos",))
