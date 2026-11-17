@@ -118,13 +118,32 @@ def deposits_of_steps(
 
 
 def write_deposits(path: str, deposits: Deposits) -> None:
+    """Write `deposits` to the file at `path`, replacing it. The events are
+    checked first: a column that does not hold one value for each deposit of
+    its event, an event without pairs, and starts or time spreads that some
+    events have and others lack are errors, and the file is left as it was."""
     events = deposits.events
+    optional = [
+        name
+        for name in (*_STARTS, "t_fwhm")
+        if events and all(getattr(record, name) is not None for record in events)
+    ]
+    for name in (*_STARTS, "t_fwhm"):
+        given = [getattr(record, name) is not None for record in events]
+        if any(given) and not all(given):
+            raise ValueError(f"some events have {name} and some do not")
     for record in events:
         if record.pairs is None:
             raise ValueError(
                 f"event {record.event} has no electron-hole pairs: "
                 "only deposits whose ionization was drawn are written"
             )
+        for name in ("detector", *_NUMBERS, "pairs", *optional):
+            if len(getattr(record, name)) != len(record.e):
+                raise ValueError(
+                    f"event {record.event} has {len(record.e)} deposits and "
+                    f"{len(getattr(record, name))} values of {name}"
+                )
     with h5py.File(str(path), "w") as file:
         file.attrs["generated_events"] = deposits.generated_events
         file.attrs["recorded_events"] = len(events)
@@ -139,27 +158,11 @@ def write_deposits(path: str, deposits: Deposits) -> None:
             data=[name for record in events for name in record.detector],
             dtype=h5py.string_dtype(),
         )
-        for name in (*_NUMBERS, "pairs"):
+        for name in (*_NUMBERS, "pairs", *optional):
             file[name] = np.array(
                 [value for record in events for value in getattr(record, name)],
                 dtype="float64",
             )
-        begun = [record.x_start is not None for record in events]
-        if any(begun) and not all(begun):
-            raise ValueError("some events know where their steps start and some do not")
-        spread = [record.t_fwhm is not None for record in events]
-        if any(spread) and not all(spread):
-            raise ValueError("some events spread the times of their pairs and some do not")
-        if events and all(spread):
-            file["t_fwhm"] = np.array(
-                [value for record in events for value in record.t_fwhm], dtype="float64"
-            )
-        if events and all(begun):
-            for name in _STARTS:
-                file[name] = np.array(
-                    [value for record in events for value in getattr(record, name)],
-                    dtype="float64",
-                )
 
 
 def read_deposits(path: str) -> Deposits:

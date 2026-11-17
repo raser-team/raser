@@ -48,10 +48,19 @@ def test_deposits_file_returns_each_event_with_its_own_deposits(tmp_path) -> Non
 
     assert read_deposits(path) == deposits
 
-    # where the steps start is kept for every event or for none
+    # where the steps start is kept for every event or for none, and a bad
+    # record leaves the file that was there as it was
+    kept = path.read_bytes()
     deposits.events[1].x_start = None
-    with pytest.raises(ValueError, match="start"):
+    with pytest.raises(ValueError, match="x_start"):
         write_deposits(path, deposits)
+    assert path.read_bytes() == kept
+    # a column with a value too few for its event
+    deposits.events[1].x_start = [9.0]
+    deposits.events[0].t_fwhm, deposits.events[1].t_fwhm = [1e-12, 2e-12], [3e-12]
+    with pytest.raises(ValueError, match="2 values of t_fwhm"):
+        write_deposits(path, deposits)
+    assert path.read_bytes() == kept
 
 
 def test_deposits_of_steps_drop_steps_and_events_without_energy() -> None:
