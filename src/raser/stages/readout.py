@@ -13,7 +13,7 @@ def waveforms(kwargs):
     amplifier names: readout_<job>.h5. The noise of the circuit is drawn
     with the seed lifecycle gives the slice; a run without seeds has no noise."""
     my_d = bdv.Detector(kwargs["det_name"], kwargs["_files"]["device"])
-    sensor, _ = device_sensor(
+    sensor, values = device_sensor(
         my_d, electrode_names(my_d.read_out_contact, my_d.read_ele_num)
     )
     write_waveforms(
@@ -22,4 +22,5 @@ def waveforms(kwargs):
         named_chain(str(kwargs["amplifier"])),
         sensor,
         kwargs.get("seed"),
+        sensor_values=values,
     )
