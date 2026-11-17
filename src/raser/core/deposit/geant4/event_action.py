@@ -54,7 +54,7 @@ class GeneralEventAction(g4b.G4UserEventAction):
             self.save_geant4_events(eventID)
         self.ended += 1
         # recorded: an event that left energy in the device, within the window
-        if self.edep_device > 0 and self.in_edep_window():
+        if self.in_edep_window():
             self.recorded += 1
             if self.recorded == self.recorded_events:
                 g4b.G4RunManager.GetRunManager().AbortRun(True)
@@ -62,7 +62,12 @@ class GeneralEventAction(g4b.G4UserEventAction):
         #print("Detector: total energy:", g4b.G4BestUnit(self.edep_device, "Energy"), end="")
 
     def in_edep_window(self):
-        "Whether the energy deposited in the device [MeV] lies in the window"
+        """Whether the event left energy in the device, and that energy [MeV]
+        lies in the window. An event that left none is not kept: a source
+        that seldom hits the device would otherwise hold a record of every
+        miss until the end of the run."""
+        if self.edep_device <= 0:
+            return False
         edep_min, edep_max = self.edep_window
         if edep_min is not None and self.edep_device < edep_min:
             return False
