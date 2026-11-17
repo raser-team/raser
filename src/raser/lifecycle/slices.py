@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -20,6 +21,10 @@ class Shared:
     # (kwargs of the command, options, files) of a point: make it, in this
     # process or as jobs on the cluster when the command has -b
     start: Callable
+    # (options, files) of a point -> what tells one making of it from another,
+    # as a digest of what it was made from; None when it is not ready. The
+    # slices that read it run again when it changes.
+    stamp: Callable = lambda options, files: None
 
 
 @dataclass(frozen=True)
@@ -143,5 +148,8 @@ def run(slices, folders, index, options, wanted, before) -> bool:
             left = piece.run(options) or {}
         except Ended:
             left = {"ended": True}
-        done.write_text(json.dumps(left) if left else "")
+        # Written whole or not at all: a mark cut short would read as no notes.
+        part = done.with_name(done.name + ".part")
+        part.write_text(json.dumps(left) if left else "")
+        os.replace(part, done)
     return all(mark(folders[piece.name], index, piece.name).exists() for piece in slices)

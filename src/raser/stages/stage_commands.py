@@ -49,13 +49,18 @@ def run(stage, kwargs):
     folder, words, device = _experiment(kwargs["target"])
     workflow = WORKFLOWS[" ".join(words)]
     names = [piece.name for piece in workflow.slices]
-    if stage not in names:
+    if stage not in {name.split(".")[0] for name in names}:
         raise SystemExit(
             f"{folder}: the experiment {' '.join(words)} has no {stage} slice; its slices: {names}"
         )
     # Its files are found as its own command finds them; the jobs are its own.
     project = folder.parents[len(words) - 1]
     options = {**kwargs, "det_name": device, "until": stage, "_entry_command_prefix": (words[0],)}
+    if (folder / "config.json").is_file():
+        # A job on the cluster starts the command again from the experiment
+        # folder: the target is written as the whole path.
+        argv = kwargs.get("_argv") or []
+        options["_argv"] = [str(folder) if word == kwargs["target"] else word for word in argv]
     here = os.getcwd()
     with project_root_context(project, kwargs["_components_of"][words[0]]):
         if folder.is_dir():

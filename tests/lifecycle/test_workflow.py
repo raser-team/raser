@@ -437,6 +437,18 @@ def test_two_scanned_options_give_every_combination_named_by_what_differs(
     ]
 
 
+def test_two_combinations_that_would_name_one_folder_stop_the_command_before_any_job(
+    started: list[Any], tmp_path: Path
+) -> None:
+    scan = ["gain=7_width_2,7", "width=1.0,2.0"]
+
+    with pytest.raises(ValueError, match="gain_7_width_2"):
+        execute(GAIN, _kwargs(gain=None, width=None, scan=scan, jobs=2))
+
+    assert started == []
+    assert not (tmp_path / "toy").exists()
+
+
 def test_a_value_given_for_an_option_the_config_scans_runs_only_that_value(
     started: list[Any], tmp_path: Path
 ) -> None:
@@ -1225,6 +1237,48 @@ def test_a_slice_that_ends_the_job_leaves_it_done_and_the_later_slices_unrun_in_
     assert ran == ["deposits", "currents", "waveforms"]
 
 
+def test_a_mark_cut_short_by_a_kill_leaves_the_slice_to_run_again_and_does_not_lose_its_end(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from raser.lifecycle import slices
+
+    ran: list[str] = []
+
+    def no_event(options) -> None:
+        ran.append("deposits")
+        raise slices.Ended
+
+    chain = (Slice("deposits", no_event), Slice("currents", lambda options: ran.append("currents")))
+    folders = {name: tmp_path for name in ("deposits", "currents")}
+    (tmp_path / "batch").mkdir()
+
+    def killed(self, text, *args, **kwargs):
+        open(self, "w").close()  # the file is opened, then the process is killed
+        raise KeyboardInterrupt
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "write_text", killed)
+        with pytest.raises(KeyboardInterrupt):
+            slices.run(chain, folders, 0, {}, ["deposits", "currents"], lambda piece: None)
+
+    assert slices.run(chain, folders, 0, {}, ["deposits", "currents"], lambda piece: None)
+    assert ran == ["deposits", "deposits"]
+
+
+def test_a_job_killed_after_its_last_slice_mark_is_done_at_the_next_command(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], ran: list[tuple[str, Any]], tmp_path: Path
+) -> None:
+    execute(_chain(ran), _chain_kwargs())
+    whole = tmp_path / "toy" / "seed_42" / "batch" / "job_0.done"
+    whole.unlink()
+    ran.clear()
+
+    execute(_chain(ran), _chain_kwargs())
+
+    assert ran == []
+    assert whole.exists()
+
+
 def test_a_file_read_by_a_function_of_the_app_is_judged_and_handed_to_the_job_as_it_was_read(
     started: list[Any], seeded: list[int], disk: dict[str, Any], ran: list[tuple[str, Any]]
 ) -> None:
@@ -1385,6 +1439,15 @@ def test_a_job_run_in_this_process_leaves_a_log_with_what_it_printed_and_why_it_
     assert log.rstrip().endswith("RuntimeError: no event selected")
 
 
+def test_a_job_of_slices_run_in_this_process_ends_its_log_with_the_slices_it_ran(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], ran: list[tuple[str, Any]], tmp_path: Path
+) -> None:
+    execute(_chain(ran), _chain_kwargs(until="deposits"))
+
+    log = (tmp_path / "toy" / "seed_42" / "batch" / "job_0.log").read_text()
+    assert f"{workflow_module.JOB_ENDED}: deposits" in log
+
+
 @pytest.mark.parametrize(
     "given",
     [
@@ -1448,6 +1511,45 @@ def test_an_option_of_a_slice_nothing_reads_runs_that_slice_alone_again(
     assert [name for name, _ in ran] == ["d"]
 
 
+def test_with_same_seeds_a_point_whose_two_roots_are_held_by_two_others_runs_each_root_once(
+    started: list[Any], seeded: list[int], tmp_path: Path
+) -> None:
+    ran: list[tuple[str, Any]] = []
+
+    def piece(name: str, key: str) -> Slice:
+        return Slice(name, lambda options: ran.append((name, options[key])), keys=(key,), needs=())
+
+    workflow = Workflow(
+        name="toy", slices=(piece("a", "x"), piece("b", "y")), keys=("x", "y"), defaults={"x": 1, "y": 1}, device=False
+    )
+
+    execute(workflow, _kwargs(scan=["x=2", "y=2"], same_seeds=True))
+
+    assert sorted(ran) == [("a", 2), ("b", 2)]
+    assert (tmp_path / "toy" / "x_2" / "seed_42" / "run.json").exists()
+    assert (tmp_path / "toy" / "y_2" / "seed_42" / "run.json").exists()
+
+
+def test_an_option_of_one_of_two_roots_runs_that_root_again_in_place_and_not_the_other(
+    started: list[Any], seeded: list[int], tmp_path: Path
+) -> None:
+    ran: list[tuple[str, Any]] = []
+
+    def piece(name: str, key: str) -> Slice:
+        return Slice(name, lambda options: ran.append((name, options[key])), keys=(key,), needs=())
+
+    workflow = Workflow(
+        name="toy", slices=(piece("a", "x"), piece("b", "y")), keys=("x", "y"), defaults={"x": 1, "y": 1}, device=False
+    )
+    execute(workflow, _kwargs())
+    ran.clear()
+
+    execute(workflow, _kwargs(x=2))
+
+    assert ran == [("a", 2)]
+    assert _kept(tmp_path / "toy") == []
+
+
 # a and b: one of them is given, a by default
 EITHER = Workflow(
     name="toy", job=lambda options: None, keys=("a", "b"), defaults={"a": 1}, device=False, exclusive=(("a", "b"),)
@@ -1472,6 +1574,45 @@ def test_the_command_line_decides_a_group_over_the_set_of_the_config(started: li
     execute(EITHER, _kwargs(a=2, seed=43))
     options = _options(experiment / "seed_43")
     assert options["a"] == 2 and "b" not in options
+
+
+def test_a_key_of_a_group_scanned_leaves_out_the_default_of_the_other_in_every_point(
+    started: list[Any], tmp_path: Path
+) -> None:
+    execute(EITHER, _kwargs(scan=["b=2,3"]))
+
+    points = [_options(tmp_path / "toy" / name / "seed_42") for name in ("b_2", "b_3")]
+    assert [(options["b"], "a" in options) for options in points] == [(2, False), (3, False)]
+
+
+def test_a_key_of_a_group_set_replaces_the_other_in_the_config_and_the_next_command_runs(
+    started: list[Any], tmp_path: Path
+) -> None:
+    experiment = tmp_path / "toy"
+    experiment.mkdir()
+    (experiment / "config.json").write_text(json.dumps({"workflow": "toy", "set": {"a": 1}, "scan": {}}))
+
+    execute(EITHER, _kwargs(set=["b=2"]))
+    execute(EITHER, _kwargs(seed=43))
+
+    assert json.loads((experiment / "config.json").read_text())["set"] == {"b": 2}
+    options = _options(experiment / "seed_43")
+    assert options["b"] == 2 and "a" not in options
+
+
+def test_a_value_set_for_a_scanned_option_ends_its_scan_for_the_next_commands(
+    started: list[Any], tmp_path: Path
+) -> None:
+    experiment = tmp_path / "toy"
+    experiment.mkdir()
+    (experiment / "config.json").write_text(json.dumps({"workflow": "toy", "set": {}, "scan": {"gain": [5, 7]}}))
+
+    execute(GAIN, _kwargs(gain=None, width=None, set=["gain=6"], jobs=2))
+    started.clear()
+    execute(GAIN, _kwargs(gain=None, width=None, jobs=2, seed=43))
+
+    assert _folders(started, experiment) == ["seed_43"]
+    assert _options(experiment / "seed_43")["gain"] == 6
 
 
 def test_two_keys_of_a_group_in_one_layer_are_refused(started: list[Any]) -> None:
