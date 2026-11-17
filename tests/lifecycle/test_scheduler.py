@@ -129,3 +129,18 @@ def test_condor_test_mode_writes_and_submits_nothing(
 
     assert not project.exists()
     assert submitted == []
+
+
+def test_an_installed_raser_records_its_version_and_runs_its_workers_in_the_folder_of_the_command(
+    tmp_path, monkeypatch
+) -> None:
+    from raser.lifecycle import workflow
+
+    monkeypatch.setattr(workflow, "REPO_ROOT", None)
+    monkeypatch.setattr(workflow.importlib.metadata, "version", lambda name: "5.0")
+    assert workflow._commit() == "raser 5.0"
+
+    monkeypatch.setattr(scheduler, "REPO_ROOT", None)
+    monkeypatch.chdir(tmp_path)
+    script = scheduler.worker_script(("raser", "signal", "dev"), None)
+    assert f"cd {tmp_path} || exit 1" in script and "env/setup" not in script

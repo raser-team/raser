@@ -6,6 +6,7 @@ import argparse
 import errno
 import fcntl
 import hashlib
+import importlib.metadata
 import itertools
 import json
 import re
@@ -735,7 +736,13 @@ def _write(path, content) -> None:
 
 
 def _commit() -> str:
-    """The commit of the code; +dirty when files differ from it or it is unknown."""
+    """The commit of the code; +dirty when files differ from it or it is unknown.
+    Installed as a package, raser has no commit: the version of the package."""
+    if REPO_ROOT is None:
+        try:
+            return f"raser {importlib.metadata.version('raser')}"
+        except importlib.metadata.PackageNotFoundError:
+            return "unknown+dirty"
 
     def git(*words):
         command = ["git", "-C", str(REPO_ROOT), *words]

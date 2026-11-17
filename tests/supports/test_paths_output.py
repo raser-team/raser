@@ -66,3 +66,25 @@ def test_memory_diagnostic_preserves_the_wrapped_result(
     diagnostic = capsys.readouterr().out
     assert "Memory usage before calling measured" in diagnostic
     assert "Memory usage after calling measured" in diagnostic
+
+
+def test_work_is_in_the_source_tree_or_in_the_current_folder_never_where_the_package_is_installed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from raser.supports import paths
+
+    tree = tmp_path / "checkout"
+    (tree / "src" / "raser").mkdir(parents=True)
+    (tree / "pyproject.toml").write_text("")
+    installed = tmp_path / "venv" / "lib" / "python3.11" / "site-packages" / "raser"
+    installed.mkdir(parents=True)
+    here = tmp_path / "here"
+
+    assert paths.source_tree(tree / "src" / "raser") == tree
+    assert paths.source_tree(installed) is None
+    assert paths.default_work_root(tree, here) == tree / "work"
+    assert paths.default_work_root(None, here) == here / "work"
+    # this checkout, run as it is or after pip install -e
+    assert paths.REPO_ROOT is not None and paths.default_work_root() == paths.REPO_ROOT / "work"
+    monkeypatch.setenv("RASER_WORK_PATH", str(tmp_path / "given"))
+    assert paths.work_root() == tmp_path / "given"
