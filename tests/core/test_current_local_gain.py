@@ -65,9 +65,19 @@ def test_pairs_too_few_to_emit_on_the_way_are_emitted_at_the_end_of_the_path() -
 
     assert sum(current.gain_current.hole_system.carriers) == pytest.approx(expected, rel=1e-6)
     assert len(current.gain_current.hole_system.carriers) == 6
-    # each path's pairs start on its last step: the electrons' near z = 0, the holes' near 50 um
+    # each path's pairs start at their pair-weighted middle: growing as
+    # exp(alpha s) over the length L a cluster drifts, s from its start,
+    # they start L exp(alpha L) / (exp(alpha L) - 1) - 1 / alpha from it
+    def middle(alpha, length):
+        return length * math.exp(alpha * length) / math.expm1(alpha * length) - 1.0 / alpha
+
+    electron = alpha(FIELD, -1, 300.0) * 1e-4  # /um
+    hole = alpha(FIELD, 1, 300.0) * 1e-4
+    places = sorted(
+        [z - middle(electron, z) for _, _, z, _ in STARTS] + [z + middle(hole, 50.0 - z) for _, _, z, _ in STARTS]
+    )
     births = sorted(float(path[0][2]) for path in current.gain_current.hole_system.paths)
-    assert max(births[:3]) < 3.0 and min(births[3:]) > 47.0
+    assert births == pytest.approx(places, abs=0.3)
 
 
 class _ThinLayer(_Field):
