@@ -27,9 +27,9 @@ def collect(options):
             failed.append(f"  {root / name}: no finished job")
             continue
         error = write_point(jobs, digitizer, folder / name)
-        # too few selected events for a width is a result of the point
+        # too few events for a width or an efficiency is a result of the point
         if error is not None:
-            print(f"{folder / name}: no time resolution: {error}")
+            print(f"{folder / name}: {error}")
         print(f"{folder / name / 'result.json'}")
         done.append((name, point_options))
         results.append(json.loads((folder / name / "result.json").read_text()))

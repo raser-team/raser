@@ -24,7 +24,7 @@ def write_points(points, results, folder):
     options and, from its result.json, the number of events, the efficiency
     and its error, the number of selected events and for every time its
     sigma68, sigma and sigma_error [s]. A point without a time resolution has
-    no times in its row.
+    no times in its row, one without an efficiency None for it and its error.
 
     With one scanned option that is a number, also points.png: the
     efficiency and the sigma of each CFD fraction against it.
@@ -41,8 +41,8 @@ def write_points(points, results, folder):
             "point": name,
             **{key: options.get(key) for key in scanned},
             "events": result["collection"]["events"],
-            "efficiency": result["collection"]["mean"],
-            "efficiency_error": result["collection"]["mean_error"],
+            "efficiency": result["collection"].get("mean"),
+            "efficiency_error": result["collection"].get("mean_error"),
             "selected": result["timing"]["selected"],
         }
         for time, width in result["timing"].get("times", {}).items():
@@ -58,10 +58,11 @@ def write_points(points, results, folder):
     key = scanned[0]
     rows = sorted(rows, key=lambda row: row[key])
     figure, (left, right) = plt.subplots(1, 2, figsize=(11, 4))
+    collected = [row for row in rows if row["efficiency"] is not None]
     left.errorbar(
-        [row[key] for row in rows],
-        [row["efficiency"] for row in rows],
-        [row["efficiency_error"] for row in rows],
+        [row[key] for row in collected],
+        [row["efficiency"] for row in collected],
+        [row["efficiency_error"] for row in collected],
         fmt="o-", capsize=3,
     )
     left.set_xlabel(key)

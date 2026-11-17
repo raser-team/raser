@@ -89,10 +89,10 @@ def test_point_with_too_few_selected_events_keeps_its_efficiency_and_tells_why(t
 
     error = write_point([(seed, 0), (seed, 1)], {"threshold": 3, "amplitude_threshold": 5}, tmp_path / "out")
 
-    assert "fewer than 20" in error
+    assert error == "no time resolution: 10 values, fewer than 20"
     result = json.loads((tmp_path / "out" / "result.json").read_text())
     assert result["collection"]["events"] == 310
-    assert result["timing"] == {"events": 310, "selected": 10, "polarity": -1.0, "error": error}
+    assert result["timing"] == {"events": 310, "selected": 10, "polarity": -1.0, "error": "10 values, fewer than 20"}
     assert not (tmp_path / "out" / "time_difference.png").exists()
 
 
@@ -107,6 +107,22 @@ def test_point_without_selected_events_is_a_result_not_a_failure(tmp_path, monke
     timing = json.loads((tmp_path / "out" / "result.json").read_text())["timing"]
     assert timing == {"events": 100, "selected": 0, "polarity": -1.0, "error": "0 values, fewer than 20"}
     assert "no time resolution: 0 values, fewer than 20" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(("count", "why"), [(0, "the jobs recorded no event"), (1, "1 values, fewer than 20")])
+def test_point_with_fewer_than_two_events_is_a_result_not_a_failure(tmp_path, monkeypatch, capsys, count, why) -> None:
+    root = tmp_path / "work" / "device" / "timeres"
+    _job(root / "seed_1", 0, 1.0, count, seed=4)
+    monkeypatch.setattr(ana, "finished_in", lambda folder: [("", {}, [(root / "seed_1", 0)])])
+    options = {"experiment": str(root), "_run_path": str(tmp_path / "out"), "_files": {"adc": {"threshold": 3, "amplitude_threshold": 5}}}
+
+    ana.collect(options)
+
+    result = json.loads((tmp_path / "out" / "result.json").read_text())
+    assert result["collection"] == {"events": count, "error": f"{count} events in the point, a mean and a spread need at least 2"}
+    assert (result["timing"]["events"], result["timing"]["selected"], result["timing"]["error"]) == (count, count, why)
+    printed = capsys.readouterr().out
+    assert f"no efficiency: {count} events in the point" in printed and f"no time resolution: {why}" in printed
 
 
 def test_every_point_of_the_analysis_holds_the_results_of_the_points_it_analyses(
