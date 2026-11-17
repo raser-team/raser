@@ -16,8 +16,9 @@ pixelAreaYIndex = []
 for y in range(-3, 3):
     pixelAreaYIndex.append(y) 
 
-def simulate_bunches(g4_dic, seed):
-    """Shoot the bunches of g4_dic and give the steps in every pad.
+def simulate_bunches(g4_dic, seed, my_d):
+    """Shoot the bunches of g4_dic and give the steps in every pad, each pad
+    a device my_d.
 
     Three dicts, [detector_I or detector_II][i_j] -> one entry per bunch:
     the positions of the steps [um, in the frame of the beam pipe], their
@@ -54,7 +55,7 @@ def simulate_bunches(g4_dic, seed):
     physicsList.RegisterPhysics(stepLimiterPhysics)
     runManager.SetUserInitialization(physicsList)
 
-    detConstruction = cflmDetectorConstruction(g4_dic)
+    detConstruction = cflmDetectorConstruction(g4_dic, my_d)
     runManager.SetUserInitialization(detConstruction)
 
     actionInitialization = cflmaActionInitialization(detConstruction,
@@ -82,7 +83,7 @@ def simulate_bunches(g4_dic, seed):
 
 class cflmDetectorConstruction(g4b.G4VUserDetectorConstruction):
 
-    def __init__(self,g4_dic):
+    def __init__(self, g4_dic, my_d):
         super().__init__()
         self.solid = {}
         self.logical = {}
@@ -99,8 +100,8 @@ class cflmDetectorConstruction(g4b.G4VUserDetectorConstruction):
         
         self.create_pipe(g4_dic['pipe'])
 
-        self.detMaterial()
-        self.SiCdetector()
+        self.pad_material(my_d.material)
+        self.pads(my_d, g4_dic['pipe']['Rmax'], g4_dic['pads_from_z_mm'])
         self.create_vacuum(g4_dic['vacuum'])
 
         self.fStepLimit = g4b.G4UserLimits(self.maxStep)
@@ -190,57 +191,38 @@ class cflmDetectorConstruction(g4b.G4VUserDetectorConstruction):
         self.fStepLimit.SetMaxAllowedStep(self.maxStep)       
         return self.physical['world']     
         
-    def SiCdetector(self):
-        for k in (-31.05, 31.05):
-            for i in pixelAreaYIndex: 
+    def pads(self, my_d, surface, from_z):
+        """Two sides of 6 x 2 pads touching the outer surface of the beam pipe,
+        at x = -/+surface [mm]: rows i along y, columns j along the beam from
+        z = from_z [mm], each pad a device of l_x along y, l_y along the beam
+        and l_z thick."""
+        for side, sign in (("I", -1), ("II", 1)):
+            for i in pixelAreaYIndex:
                 for j in pixelAreaZIndex:
-                    if k==-31.05:
-                       name = f"detector_I_{i}_{j}"
-                       print(name)
-                    else:
-                        name = f"detector_II_{i}_{j}"
-                        print(name)
-                    if i>=0:
-                        y_position = (i * 5 + 2.5) * g4b.mm
-                        z_position = (j * 5 + 2.5 + 225) * g4b.mm
-                        translation = g4b.G4ThreeVector(k * g4b.mm, y_position, z_position)
-                        visual = g4b.G4VisAttributes(g4b.G4Color(1, 0.6, 0))
-                        mother = self.physical['world']
-                        sidex = 5 * g4b.mm
-                        sidey = 0.1 * g4b.mm
-                        sidez = 5 * g4b.mm
+                    name = f"detector_{side}_{i}_{j}"
+                    translation = g4b.G4ThreeVector(
+                        sign * (surface * g4b.mm + my_d.l_z * g4b.um / 2),
+                        (i + 0.5) * my_d.l_x * g4b.um,
+                        from_z * g4b.mm + (j + 0.5) * my_d.l_y * g4b.um,
+                    )
+                    # the rotation turns the box: its x runs along y, its y along x
+                    self.solid[name] = g4b.G4Box(
+                        name, my_d.l_x * g4b.um / 2, my_d.l_z * g4b.um / 2, my_d.l_y * g4b.um / 2
+                    )
+                    self.logical[name] = g4b.G4LogicalVolume(self.solid[name], self.compound, name)
+                    self.physical[name] = g4b.G4PVPlacement(self.rotation, translation, name, self.logical[name], self.physical['world'], False, 0, self.checkOverlaps)
+                    self.logical[name].SetVisAttributes(g4b.G4VisAttributes(g4b.G4Color(1, 0.6, 0)))
 
-                        self.solid[name] = g4b.G4Box(name, sidex / 2., sidey / 2., sidez / 2.)
+    def pad_material(self, material):
+        if material == "Si":
+            self.compound = self.nist.FindOrBuildMaterial("G4_Si")
+        elif material == "SiC":
+            self.compound = g4b.G4Material("SiC", 3.2 * g4b.g / g4b.cm3, 2)
+            self.compound.AddElement(self.nist.FindOrBuildElement("Si", False), 50 * g4b.perCent)
+            self.compound.AddElement(self.nist.FindOrBuildElement("C", False), 50 * g4b.perCent)
+        else:
+            raise ValueError(f"the Geant4 of lumi builds pads of Si or SiC, not of {material}")
 
-                        self.logical[name] = g4b.G4LogicalVolume(self.solid[name], self.compound, name)
-                        self.physical[name] = g4b.G4PVPlacement(self.rotation, translation, name, self.logical[name], mother, False, 0, self.checkOverlaps)
-                        self.logical[name].SetVisAttributes(visual)
-                    if i<0:
-                        y_position = ((i + 1) * 5 - 2.5) * g4b.mm
-                        z_position = (j * 5 + 2.5 + 225) * g4b.mm
-                        translation = g4b.G4ThreeVector(k * g4b.mm, y_position, z_position)
-                        visual = g4b.G4VisAttributes(g4b.G4Color(1, 0.6, 0))
-                        mother = self.physical['world']
-                        sidex = 5 * g4b.mm
-                        sidey = 0.1 * g4b.mm
-                        sidez = 5 * g4b.mm
-
-                        self.solid[name] = g4b.G4Box(name, sidex / 2., sidey / 2., sidez / 2.)
-
-                        self.logical[name] = g4b.G4LogicalVolume(self.solid[name], self.compound, name)
-                        self.physical[name] = g4b.G4PVPlacement(self.rotation, translation, name, self.logical[name], mother, False, 0, self.checkOverlaps)
-                        self.logical[name].SetVisAttributes(visual)
-
-    def detMaterial(self):
-        material_1 = self.nist.FindOrBuildElement("Si", False)
-        material_2 = self.nist.FindOrBuildElement("C", False)
-        material_density = 3.2*g4b.g/g4b.cm3
-        self.compound = g4b.G4Material("SiC", material_density, 2)
-        self.compound.AddElement(material_1, 50*g4b.perCent)
-        self.compound.AddElement(material_2, 50*g4b.perCent)
-
-        return self.compound
-    
     def Construct(self): 
         self.fStepLimit.SetMaxAllowedStep(self.maxStep)
         return self.physical['world']   

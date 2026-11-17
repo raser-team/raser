@@ -20,19 +20,16 @@ from raser.supports.paths import app_file_path
 
 from . import cflm_p1
 
-PIPE_SURFACE = 31000.0  # distance of the face of the pads from the axis of the pipe [um]
-PAD_PITCH = 5000.0  # [um]
-FIRST_ROW_Z = 225000.0  # z of the edge of the row j = 0 [um]
-
-
-def pad_frame(side, i, j, step, my_d):
+def pad_frame(side, i, j, step, my_d, g4_dic):
     """A step [um, frame of the beam pipe] in the coordinates of the pad i_j of a side.
 
-    z is the depth into the pad from its face towards the pipe.
+    z is the depth into the pad from its face, which touches the outer
+    surface of the pipe.
     """
-    centre_y = (i + 0.5) * PAD_PITCH
-    centre_z = FIRST_ROW_Z + (j + 0.5) * PAD_PITCH
-    depth = -step[0] - PIPE_SURFACE if side == "I" else step[0] - PIPE_SURFACE
+    surface = g4_dic["pipe"]["Rmax"] * 1000
+    centre_y = (i + 0.5) * my_d.l_x
+    centre_z = g4_dic["pads_from_z_mm"] * 1000 + (j + 0.5) * my_d.l_y
+    depth = -step[0] - surface if side == "I" else step[0] - surface
     return (
         my_d.l_x / 2 - step[1] + centre_y,
         my_d.l_y / 2 + step[2] - centre_z,
@@ -42,7 +39,7 @@ def pad_frame(side, i, j, step, my_d):
 
 def bunch_deposits(my_d, g4_dic, seed):
     """The deposits of the bunches of g4_dic in the 24 pads."""
-    steps, energies, _ = cflm_p1.simulate_bunches(g4_dic, seed)
+    steps, energies, _ = cflm_p1.simulate_bunches(g4_dic, seed, my_d)
     bunches = int(g4_dic["BeamOn"])
     events = []
     for bunch in range(bunches):
@@ -54,7 +51,7 @@ def bunch_deposits(my_d, g4_dic, seed):
                 for step, energy in zip(of_pad[bunch], of_energy, strict=True):
                     if energy <= 0:
                         continue
-                    x, y, z = pad_frame(side, i, j, step, my_d)
+                    x, y, z = pad_frame(side, i, j, step, my_d, g4_dic)
                     event.detector.append(f"{side}_{pad}")
                     event.x.append(x)
                     event.y.append(y)
