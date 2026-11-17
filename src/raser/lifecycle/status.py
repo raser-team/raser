@@ -60,19 +60,20 @@ def folder_states(workflow, folder: Path, record: dict, ready=None) -> dict[str,
     for i in range(count):
         running = _held(folder / "batch" / f"job_{i}.lock")
         logged = (folder / "batch" / f"job_{i}.log").is_file()
-        upstream = True
-        for piece in pieces:
+        done_of: dict[int, bool] = {}
+        for k, piece in enumerate(pieces):
             name = piece.name if piece else "job"
             if piece:
                 holder = root / record["held_in"][piece.name] / label
                 done = slices.mark(holder, i, piece.name).exists()
             else:
                 done = slices.mark(folder, i).exists()
+            done_of[k] = done
+            upstream = piece is None or all(done_of[j] for j in slices.upstream(workflow.slices, k))
             state = job_state(done, running, logged and not done, upstream)
             if piece is not None and piece.shared and ready is not None and not ready(piece):
                 state = "waiting" if not done else state
             states.setdefault(name, {s: [] for s in STATES})[state].append(i)
-            upstream = upstream and done
     return states
 
 
