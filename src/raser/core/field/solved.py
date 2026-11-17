@@ -12,10 +12,10 @@ from raser.supports.paths import project_path
 
 from .reading import changed
 
-# The full and the semi_fast solution of a field are solved with devsim. Where
-# it is not installed the solution is the fast one, unless another is asked.
+# The full and the semi_fast mode of a field are solved with devsim. Where
+# it is not installed the mode is the fast one, unless another is asked.
 HAS_DEVSIM = importlib.util.find_spec("devsim") is not None
-DEFAULT_SOLUTION = "full" if HAS_DEVSIM else "fast"
+DEFAULT_MODE = "full" if HAS_DEVSIM else "fast"
 
 
 def _flux(record):
@@ -27,12 +27,12 @@ def _flux(record):
     return float(irradiation.get("irradiation_flux", 0))
 
 
-def solved_field(my_d, voltage, irradiation_flux, solution=DEFAULT_SOLUTION):
-    """The folder of the field of `my_d` at this flux, found by this solution,
+def solved_field(my_d, voltage, irradiation_flux, mode=DEFAULT_MODE):
+    """The folder of the field of `my_d` at this flux, found in this mode,
     that holds the potential and the weighting field at this bias. An error
     says what is missing."""
     root = project_path("field")
-    again = f"raser field {my_d.det_name} -bias {voltage} --solution {solution}"
+    again = f"raser field {my_d.det_name} -bias {voltage} --mode {mode}"
     records = {
         path.parent: json.loads(path.read_text())
         for path in [root / "run.json", *sorted(root.glob("*/run.json"))]
@@ -43,15 +43,15 @@ def solved_field(my_d, voltage, irradiation_flux, solution=DEFAULT_SOLUTION):
         for folder, record in records.items()
         if "options" in record
         and _flux(record) == float(irradiation_flux)
-        and record["options"].get("solution") == solution
+        and record["options"].get("mode") == mode
     }
     if not at_flux:
         have = sorted(
-            {(_flux(record), str(record["options"].get("solution"))) for record in records.values() if "options" in record}
+            {(_flux(record), str(record["options"].get("mode"))) for record in records.values() if "options" in record}
         )
         raise FileNotFoundError(
-            f"no {solution} field of {my_d.det_name} at the irradiation flux {irradiation_flux:g} "
-            f"in {root} (flux and solution of those solved: {have}); "
+            f"no {mode} field of {my_d.det_name} at the irradiation flux {irradiation_flux:g} "
+            f"in {root} (flux and mode of those solved: {have}); "
             f"solve it with `{again} -irr {irradiation_flux:g}`"
         )
     folder, record = next(iter(at_flux.items()))

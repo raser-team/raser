@@ -13,7 +13,7 @@ from pathlib import Path
 
 from raser.core.device.build_device import Detector
 from raser.core.field.reading import changed
-from raser.core.field.solved import DEFAULT_SOLUTION
+from raser.core.field.solved import DEFAULT_MODE
 from raser.core.field.solved import HAS_DEVSIM
 from raser.lifecycle.workflow import Workflow
 from raser.lifecycle.workflow import execute
@@ -127,15 +127,15 @@ def solve(kwargs):
     that run.json lists as solved is left as it is. With -ext nothing is
     solved: the field is taken from a TCAD file.
 
-    --solution says how the field is found: "full" solves the electric field
+    --mode says how the field is found: "full" solves the electric field
     and the weighting field on the mesh of the device; "semi_fast" takes the
     electric field of a planar device and solves the weighting field of the
     fully depleted device; "fast" takes both from closed forms."""
-    if kwargs["solution"] == "fast" and not HAS_DEVSIM:
-        print(f"devsim is not installed: the field of {kwargs['det_name']} is the fast solution, not the full one")
-    if kwargs["solution"] != "full":
+    if kwargs["mode"] == "fast" and not HAS_DEVSIM:
+        print(f"devsim is not installed: the field of {kwargs['det_name']} is found in the fast mode, not the full one")
+    if kwargs["mode"] != "full":
         raise NotImplementedError(
-            f"the {kwargs['solution']} solution of a field is not there yet: only `--solution full` is"
+            f"the {kwargs['mode']} mode of a field is not there yet: only `--mode full` is"
         )
     if kwargs["input"] is not None:
         return _import(kwargs)
@@ -195,7 +195,7 @@ def outdated(old, record):
     flux, other settings in the device file, or a change in what the solve
     read from the device."""
     if old["options"] != record["options"]:
-        return "another irradiation flux or another solution"
+        return "another irradiation flux or another mode"
     device, before = record["files"]["device"], old["files"]["device"]
     if device.get("field") != before.get("field"):
         return 'other settings under "field" in the device file'
@@ -221,8 +221,8 @@ WORKFLOW = Workflow(
     name="field",
     job=solve,
     command=job_command,
-    keys=("irradiation_flux", "solution"),
-    defaults={"irradiation_flux": None, "solution": DEFAULT_SOLUTION},
+    keys=("irradiation_flux", "mode"),
+    defaults={"irradiation_flux": None, "mode": DEFAULT_MODE},
     seeds=False,
     outdated=outdated,
 )
@@ -254,7 +254,7 @@ def register(subparsers):
         "-irr", "--irradiation_flux", help="irradiationm flux", type=float
     )
     parser.add_argument(
-        "--solution",
+        "--mode",
         choices=("full", "semi_fast", "fast"),
         help="how the field is found: solved in full, the planar field with a solved weighting field, or closed forms; "
         "full by default, fast where devsim is not installed",
