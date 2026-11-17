@@ -8,12 +8,17 @@ Description:  event_action.py
 from raser.core.deposit.geant4.g4ppyy_runtime import g4b
 
 g4b.include("G4UserEventAction.hh")
+g4b.include("G4RunManager.hh")
 import numpy as np
 
 class GeneralEventAction(g4b.G4UserEventAction):
     "My Event Action"
-    def __init__(self, runAction, point_in, point_out, eventIDs, edep_devices, p_steps, energy_steps, time_steps, events_angles, edep_window,):
+    def __init__(self, runAction, point_in, point_out, eventIDs, edep_devices, p_steps, energy_steps, time_steps, events_angles, edep_window, recorded_events=None,):
         super().__init__()
+        # the run stops when this many events are recorded; None: it does not
+        self.recorded_events = recorded_events
+        self.recorded = 0
+        self.ended = 0
         self.fRunAction = runAction
         self.point_in = point_in
         self.point_out = point_out
@@ -44,6 +49,12 @@ class GeneralEventAction(g4b.G4UserEventAction):
             self.event_angle = None
         if self.in_edep_window():
             self.save_geant4_events(eventID)
+        self.ended += 1
+        # recorded: an event that left energy in the device, within the window
+        if self.edep_device > 0 and self.in_edep_window():
+            self.recorded += 1
+            if self.recorded == self.recorded_events:
+                g4b.G4RunManager.GetRunManager().AbortRun(True)
 
         #print("Detector: total energy:", g4b.G4BestUnit(self.edep_device, "Energy"), end="")
 

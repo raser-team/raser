@@ -7,6 +7,8 @@ import math
 
 from .deposits import Deposits
 from .deposits import write_deposits
+from .generation import GENERATED_LIMIT
+from .generation import asked
 from .ionization import ionized_pairs
 from .mip_track import mip_deposits
 
@@ -32,9 +34,11 @@ _PARTICLE_KEYS = ("par_in", "par_out", "par_randx", "par_randy", "par_type", "pa
 def g4_configuration(
     source: dict,
     g4setup: dict | None,
-    events: int,
+    events: int | None,
     edep_min: float | None,
     edep_max: float | None,
+    generated: int | None = None,
+    generated_limit: int = GENERATED_LIMIT,
 ) -> dict:
     """The configuration Geant4 runs with.
 
@@ -42,10 +46,13 @@ def g4_configuration(
     particle. A source with "particles" fires all of them in every event:
     each takes from the source what it does not give itself (par_in, par_out,
     par_randx, par_randy, par_type, par_energy).
-    The number of events and the window of the energy deposited
-    in the device [MeV] are of the experiment and replace whatever the two
-    files say.
+    The events and the window of the energy deposited in the device [MeV]
+    are of the experiment and replace whatever the two files say:
+    recorded_events is `events`, None when `generated` events are asked for;
+    total_events is the events to generate, `generated` or at most
+    generated_limit.
     """
+    asked(events, generated)
     configuration = copy.deepcopy(DEVICE_ALONE if g4setup is None else g4setup)
     configuration.update(copy.deepcopy(source))
     for key in _DESCRIPTIVE_KEYS:
@@ -55,7 +62,8 @@ def g4_configuration(
             {**{key: configuration[key] for key in _PARTICLE_KEYS if key in configuration}, **one}
             for one in configuration["particles"]
         ]
-    configuration["total_events"] = int(events)
+    configuration["recorded_events"] = None if events is None else int(events)
+    configuration["total_events"] = int(generated_limit if generated is None else generated)
     configuration["edep_min"] = edep_min
     configuration["edep_max"] = edep_max
     return configuration
@@ -135,14 +143,19 @@ def simulate_deposits(
     my_d,
     source: dict,
     g4setup: dict | None,
-    events: int,
+    events: int | None,
     g4_seed: int,
     edep_min: float | None = None,
     edep_max: float | None = None,
     fano: bool = True,
+    generated: int | None = None,
+    generated_limit: int = GENERATED_LIMIT,
 ) -> Deposits:
-    """Deposits of `events` generated events of `source` in the device,
-    each with the electron-hole pairs it created in the material of the device.
+    """Deposits of `source` in the device, each with the electron-hole pairs
+    it created in the material of the device: `events` recorded events,
+    generated until there are that many, or those recorded of `generated`
+    events; one of the two is None. More than generated_limit events
+    generated for the `events` asked for is an error.
 
     source and g4setup are the contents of the component files; g4setup
     None is the device alone in vacuum. edep_min and edep_max [MeV] bound
@@ -152,30 +165,41 @@ def simulate_deposits(
     A toy MIP takes only the step limit from the g4setup and does not use
     g4_seed. The source comes at its par_angle [degree], see `tilted`.
     """
-    deposits = _energy_deposits(my_d, source, g4setup, events, g4_seed, edep_min, edep_max)
+    deposits = _energy_deposits(
+        my_d, source, g4setup, events, g4_seed, edep_min, edep_max, generated, generated_limit
+    )
     deposits.generated_fraction = generated_fraction(source)
     for event in deposits.events:
         event.pairs, _ = ionized_pairs(event, my_d.material, fano)
     return deposits
 
 
-def _energy_deposits(my_d, source, g4setup, events, g4_seed, edep_min, edep_max) -> Deposits:
+def _energy_deposits(
+    my_d, source, g4setup, events, g4_seed, edep_min, edep_max, generated, generated_limit
+) -> Deposits:
     kind = source.get("kind")
     if kind != "toy_mip" and kind not in G4_KINDS:
         raise ValueError(
             f"no simulation of deposits for a source of kind {kind!r}; "
             f"known: {['toy_mip', *G4_KINDS]}"
         )
+    asked(events, generated)
     source = tilted(source, my_d.l_z)
     if kind == "toy_mip":
         max_step = (DEVICE_ALONE if g4setup is None else g4setup)["maxstep"]
-        return mip_deposits(my_d, source, None, max_step, edep_min, edep_max, generated=events)
+        return mip_deposits(
+            my_d, source, events, max_step, edep_min, edep_max, generated, generated_limit
+        )
     # g4ppyy creates the Geant4 managers when imported; sources that do
     # not need Geant4 must not pay for it.
     from .geant4.interaction import GeneralG4Interaction
 
     my_g4 = GeneralG4Interaction(
-        my_d, g4_configuration(source, g4setup, events, edep_min, edep_max), g4_seed
+        my_d,
+        g4_configuration(
+            source, g4setup, events, edep_min, edep_max, generated, generated_limit
+        ),
+        g4_seed,
     )
     try:
         return my_g4.deposits()
@@ -188,16 +212,18 @@ def write_simulated_deposits(
     my_d,
     source: dict,
     g4setup: dict | None,
-    events: int,
+    events: int | None,
     g4_seed: int,
     edep_min: float | None = None,
     edep_max: float | None = None,
     fano: bool = True,
+    generated: int | None = None,
+    generated_limit: int = GENERATED_LIMIT,
 ) -> int:
     """simulate_deposits, written to the deposits file; a file an earlier
     start left there is replaced. Returns the number of recorded events."""
     deposits = simulate_deposits(
-        my_d, source, g4setup, events, g4_seed, edep_min, edep_max, fano
+        my_d, source, g4setup, events, g4_seed, edep_min, edep_max, fano, generated, generated_limit
     )
     write_deposits(deposits_path, deposits)
     return len(deposits.events)

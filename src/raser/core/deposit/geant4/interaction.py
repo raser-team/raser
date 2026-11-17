@@ -8,6 +8,7 @@ Description:  interaction.py
 from raser.core.deposit.geant4.g4ppyy_runtime import g4b
 
 from ..deposits import deposits_of_steps
+from ..generation import too_few
 from .detector_construction import GeneralDetectorConstruction
 from .action_initialization import GeneralActionInitialization
 
@@ -110,7 +111,11 @@ class GeneralG4Interaction:
             self.events_angles,
         ) = [], [], [], [], [], []
 
-        self.generated_events = int(g4_dic["total_events"])
+        # recorded_events: the run stops when this many events are recorded,
+        # and total_events is the most it generates for them; None: the run
+        # generates total_events.
+        self.recorded_events = g4_dic.get("recorded_events")
+        self.total_events = int(g4_dic["total_events"])
         self.edep_window = (g4_dic.get("edep_min"), g4_dic.get("edep_max"))
 
         # define action
@@ -130,6 +135,11 @@ class GeneralG4Interaction:
             self.edep_window,
             self.geant4_model,
             **({"particles": g4_dic["particles"]} if "particles" in g4_dic else {}),
+            **(
+                {"recorded_events": self.recorded_events}
+                if self.recorded_events is not None
+                else {}
+            ),
             **(
                 {
                     "nuclides": {
@@ -170,10 +180,20 @@ class GeneralG4Interaction:
         UImanager.ApplyCommand("/process/em/verbose %d" % (verbose))
         UImanager.ApplyCommand("/process/had/verbose %d" % (verbose))
         UImanager.ApplyCommand("/run/initialize")
-        self.g4RunManager.BeamOn(self.generated_events)
+        self.g4RunManager.BeamOn(self.total_events)
+        if self.recorded_events is None:
+            self.generated_events = self.total_events
+            return
+        counted = self.action_initialization.event_action
+        self.generated_events = counted.ended
+        self.recorded = counted.recorded
 
     def deposits(self):
-        """The recorded events as Deposits in the coordinates of the device."""
+        """The recorded events as Deposits in the coordinates of the device.
+        Fewer recorded events than asked for is an error, raised here and not
+        in the run, so that the caller can still close this interaction."""
+        if self.recorded_events is not None and self.recorded < self.recorded_events:
+            raise too_few(self.recorded_events, self.recorded, self.generated_events)
         return deposits_of_steps(
             "Device",
             self.eventIDs,

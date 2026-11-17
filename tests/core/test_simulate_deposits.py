@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from raser.core.deposit.generation import GENERATED_LIMIT
 from raser.core.deposit.simulate_deposits import simulate_deposits
 from raser.core.deposit.simulate_deposits import g4_configuration
 from raser.core.deposit.simulate_deposits import generated_fraction
@@ -35,7 +36,11 @@ def test_experiment_overrides_source_overrides_g4setup() -> None:
     configuration = g4_configuration(SOURCE, G4SETUP, 3, None, 0.1)
 
     # of the experiment, whatever the files say
-    assert configuration["total_events"] == 3
+    # 3 events to record, generated until there are that many
+    assert configuration["recorded_events"] == 3
+    assert configuration["total_events"] == GENERATED_LIMIT
+    counted = g4_configuration(SOURCE, G4SETUP, None, None, None, generated=5)
+    assert (counted["recorded_events"], counted["total_events"]) == (None, 5)
     assert configuration["edep_min"] is None
     assert configuration["edep_max"] == 0.1
     # the particle is of the source
