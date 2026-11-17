@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from raser.core.metrics.resolution import core_width
+from raser.core.analysis.resolution import core_width
 from raser.core.readout.waveforms import read_waveforms
 from raser.core.reconstruction.event import net_pulse
 from raser.core.reconstruction.event import pulse_polarity

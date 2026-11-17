@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from raser.core.metrics.resolution import core_width, truncated_gaussian
+from raser.core.analysis.resolution import core_width, truncated_gaussian
 
 
 def test_values_inside_one_sigma_give_the_width_of_the_whole_gaussian() -> None:

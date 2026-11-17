@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from raser.core.metrics.collection import collection_efficiency
+from raser.core.analysis.collection import collection_efficiency
 
 
 def event_efficiencies(tables):
