@@ -118,6 +118,7 @@ def run_indexed_jobs(
     dry_run=False,
     indices=None,
     log_folder=None,
+    submitted=None,
 ):
     plan = plan_indexed_jobs(
         command_prefix,
@@ -139,11 +140,13 @@ def run_indexed_jobs(
         failed: dict[int, Exception] = {}
         for index, command in zip(numbers, plan.commands):
             try:
-                scheduler.main(destination, command, mem, is_test=False)
+                plan = scheduler.main(destination, command, mem, is_test=False)
             except Exception as exc:
                 failed[index] = exc
             else:
                 accepted.append(index)
+                if submitted is not None:  # (job index, what the scheduler named it)
+                    submitted(index, getattr(plan, "job_id", None))
         if failed:
             submission_state = (
                 "queued" if os.environ.get("RASER_SUBMIT_QUEUE") else "accepted"

@@ -1401,3 +1401,81 @@ def test_a_value_that_cannot_name_a_folder_is_refused(started: list[Any], given:
 def test_two_values_that_would_name_one_folder_are_refused(started: list[Any]) -> None:
     with pytest.raises(ValueError, match="'beam/muon' and 'other/muon' would both be the folder 'muon'"):
         execute(GAIN, _kwargs(gain=None, width=None, scan=["gain=beam/muon,other/muon"], jobs=2))
+
+
+def _branches(ran: list[tuple[str, Any]]) -> Workflow:
+    """A first slice that nothing here changes; two slices that read no other
+    and share the option x; between them one of its own option y that reads
+    none; last one that reads the two of x."""
+
+    def piece(name: str, keys: tuple, needs: tuple) -> Slice:
+        return Slice(name, lambda options: ran.append((name, options.get("x"))), keys=keys, needs=needs)
+
+    return Workflow(
+        name="toy",
+        slices=(
+            piece("r", ("z",), ()),
+            piece("a", ("x",), ()),
+            piece("d", ("y",), ()),
+            piece("b", ("x",), ()),
+            piece("c", (), ("a", "b")),
+        ),
+        keys=("x", "y", "z"),
+        defaults={"x": 1, "y": 1, "z": 1},
+        device=False,
+    )
+
+
+def test_an_option_two_slices_read_runs_both_again_and_what_reads_them_but_not_the_rest(
+    started: list[Any], seeded: list[int], ran: list[tuple[str, Any]]
+) -> None:
+    execute(_branches(ran), _kwargs())
+    ran.clear()
+
+    execute(_branches(ran), _kwargs(x=2))
+
+    assert [name for name, _ in ran] == ["a", "b", "c"]
+
+
+def test_an_option_of_a_slice_nothing_reads_runs_that_slice_alone_again(
+    started: list[Any], seeded: list[int], ran: list[tuple[str, Any]]
+) -> None:
+    execute(_branches(ran), _kwargs())
+    ran.clear()
+
+    execute(_branches(ran), _kwargs(y=2))
+
+    assert [name for name, _ in ran] == ["d"]
+
+
+# a and b: one of them is given, a by default
+EITHER = Workflow(
+    name="toy", job=lambda options: None, keys=("a", "b"), defaults={"a": 1}, device=False, exclusive=(("a", "b"),)
+)
+
+
+def test_a_key_of_a_group_given_leaves_out_the_default_of_the_other(started: list[Any], tmp_path: Path) -> None:
+    execute(EITHER, _kwargs(b=5))
+
+    options = _options(tmp_path / "toy" / "seed_42")
+    assert options["b"] == 5 and "a" not in options
+
+
+def test_the_command_line_decides_a_group_over_the_set_of_the_config(started: list[Any], tmp_path: Path) -> None:
+    experiment = tmp_path / "toy"
+    experiment.mkdir()
+    (experiment / "config.json").write_text(json.dumps({"workflow": "toy", "set": {"b": 5}, "scan": {}}))
+
+    execute(EITHER, _kwargs())
+    assert "a" not in _options(experiment / "seed_42")  # the set's b over the default a
+
+    execute(EITHER, _kwargs(a=2, seed=43))
+    options = _options(experiment / "seed_43")
+    assert options["a"] == 2 and "b" not in options
+
+
+def test_two_keys_of_a_group_in_one_layer_are_refused(started: list[Any]) -> None:
+    with pytest.raises(ValueError, match="a and b are given at once in the command line"):
+        execute(EITHER, _kwargs(a=2, b=5))
+    with pytest.raises(ValueError, match="a and b are given at once in the defaults of toy"):
+        Workflow(name="toy", keys=("a", "b"), defaults={"a": 1, "b": 2}, exclusive=(("a", "b"),))

@@ -6,8 +6,10 @@ import argparse
 import errno
 import fcntl
 import hashlib
+import importlib.metadata
 import itertools
 import json
+import os
 import re
 import secrets
 import subprocess
@@ -24,6 +26,7 @@ from typing import Callable, Mapping
 from raser.components import load_component
 from raser.core.device.build_device import device_json
 from raser.lifecycle import jobs
+from raser.lifecycle import scheduler
 from raser.lifecycle import slices
 from raser.supports.paths import REPO_ROOT
 from raser.supports.paths import project_path
@@ -71,8 +74,8 @@ class Workflow:
     name: str  # command words, "cce" or "telescope taichu_v1"; folder work/<device>/<words>
     job: Callable | None = None  # runs one job; receives the options as a dict
     # Instead of `job`: the Slices of slices.py that a job runs one after
-    # another. A slice is run again when what it or a slice before it reads
-    # changed; the slices before it stay as they are.
+    # another. A slice is run again when what it or a slice it reads
+    # (Slice.needs) reads changed; the slices it does not read stay as they are.
     slices: tuple = ()
     keys: tuple = ()  # the options an experiment may set
     defaults: Mapping = field(default_factory=dict)  # their values when nobody set them
@@ -93,6 +96,19 @@ class Workflow:
     # the options of a command -> its experiment folder, for an experiment that
     # is not at work/<device>/<words>, such as one inside another experiment
     folder: Callable | None = None
+    # Groups of keys of which one is given: a key of a group given in a layer
+    # (the command line, then the config's "set", then the defaults) leaves
+    # out the others of its group from the layers below; two of a group in
+    # one layer are an error.
+    exclusive: tuple = ()
+    # More than one device: name -> (its device, None for the one the command
+    # names; the positions it takes). Each device file is files[name]["device"],
+    # its options at the addresses <name>.device.... One device is the one the
+    # command names, in files["device"].
+    devices: Mapping = field(default_factory=dict)
+
+    def __post_init__(self):
+        _one_of_each_group(self.exclusive, self.defaults, f"the defaults of {self.name}")
 
     @property
     def words(self):
@@ -116,6 +132,9 @@ def run_arguments(parser, seeds=True):
         parser.add_argument("-s", "--jobs", type=int)
         parser.add_argument("--seed", type=int)
         parser.add_argument("--same-seeds", action="store_true")
+        # A job on the cluster that starts the command again goes on in the seed
+        # folder of the command, whatever names it, not in a new one.
+        parser.add_argument("--seed-folder", help=argparse.SUPPRESS)
     parser.add_argument("-b", "--batch", action="store_true")
     parser.add_argument("-mem", type=int, default=1)
     parser.add_argument("--dry-run", action="store_true")
@@ -164,6 +183,8 @@ def execute(workflow, kwargs, register=True):
     # Without seeds the point folder itself holds the run, and its one job.
     if not workflow.seeds:
         label, seed = "", None
+    elif kwargs.get("seed_folder"):
+        label, seed = kwargs["seed_folder"], _seed_of(root, kwargs["seed_folder"])
     elif kwargs["seed"] is None:
         label, seed = time.strftime("%Y_%m%d_%H%M%S"), secrets.randbits(31)
     else:
@@ -173,9 +194,11 @@ def execute(workflow, kwargs, register=True):
     commit = _commit()
     same_seeds = kwargs.get("same_seeds") or config.get("same_seeds", False)
     todo = []
-    last = len(workflow.slices)  # the slices this command runs: those before it
+    # The slices this command runs: all, or one and those it reads.
+    runs = set(range(len(workflow.slices)))
     if kwargs.get("until"):
-        last = 1 + [piece.name for piece in workflow.slices].index(kwargs["until"])
+        until = [piece.name for piece in workflow.slices].index(kwargs["until"])
+        runs = {until} | slices.upstream(workflow.slices, until)
     # A slice is held by the run of the point that differs from this one only
     # in what the slice reads: the points that hold slices of others come first.
     order = sorted(points, key=lambda name: points[name][3].index(name) if workflow.slices else 0)
@@ -185,8 +208,8 @@ def execute(workflow, kwargs, register=True):
         # The slices to run in this folder: those that an asked point has here.
         wanted = [
             piece
-            for k, piece in enumerate(workflow.slices[:last])
-            if any(points[other][3][k] == name for other in asked)
+            for k, piece in enumerate(workflow.slices)
+            if k in runs and any(points[other][3][k] == name for other in asked)
         ]
         record = {"seed": seed, "point": name, "same_seeds": same_seeds}
         if not workflow.seeds:
@@ -200,10 +223,11 @@ def execute(workflow, kwargs, register=True):
         why = _outdated(workflow, old, record) if old else None
         # With slices: when the first slice reads what it read in the old run and
         # nothing else of the record changed, the old run is not out of date;
-        # the slices from `again` on are run again in it.
-        again = slices.first_changed(workflow.slices, old, record) if old else 0
+        # the slices in `again`, those that read something else, are run again in it.
+        everything = set(range(len(workflow.slices)))
+        again = slices.to_run_again(workflow.slices, old, record) if old else everything
         rest = {key: value for key, value in record.items() if key not in SLICED}
-        if again > 0 and _outdated(workflow, {key: old.get(key) for key in rest}, rest) is None:
+        if workflow.slices and 0 not in again and _outdated(workflow, {key: old.get(key) for key in rest}, rest) is None:
             why = None
         stale = why is not None
         left = [
@@ -213,32 +237,36 @@ def execute(workflow, kwargs, register=True):
         ]
         if workflow.slices:
             to_run = slices.left(
-                workflow.slices, folder, range(kwargs.get("jobs") or 1), 0 if stale else again
+                workflow.slices, folder, range(kwargs.get("jobs") or 1), everything if stale else again
             )
             left = sorted(set().union(*(to_run[piece.name] for piece in wanted)))
         aside = "kept aside" if workflow.seeds else "replaced"
         print(f"{folder}: jobs {left}" + (f", the old run is {aside}: {why}" if stale else ""))
         for piece in wanted:
             print(f"  {piece.name:<12}" + (f"jobs {to_run[piece.name]}" if to_run[piece.name] else "reused"))
-        again = again if old and not stale else len(workflow.slices)  # nothing to run again in place
+        again = again if old and not stale else set()  # nothing to run again in place
         # What the jobs wrote into run.json themselves stays while the run is not out of date.
         if not stale:
             record = {**{key: old[key] for key in old if key not in record}, **record}
-        # The slices before the first one run here, each with the seed folder that holds it.
-        first = workflow.slices.index(wanted[0]) if wanted else 0
-        before = [
-            (piece.name, root / held_in[k] / label)
-            for k, piece in enumerate(workflow.slices[:first])
-        ]
+        # The slices that those run here read and that do not run here, each
+        # with the seed folder that holds it.
+        here = {workflow.slices.index(piece) for piece in wanted}
+        read = set().union(*(slices.upstream(workflow.slices, k) for k in here)) - here
+        before = [(workflow.slices[k].name, root / held_in[k] / label) for k in sorted(read)]
         names = ",".join(piece.name for piece in wanted)
-        # The shared slices this point reads: those before a slice it runs.
+        # The shared slices this point reads: those a slice it runs is or reads.
         shared = [
             piece
             for k, piece in enumerate(workflow.slices)
             if piece.shared
-            and any(to_run[later.name] for later in wanted if workflow.slices.index(later) >= k)
+            and any(
+                to_run[later.name]
+                for later in wanted
+                if (j := workflow.slices.index(later)) == k or k in slices.upstream(workflow.slices, j)
+            )
         ]
-        todo.append((folder, left, stale, record, workflow.slices[again:], before, names, (shared, options, files)))
+        run_again = [piece for k, piece in enumerate(workflow.slices) if k in again]
+        todo.append((folder, left, stale, record, run_again, before, names, (shared, options, files)))
     if kwargs["dry_run"]:
         return None
     if commit.endswith("+dirty"):
@@ -293,7 +321,14 @@ def execute(workflow, kwargs, register=True):
                 # The most jobs the seed folder was asked for, for raser status;
                 # it does not make a run out of date: -s 5 after -s 3 adds two.
                 record["jobs"] = max(record.get("jobs", 0), kwargs.get("jobs") or 1)
+                if kwargs["batch"]:
+                    # What a job on the cluster starts again when it is done.
+                    record["command"] = _without_seed_folder(kwargs.get("_argv") or [])
+                    record["cwd"] = os.getcwd()
+                    left = _not_submitted(folder, left, names.split(",") if workflow.slices else ["job"])
                 _write(folder / "run.json", record)
+                if not left:
+                    continue
                 try:
                     _start(workflow, {**kwargs, "job_slices": names}, folder, left, alone=len(todo) == 1)
                 except Exception as error:
@@ -403,6 +438,14 @@ def _points(workflow, kwargs, config, given) -> tuple[dict, dict]:
     One point for every combination of the scanned values. A point's folder is
     named by the scanned options that differ from the unscanned run."""
     fixed = {**workflow.defaults, **config.get("set", {}), **given}
+    # Of a group of keys of which one is given, the highest layer that gives
+    # one decides; the others of the group from the layers below are left out.
+    layers = (("the command line", given), ('the "set" of config.json', config.get("set", {})), ("the defaults", workflow.defaults))
+    for group in workflow.exclusive:
+        top = next((layer for where, layer in layers if _one_of_each_group([group], layer, where)), None)
+        for key in group:
+            if top is not None and top.get(key) is None:
+                fixed.pop(key, None)
     same_seeds = kwargs.get("same_seeds") or config.get("same_seeds", False)
     # "names" in the config gives an address a short name: the scan may be
     # written with it, and the folders are named by it.
@@ -443,8 +486,8 @@ def _points(workflow, kwargs, config, given) -> tuple[dict, dict]:
                 read = {
                     key: v
                     for key, v in values.items()
-                    if (owner := slices.owner(workflow.slices, key)) <= k
-                    or (not same_seeds and workflow.slices[owner].new_events)
+                    if slices.reads(workflow.slices, key, k)
+                    or (not same_seeds and any(workflow.slices[j].new_events for j in slices.owners(workflow.slices, key)))
                 }
                 held_in.append(name if len(read) == len(values) else point(read))
         return name
@@ -459,7 +502,10 @@ def _point(workflow, kwargs, options) -> tuple[dict, dict]:
 
     # The json files the run uses: the device, and the files its options name.
     files = {}
-    if workflow.device:
+    if workflow.device and len(workflow.devices) > 1:
+        for name, (device, _) in workflow.devices.items():
+            files[name] = {"device": device_json(kwargs["det_name"] if device is None else device)}
+    elif workflow.device:
         files["device"] = device_json(kwargs["det_name"])
     for kind, key in workflow.components.items():
         read = workflow.readers.get(kind)
@@ -490,11 +536,11 @@ SLICED = ("options", "files", "slices")  # the part of a record that the slices 
 
 
 def _read_by(workflow, kwargs, given, k) -> dict:
-    """The options and files that the slices up to the k-th read, when the
-    options `given` were set. The options of the later slices are not given
-    here: the files they name are left out, and a value they would write into
-    a file stays as the file has it."""
-    mine = {key for key in [*given, *workflow.keys] if slices.owner(workflow.slices, key) <= k}
+    """The options and files that the k-th slice reads, itself or through the
+    slices it reads, when the options `given` were set. The options of the
+    other slices are not given here: the files they name are left out, and a
+    value they would write into a file stays as the file has it."""
+    mine = {key for key in [*given, *workflow.keys] if slices.reads(workflow.slices, key, k)}
     named = {kind: key for kind, key in workflow.components.items() if key in mine}
     options, files = _point(
         replace(workflow, components=named),
@@ -521,6 +567,12 @@ def _start(workflow, kwargs, folder, left, alone) -> None:
     if single:  # one point among several: a process of its own, as on the cluster
         _own_process(workflow, kwargs, [*kwargs["_entry_command_prefix"], *tail, "--job-dir", str(folder)])
         return
+    names = kwargs["job_slices"].split(",") if kwargs.get("job_slices") else ["job"]
+    if kwargs["batch"] and os.environ.get("RASER_SUBMIT_QUEUE"):
+        print(
+            "the jobs go to the queue the host submits: a job that waits for others is not "
+            "started again by itself; run the command again when those are done"
+        )
     jobs.run_indexed_jobs(
         kwargs["_entry_command_prefix"],
         [*tail, "--job-dir", str(folder)],
@@ -530,6 +582,7 @@ def _start(workflow, kwargs, folder, left, alone) -> None:
         destination=workflow.words[0],
         indices=left,
         log_folder=None if kwargs["batch"] else Path(folder) / "batch",
+        submitted=(lambda index, job: _note_submitted(folder, index, names, job)) if kwargs["batch"] else None,
     )
 
 
@@ -620,6 +673,8 @@ def _run_one_job(workflow, kwargs, folder, index):
             seed()
         workflow.job(options)
         _done(folder, index).touch()
+        _submitted(folder, index, "job").unlink(missing_ok=True)
+        _start_again(workflow, record, folder, progress=True)
         return
     # The seed folder of each slice: the one of this run in the point that holds it.
     root = folder.parent if workflow.seeds else folder
@@ -633,8 +688,111 @@ def _run_one_job(workflow, kwargs, folder, index):
         if workflow.seeds:
             seed(piece.name)
 
+    marked = {name for name in wanted if slices.mark(folders[name], index, name).exists()}
     if slices.run(workflow.slices, folders, index, options, wanted, before):
         _done(folder, index).touch()
+    now = {name for name in wanted if slices.mark(folders[name], index, name).exists()}
+    for name in now:
+        _submitted(folder, index, name).unlink(missing_ok=True)
+    _start_again(workflow, record, folder, progress=bool(now - marked))
+
+
+def _submitted(folder, index, name) -> Path:
+    """The record that the slice `name` of a job was submitted to the cluster."""
+    return Path(folder) / "batch" / f"{name}_{index}.submitted"
+
+
+def _note_submitted(folder, index, names, job) -> None:
+    """Record that a job was submitted for its slices `names`: what the
+    scheduler named it and when. A job queued for the host has no name yet:
+    nothing is recorded, and nothing starts the command again for it."""
+    if job is None:
+        return
+    for name in names:
+        try:
+            handle = os.open(_submitted(folder, index, name), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            continue
+        with os.fdopen(handle, "w") as file:
+            file.write(json.dumps({"job": job, "time": time.strftime("%Y-%m-%d %H:%M:%S")}) + "\n")
+
+
+def _not_submitted(folder, left, names) -> list[int]:
+    """The jobs of `left` to submit: not those already submitted for a slice
+    they would run. On the login node the scheduler is asked about each: one
+    it no more holds failed, its record goes and it is submitted again; one
+    it cannot be asked about stays as it is. A job on the cluster that
+    starts the command again submits only the jobs never submitted."""
+    on_cluster = bool(os.environ.get("RASER_CLUSTER_JOB"))
+    asked: dict = {}
+    kept = []
+    for index in left:
+        records = [path for name in names if (path := _submitted(folder, index, name)).is_file()]
+        if not records:
+            kept.append(index)
+            continue
+        if on_cluster:
+            continue
+        job = json.loads(records[0].read_text())["job"]
+        if job not in asked:
+            asked[job] = scheduler.job_alive(job)
+        if asked[job] is False:
+            print(f"{folder}: job {index} ({job}) is no more on the cluster: it failed and is submitted again")
+            for path in records:
+                path.unlink(missing_ok=True)
+            kept.append(index)
+        elif asked[job] is None:
+            print(f"{folder}: job {index} ({job}): the scheduler cannot be asked; left as it is")
+    if len(kept) < len(left):
+        print(f"{folder}: jobs {sorted(set(left) - set(kept))} are submitted already")
+    return kept
+
+
+def _start_again(workflow, record, folder, progress) -> None:
+    """On the cluster, after a job that wrote a mark it had not: the command
+    of the run again, in the same seed folder, so that the jobs that wait
+    for this one are submitted. As many starts deep as the chain has slices,
+    no more."""
+    if not os.environ.get("RASER_CLUSTER_JOB") or not progress or not record.get("command"):
+        return
+    depth = int(os.environ.get("RASER_RESUBMIT_DEPTH", "0"))
+    if depth >= max(1, len(workflow.slices)):
+        print(f"not starting the command again: {depth} starts deep, as many as the slices of the chain")
+        return
+    words = [*record["command"], *(["--seed-folder", folder.name] if workflow.seeds else [])]
+    print("starting the command again: raser " + " ".join(words))
+    environment = {**os.environ, "RASER_RESUBMIT_DEPTH": str(depth + 1)}
+    # Another job that ended at the same time may hold the folders: try again a few times.
+    for attempt in range(_STARTS):
+        if attempt:
+            time.sleep(_PAUSE)
+        started = subprocess.run([sys.executable, "-m", "raser.cli.raser", *words], cwd=record["cwd"], env=environment, check=False)
+        if getattr(started, "returncode", 0) == 0:
+            return
+    print(f"the command did not start again in {_STARTS} tries: give it again when the jobs it waits for are done")
+
+
+_STARTS, _PAUSE = 4, 30  # tries to start a command again on the cluster, and seconds between
+
+
+def _without_seed_folder(argv) -> list[str]:
+    """The words of a command without --seed-folder and its folder."""
+    words, skip = [], False
+    for word in argv:
+        if skip:
+            skip = False
+        elif word == "--seed-folder":
+            skip = True
+        elif not word.startswith("--seed-folder="):
+            words.append(word)
+    return words
+
+
+def _seed_of(root, label) -> int:
+    """The seed of the seed folder `label` of the experiment in `root`."""
+    for path in sorted(Path(root).glob(f"**/{label}/run.json")):
+        return int(json.loads(path.read_text())["seed"])
+    raise ValueError(f"{root}: no seed folder {label} to go on in")
 
 
 def _done(folder, index) -> Path:
@@ -645,6 +803,18 @@ def _label(key, names) -> str:
     """A scanned option in the name of a folder: the name the config gives it,
     else the last two steps of an address, else the option itself."""
     return names.get(key) or ".".join(key.split(".")[-2:])
+
+
+def _one_of_each_group(groups, layer, where) -> bool:
+    """Whether `layer` gives a key of the one group in `groups`; two keys of
+    a group in it are an error that names them and `where` they are."""
+    gives = False
+    for group in groups:
+        present = [key for key in group if layer.get(key) is not None]
+        if len(present) > 1:
+            raise ValueError(f"{present[0]} and {present[1]} are given at once in {where}; give one of them")
+        gives = gives or bool(present)
+    return gives
 
 
 # The text a value names a folder with may hold only these.
@@ -692,7 +862,13 @@ def _write(path, content) -> None:
 
 
 def _commit() -> str:
-    """The commit of the code; +dirty when files differ from it or it is unknown."""
+    """The commit of the code; +dirty when files differ from it or it is unknown.
+    Installed as a package, raser has no commit: the version of the package."""
+    if REPO_ROOT is None:
+        try:
+            return f"raser {importlib.metadata.version('raser')}"
+        except importlib.metadata.PackageNotFoundError:
+            return "unknown+dirty"
 
     def git(*words):
         command = ["git", "-C", str(REPO_ROOT), *words]
