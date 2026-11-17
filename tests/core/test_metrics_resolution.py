@@ -47,6 +47,15 @@ def test_core_width_is_the_width_of_the_core_under_a_wide_tail() -> None:
     assert 0.9 * 20000 < width["window_events"] < 20000
 
 
+def test_width_of_a_few_values_is_the_width_of_their_gaussian() -> None:
+    # 300 points of 25 events each; the sigma of 25 values scatters by about 15 %
+    sigmas = np.array([core_width(np.random.default_rng(seed).normal(0.0, 1.0, 25))["sigma"] for seed in range(300)])
+
+    assert np.median(sigmas) == pytest.approx(1.0, abs=0.05)
+    assert np.mean(sigmas > 1.5) < 0.1
+    assert sigmas.max() < 2.5
+
+
 def test_first_window_with_too_few_values_is_an_error() -> None:
     values = np.random.default_rng(3).normal(0.0, 1.0, 100)
     inside = int(np.sum((values >= 1.5) & (values <= 4.0)))

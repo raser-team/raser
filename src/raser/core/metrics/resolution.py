@@ -93,8 +93,9 @@ def core_width(values, window=None):
     if window is None:
         median = np.median(values)
         deviation = np.median(np.abs(values - median))
-        low = max(median - 8 * deviation, values.min())
-        high = min(median + 8 * deviation, values.max())
+        # not cut to the smallest and largest value: a window that ends
+        # at the values themselves looks flat to the fit of few values
+        low, high = median - 8 * deviation, median + 8 * deviation
     else:
         low, high = window
     if not low < high:
