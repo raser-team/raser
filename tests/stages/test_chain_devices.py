@@ -89,3 +89,15 @@ def test_raser_status_lists_the_slices_of_every_position(two: dict[str, Any]) ->
 
     assert set(states) == {piece.name for piece in two["workflow"].slices}
     assert all(by_state["done"] == [0] for by_state in states.values())
+
+
+def test_the_field_of_each_device_is_stamped_as_that_device_sees_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    from raser.stages import field
+
+    monkeypatch.setattr(field, "stamp", lambda options, files: f"{files['device']['det_name']} at {options.get('voltage')}")
+    pieces = {piece.name: piece for piece in chain.expand(DEVICES)}
+    files = {"A": {"device": {"det_name": "devA"}}, "B": {"device": {"det_name": "devB"}}}
+    options = {"A.voltage": 100.0, "B.voltage": 200.0}
+
+    assert pieces["field.A"].shared.stamp(options, files) == "devA at 100.0"
+    assert pieces["field.B"].shared.stamp(options, files) == "devB at 200.0"

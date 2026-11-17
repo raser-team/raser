@@ -167,6 +167,7 @@ def _shared_field(device):
     return Shared(
         ready=lambda options, files: field.ready(*seen(options, files)),
         start=lambda kwargs, options, files: field.start(kwargs, *seen(options, files)),
+        stamp=lambda options, files: field.stamp(*seen(options, files)),
     )
 
 
