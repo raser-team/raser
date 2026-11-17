@@ -16,7 +16,8 @@ Datasets, one value per deposit:
     t_fwhm    FWHM [s] of the Gaussian spread of the times, around t, at which
               the pairs of the deposit are made; without it they are made at t
     t         time since the primary was generated [s]
-    e         deposited energy [MeV]
+    e         deposited energy [MeV]; of a laser, the pairs times the pair
+              energy of the material, not the energy of the absorbed light
     pairs     electron-hole pairs the deposit created
 
 Attributes of the file: generated_events, the events the source generated;
