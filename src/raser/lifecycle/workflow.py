@@ -227,13 +227,15 @@ def execute(workflow, kwargs, register=True):
         record = json.loads(json.dumps(record))
         old = _read(folder / "run.json")
         why = _outdated(workflow, old, record) if old else None
-        # With slices: when the first slice reads what it read in the old run and
-        # nothing else of the record changed, the old run is not out of date;
-        # the slices in `again`, those that read something else, are run again in it.
+        # With slices: when some slice of the folder, a shared one aside, reads
+        # what it read in the old run and nothing else of the record changed,
+        # the old run is not out of date; the slices in `again`, those that read
+        # something else, are run again in it.
         everything = set(range(len(workflow.slices)))
         again = slices.to_run_again(workflow.slices, old, record) if old else everything
+        own = {k for k, piece in enumerate(workflow.slices) if not piece.shared}
         rest = {key: value for key, value in record.items() if key not in SLICED}
-        if workflow.slices and 0 not in again and _outdated(workflow, {key: old.get(key) for key in rest}, rest) is None:
+        if workflow.slices and not own <= again and _outdated(workflow, {key: old.get(key) for key in rest}, rest) is None:
             why = None
         stale = why is not None
         left = [

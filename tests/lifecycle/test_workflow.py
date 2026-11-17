@@ -1521,6 +1521,26 @@ def test_with_same_seeds_a_point_whose_two_roots_are_held_by_two_others_runs_eac
     assert (tmp_path / "toy" / "y_2" / "seed_42" / "run.json").exists()
 
 
+def test_an_option_of_one_of_two_roots_runs_that_root_again_in_place_and_not_the_other(
+    started: list[Any], seeded: list[int], tmp_path: Path
+) -> None:
+    ran: list[tuple[str, Any]] = []
+
+    def piece(name: str, key: str) -> Slice:
+        return Slice(name, lambda options: ran.append((name, options[key])), keys=(key,), needs=())
+
+    workflow = Workflow(
+        name="toy", slices=(piece("a", "x"), piece("b", "y")), keys=("x", "y"), defaults={"x": 1, "y": 1}, device=False
+    )
+    execute(workflow, _kwargs())
+    ran.clear()
+
+    execute(workflow, _kwargs(x=2))
+
+    assert ran == [("a", 2)]
+    assert _kept(tmp_path / "toy") == []
+
+
 # a and b: one of them is given, a by default
 EITHER = Workflow(
     name="toy", job=lambda options: None, keys=("a", "b"), defaults={"a": 1}, device=False, exclusive=(("a", "b"),)
