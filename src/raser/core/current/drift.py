@@ -22,6 +22,23 @@ class Drifted:
     reasons: list  # why each stopped
 
 
+@dataclass
+class Cluster:
+    """A cluster of carriers on its way through the detector."""
+
+    charge: float  # number of carriers with their sign
+    position: list  # x, y, z [um]
+    t: float  # [s]
+    start: float  # when it set off [s]
+    path: list  # the points (x, y, z [um], t [s]) it has passed, the start first
+    reason: str | None = None  # why it stopped; None while it drifts
+
+    @classmethod
+    def starting(cls, x, y, z, t, charge):
+        """A cluster of `charge` carriers at x, y, z [um] and time t [s]."""
+        return cls(charge, [x, y, z], t, t, [(x, y, z, t)])
+
+
 def drift(x, y, z, t, charge, my_d, my_f, mobility, delta_t, diffusion=True):
     """Path of one cluster of carriers and why it stopped.
 
@@ -45,55 +62,64 @@ def drift(x, y, z, t, charge, my_d, my_f, mobility, delta_t, diffusion=True):
     A field that is not finite where the cluster is raises ValueError,
     which names the position.
     """
-    size = (my_d.l_x, my_d.l_y, my_d.l_z)
-    sign = 1 if charge > 0 else -1
-    position = [x, y, z]
-    path = [(x, y, z, t)]
-    start = t
-    while True:
-        if t - start >= max_drift_time:
-            reason = "time_out"
-            break
-        if my_f.get_conductive(*position):
-            reason = "collected"
-            break
-        try:
-            field = my_f.get_e_field_cached(*position)
-        except ValueError:
-            reason = "no_field"
-            break
-        if not all(math.isfinite(component) for component in field):
-            raise ValueError(
-                "the field at x, y, z = {:.4f}, {:.4f}, {:.4f} um is {} V/cm: "
-                "a carrier cannot drift in it".format(*position, field)
-            )
-        intensity = math.hypot(*field)
-        if intensity <= min_intensity:
-            reason = "low_field"
-            break
-        doping = float(my_f.get_doping_cached(*position))
-        mu = mobility(my_d.temperature, doping, charge, intensity)
-        step = [sign * component * mu * delta_t * 1e4 for component in field]  # um
-        if diffusion:
-            sigma = math.sqrt(2.0 * kboltz * my_d.temperature * mu * delta_t) * 1e4  # um
-            generator = stream("drift")
-            step = [move + generator.Gaus(0.0, sigma) for move in step]
+    cluster = Cluster.starting(x, y, z, t, charge)
+    while cluster.reason is None:
+        advance(cluster, my_d, my_f, mobility, delta_t, diffusion)
+    return np.array(cluster.path), cluster.reason
 
-        # the share of the step that lies inside the device
-        inside = 1.0
-        for here, move, length in zip(position, step, size):
-            if here + move < 0:
-                inside = min(inside, -here / move)
-            elif here + move > length:
-                inside = min(inside, (length - here) / move)
-        if inside > 0:
-            position = [here + move * inside for here, move in zip(position, step)]
-            t += delta_t * inside
-            path.append((*position, t))
-        if inside < 1:
-            reason = "left_device"
-            break
-    return np.array(path), reason
+
+def advance(cluster, my_d, my_f, mobility, delta_t, diffusion=True):
+    """One step of `drift` for a cluster that has not stopped.
+
+    Either the cluster moves by one step, of `delta_t` or less where it
+    crosses the surface of `my_d`, and its path gains the point it reaches;
+    or it stops where it is and `reason` says why. The arguments and the
+    reasons are those of `drift`.
+    """
+    size = (my_d.l_x, my_d.l_y, my_d.l_z)
+    sign = 1 if cluster.charge > 0 else -1
+    position = cluster.position
+    if cluster.t - cluster.start >= max_drift_time:
+        cluster.reason = "time_out"
+        return
+    if my_f.get_conductive(*position):
+        cluster.reason = "collected"
+        return
+    try:
+        field = my_f.get_e_field_cached(*position)
+    except ValueError:
+        cluster.reason = "no_field"
+        return
+    if not all(math.isfinite(component) for component in field):
+        raise ValueError(
+            "the field at x, y, z = {:.4f}, {:.4f}, {:.4f} um is {} V/cm: "
+            "a carrier cannot drift in it".format(*position, field)
+        )
+    intensity = math.hypot(*field)
+    if intensity <= min_intensity:
+        cluster.reason = "low_field"
+        return
+    doping = float(my_f.get_doping_cached(*position))
+    mu = mobility(my_d.temperature, doping, cluster.charge, intensity)
+    step = [sign * component * mu * delta_t * 1e4 for component in field]  # um
+    if diffusion:
+        sigma = math.sqrt(2.0 * kboltz * my_d.temperature * mu * delta_t) * 1e4  # um
+        generator = stream("drift")
+        step = [move + generator.Gaus(0.0, sigma) for move in step]
+
+    # the share of the step that lies inside the device
+    inside = 1.0
+    for here, move, length in zip(position, step, size):
+        if here + move < 0:
+            inside = min(inside, -here / move)
+        elif here + move > length:
+            inside = min(inside, (length - here) / move)
+    if inside > 0:
+        cluster.position = [here + move * inside for here, move in zip(position, step)]
+        cluster.t += delta_t * inside
+        cluster.path.append((*cluster.position, cluster.t))
+    if inside < 1:
+        cluster.reason = "left_device"
 
 
 def induced_charges(path, charge, my_f, electrode, offset=(0.0, 0.0)):
