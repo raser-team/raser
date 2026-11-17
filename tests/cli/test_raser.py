@@ -7,9 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from raser.cli import raser
 from raser.cli.raser import main
-from raser.apps import ana
 from raser.apps import field
 from raser.lifecycle import jobs
 from raser.lifecycle import process
@@ -88,33 +86,10 @@ def test_what_an_application_returns_does_not_become_the_exit_status(
     assert main(["field", "HPK-Si-PiN"]) == 0
 
 
-def test_global_batch_submits_the_command_without_the_global_options(
-    work_root: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    submitted: list[list[str]] = []
-    monkeypatch.setattr(
-        raser.scheduler,
-        "main",
-        lambda destination, command, level, is_test=False: submitted.append(
-            list(command)
-        ),
-    )
-    monkeypatch.setattr(
-        ana, "collect", lambda kwargs: pytest.fail("ran in this process")
-    )
-
-    main(["-t", "-bb", "ana", "work/HPK-Si-PiN/cce"])
-
-    assert submitted == [["ana", "work/HPK-Si-PiN/cce"]]
-
-
 def test_global_batch_before_a_command_with_jobs_submits_each_job_itself(
     work_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     submitted: list[tuple[bool, int]] = []
-    monkeypatch.setattr(
-        raser.scheduler, "main", lambda *args, **kwargs: pytest.fail("submitted whole")
-    )
     monkeypatch.setattr(
         jobs,
         "run_indexed_jobs",

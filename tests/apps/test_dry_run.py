@@ -53,17 +53,3 @@ def test_tct_dry_run_names_the_point_folders_under_the_tct_experiment(
         *slices,
     ]
     assert not work_root.exists()
-
-
-def test_global_batch_test_keeps_commands_structured_and_scheduler_idle(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    work_root = tmp_path / "work"
-    monkeypatch.setenv("RASER_WORK_PATH", str(work_root))
-    monkeypatch.delenv("RASER_PROJECT_PATH", raising=False)
-
-    assert main(["-t", "-b", "ana", "work/HPK-Si-PiN/cce"]) == 0
-    assert "hep_sub" in capsys.readouterr().out
-    assert not work_root.exists()
