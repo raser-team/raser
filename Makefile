@@ -23,6 +23,7 @@ format:
 
 lint:
 	python -m ruff check $(CHECK_PATHS)
+	lint-imports
 
 lint-all:
 	python -m ruff check $(ALL_CHECK_PATHS)

@@ -39,6 +39,7 @@ dependencies = [
 
 [dependency-groups]
 test = [
+  "import-linter>=2.16",
   "mypy>=2",
   "pytest>=7.4,<8",
   "ruff>=0.15",
@@ -80,6 +81,72 @@ markers = [
   "ngspice: requires ngspice executable",
   "hardware: requires lab hardware",
   "slow: long-running simulation or scan",
+]
+
+[tool.importlinter]
+root_package = "raser"
+
+# The imports listed under ignore_imports are known and are to go: when one
+# is gone its line must go too, or lint-imports fails.
+
+[[tool.importlinter.contracts]]
+name = "The chain: a stage may use the stages before it, not those after it"
+type = "layers"
+layers = [
+  "raser.core.readout",
+  "raser.core.current",
+  "raser.core.interaction",
+  "raser.core.field",
+  "raser.core.device",
+]
+ignore_imports = [
+  "raser.core.field.solver_section -> raser.core.current.model",
+  "raser.core.field.devsim_field -> raser.core.current.model",
+  "raser.core.device.build_device -> raser.core.current.model",
+]
+
+[[tool.importlinter.contracts]]
+name = "Nothing below the apps imports an app"
+type = "forbidden"
+source_modules = [
+  "raser.core",
+  "raser.components",
+  "raser.supports",
+  "raser.lifecycle",
+]
+forbidden_modules = ["raser.apps"]
+
+[[tool.importlinter.contracts]]
+name = "The core does not know how it is run"
+type = "forbidden"
+source_modules = ["raser.core"]
+forbidden_modules = ["raser.lifecycle", "raser.cli"]
+ignore_imports = [
+  "raser.core.interaction.geant4.g4ppyy_runtime -> raser.lifecycle.process",
+]
+
+[[tool.importlinter.contracts]]
+name = "No experiment imports another"
+type = "independence"
+modules = [
+  "raser.apps.ana",
+  "raser.apps.bmos",
+  "raser.apps.cce",
+  "raser.apps.field",
+  "raser.apps.lumi",
+  "raser.apps.signal",
+  "raser.apps.tct",
+  "raser.apps.telescope",
+  "raser.apps.timeres",
+]
+ignore_imports = [
+  "raser.apps.bmos -> raser.apps.signal",
+  "raser.apps.cce -> raser.apps.signal",
+  "raser.apps.timeres -> raser.apps.signal",
+  "raser.apps.lumi -> raser.apps.signal",
+  "raser.apps.lumi.signals -> raser.apps.signal.gen_signal",
+  "raser.apps.lumi.deposits -> raser.apps.signal.gen_signal",
+  "raser.apps.tct.tct_signal -> raser.apps.signal.gen_signal",
 ]
 
 [tool.mypy]
