@@ -22,8 +22,12 @@ Datasets, one value per deposit:
 Attributes of the file: generated_events, the events the source generated;
 recorded_events, those of them the file holds; generated_fraction, the part
 of what the source emits that was generated, such as the directions within
-the cone of a radioactive source; and edep_min, edep_max [MeV] where the
-window has that bound.
+the cone of a radioactive source (1 for a beam or a toy MIP, which emit
+nothing else); and edep_min, edep_max [MeV] where the window has that bound.
+The share of the generated events that was recorded is not
+generated_fraction but recorded_events / generated_events; the events
+recorded per emission of the source are recorded_events / generated_events
+* generated_fraction.
 """
 
 from __future__ import annotations
