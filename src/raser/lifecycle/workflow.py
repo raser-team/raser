@@ -96,22 +96,27 @@ class Workflow:
         return self.name.split()
 
     def attach(self, parser):
-        if self.seeds:
-            parser.add_argument("-s", "--jobs", type=int)
-            parser.add_argument("--seed", type=int)
-            parser.add_argument("--same-seeds", action="store_true")
-        parser.add_argument("-b", "--batch", action="store_true")
-        parser.add_argument("-mem", type=int, default=1)
-        parser.add_argument("--dry-run", action="store_true")
-        parser.add_argument("--scan", action="append", default=[])
+        run_arguments(parser, self.seeds)
         if self.slices:
-            names = [piece.name for piece in self.slices]
-            parser.add_argument("--until", choices=names, help="stop after this slice")
             parser.add_argument("--job-slices", help=argparse.SUPPRESS)
         parser.add_argument("--job-dir", help=argparse.SUPPRESS)
         parser.add_argument("--job-index", type=int, help=argparse.SUPPRESS)
         parser.set_defaults(_run=lambda kwargs: execute(self, kwargs))
         WORKFLOWS[self.name] = self
+
+
+def run_arguments(parser, seeds=True):
+    """The options of how a command runs: its jobs and their seeds, the
+    cluster, a dry run, scans. A command that runs a workflow of its own
+    gets them from `Workflow.attach`."""
+    if seeds:
+        parser.add_argument("-s", "--jobs", type=int)
+        parser.add_argument("--seed", type=int)
+        parser.add_argument("--same-seeds", action="store_true")
+    parser.add_argument("-b", "--batch", action="store_true")
+    parser.add_argument("-mem", type=int, default=1)
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--scan", action="append", default=[])
 
 
 def execute(workflow, kwargs):

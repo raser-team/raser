@@ -294,7 +294,7 @@ SHARED = Shared(ready=ready, start=start)
 
 def register(subparsers):
     parser = subparsers.add_parser(
-        "field", help="calculate electric fields, weighting fields, and IV/CV"
+        "field", aliases=["fld"], help="stage: the fields of a device, its weighting fields and IV/CV"
     )
     parser.add_argument("det_name", help="name of the detector")
     parser.add_argument(

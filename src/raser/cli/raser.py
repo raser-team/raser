@@ -19,15 +19,20 @@ VERSION = "5.0"
 
 APPLICATIONS = {  # command -> the module that registers it
     "ana": "raser.stages.ana",
+    "field": "raser.stages.field",
+    "deposit": "raser.stages.stage_commands",
+    "current": "raser.stages.stage_commands",
+    "readout": "raser.stages.stage_commands",
     "bmos": "raser.apps.bmos",
     "cce": "raser.bench.cce",
-    "field": "raser.stages.field",
     "cflm": "raser.apps.cflm",
     "signal": "raser.bench.signal",
     "tct": "raser.bench.tct",
     "telescope": "raser.bench.telescope",
     "timeres": "raser.bench.timeres",
 }
+# The short commands of the stages; files and folders hold the full names.
+SHORT = {"fld": "field", "dep": "deposit", "cur": "current", "rdo": "readout"}
 
 
 @contextmanager
@@ -59,7 +64,7 @@ def build_parser():
     subparsers = parser.add_subparsers(
         help="sub-command help", dest="_command", metavar="command"
     )
-    for module in APPLICATIONS.values():
+    for module in dict.fromkeys(APPLICATIONS.values()):  # a module may register several
         importlib.import_module(module).register(subparsers)
     # The component roots each command registers: `raser ana` finds the files
     # of an experiment as the command that ran it does.
@@ -84,7 +89,7 @@ def _experiment_arguments(argv):
     if (
         not config.is_file()
         or {"-h", "--help", "--version"}.intersection(argv)
-        or any(argument in APPLICATIONS for argument in argv)
+        or any(argument in APPLICATIONS or argument in SHORT for argument in argv)
     ):
         return argv
     experiment = json.loads(config.read_text(encoding="utf-8"))
@@ -105,7 +110,7 @@ def main(argv=None):
 
     parser = build_parser()
     kwargs = vars(parser.parse_args(argv))
-    command = kwargs["_command"]
+    command = SHORT.get(kwargs["_command"], kwargs["_command"])
     if command is None:
         parser.print_help()
         return 1
