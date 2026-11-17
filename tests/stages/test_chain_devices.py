@@ -56,7 +56,7 @@ def test_the_slices_of_two_devices_in_two_positions_each() -> None:
         "field.B", "current.b1", "readout.b1", "reconstruction.b1", "current.b2", "readout.b2", "reconstruction.b2",
     ]
     needs = {piece.name: piece.needs for piece in chain.expand(DEVICES)}
-    assert needs["current.b2"] == ("deposit", "field.B") and needs["readout.b2"] == ("current.b2",)
+    assert needs["current.b2"] == ("deposit", "field.B") and needs["readout.b2"] == ("current.b2", "field.B")
 
 
 def test_another_bias_of_one_device_runs_its_field_and_positions_alone_again(two: dict[str, Any]) -> None:

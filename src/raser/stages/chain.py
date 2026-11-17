@@ -22,6 +22,7 @@ KEYS = (
     "voltage",
     "irradiation",
     "amplifier",
+    "sheet_resistance",
     "threshold",
     "amplitude_threshold",
     "fractions",
@@ -70,11 +71,14 @@ def current_arguments(parser):
     parser.add_argument("-irr", "--irradiation", type=float, help="irradiation flux")
 
 
-READOUT_DEFAULTS = {"amplifier": "SantaCruz+Gali52+Termination50"}
+READOUT_DEFAULTS = {"amplifier": "SantaCruz+Gali52+Termination50", "sheet_resistance": None}
 
 
 def readout_arguments(parser):
     parser.add_argument("-amp", "--amplifier", type=str, help="amplifier")
+    parser.add_argument(
+        "--sheet-resistance", type=float, help="of the resistive layer of the device, in place of its file's [Ohm]"
+    )
 
 
 # The edge has no default: it is the edge of the pulses of this readout, as
@@ -224,15 +228,16 @@ def expand(devices=None, deposit=_deposits) -> tuple:
                     needs=("deposit", name),
                 )
             )
-            # The electronics works on what was measured: its points read the same currents.
+            # The electronics works on what was measured: its points read the same
+            # currents. It takes the circuit of the device from its field too.
             readout = f"readout.{at}" if at else "readout"
             pieces.append(
                 Slice(
                     readout,
                     partial(_waveforms, device=device if several else None, position=at) if at or several else _waveforms,
-                    keys=("amplifier",),
+                    keys=("amplifier", "sheet_resistance"),
                     new_events=False,
-                    needs=(current,),
+                    needs=(current, name),
                 )
             )
             pieces.append(

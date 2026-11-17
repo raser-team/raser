@@ -112,6 +112,15 @@ def test_a_scanned_threshold_reconstructs_the_same_waveforms_in_every_point(expe
     assert experiment["ran"].count("readout") == 1 and experiment["ran"].count("reconstruction") == 2
 
 
+def test_another_sheet_resistance_runs_the_readout_and_what_follows_it_alone(experiment: dict[str, Any]) -> None:
+    execute(experiment["workflow"], _kwargs())
+    experiment["ran"].clear()
+
+    execute(experiment["workflow"], _kwargs(sheet_resistance=1.0e5))
+
+    assert experiment["ran"] == ["readout", "reconstruction"]
+
+
 def test_a_scanned_bias_gives_every_point_its_own_deposits(experiment: dict[str, Any]) -> None:
     execute(experiment["workflow"], _kwargs(scan=["voltage=100,300"]))
 

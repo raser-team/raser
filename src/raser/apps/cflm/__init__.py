@@ -28,7 +28,7 @@ SLICES = chain.expand(DEVICES, deposit=_deposits)
 
 WORKFLOW = Workflow(
     name="cflm",
-    keys=("voltage", "irradiation", "plots", "amplifier", "threshold", "amplitude_threshold", "fractions", "edge"),
+    keys=("voltage", "irradiation", "plots", "amplifier", "sheet_resistance", "threshold", "amplitude_threshold", "fractions", "edge"),
     defaults={**chain.READOUT_DEFAULTS, **chain.RECONSTRUCTION_DEFAULTS, "plots": 0},
     in_file=chain.IN_FILE,
     slices=SLICES,
@@ -43,6 +43,7 @@ def register(subparsers):
     parser.add_argument("-vol", "--voltage", type=float, help="bias voltage")
     parser.add_argument("-irr", "--irradiation", type=float, help="irradiation flux")
     parser.add_argument("-amp", "--amplifier", type=str, help="amplifier")
+    parser.add_argument("--sheet-resistance", type=float, help="of the resistive layer of the pads [Ohm]")
     chain.reconstruction_arguments(parser)
     WORKFLOW.attach(parser)
     parser.set_defaults(_project="det_name")
