@@ -1,5 +1,7 @@
 """Impact ionization coefficients in 1/cm, of the field E in V/cm and the temperature T in K."""
 
+import math
+
 from .formula import Formula
 
 # van Overstraeten and de Man, Solid-State Electronics 13 (1970) 583: a
@@ -40,3 +42,50 @@ VAN_OVERSTRAETEN = {
         b_high=1.693e6,
     ),
 }
+
+
+# Hatakeyama et al., Appl. Phys. Lett. 85 (2004) 1380: the anisotropic
+# Chynoweth law of 4H-SiC for a field `angle` off the <0001> axis, from the
+# coefficients along <0001> and <11-20>, with the temperature dependence
+# of the optical phonon energy hbarOmega [eV] (k_T0 = k T0 [eV]). For a
+# field at a fixed angle B and a are numbers; b depends on the field
+# through its second term. Below 1e4 V/cm the coefficient is taken to be
+# zero.
+_HATAKEYAMA = "ifelse(E > 1e4, gamma*a*exp(-gamma*b/E), 0)"
+_HATAKEYAMA_TEMPERATURE = {
+    "gamma": "tanh(hbarOmega/(2*k_T0))/tanh(hbarOmega/(2*k_T0*T/T0))",
+    "hbarOmega": 0.19,
+    "k_T0": 0.0257,
+    "T0": 300.0,
+}
+_HATAKEYAMA_COEFFICIENTS = {
+    "electron": {"a_0001": 1.76e8, "a_1120": 2.10e7, "b_0001": 3.30e7, "b_1120": 1.70e7},
+    "hole": {"a_0001": 3.41e8, "a_1120": 2.96e7, "b_0001": 2.50e7, "b_1120": 1.60e7},
+}
+
+
+def hatakeyama(carrier, angle_deg):
+    """The Hatakeyama coefficient of `carrier` for a field `angle_deg` off <0001>."""
+    c = _HATAKEYAMA_COEFFICIENTS[carrier]
+    along_0001 = math.cos(math.radians(angle_deg))
+    along_1120 = math.sin(math.radians(angle_deg))
+    # B, a and A of the paper, the field divided out of them
+    big_b = 1 / math.pow(math.pow(along_1120 / c["b_1120"], 2) + math.pow(along_0001 / c["b_0001"], 2), 0.5)
+    a = math.pow(c["a_1120"], math.pow(big_b * along_1120 / c["b_1120"], 2)) * math.pow(
+        c["a_0001"], math.pow(big_b * along_0001 / c["b_0001"], 2)
+    )
+    big_a = math.log(c["a_0001"] / c["a_1120"])
+    b = "B*pow(1 - pow(A, 2)*pow(B*along_1120*along_0001*E/(b_1120*b_0001), 2), 0.5)"
+    return Formula(
+        _HATAKEYAMA,
+        ["E", "T"],
+        **_HATAKEYAMA_TEMPERATURE,
+        a=a,
+        b=b,
+        B=big_b,
+        A=big_a,
+        along_1120=along_1120,
+        along_0001=along_0001,
+        b_1120=c["b_1120"],
+        b_0001=c["b_0001"],
+    )
