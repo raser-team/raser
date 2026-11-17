@@ -33,3 +33,13 @@ def test_a_pair_made_inside_a_collection_region_arrives_in_the_bin_its_time_lies
     assert t0 == 0.0
     assert arrived[0] == pytest.approx(2.0)
     assert arrived[1:].sum() == pytest.approx(0.0)
+
+
+def test_pixels_narrower_than_the_device_collect_where_they_are_centred() -> None:
+    # two pixels of 10 um centred on a device 40 um wide: their middles at 15 and 25 um
+    seeding.seed_generators(1)
+    device = _pixels(l_x=40.0, l_y=10.0, p_x=10.0, p_y=10.0, x_ele_num=2, y_ele_num=1, e_width_x=4.0, e_width_y=4.0)
+
+    _, _, charge = collect_by_diffusion(device, [1.0], [[25.0, 5.0, 5.0, 0.0]], 1e-12, 1e-12)
+
+    assert charge / -ELEMENTARY_CHARGE == pytest.approx([0.0, 1.0])

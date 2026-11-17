@@ -47,7 +47,8 @@ def collect_by_diffusion(my_d, pairs, positions, window, step):
             mean current of every pixel in every bin [A], negative: electrons
         charge : (electrodes,) array
             net charge of every pixel [C]
-    The pixel i along x and j along y is the electrode i * y_ele_num + j.
+    The pixel i along x and j along y is the electrode i * y_ele_num + j;
+    the pixels are centred on the device.
     """
     if not my_d.is_pixel:
         raise ValueError(f"{my_d.det_name} is not a pixel device")
@@ -56,6 +57,9 @@ def collect_by_diffusion(my_d, pairs, positions, window, step):
             raise ValueError(f"the device file of {my_d.det_name} has no {key} [um]")
     low_x = (my_d.p_x - my_d.e_width_x) / 2
     low_y = (my_d.p_y - my_d.e_width_y) / 2
+    # the pixels are centred on the device, as CalCurrent.electrode_under has them
+    first_x = (my_d.l_x - my_d.x_ele_num * my_d.p_x) / 2
+    first_y = (my_d.l_y - my_d.y_ele_num * my_d.p_y) / 2
 
     neff = float(my_d.doping["Donors"]) - float(my_d.doping["Acceptors"])
     mobility = Material(my_d.material).cal_mobility(my_d.temperature, neff, -1, 0)
@@ -76,10 +80,10 @@ def collect_by_diffusion(my_d, pairs, positions, window, step):
         for k in range(steps + 1):
             if not (0 < x < my_d.l_x and 0 < y < my_d.l_y):
                 break  # left through the side
-            i, j = int(x // my_d.p_x), int(y // my_d.p_y)
-            in_x = low_x < x - i * my_d.p_x < my_d.p_x - low_x
-            in_y = low_y < y - j * my_d.p_y < my_d.p_y - low_y
-            if in_x and in_y and i < my_d.x_ele_num and j < my_d.y_ele_num:
+            i, j = math.floor((x - first_x) / my_d.p_x), math.floor((y - first_y) / my_d.p_y)
+            in_x = low_x < x - first_x - i * my_d.p_x < my_d.p_x - low_x
+            in_y = low_y < y - first_y - j * my_d.p_y < my_d.p_y - low_y
+            if in_x and in_y and 0 <= i < my_d.x_ele_num and 0 <= j < my_d.y_ele_num:
                 electrons[i * my_d.y_ele_num + j, first + k] += n_pairs
                 break
             x += generator.Gaus(0.0, sigma)
