@@ -311,7 +311,7 @@ def test_field_gives_a_row_of_strips_the_capacitances_it_stored(tmp_path):
         tmp_path / "weightingfield" / "top", "Capacitance", device.voltage
     ).with_suffix(".json")
 
-    with pytest.raises(FileNotFoundError, match="-wf"):
+    with pytest.raises(FileNotFoundError, match="-wf.*imported from TCAD"):
         field_circuit(tmp_path, device)
 
     stored.parent.mkdir(parents=True)

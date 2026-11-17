@@ -124,9 +124,12 @@ def field_circuit(folder, my_d):
         ).with_suffix(".json")
         if not path.is_file():
             raise FileNotFoundError(
-                f"the field in {folder} stored no capacitances of the row of "
-                f"{my_d.det_name} at {my_d.voltage} V ({path}); solve its weighting "
-                f"field again with `raser field {my_d.det_name} -wf`"
+                f"the field in {folder} has no capacitances between the strips of "
+                f"{my_d.det_name} at {my_d.voltage} V: {path} is missing, and the "
+                "readout of a row of strips needs it. A field solved by raser "
+                f"stores it with its weighting field: `raser field {my_d.det_name} "
+                "-wf`. A field imported from TCAD (-ext) does not store it yet, so "
+                "the strips of an imported field cannot be read out"
             )
         row = json.loads(path.read_text(encoding="utf-8"))
     capacitance = None
