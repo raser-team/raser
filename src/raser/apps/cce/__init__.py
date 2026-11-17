@@ -11,16 +11,15 @@ DEFAULTS = json.loads((Path(__file__).parent / "charge_collection.json").read_te
 
 WORKFLOW = Workflow(
     name="cce",
-    keys=signal.KEYS + ("g4setup",),
+    keys=signal.KEYS,
     defaults={
         "source": DEFAULTS["source"],
-        "tilt": 0,
         "events_per_job": 10000,
         "plots": 0,
         "amplifier": DEFAULTS["afe"],
         "g4setup": DEFAULTS["g4setup"],
     },
-    components={**signal.COMPONENTS, "g4setup": "g4setup"},
+    components=signal.COMPONENTS,
     in_file=signal.IN_FILE,
     slices=signal.SLICES,
     command=signal.job_command,

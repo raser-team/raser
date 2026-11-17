@@ -1,9 +1,11 @@
 {
     "name" : "Sr90",
     "kind" : "decay_source",
-    "description" : "Sr-90 beta source: every event is one electron, of Sr-90 (endpoint 0.546 MeV) or of its daughter Y-90 (endpoint 2.28 MeV) with the same chance, at the endpoint energy",
-    "par_type" : ["e-", "e-"],
-    "par_energy" : [0.546, 2.28],
+    "description" : "Sr-90 beta source: every event is one decay, of Sr-90 or of its daughter Y-90 with the same chance, on a disk 5 mm across; what the decay emits goes isotropically within 15 degrees of the axis",
+    "nuclides" : [[38, 90], [39, 90]],
     "par_in" : [0, 0, 17000],
-    "par_out" : [0, 0, -17000]
+    "par_out" : [0, 0, -17000],
+    "par_angle" : 0,
+    "par_radius" : 2500,
+    "par_cone" : 15
 }
