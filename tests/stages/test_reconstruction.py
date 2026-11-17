@@ -24,7 +24,8 @@ def _job(folder, scales, count, seed):
     for number in range(count):
         samples = [np.concatenate([np.zeros(BEFORE), scale * TRIANGLE]) for scale in scales[number % len(scales)]]
         append_waveforms(batch / "readout_0.h5", names, DT,
-                         EventWaveforms(number, starts[number] - BEFORE * DT, np.array(samples)))
+                         EventWaveforms(number, starts[number] - BEFORE * DT, np.array(samples)),
+                         pulse_edge=["falling"] * len(names))
     return starts
 
 
@@ -105,7 +106,7 @@ def test_position_reads_and_writes_the_files_of_its_own_slices(tmp_path) -> None
     batch.mkdir()
     names = {name: str(batch) for name in ("readout.left", "reconstruction.left", "readout.right", "reconstruction.right")}
     samples = np.concatenate([np.zeros(BEFORE), TRIANGLE])
-    append_waveforms(batch / "readout.left_0.h5", ["top"], DT, EventWaveforms(7, 0.0, np.array([samples])))
+    append_waveforms(batch / "readout.left_0.h5", ["top"], DT, EventWaveforms(7, 0.0, np.array([samples])), pulse_edge=["falling"])
     kwargs = {"_slice_batch_paths": names, "threshold": 3, "amplitude_threshold": 5, "fractions": FRACTIONS, "edge": "falling"}
 
     assert reconstruction.run(kwargs, "left") is None
@@ -145,7 +146,7 @@ def test_area_is_of_the_lobe_that_holds_the_peak(tmp_path) -> None:
     rng = np.random.default_rng(10)
     samples = np.concatenate([rng.normal(0.0, 1.0e-4, BEFORE), [0.0, -120.0e-3, 120.0e-3, 0.0], rng.normal(0.0, 1.0e-4, 50)])
     samples[BEFORE] = samples[BEFORE + 3] = 1.0e-3  # above the baseline on the far sides
-    append_waveforms(batch / "readout_0.h5", ["top"], DT, EventWaveforms(0, 0.0, np.array([samples])))
+    append_waveforms(batch / "readout_0.h5", ["top"], DT, EventWaveforms(0, 0.0, np.array([samples])), pulse_edge=["falling"])
 
     rows = _run(tmp_path, 50, 100).columns
 
@@ -179,7 +180,7 @@ def test_centre_of_gravity_of_a_lopsided_pulse_is_not_its_peak(tmp_path) -> None
     batch.mkdir()
     # 4, 10, 6, 4 mV above the 3 mV threshold in bins 1 ... 4 after the 200 before
     samples = np.concatenate([np.zeros(BEFORE), -1.0e-3 * np.array([0.0, 4, 10, 6, 4, 2, 0, 0])])
-    append_waveforms(batch / "readout_0.h5", ["top"], DT, EventWaveforms(0, 0.0, np.array([samples])))
+    append_waveforms(batch / "readout_0.h5", ["top"], DT, EventWaveforms(0, 0.0, np.array([samples])), pulse_edge=["falling"])
 
     rows = _run(tmp_path, 3, 5).columns
 

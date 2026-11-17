@@ -42,7 +42,7 @@ def test_a_position_with_a_deposit_drifts_its_own_and_its_readout_reads_its_curr
     write_deposits(str(tmp_path / "batch" / "deposit_0.h5"), Deposits(1, None, None, [in_a]))
     drifted: list[tuple[str, str, object]] = []
     read: list[tuple[str, str]] = []
-    device = type("Device", (), {"read_out_contact": [], "read_ele_num": 1})()
+    device = type("Device", (), {"read_out_contact": [], "read_ele_num": 1, "device_dict": {}, "irradiation_flux": 0, "voltage": 1})()
     monkeypatch.setattr(current.bdv, "Detector", lambda name, files: device)
     monkeypatch.setattr(current, "solved", lambda my_d, kwargs: None)
 
@@ -53,7 +53,10 @@ def test_a_position_with_a_deposit_drifts_its_own_and_its_readout_reads_its_curr
     monkeypatch.setattr(current, "write_induced_currents", drift)
     monkeypatch.setattr(readout.bdv, "Detector", lambda name, files: device)
     monkeypatch.setattr(readout, "electrode_names", lambda contacts, count: [])
-    monkeypatch.setattr(readout, "device_sensor", lambda my_d, names: (None, None))
+    monkeypatch.setattr(readout, "solved_field", lambda my_d, voltage, flux: None)
+    monkeypatch.setattr(readout, "field_circuit", lambda folder, my_d: (None, None, None))
+    monkeypatch.setattr(readout, "device_circuit", lambda my_d, names, *a, **k: (type("Circuit", (), {"outputs": []})(), None))
+    monkeypatch.setattr(readout, "pulse_edges", lambda my_d, chain, outputs: [])
     monkeypatch.setattr(readout, "named_chain", lambda name: None)
     monkeypatch.setattr(readout, "write_waveforms", lambda currents, out, *args, **options: read.append((currents, out)))
     batch = tmp_path / "batch"

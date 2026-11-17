@@ -1,1 +1,1 @@
-"""Read-out of a sensor: the amplifier stages, their noise and the output waveforms."""
+"""Read-out of a device: the amplifier stages, their noise and the output waveforms."""

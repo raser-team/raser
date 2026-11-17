@@ -63,7 +63,11 @@ def _job(folder, index, events, electrodes=("top",), truths=None):
             samples[-1] += 12.0e-3
         voltage = np.array([samples] * len(electrodes))
         append_waveforms(
-            batch / f"readout_{index}.h5", list(electrodes), DT, EventWaveforms(1000 * index + number, t0 - BEFORE * DT, voltage)
+            batch / f"readout_{index}.h5",
+            list(electrodes),
+            DT,
+            EventWaveforms(1000 * index + number, t0 - BEFORE * DT, voltage),
+            pulse_edge=["rising"] * len(electrodes),
         )
     write_deposits(str(batch / f"deposit_{index}.h5"), Deposits(50, None, None, deposits))
 
@@ -143,7 +147,11 @@ def test_selected_event_without_a_time_is_counted_as_missing(tmp_path) -> None:
     # in one more event the pulse is in the first bin: nothing before it to cross
     samples = OFFSET + np.concatenate([[-10.0e-3], np.zeros(BEFORE + 12)])
     append_waveforms(
-        tmp_path / "batch" / "readout_0.h5", ["top"], DT, EventWaveforms(0, 0.0, np.array([samples]))
+        tmp_path / "batch" / "readout_0.h5",
+        ["top"],
+        DT,
+        EventWaveforms(0, 0.0, np.array([samples])),
+        pulse_edge=["rising"],
     )
 
     result = point_resolution(_reconstructed([(tmp_path, 0)]))
