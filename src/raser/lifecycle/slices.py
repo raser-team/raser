@@ -119,7 +119,7 @@ def forget(slices, folder) -> None:
             path.unlink()
 
 
-def run(slices, folders, index, options, wanted, before) -> bool:
+def run(slices, folders, index, options, wanted, before, publish=lambda piece: True) -> bool:
     """Run the `wanted` slices of one job that have no mark, in order; True
     when every slice of the job is done.
 
@@ -128,7 +128,8 @@ def run(slices, folders, index, options, wanted, before) -> bool:
     differ. A slice starts only when the ones it reads (Slice.needs) are done
     there, and is not run when one of them raised `Ended`, which the mark of
     that one says.
-    `before` is called with a slice before it runs."""
+    `before` is called with a slice before it runs; `publish` after, and
+    False from it stops the job without the mark of the slice."""
     for k, piece in enumerate(slices):
         if piece.name not in wanted or mark(folders[piece.name], index, piece.name).exists():
             continue
@@ -148,6 +149,11 @@ def run(slices, folders, index, options, wanted, before) -> bool:
             left = piece.run(options) or {}
         except Ended:
             left = {"ended": True}
+        if not publish(piece):
+            raise RuntimeError(
+                f"run.json changed while {piece.name} of job {index} ran: its output is set aside "
+                "as .stale and not marked done; run the command again"
+            )
         # Written whole or not at all: a mark cut short would read as no notes.
         part = done.with_name(done.name + ".part")
         part.write_text(json.dumps(left) if left else "")

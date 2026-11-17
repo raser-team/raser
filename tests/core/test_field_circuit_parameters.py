@@ -5,7 +5,9 @@ import pytest
 
 from raser.core.device.build_device import Detector
 from raser.core.device.build_device import device_file
-from raser.core.field.circuit_parameters import device_sensor
+from raser.core.field.assets import field_pickle_path
+from raser.core.field.circuit_parameters import device_circuit
+from raser.core.field.circuit_parameters import field_circuit
 from raser.core.field.circuit_parameters import junction_capacitance
 from raser.core.readout.spice import solve
 
@@ -21,7 +23,7 @@ def _device(**keys):
 def test_junction_capacitance_is_the_measured_one_before_any_other():
     farad, source = junction_capacitance(_device(capacitance_pF=4.2), 3.9e-12)
 
-    assert farad == pytest.approx(4.2e-12)
+    assert farad == pytest.approx(4.2e-12, abs=0)
     assert source == "device file"
 
 
@@ -30,10 +32,10 @@ def test_junction_capacitance_of_the_field_where_none_is_measured():
 
 
 def test_junction_capacitance_of_the_parallel_plate_where_there_is_no_other():
-    # 11.5 x 8.854e-12 F/m x (1.3 mm)^2 / 50 um
+    # 11.9 x 8.854e-12 F/m x (1.3 mm)^2 / 50 um, the permittivity of silicon in its material file
     farad, source = junction_capacitance(_device())
 
-    assert farad == pytest.approx(3.4416e-12, rel=1e-4)
+    assert farad == pytest.approx(3.5613e-12, rel=1e-4, abs=0)
     assert source == "parallel plate"
 
 
@@ -52,17 +54,20 @@ def test_sensor_of_a_device_has_its_junction_capacitance_on_every_electrode():
     times = -1e-9 + (np.arange(500) + 0.5) * dt_s
     step = np.where(times > 0, 1e-6, 0.0)
 
-    sensor, values = device_sensor(_device(capacitance_pF=20.0), ["left", "right"])
+    circuit, values = device_circuit(_device(capacitance_pF=20.0), ["left", "right"])
     voltage = solve(
         {"stages": {"wire": wire}, "load": load},
         ["left", "right"],
         dt_s,
         [step, -2 * step],
-        sensor,
+        circuit,
     )
 
     assert values == {
-        "junction_capacitance": {"farad": pytest.approx(20e-12), "from": "device file"},
+        "junction_capacitance": {
+            "farad": pytest.approx(20e-12, abs=0),
+            "from": "device file",
+        },
         "between_electrodes": None,
         "bias_resistance": None,
         "coupling_capacitance": None,
@@ -92,20 +97,20 @@ def test_charge_through_the_coupling_capacitance_is_what_the_bias_resistance_lea
     times = -1e-9 + (np.arange(5000) + 0.5) * dt_s
     step = np.where(times > 0, 1e-6, 0.0)
 
-    sensor, values = device_sensor(
+    circuit, values = device_circuit(
         _device(
             capacitance_pF=20.0, bias_resistance_ohm=200.0, coupling_capacitance_pF=30.0
         ),
         ["pad"],
     )
     voltage = solve(
-        {"stages": {"wire": wire}, "load": load}, ["pad"], dt_s, [step], sensor
+        {"stages": {"wire": wire}, "load": load}, ["pad"], dt_s, [step], circuit
     )
 
     assert values["bias_resistance"] == {"ohm": 200.0}
-    assert values["coupling_capacitance"] == {"farad": pytest.approx(30e-12)}
+    assert values["coupling_capacitance"] == {"farad": pytest.approx(30e-12, abs=0)}
     assert voltage[0].sum() * dt_s == pytest.approx(
-        50.0 * 30e-12 * 1e-6 * 200.0, rel=2e-3
+        50.0 * 30e-12 * 1e-6 * 200.0, rel=2e-3, abs=0
     )
     assert abs(voltage[0][-1]) < 1e-7
 
@@ -129,7 +134,7 @@ def test_charge_on_a_device_not_fully_depleted_is_held_back_by_its_undepleted_la
     current[0] = 1e-9 / dt_s
     chain = {"stages": {"wire": wire}, "load": load}
 
-    from_file, values = device_sensor(
+    from_file, values = device_circuit(
         _device(
             capacitance_pF=20.0,
             undepleted_resistance_ohm=2e3,
@@ -138,14 +143,14 @@ def test_charge_on_a_device_not_fully_depleted_is_held_back_by_its_undepleted_la
         ["pad"],
         solved_undepleted=(9e3, 9e-12),
     )
-    from_field, of_field = device_sensor(
+    from_field, of_field = device_circuit(
         _device(capacitance_pF=20.0), ["pad"], solved_undepleted=(2e3, 60e-12)
     )
     voltage = solve(chain, ["pad"], dt_s, [current], from_file)[0]
 
     assert values["undepleted_layer"] == {
         "ohm": 2e3,
-        "farad": pytest.approx(60e-12),
+        "farad": pytest.approx(60e-12, abs=0),
         "from": "device file",
     }
     assert of_field["undepleted_layer"] == {
@@ -162,12 +167,12 @@ def test_charge_on_a_device_not_fully_depleted_is_held_back_by_its_undepleted_la
 
 def test_undepleted_layer_with_one_of_its_two_values_is_an_error():
     with pytest.raises(ValueError, match="alone"):
-        device_sensor(_device(undepleted_resistance_ohm=2e3), ["pad"])
+        device_circuit(_device(undepleted_resistance_ohm=2e3), ["pad"])
 
 
 def test_row_of_strips_with_an_undepleted_layer_is_an_error():
     with pytest.raises(ValueError, match="undepleted"):
-        device_sensor(_strips(), ["top1"], row=ROW, solved_undepleted=(2e3, 60e-12))
+        device_circuit(_strips(), ["top1"], row=ROW, solved_undepleted=(2e3, 60e-12))
 
 
 def _strips(**keys):
@@ -211,17 +216,24 @@ def test_charge_on_one_strip_of_a_row_is_shared_by_the_capacitances_between_them
     currents = np.zeros((4, 200))
     currents[1, 10:60] = 1e-6  # 1 fC on the second strip
 
-    sensor, values = device_sensor(_strips(), electrodes, row=ROW)
+    circuit, values = device_circuit(_strips(), electrodes, row=ROW)
     voltage = solve(
-        {"stages": {"wire": wire}, "load": open_end}, electrodes, dt_s, currents, sensor
+        {"stages": {"wire": wire}, "load": open_end},
+        electrodes,
+        dt_s,
+        currents,
+        circuit,
     )
 
     assert values["junction_capacitance"] == {
-        "farad": pytest.approx(0.5e-12),
+        "farad": pytest.approx(0.5e-12, abs=0),
         "from": "field",
     }
     assert values["between_electrodes"] == {
-        "farad": [pytest.approx(0.125e-12), pytest.approx(0.03125e-12)],
+        "farad": [
+            pytest.approx(0.125e-12, abs=0),
+            pytest.approx(0.03125e-12, abs=0),
+        ],
         "from": "field",
     }
     near, far = 0.125e-12, 0.03125e-12
@@ -239,23 +251,102 @@ def test_charge_on_one_strip_of_a_row_is_shared_by_the_capacitances_between_them
 
 def test_capacitances_of_a_row_are_not_taken_for_a_device_without_strips():
     with pytest.raises(ValueError, match="not a row of strips"):
-        device_sensor(_device(), ["top"], row=ROW)
+        device_circuit(_device(), ["top"], row=ROW)
 
 
 def test_strip_with_less_capacitance_in_all_than_to_the_other_strips_is_an_error():
     # 0.1 pF measured in all; the field gives 0.125 pF to the nearest strip
     with pytest.raises(ValueError, match="to the other strips"):
-        device_sensor(_strips(capacitance_pF=0.1), ["top1", "top2"], row=ROW)
+        device_circuit(_strips(capacitance_pF=0.1), ["top1", "top2"], row=ROW)
 
 
 def test_strips_of_a_row_have_the_bias_resistance_and_coupling_of_the_device():
-    sensor, _ = device_sensor(
+    circuit, _ = device_circuit(
         _strips(bias_resistance_ohm=1.5e6, coupling_capacitance_pF=10.0),
         ["top1", "top2"],
         row=ROW,
     )
 
-    assert "Rtop2_bias top2_pad 0 1500000" in sensor.lines
-    assert "Ctop2_coupling top2_pad top2_port 1e-11" in sensor.lines
-    assert "Ctop1_top2 top1_pad top2_pad" in " ".join(sensor.lines)
-    assert sensor.outputs == {"top1": "top1_port", "top2": "top2_port"}
+    assert "Rtop2_bias top2_pad 0 1500000" in circuit.lines
+    assert "Ctop2_coupling top2_pad top2_port 1e-11" in circuit.lines
+    assert "Ctop1_top2 top1_pad top2_pad" in " ".join(circuit.lines)
+    assert circuit.outputs == {"top1": "top1_port", "top2": "top2_port"}
+
+
+def test_field_gives_a_planar_device_its_undepleted_bulk_for_its_area(tmp_path):
+    # 10 um of the 50 um left undepleted at 100 V: 9.4 Ohm cm^2 and 262 pF per
+    # cm^2 of the field, on the 0.0169 cm^2 of HPK-Si-PiN
+    device = _device(bias={"electrode": "top", "voltage": 100.0})
+    (tmp_path / "run.json").write_text(
+        json.dumps(
+            {
+                "files": {"device": {"det_name": "HPK-Si-PiN", "area_factor": 0.0169}},
+                "solved": {"undepleted": [100.0]},
+            }
+        )
+    )
+    (tmp_path / "100.0V.undepleted.json").write_text(
+        json.dumps(
+            {
+                "undepleted_width_um": 10.0,
+                "specific_resistance_ohm_cm2": 9.4,
+                "specific_capacitance_pF": 262.0,
+            }
+        )
+    )
+
+    row, solved_f, undepleted = field_circuit(tmp_path, device)
+
+    assert row is None
+    assert solved_f is None
+    assert undepleted == (
+        pytest.approx(9.4 / 0.0169, rel=1e-12),
+        pytest.approx(262.0e-12 * 0.0169, rel=1e-12, abs=0),
+    )
+
+
+def test_field_gives_a_row_of_strips_the_capacitances_it_stored(tmp_path):
+    device = _strips()
+    stored = field_pickle_path(
+        tmp_path / "weightingfield" / "top", "Capacitance", device.voltage
+    ).with_suffix(".json")
+
+    with pytest.raises(FileNotFoundError, match="-wf.*imported from TCAD"):
+        field_circuit(tmp_path, device)
+
+    stored.parent.mkdir(parents=True)
+    stored.write_text(json.dumps(ROW))
+    row, solved_f, undepleted = field_circuit(tmp_path, device)
+
+    # a strip device of two dimensions has no slab of undepleted bulk
+    assert row == ROW
+    assert solved_f is None
+    assert undepleted is None
+
+
+def test_field_gives_a_device_the_capacitance_it_solved_at_its_bias(tmp_path):
+    # 200 pF per cm^2 of the mesh on the 0.0169 cm^2 of HPK-Si-PiN at 200 V;
+    # its file here has no measured capacitance
+    device = _device()
+    (tmp_path / "run.json").write_text(
+        json.dumps(
+            {
+                "files": {"device": {"det_name": "HPK-Si-PiN", "area_factor": 0.0169}},
+                "solved": {"undepleted": [200.0], "capacitance": [200.0]},
+            }
+        )
+    )
+    (tmp_path / "200.0V.undepleted.json").write_text(
+        json.dumps({"undepleted_width_um": 0.0})
+    )
+    (tmp_path / "200.0V.cv.json").write_text(
+        json.dumps({"specific_capacitance_pF": 200.0, "area_factor": 0.0169})
+    )
+
+    _, solved_f, _ = field_circuit(tmp_path, device)
+    _, values = device_circuit(device, ["top"], solved_f)
+
+    assert values["junction_capacitance"] == {
+        "farad": pytest.approx(200.0e-12 * 0.0169, rel=1e-12, abs=0),
+        "from": "field",
+    }

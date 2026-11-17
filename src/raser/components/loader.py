@@ -4,7 +4,6 @@ components that are Python files, as the g4setups."""
 from __future__ import annotations
 
 import hashlib
-import importlib.util
 import json
 from pathlib import Path
 from types import ModuleType
@@ -62,39 +61,44 @@ def load_python_component(kind: str, selector: str | Path) -> tuple[Path, Module
     under a name of its own and is not put into sys.modules, so two
     experiments' scripts of one name do not take each other's place."""
     path = component_file_path(kind, selector, ".py") if _explicit(selector) else component_path(kind, f"{selector}.py")
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    # The bytes are read once: what runs is what the digest is of, never a
+    # cached bytecode of the file as it was before.
+    source = path.read_bytes()
+    digest = hashlib.sha256(source).hexdigest()
     key = (str(path.resolve()), digest)
     if key not in _LOADED:
-        spec = importlib.util.spec_from_file_location(f"raser_{kind}_{digest[:16]}", path)
-        if spec is None or spec.loader is None:
-            raise ImportError(f"{path}: not a Python file to load")
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+        module = ModuleType(f"raser_{kind}_{digest[:16]}")
+        module.__file__ = str(path)
+        exec(compile(source, str(path), "exec"), module.__dict__)
+        module.SHA256 = digest
         _LOADED[key] = module
     return path, _LOADED[key]
 
 
 def read_g4setup(selector: str | Path) -> dict[str, Any]:
-    """The g4setup `selector` names, as run.json records it.
-
-    From <name>.py: its G4SETUP, with "file", the name or the path as it was
-    given, and "sha256", of the file: a change of the script makes the runs
-    that took it out of date even when G4SETUP stays. Its build() is not
-    touched here; the deposits slice takes it when it runs. From <name>.json,
-    until the g4setups are scripts: the file as it is. A .py and a .json of
-    one name in one component root are an error."""
+    """The g4setup `selector` names, as run.json records it: the G4SETUP of
+    <name>.py, with "file", the name or the path as it was given, and
+    "sha256", of the file: a change of the script makes the runs that took
+    it out of date even when G4SETUP stays. Its build() is not touched here;
+    the deposits slice takes it when it runs. A g4setup that is a json file
+    is refused: g4setups are scripts."""
+    stale = None
     if _explicit(selector):
-        path = Path(selector).expanduser()
-        if path.suffix != ".py":
-            return load_component("g4setup", selector)[1]
+        if Path(selector).suffix == ".json":
+            stale = Path(selector).expanduser()
     else:
+        # the first root that has the g4setup decides, as for any component
         for root in component_roots():
             script, data = root / "g4setup" / f"{selector}.py", root / "g4setup" / f"{selector}.json"
-            if script.is_file() and data.is_file():
-                raise ValueError(f"{root / 'g4setup'}: both {script.name} and {data.name}; keep one of them")
             if data.is_file():
-                return load_component("g4setup", selector)[1]
+                stale = data  # alone, or left beside the script in the same root
+                break
             if script.is_file():
                 break
+    if stale is not None:
+        raise ValueError(
+            f"{stale}: a g4setup is a script now; write it as {stale.with_suffix('.py').name} "
+            "with its keys in G4SETUP"
+        )
     path, module = load_python_component("g4setup", selector)
-    return {**module.G4SETUP, "file": str(selector), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+    return {**module.G4SETUP, "file": str(selector), "sha256": module.SHA256}

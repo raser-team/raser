@@ -1,14 +1,12 @@
 {
     "name" : "bunch",
     "kind" : "beam",
-    "description" : "A bunch of three 80 MeV protons along +z, 1 um apart",
+    "description" : "A bunch of three 80 MeV protons side by side, 1 um apart along x and 1 um off the axis along y",
     "par_type" : "proton",
     "par_energy" : 80,
-    "par_in" : [0, 1, -100],
-    "par_out" : [0, 1, 0],
     "particles" : [
-        {"par_in" : [-1, 1, -100], "par_out" : [-1, 1, 0]},
-        {"par_in" : [0, 1, -100], "par_out" : [0, 1, 0]},
-        {"par_in" : [1, 1, -100], "par_out" : [1, 1, 0]}
+        {"offset" : [-1, 1, 0]},
+        {"offset" : [0, 1, 0]},
+        {"offset" : [1, 1, 0]}
     ]
 }

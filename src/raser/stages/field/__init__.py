@@ -315,7 +315,9 @@ def start(kwargs, options, files):
     # jobs=1: each field is solved in a process of its own, as devsim holds
     # one device a process, and the command of the experiment never loads it.
     field_kwargs.update(
-        batch=kwargs["batch"], mem=kwargs["mem"], jobs=1, _argv=words, _entry_command_prefix=("field",)
+        batch=kwargs["batch"], mem=kwargs["mem"], jobs=1, _argv=words, _entry_command_prefix=("field",),
+        # the command of the experiment, which the field job starts again when it is done
+        _waiting=kwargs.get("_waiting"),
     )
     print("the field is not ready: " + " ".join(["raser", *words]))
     # The point is this experiment's, not one of the field's own scans.

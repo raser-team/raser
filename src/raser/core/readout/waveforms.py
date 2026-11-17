@@ -6,8 +6,12 @@ after another; ``count`` cuts them into events.
 Attributes of the file:
     electrodes  names of the electrodes, in the order of the columns
     dt          width of a time bin [s]
-    sensor      values the circuit of the sensor is made of and where each is
-                from, as JSON; not there when none were given
+    pulse_edge  for each electrode, in their order, "rising" or "falling":
+                which way its pulse goes, as the device and the chain make
+                it; the readout writes it, and a file without it is not read
+    device_circuit
+                values the circuit of the device is made of and where each
+                is from, as JSON; not there when none were given
 Datasets, one row per event:
     event       Geant4 event number
     t0          left edge of the first time bin of the event [s]
@@ -36,12 +40,18 @@ class Waveforms:
     electrodes: list[str]
     dt: float
     events: list[EventWaveforms]
+    pulse_edge: list[str]
 
 
-def append_waveforms(path, electrodes, dt, record, sensor_values=None):
+def append_waveforms(
+    path, electrodes, dt, record, circuit_values=None, pulse_edge=None
+):
     """Add one event to the file, which is created with the first event.
 
-    sensor_values : what is written as ``sensor`` when the file is created;
+    pulse_edge : what is written as ``pulse_edge`` when the file is created,
+        one of "rising" and "falling" for each electrode; None writes none.
+
+    circuit_values : what is written as ``device_circuit`` when the file is created;
         None writes none.
     """
     voltage = np.asarray(record.voltage, dtype="float64")
@@ -50,13 +60,25 @@ def append_waveforms(path, electrodes, dt, record, sensor_values=None):
             f"voltage has shape {voltage.shape}, expected ({len(electrodes)}, bins)"
         )
 
+    if pulse_edge is not None and (
+        len(pulse_edge) != len(electrodes)
+        or not set(pulse_edge) <= {"rising", "falling"}
+    ):
+        raise ValueError(
+            f"pulse_edge {list(pulse_edge)} is not one of rising and falling "
+            f"for each of the electrodes {list(electrodes)}"
+        )
     new = not os.path.exists(path)
     with h5py.File(str(path), "a") as file:
         if new:
             file.attrs.create("electrodes", list(electrodes), dtype=h5py.string_dtype())
             file.attrs["dt"] = float(dt)
-            if sensor_values is not None:
-                file.attrs["sensor"] = json.dumps(sensor_values)
+            if circuit_values is not None:
+                file.attrs["device_circuit"] = json.dumps(circuit_values)
+            if pulse_edge is not None:
+                file.attrs.create(
+                    "pulse_edge", list(pulse_edge), dtype=h5py.string_dtype()
+                )
             for name, kind in (
                 ("event", "int64"),
                 ("t0", "float64"),
@@ -96,6 +118,12 @@ def read_waveforms(path):
     with h5py.File(str(path), "r") as file:
         electrodes = file.attrs["electrodes"].tolist()
         dt = float(file.attrs["dt"])
+        if "pulse_edge" not in file.attrs:
+            raise ValueError(
+                f"{path} has no pulse_edge: the readout of this version did "
+                "not write it; run the readout again"
+            )
+        pulse_edge = file.attrs["pulse_edge"].tolist()
         numbers = file["event"][()]
         starts = file["t0"][()]
         counts = file["count"][()]
@@ -106,12 +134,12 @@ def read_waveforms(path):
         last = first + int(count)
         events.append(EventWaveforms(int(number), float(start), voltage[first:last].T))
         first = last
-    return Waveforms(electrodes, dt, events)
+    return Waveforms(electrodes, dt, events, pulse_edge)
 
 
-def read_sensor_values(path):
-    """``sensor`` of the file; None when it has none."""
+def read_circuit_values(path):
+    """``device_circuit`` of the file; None when it has none."""
     with h5py.File(str(path), "r") as file:
-        if "sensor" not in file.attrs:
+        if "device_circuit" not in file.attrs:
             return None
-        return json.loads(file.attrs["sensor"])
+        return json.loads(file.attrs["device_circuit"])

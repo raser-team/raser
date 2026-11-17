@@ -9,13 +9,14 @@ import sys
 from pathlib import Path
 from contextlib import contextmanager
 
+import raser
 from raser.supports import process
+from raser.supports.dependency import ROOT_MISSING
+from raser.supports.dependency import ROOT_MODULES
+from raser.supports.dependency import MissingDependency
 from raser.supports.paths import infer_project_root
 from raser.supports.paths import project_root_context
 from raser.supports.paths import work_root
-
-
-VERSION = "5.0"
 
 APPLICATIONS = {  # command -> the module that registers it
     "analysis": "raser.stages.analysis",
@@ -23,6 +24,7 @@ APPLICATIONS = {  # command -> the module that registers it
     "deposit": "raser.stages.stage_commands",
     "current": "raser.stages.stage_commands",
     "readout": "raser.stages.stage_commands",
+    "reconstruction": "raser.stages.stage_commands",
     "status": "raser.lifecycle.status",
     "bmos": "raser.apps.bmos",
     "cce": "raser.bench.cce",
@@ -33,7 +35,7 @@ APPLICATIONS = {  # command -> the module that registers it
     "timeres": "raser.bench.timeres",
 }
 # The short commands of the stages; files and folders hold the full names.
-SHORT = {"fld": "field", "dep": "deposit", "cur": "current", "rdo": "readout", "ana": "analysis"}
+SHORT = {"fld": "field", "dep": "deposit", "cur": "current", "rdo": "readout", "reco": "reconstruction", "ana": "analysis"}
 
 
 @contextmanager
@@ -49,7 +51,7 @@ def _context(kwargs):
 
 def build_parser():
     parser = argparse.ArgumentParser(prog="raser")
-    parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {raser.__version__}")
     parser.add_argument(
         "-b",
         "--batch",
@@ -131,6 +133,14 @@ def main(argv=None):
     try:
         with _context(kwargs):
             kwargs["_run"](kwargs)
+    except MissingDependency as missing:
+        print(f"raser: {missing}", file=sys.stderr)
+        return 1
+    except ModuleNotFoundError as error:
+        if error.name not in ROOT_MODULES:
+            raise
+        print(f"raser: {ROOT_MISSING}", file=sys.stderr)
+        return 1
     finally:
         process.close()
     return 0

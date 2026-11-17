@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Create the native conda route: a conda environment with ROOT, Geant4 and
-# ngspice, plus the project venv pinned by env/uv.txt.
+# ngspice, plus the project venv pinned by env/uv.txt (what RASER runs on)
+# and env/uv-dev.txt (the tools that check it).
 #
 # --without-geant4 leaves Geant4 out; --without-root leaves out ROOT and Geant4,
 # whose Python bindings use the cppyy that ROOT provides. Activation then takes
@@ -75,4 +76,4 @@ if [ -n "$build_ngspice" ]; then
     env/install-ngspice.sh
 fi
 uv venv --system-site-packages --python "$(command -v python3.11)" "$venv"
-uv pip sync --python "$venv/bin/python" env/uv.txt
+uv pip sync --python "$venv/bin/python" env/uv.txt env/uv-dev.txt

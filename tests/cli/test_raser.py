@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import json
 from pathlib import Path
 
 import pytest
@@ -112,7 +113,7 @@ def test_global_test_before_a_command_with_jobs_is_its_dry_run(
     assert main(["-t", "-b", "cce", "HPK-Si-PiN", "-s", "2", "--seed", "1"]) == 0
 
     folder = work_root / "HPK-Si-PiN" / "cce" / "seed_1"
-    slices = [f"  {name:<12}jobs [0, 1]" for name in ("deposit", "field", "current", "readout")]
+    slices = [f"  {name:<15}jobs [0, 1]" for name in ("deposit", "field", "current", "readout", "reconstruction")]
     assert capsys.readouterr().out.splitlines() == [f"{folder}: jobs [0, 1]", *slices]
     assert not work_root.exists()
 
@@ -135,7 +136,7 @@ def test_inside_an_experiment_folder_the_command_and_device_come_from_its_config
     capsys.readouterr()
 
     assert main(["-s", "2", "--seed", "2", "--dry-run"]) == 0
-    slices = [f"  {name:<12}jobs [0, 1]" for name in ("deposit", "field", "current", "readout")]
+    slices = [f"  {name:<15}jobs [0, 1]" for name in ("deposit", "field", "current", "readout", "reconstruction")]
     assert capsys.readouterr().out.splitlines() == [
         f"{experiment / 'seed_2'}: jobs [0, 1]",
         *slices,
@@ -144,5 +145,75 @@ def test_inside_an_experiment_folder_the_command_and_device_come_from_its_config
     ]
     submitted.clear()
     assert main(["-bb", "-s", "2", "--seed", "3"]) == 0
-    every = ["--job-slices", "deposit,field,current,readout"]  # each voltage is measured anew
+    every = ["--job-slices", "deposit,field,current,readout,reconstruction"]  # each voltage is measured anew
     assert submitted == [(["cce", "HPK-Si-PiN", *every], True, 2)] * 2
+
+
+@pytest.mark.parametrize("command", ["reconstruction", "reco"])
+def test_a_stage_command_given_inside_an_experiment_folder_is_not_taken_for_its_options(
+    work_root: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture, command: str
+) -> None:
+    experiment = work_root / "HPK-Si-PiN" / "signal"
+    experiment.mkdir(parents=True)
+    (experiment / "config.json").write_text(json.dumps({"workflow": "signal", "device": "HPK-Si-PiN"}))
+    monkeypatch.chdir(experiment)
+
+    assert main([command, str(experiment), "--seed", "1", "--dry-run"]) == 0
+
+    assert capsys.readouterr().out.splitlines()[0].startswith(f"{experiment / 'seed_1'}: ")
+
+
+def test_the_version_is_the_one_of_the_package(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
+    import raser
+
+    monkeypatch.setattr(raser, "__version__", "9.9")
+
+    with pytest.raises(SystemExit):
+        main(["--version"])
+
+    assert capsys.readouterr().out.strip() == "raser 9.9"
+
+
+@pytest.mark.parametrize(
+    ("raised", "said"),
+    [
+        (
+            "missing",
+            "raser: devsim is not installed. Install it with pip install devsim",
+        ),
+        (
+            "root",
+            "raser: ROOT's Python bindings are not available in this Python. "
+            "Install them with conda install -c conda-forge root_base",
+        ),
+    ],
+)
+def test_a_missing_dependency_is_one_sentence_and_no_traceback(
+    work_root: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture, raised: str, said: str
+) -> None:
+    from raser.stages import field
+    from raser.supports.dependency import MissingDependency
+
+    def execute(*args, **kwargs):
+        if raised == "missing":
+            raise MissingDependency("devsim is not installed", "Install it with pip install devsim")
+        raise ModuleNotFoundError("No module named 'ROOT'", name="ROOT")
+
+    monkeypatch.setattr(field, "execute", execute)
+
+    assert main(["field", "HPK-Si-PiN"]) == 1
+
+    out = capsys.readouterr()
+    assert out.err.strip() == said and "Traceback" not in out.err + out.out
+
+
+def test_another_module_not_found_is_raised_as_it_is(work_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from raser.stages import field
+
+    def execute(*args, **kwargs):
+        raise ModuleNotFoundError("No module named 'numpyy'", name="numpyy")
+
+    monkeypatch.setattr(field, "execute", execute)
+
+    with pytest.raises(ModuleNotFoundError, match="numpyy"):
+        main(["field", "HPK-Si-PiN"])

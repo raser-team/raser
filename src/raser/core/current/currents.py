@@ -13,6 +13,9 @@ Datasets, one row per event:
     t0          left edge of the first time bin of the event [s]
     count       number of time bins of the event
     pairs       electron-hole pairs the event gave to the current, before gain
+    sensitive_pairs  of those, the pairs born where the device does not
+                conduct, which the drift moves; only in files written from
+                a drift in a solved field
     charge      signed net charge of each electrode [C]
     stored      number of electrodes of the event that are stored
 Dataset, one value per stored electrode:
@@ -37,6 +40,9 @@ class EventCurrents:
     current: np.ndarray  # (electrodes, bins) [A]
     charge: np.ndarray  # (electrodes,) [C]
     pairs: float  # electron-hole pairs before gain
+    # of those, the pairs born where the device does not conduct; None where
+    # the currents do not come from a drift in a solved field
+    sensitive_pairs: float | None = None
 
 
 @dataclass
@@ -59,6 +65,13 @@ def append_currents(path, electrodes: list[str], dt: float, record: EventCurrent
 
     new = not os.path.exists(path)
     with h5py.File(str(path), "a") as file:
+        if new and record.sensitive_pairs is not None:
+            file.create_dataset("sensitive_pairs", shape=(0,), maxshape=(None,), dtype="float64")
+        if ("sensitive_pairs" in file) != (record.sensitive_pairs is not None):
+            raise ValueError(
+                f"{path} {'holds' if 'sensitive_pairs' in file else 'does not hold'} sensitive pairs, "
+                f"the event {record.event} {'has none' if record.sensitive_pairs is None else 'has them'}"
+            )
         if new:
             file.attrs.create("electrodes", list(electrodes), dtype=h5py.string_dtype())
             file.attrs["dt"] = float(dt)
@@ -99,6 +112,8 @@ def append_currents(path, electrodes: list[str], dt: float, record: EventCurrent
             "index": stored,
             "current": current[stored].ravel(),
         }
+        if record.sensitive_pairs is not None:
+            rows["sensitive_pairs"] = [float(record.sensitive_pairs)]
         for name, values in rows.items():
             dataset = file[name]
             first = dataset.shape[0]
@@ -118,11 +133,12 @@ def read_currents(path) -> Currents:
         stored = file["stored"][()]
         index = file["index"][()]
         values = file["current"][()]
+        sensitive = file["sensitive_pairs"][()] if "sensitive_pairs" in file else [None] * len(numbers)
     events = []
     first_electrode = 0
     first_value = 0
-    for number, start, count, charge, n_pairs, n_stored in zip(
-        numbers, starts, counts, charges, pairs, stored, strict=True
+    for number, start, count, charge, n_pairs, n_stored, n_sensitive in zip(
+        numbers, starts, counts, charges, pairs, stored, sensitive, strict=True
     ):
         last_electrode = first_electrode + int(n_stored)
         last_value = first_value + int(n_stored) * int(count)
@@ -130,6 +146,11 @@ def read_currents(path) -> Currents:
         current[index[first_electrode:last_electrode]] = values[first_value:last_value].reshape(
             int(n_stored), int(count)
         )
-        events.append(EventCurrents(int(number), float(start), current, charge, float(n_pairs)))
+        events.append(
+            EventCurrents(
+                int(number), float(start), current, charge, float(n_pairs),
+                None if n_sensitive is None else float(n_sensitive),
+            )
+        )
         first_electrode, first_value = last_electrode, last_value
     return Currents(electrodes, dt, events)

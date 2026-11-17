@@ -1,4 +1,4 @@
-"""The deposits, currents and waveforms slices put together for an experiment.
+"""The deposits, currents, waveforms and reconstruction slices put together for an experiment.
 
 Building the command line imports this file: it loads nothing heavy. The
 slices import their stage when they run.
@@ -15,6 +15,8 @@ KEYS = (
     "source",
     "g4setup",
     "events_per_job",
+    "generated_per_job",
+    "generated_limit",
     "edep_min",
     "edep_max",
     "fano",
@@ -22,6 +24,11 @@ KEYS = (
     "voltage",
     "irradiation",
     "amplifier",
+    "sheet_resistance",
+    "threshold",
+    "amplitude_threshold",
+    "fractions",
+    "edge",
 )
 COMPONENTS = {"source": "source", "g4setup": "g4setup"}  # kind of file -> option
 READERS = {"g4setup": read_g4setup}  # kind of file -> what reads the file its option names
@@ -40,7 +47,11 @@ def deposit_arguments(parser):
         help="signal source or beam configuration",
     )
     parser.add_argument("--g4setup", help="what surrounds the device in Geant4")
-    parser.add_argument("-evt", "--events-per-job", type=int, help="events per job")
+    parser.add_argument("-evt", "--events-per-job", type=int, help="events a job records")
+    parser.add_argument("-gen", "--generated-per-job", type=int, help="events a job generates, in place of -evt")
+    parser.add_argument(
+        "--generated-limit", type=int, help="the most events a job generates to record its -evt"
+    )
     parser.add_argument(
         "--edep-min", type=float, help="least energy deposited in the device [MeV]"
     )
@@ -66,14 +77,33 @@ def current_arguments(parser):
     parser.add_argument("-irr", "--irradiation", type=float, help="irradiation flux")
 
 
-READOUT_DEFAULTS = {"amplifier": "SantaCruz+Gali52+Termination50"}
+READOUT_DEFAULTS = {"amplifier": "SantaCruz+Gali52+Termination50", "sheet_resistance": None}
 
 
 def readout_arguments(parser):
     parser.add_argument("-amp", "--amplifier", type=str, help="amplifier")
+    parser.add_argument(
+        "--sheet-resistance", type=float, help="of the resistive layer of the device, in place of its file's [Ohm]"
+    )
 
 
-DEFAULTS = {**DEPOSIT_DEFAULTS, **CURRENT_DEFAULTS, **READOUT_DEFAULTS}
+# The edge of the pulses the thresholds are set on, as on a scope; None:
+# the one the readout wrote its pulses with.
+RECONSTRUCTION_DEFAULTS = {
+    "threshold": 10.0,
+    "amplitude_threshold": 10.0,
+    "fractions": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+    "edge": None,
+}
+
+
+def reconstruction_arguments(parser):
+    parser.add_argument("-threshold", type=float, help="of the times and the area of the pulses [mV]")
+    parser.add_argument("-amplitude_threshold", type=float, help="of the selected events [mV]")
+    parser.add_argument("--edge", choices=("rising", "falling"), help="the edge of the pulses the thresholds are set on; by default that of the readout")
+
+
+DEFAULTS = {**DEPOSIT_DEFAULTS, **CURRENT_DEFAULTS, **READOUT_DEFAULTS, **RECONSTRUCTION_DEFAULTS}
 
 
 def add_arguments(parser):
@@ -81,6 +111,7 @@ def add_arguments(parser):
     deposit_arguments(parser)
     current_arguments(parser)
     readout_arguments(parser)
+    reconstruction_arguments(parser)
 
 
 def job_command(kwargs):
@@ -130,6 +161,12 @@ def _waveforms(kwargs, device=None, position=None):
     return readout.waveforms(_of(kwargs, device), position)
 
 
+def _reconstruction(kwargs, device=None, position=None):
+    from . import reconstruction
+
+    return reconstruction.run(_of(kwargs, device), position)
+
+
 def _shared_field(device):
     """The field of one of several devices, shared as field.SHARED is."""
 
@@ -140,20 +177,27 @@ def _shared_field(device):
     return Shared(
         ready=lambda options, files: field.ready(*seen(options, files)),
         start=lambda kwargs, options, files: field.start(kwargs, *seen(options, files)),
+        stamp=lambda options, files: field.stamp(*seen(options, files)),
     )
 
 
-DEPOSIT_KEYS = ("source", "g4setup", "events_per_job", "edep_min", "edep_max", "fano")
+DEPOSIT_KEYS = (
+    "source", "g4setup", "events_per_job", "generated_per_job", "generated_limit", "edep_min", "edep_max", "fano"
+)
+# A job records a number of events or generates one: one of the two is given.
+EXCLUSIVE = (("events_per_job", "generated_per_job"),)
 
 
 def expand(devices=None, deposit=_deposits) -> tuple:
     """The slices of the chain for the devices of an experiment, the table of
     Workflow.devices: name -> (device, positions). None is one device in one
-    place, the chain as it always was: deposit, field, current, readout.
+    place, the chain as it always was: deposit, field, current, readout,
+    reconstruction.
 
     One deposit slice; a field for each device, field.<device> when there are
     more than one; a current and a readout for each position, current.<position>
-    and readout.<position> when there are more than one, each reading the
+    and readout.<position> when there are more than one, and a reconstruction
+    of each readout, reconstruction.<position>, each reading the
     deposits and the field of its device. `deposit` lets an experiment put its
     own energy deposition in place of the stage's, until the Geant4 world
     scripts place its devices (a stopgap for cflm)."""
@@ -194,14 +238,27 @@ def expand(devices=None, deposit=_deposits) -> tuple:
                     needs=("deposit", name),
                 )
             )
-            # The electronics works on what was measured: its points read the same currents.
+            # The electronics works on what was measured: its points read the same
+            # currents. It takes the circuit of the device from its field too.
+            readout = f"readout.{at}" if at else "readout"
             pieces.append(
                 Slice(
-                    f"readout.{at}" if at else "readout",
+                    readout,
                     partial(_waveforms, device=device if several else None, position=at) if at or several else _waveforms,
-                    keys=("amplifier",),
+                    keys=("amplifier", "sheet_resistance"),
                     new_events=False,
-                    needs=(current,),
+                    needs=(current, name),
+                )
+            )
+            pieces.append(
+                Slice(
+                    f"reconstruction.{at}" if at else "reconstruction",
+                    partial(_reconstruction, device=device if several else None, position=at)
+                    if at or several
+                    else _reconstruction,
+                    keys=("threshold", "amplitude_threshold", "fractions", "edge"),
+                    new_events=False,
+                    needs=(readout,),
                 )
             )
     return tuple(pieces)
