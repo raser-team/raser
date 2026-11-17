@@ -10,6 +10,7 @@ Description:
 
 import math
 import os
+import shutil
 import csv
 import logging
 import numpy as np
@@ -807,8 +808,10 @@ def write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, pl
             ),
         )
         if drawn:
+            # the pictures of this event only: those an earlier run left go
             path = os.path.join(plot_path, "event_%s" % (record.event))
-            os.makedirs(path, exist_ok=True)
+            shutil.rmtree(path, ignore_errors=True)
+            os.makedirs(path)
             draw_drift_path(my_d, list(zip(record.x, record.y, record.z)), my_f, my_current, path)
             my_current.draw_currents(path)
             if my_d.is_strip:
