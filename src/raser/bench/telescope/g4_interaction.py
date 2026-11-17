@@ -87,6 +87,7 @@ class TelescopeG4Interaction(GeneralG4Interaction):
                 events_angles,
                 edep_window,
                 geant4_model,
+                start_steps=None,
             ):
                 super().__init__(
                     par_in,

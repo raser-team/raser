@@ -1,5 +1,5 @@
 {
     "name" : "transient_current",
     "output_label" : "tct",
-    "laser" : "SPA_top_Si_IR"
+    "laser" : "LA01IR_top_Si"
 }

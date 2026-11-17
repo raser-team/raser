@@ -31,7 +31,7 @@ def ionized_pairs(
     """Number of pairs of every deposit and where and when they appear.
 
     With fano, the number is drawn around the mean E / pair energy with the
-    variance Fano factor * mean; without, it is the mean itself, and the
+    variance Fano factor * mean, from the stream of this event number; without, it is the mean itself, and the
     material needs no Fano factor. The second list holds [x, y, z, t] of
     every deposit: position [um] in the coordinates of the detector and
     time [s].
@@ -50,7 +50,9 @@ def ionized_pairs(
             f"no Fano factor for the material {material!r}; known: {sorted(FANO_FACTOR)}"
         )
     fano_factor = FANO_FACTOR[material]
-    generator = stream("ionization")
+    # each event draws from its own stream: the pairs of an event do not
+    # depend on which other events were recorded before it
+    generator = stream(f"ionization/{event.event}")
     pairs = []
     for energy in event.e:
         mean = energy / pair_energy_mev
