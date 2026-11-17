@@ -129,10 +129,10 @@ def CreateImpactModel_Hatakeyama(device, region, cutoff_angle = 4):
 
 
     if not InEdgeModelList(device, region, "n_A"):
-        CreateEdgeModel(device, region, "n_A", "log(n_a_0001/n_b_1120)")
+        CreateEdgeModel(device, region, "n_A", "log(n_a_0001/n_a_1120)")
 
     if not InEdgeModelList(device, region, "p_A"):
-        CreateEdgeModel(device, region, "p_A", "log(p_a_0001/p_b_1120)")
+        CreateEdgeModel(device, region, "p_A", "log(p_a_0001/p_a_1120)")
 
     if not InEdgeModelList(device, region, "n_b_aniso"):
         CreateEdgeModel(device, region, "n_b_aniso", "n_B * pow( 1-pow(n_A,2)* pow( (n_B*ElectricField_1120*ElectricField_0001)/(abs(ElectricField+1)*n_b_1120*n_b_0001), 2), 0.5)",)
@@ -141,8 +141,8 @@ def CreateImpactModel_Hatakeyama(device, region, cutoff_angle = 4):
         CreateEdgeModel(device, region, "p_b_aniso", "p_B * pow( 1-pow(p_A,2)* pow( (p_B*ElectricField_1120*ElectricField_0001)/(abs(ElectricField+1)*p_b_1120*p_b_0001), 2), 0.5)",)
 
     gamma_str = "tanh(0.19/(2*0.0257))/tanh(0.19/(2*0.0257*T/T0))"
-    Ion_coeff_n  = "ifelse(abs(ElectricField)>1e4, {0} * n_a_aniso * exp( - {1} * n_b_aniso / (abs(ElectricField)+1)), 1)".format(gamma_str,gamma_str)
-    Ion_coeff_p  = "ifelse(abs(ElectricField)>1e4, {0} * p_a_aniso * exp( - {1} * p_b_aniso / (abs(ElectricField)+1)), 1)".format(gamma_str,gamma_str)
+    Ion_coeff_n  = "ifelse(abs(ElectricField)>1e4, {0} * n_a_aniso * exp( - {1} * n_b_aniso / (abs(ElectricField)+1)), 0)".format(gamma_str,gamma_str)
+    Ion_coeff_p  = "ifelse(abs(ElectricField)>1e4, {0} * p_a_aniso * exp( - {1} * p_b_aniso / (abs(ElectricField)+1)), 0)".format(gamma_str,gamma_str)
 
     return Ion_coeff_n, Ion_coeff_p
 
