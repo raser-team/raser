@@ -80,7 +80,9 @@ def view_geometry(
                 command("/vis/ogl/set/printSize 2000 2000")
                 command(f"/vis/ogl/set/printFilename {output}")
 
-            self.g4RunManager.BeamOn(self.generated_events)
+            # view_geometry asks for generated events: the run generates them all
+            self.g4RunManager.BeamOn(self.total_events)
+            self.generated_events = self.total_events
 
             command("/vis/viewer/flush")
             if output and tsg:
