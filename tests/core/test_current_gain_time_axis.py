@@ -93,3 +93,19 @@ def test_gain_current_adds_to_a_current_whose_deposits_are_spread_in_time():
         abs=0.0,
     )
     assert _charge(gain.positive_cu[0]) != 0.0
+
+
+def test_bins_are_as_wide_as_the_written_bin_width_when_deposits_are_spread_in_time():
+    # 3.3 ps apart: the window of 6.25 ns after the first is not a whole
+    # number of 5 ps bins; it is lengthened to one, not spread over them
+    current = CalCurrent(
+        _lgad(),
+        _UniformField(),
+        [100.0, 100.0],
+        [[50.0, 50.0, 25.0, 0.0], [50.0, 50.0, 25.0, 3.3e-12]],
+    )
+
+    assert current.t_bin == 5e-12
+    assert (current.t_end - current.t_start) / current.n_bin == pytest.approx(5e-12, rel=1e-12)
+    assert current.n_bin == 1251
+    assert current.t_end >= 3.3e-12 + 5e-9

@@ -48,9 +48,6 @@ delta_t = {
     3: 20e-12
 }
 
-t_tol = 1e-20
-
-
 logger = logging.getLogger(__name__)
 if not logging.getLogger().handlers:
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -152,8 +149,9 @@ class CalCurrent:
         first_creation = min(creation_times, default=0.0)
         last_creation = max(creation_times, default=0.0)
         self.t_start = first_creation + relative_start
-        self.t_end = last_creation + relative_end
-        self.n_bin = int((self.t_end + t_tol - self.t_start) / self.t_bin)
+        # whole bins of t_bin, as many as reach last_creation + relative_end
+        self.n_bin = math.ceil((last_creation + relative_end - self.t_start) / self.t_bin - 1e-6)
+        self.t_end = self.t_start + self.n_bin * self.t_bin
 
         self.read_ele_num = my_d.read_ele_num
         if hasattr(my_d, "x_ele_num") and hasattr(my_d, "y_ele_num"):
