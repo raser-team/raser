@@ -21,6 +21,10 @@ from raser.supports.output import output
 
 from .impact_ionization import VAN_OVERSTRAETEN
 
+# Relative permittivity. Si: Sze and Ng, Physics of Semiconductor Devices,
+# 3rd ed. (2007), appendix G; 4H-SiC: 9.76, along the c axis; diamond: 5.7.
+RELATIVE_PERMITTIVITY = {"Si": 11.9, "SiC": 9.76, "Diamond": 5.7}
+
 class Material:
 
     def __init__(self,mat_name,mobility_model=None,avalanche_model=None):
@@ -34,14 +38,14 @@ class Material:
     def mat_database(self):
         m_e = 9.109e-31
         if self.mat_name == "Si":
-            self.permittivity=11.5
+            self.permittivity=RELATIVE_PERMITTIVITY["Si"]
             self.hole_mass = 0.386*m_e
             self.electron_mass = 0.26*m_e
             self.avalanche_model = "vanOverstraeten"
             self.mobility_model = 'Selberherr'
         if self.mat_name == "SiC":
             # 4H-SiC, use the longitudinal effective mass
-            self.permittivity=9.76
+            self.permittivity=RELATIVE_PERMITTIVITY["SiC"]
             self.hole_mass = 1.0*m_e
             self.electron_mass = 0.29*m_e
             self.avalanche_model = 'Hatakeyama'
@@ -49,7 +53,7 @@ class Material:
 
         if self.mat_name == "Diamond":
             # no avalanche model: an undoped MIM device has no gain
-            self.permittivity=5.7
+            self.permittivity=RELATIVE_PERMITTIVITY["Diamond"]
             self.avalanche_model = None
             self.mobility_model = 'Reggiani_diamond'
 

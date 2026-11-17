@@ -2,6 +2,8 @@ import math
 
 import devsim
 
+from raser.core.model.material import RELATIVE_PERMITTIVITY
+
 from . import model_create
 
 '''  
@@ -47,9 +49,9 @@ def CreateSiliconCarbideConstant(T, device, region):
     E_g = 3.26 * 1.6 * 1e-19
     devsim.set_parameter(device=device, region=region, name="E_g", value=E_g)
 
-    devsim.set_parameter(device=device, region=region, name="eps", value=9.76)
+    devsim.set_parameter(device=device, region=region, name="eps", value=RELATIVE_PERMITTIVITY["SiC"])
     eps_0 = 8.85e-14
-    devsim.set_parameter(device=device, region=region, name="Permittivity", value=9.76 * eps_0)
+    devsim.set_parameter(device=device, region=region, name="Permittivity", value=RELATIVE_PERMITTIVITY["SiC"] * eps_0)
     N_i = 3.89e-9
     devsim.set_parameter(device=device, region=region, name="n_i", value=N_i)
 
@@ -71,9 +73,9 @@ def CreateDiamondConstant(T, device, region):
     E_g = 5.47 * 1.6e-19
     devsim.set_parameter(device=device, region=region, name="E_g", value=E_g)
 
-    devsim.set_parameter(device=device, region=region, name="eps", value=5.7)
+    devsim.set_parameter(device=device, region=region, name="eps", value=RELATIVE_PERMITTIVITY["Diamond"])
     eps_0 = 8.85e-14
-    devsim.set_parameter(device=device, region=region, name="Permittivity", value=5.7 * eps_0)
+    devsim.set_parameter(device=device, region=region, name="Permittivity", value=RELATIVE_PERMITTIVITY["Diamond"] * eps_0)
     k = 1.3806503e-23  # J/K
     N_i = pow(N_c * N_v, 0.5) * math.exp(-E_g / (2 * k * T))
     devsim.set_parameter(device=device, region=region, name="n_i", value=N_i)
@@ -96,9 +98,9 @@ def CreateSiliconConstant(T, device, region):
     E_g = 1.12 * 1.6e-19
     devsim.set_parameter(device=device, region=region, name="E_g", value=E_g)
 
-    devsim.set_parameter(device=device, region=region, name="eps", value=11.9)
+    devsim.set_parameter(device=device, region=region, name="eps", value=RELATIVE_PERMITTIVITY["Si"])
     eps_0 = 8.85e-14
-    devsim.set_parameter(device=device, region=region, name="Permittivity", value=11.9 * eps_0)
+    devsim.set_parameter(device=device, region=region, name="Permittivity", value=RELATIVE_PERMITTIVITY["Si"] * eps_0)
     k = 1.3806503e-23  # J/K
     N_i = pow(N_c * N_v, 0.5) * math.exp(-E_g / (2 * k * T))
     devsim.set_parameter(device=device, region=region, name="n_i", value=N_i)
