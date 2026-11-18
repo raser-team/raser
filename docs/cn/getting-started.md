@@ -1,162 +1,167 @@
-# 入门
+# 快速入门：环境激活与第一次运行
 
-> RASER 5.0 · Python 3.11 · 安装与使用分为两个步骤
+本页说明在安装好 RASER 运行环境后，如何激活环境并用内置硅平面探测器 `HPK-Si-PiN` 跑通**信号扫描仿真 → 查看状态 → 统计分析**完整流程，以及在各个输出目录中查看哪些文件与图。
 
-环境安装一次即可。每个新 shell 在运行 RASER 前激活一条完整环境路径。该路径提供彼此匹配的 Python、ROOT、Geant4 与 ngspice 运行环境。
+## 激活运行环境
 
----
-
-## 📦 安装环境
-
-根据主机平台选择一条路径。本节命令用于创建环境或镜像。工作流命令见[运行 RASER](#运行-raser)。
-
-首次安装时按所选平台执行下列命令。安装完成后，每个新 shell 只需一条激活命令。
-
-### 原生 Linux 与 WSL
-
-`conda` 位于 `PATH` 中时，一条命令创建 `.conda/envs/raser` 与项目 venv：
+若尚未安装环境，可在仓库根目录运行 `env/install_conda.sh` 完成本地 Conda 与 Python 依赖配置。环境装好后，每次打开新终端时激活环境：
 
 ```bash
-env/install_conda.sh
+# 本地 Conda 环境
+source env/setup.sh
+
+# 或在挂载了 /cvmfs / 配置了 SIF 容器镜像的集群节点上
+source env/setup_cvmfs.sh
 ```
 
-脚本按主机架构选择 conda 规格。conda 环境提供 Python 3.11、ROOT、Geant4 11.3.2 及其数据集和 ngspice；x86-64 上还提供 MKL，aarch64 上由 `env/install-ngspice.sh` 把 ngspice 构建进该环境。项目 venv 继承这些包，并加入 `env/uv.txt` 中固定版本的 Python 包。WSL 中在 Linux 发行版内使用本路径。
-
-`env/install_conda.sh --without-geant4` 使环境省略 Geant4；`--without-root` 同时省略 ROOT 与 Geant4，因为 Geant4 的 Python 绑定使用 ROOT 提供的 cppyy。激活时如何找到它们见[使用外部 ROOT 或 Geant4](#使用外部-root-或-geant4)。
-
-| 架构 | conda 规格 | 显式规格 |
-| --- | --- | --- |
-| x86-64 | `env/conda-linux-x86.yml` | `env/conda-linux-64.lock` |
-| aarch64 | `env/conda-linux-aarch64.yml` | `env/conda-linux-aarch64.lock` |
-
-需要精确的 conda 产物时，由显式规格创建环境，再执行 venv 步骤：
-
-```bash
-conda create -p .conda/envs/raser -c conda-forge --file env/conda-linux-64.lock
-conda activate "$PWD/.conda/envs/raser"
-uv venv --system-site-packages --python "$(command -v python3.11)" .venv
-uv pip sync --python .venv/bin/python env/uv.txt
-```
-
-### IHEP 计算集群 Conda
-
-集群上的 conda 指令由以下脚本提供，随后执行原生 Linux 安装脚本：
-
-```bash
-source /cvmfs/common.ihep.ac.cn/software/anaconda/miniconda3-202505/etc/profile.d/conda.sh
-env/install_conda.sh
-```
-
-### IHEP 计算集群 Ubuntu 22.04 SIF
-
-```bash
-apptainer build --mksquashfs-args '-processors 1' \
-    img/raser_ubuntu.sif bootstrap/ubuntu/raser-ubuntu-sif.def
-```
-
-该镜像提供项目 Python 环境、ngspice 与 Ubuntu 运行库。ROOT 和 Geant4 来自匹配的 `ubuntu2204` LCG view。
-
-### IHEP 计算集群 EL9 SIF
-
-```bash
-apptainer build --mksquashfs-args '-processors 1' \
-    img/raser_el9.sif bootstrap/el9/raser-el9-sif.def
-```
-
-该镜像提供项目 Python 环境、ngspice 与 EL9 运行库。ROOT 来自匹配的 `x86_64-el9` LCG view，Geant4 来自外部 EL9 安装。可选源码归档可缓存在 `bootstrap/ingredients/` 下。
-
-单进程 squashfs 选项可避免受限集群节点上的线程创建失败。镜像细节见[容器路径说明](../../bootstrap/README.md)。
-
-### 原生 Apple Silicon
-
-本路径面向 Apple 芯片的 Mac。ROOT 与 Geant4 11.3.2 及其数据集由 conda 提供；ngspice 构建至该 conda 环境中。同一安装脚本及其选项覆盖本平台：
-
-```bash
-env/install_conda.sh
-```
-
-对应的显式 conda 规格如下；由它创建环境后，先激活环境并执行 `env/install-ngspice.sh`，再执行 venv 步骤：
-
-```bash
-conda create -p .conda/envs/raser -c conda-forge --file env/conda-macos-arm64.lock
-```
-
-基于 Lima 的 macOS 路径先构建 Ubuntu SIF，再使用 `make run-raser-sif-macos`。
-
-## 🔌 激活环境路径
-
-激活其中一条路径：
-
-| 路径 | 命令 |
-| --- | --- |
-| 原生 conda | `source env/setup_cvmfs.sh conda` |
-| Ubuntu 22.04 SIF | `source env/setup_cvmfs.sh ubuntu` |
-| EL9 SIF | `source env/setup_cvmfs.sh el9` |
-| 本地自动选择 | `source env/setup_cvmfs.sh` |
-
-自动选择依次查找本地 Ubuntu SIF、本地 EL9 SIF 和 conda 路径。conda 路径优先加载已配置的 CVMFS profile；若该文件不存在，则从 `PATH` 加载 conda。随后激活 `.conda/envs/raser`，其他 conda 环境处于激活状态时同样如此。
-
-### 使用外部 ROOT 或 Geant4
-
-conda 路径上，激活前指定的安装优先于 `.conda/envs/raser` 中的同名软件包，无论环境是否包含该软件包：
-
-```bash
-export RASER_ROOT_INSTALL=/path/to/root      # 含 bin/root-config 与 bin/thisroot.sh，针对 Python 3.11 构建
-export RASER_GEANT4_INSTALL=/path/to/geant4  # 含 bin/geant4-config 与 bin/geant4.sh
-source env/setup_cvmfs.sh conda
-```
-
-`RASER_ROOT_INSTALL` 指向独立安装的 ROOT，例如 CERN 二进制发行包、CVMFS 上的 LCG 发行版或源码构建。其他 conda 环境中的 ROOT 软件包只能在该环境激活后运行。激活时会报告每个外部安装及其版本；外部 ROOT 与随 conda ROOT 构建的 Geant4 同时使用时给出警告。以 `--without-geant4` 安装且未设置 `RASER_GEANT4_INSTALL` 的环境使用 CVMFS 上的 Geant4 11.3.p02 EL9 构建。
-
-设置脚本向当前 shell 加入项目 CLI、组件搜索路径与 `work/` 位置。依赖安装在前述环境准备步骤中完成。
-
-## 🚀 运行 RASER
-
-首先使用元数据命令检查当前环境路径：
+激活后可通过以下命令确认 `raser` 可用并查看子命令列表：
 
 ```bash
 raser --version
 raser --help
 ```
 
-随后通过公共 CLI 运行工作流：
+## 第一步：运行信号扫描仿真（`raser signal`）
+
+对 `HPK-Si-PiN` 扫描偏置电压 `100 V` 与 `200 V`，每个偏压跑 `2` 个并行作业（`-s 2`）、每个作业记录 `200` 个有效事例（`-evt 200`），并固定随机种子 `--seed 1`。正式运行前可加 `--dry-run` 预览各扫描点和作业清单，确认无误后直接启动仿真：
 
 ```bash
-raser field -cv HPK-Si-PiN
-raser signal HPK-Si-PiN
-raser cce NJU-PiN
+raser signal HPK-Si-PiN --scan voltage=100,200 -s 2 -evt 200 --seed 1
 ```
 
-使用 `raser <command> --help` 查看选项。公共命令为 `raser`；源码树中的模块路径属于实现细节。
+默认使用 `decay/Sr90` 放射源、`device_alone` 几何和 `SantaCruz+Gali52+Termination50` 放大器链。执行过程中终端会先打印各扫描点的切片与作业规划，检测到场尚未求解时自动调用 `raser field` 补算所需偏压的场，随后完成各作业的五个切片（以下省略 `work/` 之前的绝对路径）：
 
-## 验证完整传感器链
+```text
+work/HPK-Si-PiN/signal/voltage_100/seed_1: jobs [0, 1]
+  deposit        jobs [0, 1]
+  field          jobs [0, 1]
+  current        jobs [0, 1]
+  readout        jobs [0, 1]
+  reconstruction jobs [0, 1]
+work/HPK-Si-PiN/signal/seed_1: jobs [0, 1]
+  deposit        jobs [0, 1]
+  field          jobs [0, 1]
+  current        jobs [0, 1]
+  readout        jobs [0, 1]
+  reconstruction jobs [0, 1]
+the field is not ready: raser field HPK-Si-PiN -bias 100.0
+work/HPK-Si-PiN/field: jobs [0]
+...
+the field is not ready: raser field HPK-Si-PiN -bias 200.0
+work/HPK-Si-PiN/field: jobs [0]
+...
+raser: the job ran its slices: deposit,field,current,readout,reconstruction
+```
 
-下列命令求解 Device 场数据，并以固定工作参数和随机种子运行三个主要传感器响应应用：
+这次运行中有几点直接可见的事实：
+
+- **共享场自动求解**：`100 V` 与 `200 V` 的场未事先算好时，`raser signal` 先打印 `the field is not ready: raser field HPK-Si-PiN -bias 100.0`（及 `200.0`）并自己调用 `raser field` 求解，写入 `work/HPK-Si-PiN/field/`，再接着运行信号仿真链。
+- **默认偏压点的位置**：`200 V` 是 `HPK-Si-PiN` 器件文件里的默认偏压，所以 `200 V` 这个点的结果落在实验根目录 `work/HPK-Si-PiN/signal/seed_1/`，而 `100 V` 落在 `work/HPK-Si-PiN/signal/voltage_100/seed_1/`。
+- **生成与记录事例数**：在该几何与放射源下，四个作业各记下 `200` 个有效沉积事例（其中 `200 V` 的作业 `0` 生成 `7359` 个事例；`generated_fraction` 约 `0.017` 是源发射方向中被模拟的比例）。
+
+运行结束后可在以下目录查看输出与图表：
+
+- **共享场目录 `work/HPK-Si-PiN/field/`**：存放 `run.json`、各偏压（`0 V`、`100 V`、`200 V`）下的电势与载流子数据 `.pkl`、`weightingfield/top/` 权重场、`100.0V.undepleted.json`、`200.0V.undepleted.json`，以及 IV、CV 和一维电场分布图。
+
+![HPK-Si-PiN IV 曲线](images/field-iv-HPK-Si-PiN.png)
+
+反向偏压扫描得到的暗电流（IV）曲线，可用于检查器件击穿与泄漏电流随电压的变化。
+
+![HPK-Si-PiN CV 曲线](images/field-cv-HPK-Si-PiN.png)
+
+电容随偏压变化（CV）曲线，反映器件随反偏电压增大逐步耗尽直至电容趋于平缓的过程。
+
+![HPK-Si-PiN 200 V 一维电场分布](images/field-efield-HPK-Si-PiN-200V.png)
+
+`200 V` 偏压下 `HPK-Si-PiN` 沿深度方向的一维电场分布。
+
+- **实验目录 `work/HPK-Si-PiN/signal/`**：顶层写入 `config.json`，每个扫描点种子目录下包含运行记录 `run.json`、`batch/`（`deposit_<job>.h5`、`current_<job>.h5`、`readout_<job>.h5`、`reconstruction_<job>.h5`、`.done` 标记与 `job_<job>.log`）以及 `plots/job_<job>/event_<事例号>/`（默认绘制前 `100` 个记录事例的载流子漂移路径图 `planar_drift_path.pdf`/`.root` 与电极感应电流图 `No_1electrode_basic_infor.pdf`/`.root`）。
+
+![HPK-Si-PiN 单事例载流子漂移路径](images/current-drift-path-HPK-Si-PiN.png)
+
+`HPK-Si-PiN` 单个事例的载流子漂移路径图（含器件三维体区与局部平面投影中的沉积点、电子和空穴轨迹）。
+
+![HPK-Si-PiN 单事例感应电流](images/current-event-HPK-Si-PiN.png)
+
+`HPK-Si-PiN` 单个事例的感应电流图，分别绘出电子、空穴分量及总感应电流随时间的变化。
+
+## 第二步：查看运行状态（`raser status`）
+
+随时检查实验目录下各扫描点与切片的作业完成进度：
 
 ```bash
-source env/setup_cvmfs.sh conda
-raser field HPK-Si-PiN -bias 200
-raser field -wf HPK-Si-PiN -bias 200
-raser signal HPK-Si-PiN decay/Sr90 -vol 200 --events-per-job 1 --seed 7
-raser tct signal HPK-Si-PiN SPA_top_Si_IR -vol 200 --seed 7
-raser timeres HPK-Si-PiN decay/Sr90 -vol 200 --events-per-job 100 --seed 7
+raser status work/HPK-Si-PiN/signal
 ```
 
-Signal 处理一个 Geant4 事件。TCT 计算激光产生的载流子组。Timeres 处理 100 个 Geant4 事件并写入时间分析。
+输出如下（以下省略 `work/` 之前的绝对路径）：
 
-## 🌳 在工作树间共享环境
+```text
+work/HPK-Si-PiN/signal/voltage_100/seed_1:
+  deposit     2/2 done
+  field       2/2 done
+  current     2/2 done
+  readout     2/2 done
+  reconstruction2/2 done
+work/HPK-Si-PiN/signal/seed_1:
+  deposit     2/2 done
+  field       2/2 done
+  current     2/2 done
+  readout     2/2 done
+  reconstruction2/2 done
+```
 
-本地 SIF 镜像及 conda/venv 目录是被忽略的运行时资产。将工作树链接至主检出中的共享资产：
+两个偏压点的 `2` 个作业在全部 5 个切片上均显示 `2/2 done`。
+
+## 第三步：统计分析（`raser analysis`）
+
+作业完成后，对实验文件夹运行分析命令（短命令 `raser ana`）：
 
 ```bash
-cd .worktrees/<name>
-ln -s ../../img img
-ln -s ../../.conda .conda
-ln -s ../../.venv .venv
+raser analysis work/HPK-Si-PiN/signal
 ```
 
-从工作树根目录运行激活命令，使路径指向相应源码树，同时共享大型运行时资产。
+终端输出（以下省略 `work/` 之前的绝对路径）：
 
-## 📌 依赖策略
+```text
+work/HPK-Si-PiN/signal/analysis: jobs [0]
+work/HPK-Si-PiN/signal/analysis/voltage_100/result.json
+work/HPK-Si-PiN/signal/analysis/result.json
+```
 
-RASER 按策略省略 `uv.lock`。直接 Python 依赖保留在 `pyproject.toml` 中；精简且固定版本的 `env/uv.txt` 定义部署的 Python 包，供原生与 SIF 路径使用。Conda YAML 与显式规格文件定义编译依赖。生成 `uv.lock` 需要明确调整相应策略。
+与仿真目录相同，默认偏压 `200 V` 的分析结果直接写在 `work/HPK-Si-PiN/signal/analysis/` 根下，`100 V` 的结果写在 `work/HPK-Si-PiN/signal/analysis/voltage_100/`：
+
+- **`result.json`**：汇总电荷收集效率与时间分辨（单位为 `s`）。在 `200 V` 下，全部 `400` 个记录事例的平均收集效率为 `0.9348`（展宽 `0.1445`），有 `276` 个事例幅度达到或超过 `10 mV` 阈值，其中 `CFD30` 时间分辨 `sigma` 为 `33.35 ps`、`sigma68` 为 `31.66 ps`；在 `100 V` 下平均收集效率为 `0.9195`，选中 `257` 个事例。
+- **`events.h5`**：所有选中事例的幅度、基线、噪声与各定时量明细表。
+- **`points.json` 与 `points.png`**：写在 `analysis/` 根目录下的多偏压点汇总数据与趋势图。
+- **单点统计图表**：`efficiency.png`、`amplitude.png`、`time_difference.png` 与 `resolution_of_fraction.png`。
+
+![HPK-Si-PiN 电荷收集效率分布](images/analysis-efficiency-HPK-Si-PiN.png)
+
+`200 V` 下 `400` 个记录事例的电荷收集效率分布直方图，虚线标出平均收集效率 `0.9348`。
+
+![HPK-Si-PiN 脉冲幅度分布](images/analysis-amplitude-HPK-Si-PiN.png)
+
+`200 V` 下幅度达到或超过 `10 mV` 阈值的 `276` 个选中事例的脉冲幅度分布直方图，虚线标出重建时设定的幅度阈值。
+
+![HPK-Si-PiN 时间差分布与截断高斯拟合](images/analysis-time-difference-HPK-Si-PiN.png)
+
+`200 V` 下 `ToA`、`CoG` 与 `CFD10`–`CFD90` 相对真实沉积时刻（`truth`）的时间差分布与截断高斯拟合结果，用于读出时间分辨 `sigma` 与 `sigma68`。
+
+![HPK-Si-PiN 电荷收集效率与时间分辨随偏压变化](images/analysis-points-HPK-Si-PiN.png)
+
+`100 V` 与 `200 V` 两个扫描点的电荷收集效率（左）与各 `CFD` 通道时间分辨（右）对比图。
+
+## 实用小技巧
+
+- **只跑到某一环节**：若只想运行链上前面几步，可运行 `raser deposit|current|readout|reconstruction <target>`（短命令 `dep|cur|rdo|reco`），程序会自动补齐缺少的上游步骤。
+- **单独解场**：也可以提前运行 `raser field HPK-Si-PiN` 求解默认偏压下的场，供同一器件后续所有实验共享。
+- **正式跑之前先预览**：在任何运行命令后加上 `--dry-run`，可在不实际启动仿真的情况下预览各扫描点将要运行的作业与切片状态。
+- **在实验目录内简写命令**：`cd work/HPK-Si-PiN/signal` 后可直接运行 `raser -evt 200 -s 2`，程序会自动从当前目录的 `config.json` 识别工作流与器件。
+
+## 下一步
+
+- 全部命令与模块对应关系：[命令行接口（`raser`）](cli.md)
+- 参数设置、扫描（`--set` / `--scan`）与多种子管理：[实验、扫描点与种子](lifecycle/experiments.md)
+- `signal` 工作流的完整参数说明：[单探测器信号测试台](bench/signal.md)
+- 链上切片复用与文件结构：[架构总纲](architecture.md)、[片、过期判断与状态查看](lifecycle/slices.md)
+- 批量作业与集群提交：[作业与集群提交](lifecycle/jobs.md)

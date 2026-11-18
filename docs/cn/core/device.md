@@ -1,97 +1,101 @@
-# Device
+# 器件模型（`core/device`）
 
-_RASER 5.0 传感器定义与项目布局_
+`src/raser/core/device/build_device.py` 位于材料模型之上，负责定位并读取器件 JSON 定义文件，校验电极布局与雪崩模型设置，并构造统一的 `Detector` 实例供 [场求解](field.md)、[能量沉积](deposit.md)、[载流子输运](current.md) 与 [电子学读出](readout.md) 各环节查询器件尺寸、偏压、电极阵列与平行板电容估算。器件 JSON 的编写规范见 [../components/device.md](../components/device.md)。
 
-Device 描述一个传感器。其项目包含 `device.json`，其中保存传感器默认状态，以及为该探测器生成的可复用数据。Field 数据保存在此项目中。依赖粒子源、扫描或其他应用场景的结果归属相应应用。
-
----
-
-## 📋 职责
-
-Device 负责传感器标识。其定义包含判断两次计算是否采用同一传感器所需的信息，以及应用解析所用的默认值。加载时校验坐标映射、接触、读出阵列、电学量与模型绑定之间的关系。自洽集合构成运行时传感器定义；缺失内容在 Device 边界触发失败。
-
-修改 Device 定义会产生新的定义版本。选择另一工作状态会产生与现有定义版本关联的已解析项目或运行状态。Component 与 Runs 契约解析这些值，Device 根据 `device.json` 校验结果。
-
-Device 将模型绑定保存为传感器定义的一部分。绑定指定的 Core 模块解释相应配置、执行计算并持有所得数值状态。
-
-Device 可直接采用其默认值，也可由应用项目中的 [Device 组件](../components/device.md)引用。组件提供该项目采用的 Device 状态与 Field 值，`device.json` 保留规范定义与默认值。
-
-## 🗂️ 项目布局
-
-```text
-<device>/
-├── device.json
-└── field/
-    ├── <field-config-hash>/
-    └── ...
+```mermaid
+flowchart LR
+    NAME["device_name / device_dict"] --> FIND["device_file 按优先级定位<br/>1. 已有文件夹/device.json<br/>2. 含后缀或多段路径<br/>3. work_root/名称/device.json<br/>4. 组件目录 device/名称.json"]
+    FIND --> DET["Detector 实例<br/>边界 / 电极阵列 / 雪崩开关 / 电容"]
+    DET --> FLD["core/field"]
+    DET --> DEP["core/deposit"]
+    DET --> CUR["core/current"]
+    DET --> RDO["core/readout"]
 ```
 
-`device.json` 是 Device 项目的规范定义。`field/` 下每个目录以完整 Field 配置的哈希命名，并保存其可复用资产。配置与哈希规则见 [Field](field.md#配置)。应用运行保存在应用项目中，并引用其采用的 Device 与 Field 配置。
+## 器件文件查找与 `Detector` 构造
 
-## 📥 定义契约
+- **`device_file(device_name)`**：依次按“已有文件夹下的 `device.json` → 带文件后缀或多段路径 → `<work_root>/<device_name>/device.json`（`work_root` 见 [../supports/README.md](../supports/README.md)）→ 组件目录 `device/<device_name>.json`”的顺序解析器件 JSON 绝对路径。
+- **`Detector(device_name, device_dict=None)`**：当 `device_dict` 为 `None` 时调用 `device_json(device_name)` 从磁盘读取 JSON；传入字典时对其做深拷贝。JSON 的顶层键会映射为 `Detector` 的同名属性（类型随 JSON，`voltage` 转为 `float`），随后被派生字段（`det_name`、`device`、`region`、`irradiation_model`、`irradiation_flux`、`dimension`、`electrodes`、`x_ele_num`、`y_ele_num`、`read_ele_num`、`p_x`、`p_y`、`avalanche_model`）覆盖。
 
-`device.json` 提供自包含的传感器定义。各声明彼此闭合：灵敏体映射到探测器坐标域，Field 接触名称对应 Device 接触，读出电极遵循声明的二维阵列与电极顺序。每个模型绑定对应完整配置。声明的坐标映射联系独立的 Geant4 包络与运行时区域。
+`Detector` 从器件 JSON 读取的配置键清单如下：
 
-该文件还提供配置解析的默认值。解析从这些默认值开始，随后应用 Component 与调用替换值。`field/` 保留为 Device 产生或导入的完整配置。`device.json` 是 Field 生成与加载期间的默认值来源。
+| 键名 | 默认值 | 单位 | 含义 |
+| --- | --- | --- | --- |
+| `det_name` | JSON 文件名词干（`path.stem`） | 无 | 探测器名称，同时赋给 `det_name`、`device`、`region` |
+| `material` | 无（`capacitance` 平行板分支必选） | 无 | 半导体材料名（传入 [model.md](model.md) 的 `Material`） |
+| `det_model` | 无（未给 `capacitance_pF` 时访问 `capacitance` 必选） | 无 | 器件模型标识字符串 |
+| `l_x`, `l_y`, `l_z` | 无（必选） | $\mu\text{m}$ | 器件在 $x$、$y$、$z$ 方向的尺寸 |
+| `default_dimension` | 无（必选） | 无 | 默认场维度（`1`、`2` 或 `3`） |
+| `field_dimension` | `default_dimension` | 无 | 覆盖 `default_dimension` 的场维度 |
+| `bias.voltage` | 无（必选） | V | 偏置电压 |
+| `irradiation.irradiation_model` | 无 `irradiation` 块时为 `None`（有该块时必选） | 无 | 辐照缺陷模型名称 |
+| `irradiation.irradiation_flux` | 无 `irradiation` 块时为 `0`（有该块时必选） | $\text{cm}^{-2}$ | 辐照注量 |
+| `mesh.mesher` | `None` | 无 | 网格生成器标识（如 `"sde"`） |
+| `mesh.plugin` | `False` | 无 | 二维网格是否位于横向 $x$-$y$ 平面 |
+| `electrodes` | `"pad"` | 无 | 读出电极布局，取值为 `"pad"`、`"strip"` 或 `"pixel"` |
+| `read_ele_num` | `"pad"` 下为 `1`；`"pixel"` 下为 `x_ele_num * y_ele_num` | 个 | 读出电极总数（`"strip"` 布局下由 JSON 必选提供） |
+| `x_ele_num`, `y_ele_num` | `"pad"` 下为 `1, 1`；`"strip"` 下为 `read_ele_num, 1` | 个 | $x$、$y$ 方向电极数（`"pixel"` 布局下由 JSON 必选提供） |
+| `p_x` | `"pad"` 下为 `l_x` | $\mu\text{m}$ | $x$ 方向电极间距（`"strip"` 或 `"pixel"` 布局下由 JSON 必选提供） |
+| `p_y` | `"pad"` 或 `"strip"` 下为 `l_y` | $\mu\text{m}$ | $y$ 方向电极间距（`"pixel"` 布局下由 JSON 必选提供） |
+| `avalanche_model` | `None` | 无 | 雪崩电离模型名称 |
+| `enable_gain` | `False` | 无 | 是否开启雪崩增益层 |
+| `capacitance_pF` | 无（可选） | pF | 直接指定的器件电容 |
+| `depletion_depth` | `l_z` | $\mu\text{m}$ | 计算平行板电容时使用的耗尽层厚度 |
 
-[Device 组件](../components/device.md)为应用项目替换默认值。[运行记录](../lifecycle/runs.md)解析更具体的调用值并保存结果。[Field](field.md) 随后将解析值转为配置，其哈希用于寻址可复用数据。
+## 派生属性、布局校验与电容计算
 
-## 🔲 读出几何
+`Detector` 对外提供以下派生属性与方法（内存对象）：
 
-读出表面采用两个正交索引轴。Pad、strip 与 pixel 布局共享一项二维阵列契约：
+- **电极布局校验（`LAYOUT_KEYS`）**：`electrodes` 只能为 `"pad"`、`"strip"` 或 `"pixel"`，且对应布局所需键必须完整、不能混入其他布局的专属键。
+- **雪崩开关 `has_avalanche`**：仅当 `avalanche_model is not None and bool(enable_gain)` 时为 `True`；若 `enable_gain` 为真但缺少 `avalanche_model` 则直接报错。
+- **平行板电容估算 `capacitance`（pF）**：若 JSON 已给定 `capacitance_pF` 则直接返回该值；若 `det_model`（小写）含 `"3d"` 则返回 `None`；否则按平行板电容公式 $\varepsilon_0 \varepsilon_r (A \times 10^{-12}) / (d \times 10^{-6}) \times 10^{12}$ 计算，其中 $\varepsilon_0 = 8.8541878128\times 10^{-12}\ \text{F/m}$，$\varepsilon_r$ 取自 `Material(material).permittivity`，单电极面积 $A = p_x \cdot p_y$（$\mu\text{m}^2$），$d = \text{depletion\_depth}$（$\mu\text{m}$）。
 
-| 读出布局 | 阵列契约 |
-| --- | --- |
-| Pad | `1 × 1` 阵列 |
-| Strip | `read_ele_num × 1` 或 `1 × read_ele_num` 阵列，在分段轴上设置 pitch |
-| Pixel | `x_ele_num × y_ele_num` 阵列，pitch 为 `p_x` 和 `p_y` |
+| 属性或方法 | 类型 | 单位 | 含义 |
+| --- | --- | --- | --- |
+| `device_dict` | `dict` | 无 | 器件 JSON 内容的深拷贝 |
+| `definition_path` | `Path` | 无 | `device_file(device_name)` 解析出的器件 JSON 绝对路径 |
+| `det_name`, `device`, `region` | `str` | 无 | 器件名称 |
+| `dimension` | `int` | 无 | 器件场维度 |
+| `voltage` | `float` | V | 偏置电压 `float(device_dict["bias"]["voltage"])` |
+| `irradiation_model` | `str \| None` | 无 | 辐照模型名称 |
+| `irradiation_flux` | `float \| int` | $\text{cm}^{-2}$ | 辐照注量 |
+| `mesher` | `str \| None` | 无 | 网格生成器标识 |
+| `bound` | `dict` | $\mu\text{m}$ | 器件坐标范围 `{'x': (0, l_x), 'y': (0, l_y), 'z': (0, l_z)}` |
+| `electrodes` | `str` | 无 | 电极布局（`"pad"`、`"strip"` 或 `"pixel"`） |
+| `is_strip`, `is_pixel` | `bool` | 无 | 是否为 `"strip"` 或 `"pixel"` 布局 |
+| `x_ele_num`, `y_ele_num`, `read_ele_num` | 随 JSON | 个 | $x$ 方向、$y$ 方向及总读出电极数 |
+| `p_x`, `p_y` | 随 JSON | $\mu\text{m}$ | 单个读出电极在 $x$、$y$ 方向的尺寸或间距 |
+| `avalanche_model` | `str \| None` | 无 | 雪崩模型名称 |
+| `has_avalanche` | `bool` | 无 | 是否同时启用了雪崩增益与雪崩模型 |
+| `capacitance` | `float \| None` | pF | 直接指定、平行板估算电容，或 3D 模型返回 `None` |
+| `file(name)` | `Path` | 无 | 解析器件 JSON 引用的外部文件路径（相对路径相对于 `definition_path.parent`） |
+| `is_plugin()` | `bool` | 无 | 返回 `bool(device_dict.get("mesh", {}).get("plugin", False))` |
 
-增益器件加入明确的雪崩模型与增益区定义。采用多维 Field 数据的器件加入接触几何与对应网格。它们采用相同的有序 `(x, y)` 读出阵列。
+## 示例中的 `Detector`（`HPK-Si-PiN`）
 
-## 📐 几何、单位与坐标
+在 [快速入门](../getting-started.md) 的示例中，运行 `raser signal HPK-Si-PiN --scan voltage=100,200 -s 2 -evt 200 --seed 1` 时，`work/HPK-Si-PiN/field/run.json` 记录了完整的器件定义：`"det_model": "planar"`、`"material": "Si"`、三维尺寸 `l_x = 1300`、`l_y = 1300`、`l_z = 50` $\mu\text{m}$、默认维度 `dimension = 1`、默认偏压 `bias.voltage = 200.0` V（扫描点 `voltage_100` 将其覆盖为 `100` V）。由于 JSON 未显式写 `electrodes`，器件按 `"pad"` 布局展开为 `read_ele_num = 1`、`p_x = p_y = 1300` $\mu\text{m}$，并直接从 `capacitance_pF = 3.44162280284` 读取结电容 `3.44162280284 pF`。
 
-| 值 | 单位或约定 |
-| --- | --- |
-| `l_x`、`l_y`、`l_z`、pitch、增益边界 | µm |
-| 偏压 | V |
-| 温度 | K |
-| 电容 | pF |
-| 运行时点 | 以 µm 表示的探测器坐标 `(x, y, z)` |
-| 运行时边界 | `0 ≤ x ≤ l_x`、`0 ≤ y ≤ l_y`、`0 ≤ z ≤ l_z`；显式映射可采用其他范围 |
+## 常见报错
 
-运行时边界是 Field 与载流子输运接受的传感器区域。Geant4 设计具有独立包络与放置，并可包含非灵敏层、支撑结构或导入的装配体。
+| 异常类型 | 报错信息 | 触发条件 |
+| --- | --- | --- |
+| `ValueError` | `` `electrodes` must be pad, strip or pixel, not ... `` | `electrodes` 的值不在 `("pad", "strip", "pixel")` 中 |
+| `ValueError` | `` <path>: `electrodes` is ..., which takes the keys ...; missing ..., keys of another layout ... `` | 缺少当前 `electrodes` 布局在 `LAYOUT_KEYS` 中的必选键，或混入了其他布局的专属键 |
+| `ValueError` | ``gain is enabled but `avalanche_model` is missing in detector settings`` | `enable_gain` 为真但 `avalanche_model` 为 `None` |
+| `ValueError` | `depletion_depth must be positive` | 计算平行板电容时 `depletion_depth <= 0` |
+| `KeyError` | `bias`、`default_dimension` | JSON 缺少该键 |
+| `AttributeError` | `l_x`、`l_y`、`l_z` | JSON 缺少该键 |
+| `FileNotFoundError` | `Cannot find RASER component device/<name>.json:` 及搜索路径列表 | 按名字查找的器件不在 `work/<name>/device.json` 也不在器件组件目录 |
+| `FileNotFoundError` / `IsADirectoryError` | 系统打开文件的报错 | `device_name` 带后缀或多段路径时，该路径不是已有文件 |
+| `FileNotFoundError` | `Cannot find <path>, named by <definition_path>` | `Detector.file(name)` 解析后的路径不是已有文件 |
 
-Geant4 契约标识灵敏体，并将其坐标映射到探测器坐标。载流子输运接收运行时区域内映射后的沉积。映射明确陈述 Geant4 包络与运行时边界的关系，二者相同时也予以记录。
+## 相关页面
 
-求解器原生单位与坐标轴可以采用不同约定。转换属于 Field 契约；下游输运接收探测器坐标。
-
-## ⚙️ 运行时 Device 契约
-
-Device 从 `device.json` 开始。应用按照 [Runs](../lifecycle/runs.md) 解析组件值与运行级值，再由 Device 校验结果。运行时 Device 将传感器定义与已解析状态组合。
-
-[Field 配置](field.md#配置)将解析值写入 `config.json`，并以其哈希作为数据目录名。应用在 [run.json](../lifecycle/runs.md) 中记录相同配置与哈希。Device 将解析值传给 Field。Field 根据配置哈希得到资产目录并恢复其中的文件。
-
-Device 可声明作为传感器建模预输入的传感器电学值。Field AC 结果提供与已计算 Field 配置关联的数值。[Frontend](frontend.md) 使用所选数值构建传感器网表。
-
-<!-- TODO: 定义 Device 电学值与 Field AC 结果之间的解析方式。 -->
-
-启用增益需要雪崩模型绑定及其增益区几何。
-
-## 🔗 下游契约
-
-| 使用者 | 使用的 Device 数值 |
-| --- | --- |
-| [Field](field.md) | 结构、材料、掺杂、接触、网格、工作条件，以及 Field 与 Damage 选择 |
-| [Interaction](interaction.md) | Geant4 几何、灵敏体映射、材料与运行时区域 |
-| [Carrier 与 current](current.md) | 运行时区域、材料、温度、接触、读出阵列，以及 Gain 与 Transport 选择 |
-| [Frontend](frontend.md) | 传感器电学定义、读出电极与 Readout 选择 |
-| [Metrics](metrics.md) | Device 标识、几何、pitch 与电极数 |
-
-## ✍️ 扩展契约
-
-1. 定义运行时区域与探测器坐标约定。
-2. 定义 Geant4 几何及其到运行时区域的映射。
-3. 声明两个读出轴的数量、pitch 与接触。
-4. 声明 `field_source`、`field_dimension`，以及 Damage、Transport、Gain 与 Readout 模型选择。
-5. 以 pF 明确声明电容。
-6. 提供默认 Device 状态与 Field 值。
+- [快速入门](../getting-started.md)
+- [../components/device.md](../components/device.md)
+- [model.md](model.md)
+- [field.md](field.md)
+- [deposit.md](deposit.md)
+- [current.md](current.md)
+- [readout.md](readout.md)
+- [../supports/README.md](../supports/README.md)
