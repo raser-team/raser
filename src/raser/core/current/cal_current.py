@@ -10,6 +10,7 @@ Description:
 
 import math
 import os
+import shutil
 import csv
 import logging
 import numpy as np
@@ -17,7 +18,7 @@ import ROOT
 ROOT.gROOT.SetBatch(True)
 
 from ..model.material import Material
-from .drift import Cluster, Drifted, advance, induced_charges, surviving
+from .drift import Cluster, Drifted, advance, induced_charges, surviving, surviving_at
 from . import draw
 from .draw_drift_path import draw_drift_path
 from .currents import EventCurrents, append_currents
@@ -231,8 +232,10 @@ class CalCurrent:
         self.electron_system = self.drift_all(my_d, my_f, starts, [-n_pairs for n_pairs in pairs])
         self.hole_system = self.drift_all(my_d, my_f, starts, pairs)
 
-        # number of carriers that stopped for each reason; those of the gain are added with the gain current
+        # for each reason, how many clusters stopped for it and their carriers;
+        # those of the gain are added with the gain current
         self.ends = self.count_ends()
+        self.without_field = self.first_without_field()
 
         # the currents: arrays (read_ele_num, n_bin + 2) in A; the first and last columns hold the parts before and after the time window
         hole_bins = self.binned(my_d, my_f, self.hole_system)
@@ -243,13 +246,19 @@ class CalCurrent:
         if my_d.has_avalanche:
             self.gain_current = CalCurrentGain(my_d, my_f, self)
             sum_bins += self.gain_current.hole_bins + self.gain_current.electron_bins
-            for reason, count in self.gain_current.count_ends().items():
-                self.ends[reason] = self.ends.get(reason, 0) + count
+            for reason, (clusters, carriers) in self.gain_current.count_ends().items():
+                ends = self.ends.setdefault(reason, [0, 0.0])
+                ends[0] += clusters
+                ends[1] += carriers
+            if self.without_field is None:
+                self.without_field = self.gain_current.first_without_field()
 
         # current of each electrode inside the time window, (read_ele_num, n_bin), in A
         self.hole_current = hole_bins[:, 1:-1]
         self.electron_current = electron_bins[:, 1:-1]
         self.current = sum_bins[:, 1:-1]
+        # carriers of the clusters that stopped where the field has no value
+        self.carriers_without_field = float(self.ends.get("no_field", [0, 0.0])[1])
         # signed net charge of each electrode in C: all the induced charge, the part outside the time window included
         self.charge = sum_bins.sum(axis=1) * self.t_bin
 
@@ -267,6 +276,7 @@ class CalCurrent:
             ):
                 if carrier_system is not None:
                     carrier_system.paths = []
+                    carrier_system.remaining = []
 
     def _is_in_sensor(self, x, y, z, my_d):
         """Whether the position is inside the detector."""
@@ -296,12 +306,12 @@ class CalCurrent:
             numbers.append(count - 1 if here == first_edge + count * pitch else number)
         return numbers
 
-    def drift_all(self, my_d, my_f, starts, charges):
+    def drift_all(self, my_d, my_f, starts, carriers):
         """Drift a cluster from each of `starts` (x, y, z [um], t [s]); None without any."""
         if not starts:
             return None
         mobility = Material(my_d.material).cal_mobility
-        clusters = [Cluster.starting(x, y, z, t, charge) for (x, y, z, t), charge in zip(starts, charges)]
+        clusters = [Cluster.starting(x, y, z, t, number) for (x, y, z, t), number in zip(starts, carriers)]
         # one cluster after another, each to its end: the order of the random draws
         for cluster in clusters:
             while cluster.reason is None:
@@ -309,20 +319,43 @@ class CalCurrent:
             # an array as soon as it stops: the list of points takes about
             # six times the memory, too much to keep for every cluster at once
             cluster.path = np.array(cluster.path)
+        # the carriers not yet trapped along each path, taken once here for
+        # every use: the induced current and the gain
+        remaining = [
+            surviving(cluster.path, cluster.carriers, my_f) if my_d.irradiation_model is not None else None
+            for cluster in clusters
+        ]
         return Drifted(
-            list(charges),
+            list(carriers),
             [cluster.path for cluster in clusters],
             [cluster.reason for cluster in clusters],
+            remaining,
         )
 
     def count_ends(self):
-        """How many clusters stopped for each reason."""
+        """For each reason the clusters stopped for, how many and their
+        carriers when they stopped, without sign and not yet trapped:
+        {reason: [clusters, carriers]}."""
         ends = {}
         for carrier_system in (self.electron_system, self.hole_system):
             if carrier_system is not None:
-                for reason in carrier_system.reasons:
-                    ends[reason] = ends.get(reason, 0) + 1
+                for reason, carriers, remaining in zip(
+                    carrier_system.reasons, carrier_system.carriers, carrier_system.remaining
+                ):
+                    count = ends.setdefault(reason, [0, 0.0])
+                    count[0] += 1
+                    # as they were when they stopped
+                    count[1] += abs(carriers if remaining is None or not len(remaining) else remaining[-1])
         return ends
+
+    def first_without_field(self):
+        """Where the first cluster that found no field stopped, x, y, z [um]; None if none did."""
+        for carrier_system in (self.electron_system, self.hole_system):
+            if carrier_system is not None:
+                for reason, path in zip(carrier_system.reasons, carrier_system.paths):
+                    if reason == "no_field":
+                        return tuple(float(value) for value in path[-1][:3])
+        return None
 
     def electrodes_near(self, x, y, my_d, my_f):
         """The electrodes a cluster starting at x, y may induce charge on.
@@ -361,13 +394,12 @@ class CalCurrent:
         if carrier_system is None:
             return bins
         bin_width = (self.t_end - self.t_start) / self.n_bin
-        for charge, path in zip(carrier_system.charges, carrier_system.paths):
+        for born, remaining, path in zip(carrier_system.carriers, carrier_system.remaining, carrier_system.paths):
             if len(path) < 2:
                 continue
-            if my_d.irradiation_model is not None:
-                charge = surviving(path, charge, my_f)
+            carriers = born if remaining is None else remaining
             for number, in_field, offset in self.electrodes_near(path[0][0], path[0][1], my_d, my_f):
-                induced = induced_charges(path, charge, my_f, in_field, offset)
+                induced = induced_charges(path, carriers, my_f, in_field, offset)
                 for value, t_from, t_to in zip(induced, path[:-1, 3], path[1:, 3]):
                     spread_over_bins(
                         bins[number], value / self.t_bin, t_from, t_to, self.t_start, bin_width
@@ -454,13 +486,31 @@ class CalCurrentGain(CalCurrent):
             logger.warning("No carrier system found for planar gain calculation.")
             return
 
-        # each cluster multiplies where it stops: its pairs start at the gain
-        # layer at that time, as many as the depth it was made at gives
+        # each cluster that reaches the gain layer multiplies there: its pairs
+        # start at the gain depth when it stops, as many as the depth it was
+        # made at gives for its carriers not yet trapped when it crossed
+        # that depth. A cluster that never moved, or moved towards the layer
+        # without reaching it, makes none. One that moves away from it was
+        # made in front of the layer and sends the other carrier through it:
+        # its pairs are taken whole, the other carrier being through at once
         gain_depth = my_f.planar_gain_depth(my_d)
-        for charge, path in zip(source_system.charges, source_system.paths):
+        trapping = my_d.irradiation_model is not None
+        for carriers, path in zip(source_system.carriers, source_system.paths):
+            if len(path) < 2:
+                continue
+            depths = path[:, 2] - gain_depth
+            crossed = np.flatnonzero(depths[:-1] * depths[1:] <= 0)
+            if len(crossed):
+                step = int(crossed[0])
+                fraction = depths[step] / (depths[step] - depths[step + 1]) if depths[step] != depths[step + 1] else 0.0
+                arriving = surviving_at(path, carriers, my_f, step, fraction) if trapping else carriers
+            elif abs(depths[-1]) < abs(depths[0]):
+                continue
+            else:
+                arriving = carriers
             x, y, _, t = path[-1]
             gain_starts.append((x, y, gain_depth, t))
-            gain_pairs.append(abs(charge) * my_f.planar_gain_at(my_d, path[0][2]))
+            gain_pairs.append(abs(arriving) * my_f.planar_gain_at(my_d, path[0][2]))
 
     def _build_local_gain_carriers(self, my_d, my_f, my_current, gain_starts, gain_pairs):
         cal_coefficient = Material(my_d.material, avalanche_model=my_d.avalanche_model).cal_coefficient
@@ -470,6 +520,19 @@ class CalCurrentGain(CalCurrent):
         samples = max(1, int(getattr(my_d, "local_gain_integration_steps", 3)))
         emitted_segments = 0
         field_failures = 0
+
+        def where_grown(pending):
+            """Where pairs that grew on several steps start: the one step
+            itself, or the point at their pair-weighted middle, position and
+            time, so that on average they start where they grew."""
+            if len(pending) == 1:
+                return pending[0][0]
+            total = sum(pairs for _, pairs in pending)
+            middle = tuple(
+                sum(pairs * (segment[axis] + segment[axis + 4]) / 2 for segment, pairs in pending) / total
+                for axis in range(4)
+            )
+            return (*middle, *middle)
 
         def emit(segment, pairs):
             """Start `pairs` gain pairs along the segment (x0, y0, z0, t0,
@@ -496,12 +559,16 @@ class CalCurrentGain(CalCurrent):
                 if len(path) < 2:
                     continue
 
-                active_pairs = abs(carrier_system.charges[carrier_idx])
+                active_pairs = abs(carrier_system.carriers[carrier_idx])
                 pending_pairs = 0.0
+                pending = []  # the steps the pending pairs grew on, with how many on each
                 if active_pairs <= 0:
                     continue
-                charge_sign = -1 if carrier_system.charges[carrier_idx] < 0 else 1
-                for point0, point1 in zip(path[:-1], path[1:]):
+                charge_sign = -1 if carrier_system.carriers[carrier_idx] < 0 else 1
+                # the share of the cluster not yet trapped, at the middle of each step
+                remaining = carrier_system.remaining[carrier_idx]
+                untrapped = np.ones(len(path) - 1) if remaining is None else remaining / carrier_system.carriers[carrier_idx]
+                for point0, point1, share in zip(path[:-1], path[1:], untrapped):
                     x0, y0, z0, t0 = point0
                     x1, y1, z1, t1 = point1
                     dx = x1 - x0
@@ -539,29 +606,32 @@ class CalCurrentGain(CalCurrent):
                     if not math.isfinite(exponent):
                         continue
                     exponent = min(exponent, 50.0)
-                    new_pairs = active_pairs * math.expm1(exponent)
+                    # active_pairs is the cluster with its gain so far, were
+                    # none trapped; the untrapped share of it multiplies
+                    growth = active_pairs * math.expm1(exponent)
+                    new_pairs = growth * share
                     if new_pairs <= 0:
                         # the growth stops: what grew since the last emission
                         # starts on the last segment it grew on
                         if pending_pairs > 0:
-                            emit(last_growth, pending_pairs)
-                            pending_pairs = 0.0
+                            emit(where_grown(pending), pending_pairs)
+                            pending_pairs, pending = 0.0, []
                             emitted_segments += 1
                         continue
-                    active_pairs += new_pairs
+                    active_pairs += growth
                     pending_pairs += new_pairs
-                    last_growth = (x0, y0, z0, t0, x1, y1, z1, t1)
+                    pending.append(((x0, y0, z0, t0, x1, y1, z1, t1), new_pairs))
                     if pending_pairs < min_pairs:
                         continue
 
-                    emit(last_growth, pending_pairs)
-                    pending_pairs = 0.0
+                    emit(where_grown(pending), pending_pairs)
+                    pending_pairs, pending = 0.0, []
                     emitted_segments += 1
 
                 # pairs too few to emit by the end of the path start on the
                 # last segment they grew on
                 if pending_pairs > 0:
-                    emit(last_growth, pending_pairs)
+                    emit(where_grown(pending), pending_pairs)
 
         logger.info("local gain emitted segments: %d", emitted_segments)
         if field_failures:
@@ -666,6 +736,28 @@ def deposits_in(record, detector):
     )
 
 
+def log_ends(ends, without_field):
+    """Log why the clusters of a job stopped: `ends` as CalCurrent.ends,
+    summed over the events, and `without_field` (event, (x, y, z)) of the
+    first cluster that found no field, or None. Clusters that found no field
+    are warned of: what they would have induced further on is missing."""
+    logger.info(
+        "clusters stopped: %s",
+        ", ".join(
+            "{} {} ({:.6g} carriers)".format(reason, clusters, carriers)
+            for reason, (clusters, carriers) in sorted(ends.items())
+        ),
+    )
+    if "no_field" in ends:
+        clusters, carriers = ends["no_field"]
+        event, (x, y, z) = without_field
+        logger.warning(
+            "%d clusters (%.6g carriers) stopped where the field has no value, the first in "
+            "event %s at x, y, z = %.4f, %.4f, %.4f um: what they would have induced further on is missing",
+            clusters, carriers, event, x, y, z,
+        )
+
+
 def write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, plot_path=None, detector=None):
     """Drift the pairs of every event of the deposits file in the field and
     write the currents they induce to the currents file, event by event.
@@ -689,10 +781,18 @@ def write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, pl
             )
     if os.path.exists(currents_path):
         os.remove(currents_path)
+    ends = {}
+    without_field = None
     for count, record in enumerate(events):
         drawn = count < plots
         positions = [list(point) for point in zip(record.x, record.y, record.z, record.t)]
         my_current = CalCurrent(my_d, my_f, record.pairs, positions, keep_drift_paths=drawn)
+        for reason, (clusters, carriers) in my_current.ends.items():
+            total = ends.setdefault(reason, [0, 0.0])
+            total[0] += clusters
+            total[1] += carriers
+        if without_field is None and my_current.without_field is not None:
+            without_field = (record.event, my_current.without_field)
         append_currents(
             currents_path,
             my_current.electrodes,
@@ -704,17 +804,21 @@ def write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, pl
                 my_current.charge,
                 my_current.pairs,
                 my_current.sensitive_pairs,
+                my_current.carriers_without_field,
             ),
         )
         if drawn:
+            # the pictures of this event only: those an earlier run left go
             path = os.path.join(plot_path, "event_%s" % (record.event))
-            os.makedirs(path, exist_ok=True)
+            shutil.rmtree(path, ignore_errors=True)
+            os.makedirs(path)
             draw_drift_path(my_d, list(zip(record.x, record.y, record.z)), my_f, my_current, path)
             my_current.draw_currents(path)
             if my_d.is_strip:
                 my_current.charge_collection_strip(path)
             if my_d.is_pixel:
                 my_current.charge_collection_pixel(path)
+    log_ends(ends, without_field)
 
 
 def write_laser_currents(currents_path, my_d, my_f, my_l, plot_path=None):
@@ -727,13 +831,14 @@ def write_laser_currents(currents_path, my_d, my_f, my_l, plot_path=None):
     if os.path.exists(currents_path):
         os.remove(currents_path)
     my_current = CalCurrentLaser(my_d, my_f, my_l, diffusion=False)
+    log_ends(my_current.ends, None if my_current.without_field is None else (0, my_current.without_field))
     append_currents(
         currents_path,
         my_current.electrodes,
         my_current.t_bin,
         EventCurrents(
             0, my_current.t_start, my_current.current, my_current.charge, my_current.pairs,
-            my_current.sensitive_pairs,
+            my_current.sensitive_pairs, my_current.carriers_without_field,
         ),
     )
     if plot_path is not None:

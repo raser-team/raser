@@ -16,6 +16,10 @@ Datasets, one row per event:
     sensitive_pairs  of those, the pairs born where the device does not
                 conduct, which the drift moves; only in files written from
                 a drift in a solved field
+    carriers_without_field  carriers, without sign and not yet trapped,
+                of the clusters that stopped where the field has no value:
+                the current they would have induced further on is missing;
+                0 for a whole event; only in files written from a drift
     charge      signed net charge of each electrode [C]
     stored      number of electrodes of the event that are stored
 Dataset, one value per stored electrode:
@@ -43,6 +47,13 @@ class EventCurrents:
     # of those, the pairs born where the device does not conduct; None where
     # the currents do not come from a drift in a solved field
     sensitive_pairs: float | None = None
+    # carriers of the clusters that stopped where the field has no value,
+    # as they were when they stopped; None as sensitive_pairs
+    carriers_without_field: float | None = None
+
+
+# the numbers of an event that only a drift in a solved field gives
+_OF_A_DRIFT = ("sensitive_pairs", "carriers_without_field")
 
 
 @dataclass
@@ -65,13 +76,15 @@ def append_currents(path, electrodes: list[str], dt: float, record: EventCurrent
 
     new = not os.path.exists(path)
     with h5py.File(str(path), "a") as file:
-        if new and record.sensitive_pairs is not None:
-            file.create_dataset("sensitive_pairs", shape=(0,), maxshape=(None,), dtype="float64")
-        if ("sensitive_pairs" in file) != (record.sensitive_pairs is not None):
-            raise ValueError(
-                f"{path} {'holds' if 'sensitive_pairs' in file else 'does not hold'} sensitive pairs, "
-                f"the event {record.event} {'has none' if record.sensitive_pairs is None else 'has them'}"
-            )
+        for name in _OF_A_DRIFT:
+            value = getattr(record, name)
+            if new and value is not None:
+                file.create_dataset(name, shape=(0,), maxshape=(None,), dtype="float64")
+            if (name in file) != (value is not None):
+                raise ValueError(
+                    f"{path} {'holds' if name in file else 'does not hold'} {name}, "
+                    f"the event {record.event} {'has none' if value is None else 'has it'}"
+                )
         if new:
             file.attrs.create("electrodes", list(electrodes), dtype=h5py.string_dtype())
             file.attrs["dt"] = float(dt)
@@ -112,8 +125,9 @@ def append_currents(path, electrodes: list[str], dt: float, record: EventCurrent
             "index": stored,
             "current": current[stored].ravel(),
         }
-        if record.sensitive_pairs is not None:
-            rows["sensitive_pairs"] = [float(record.sensitive_pairs)]
+        for name in _OF_A_DRIFT:
+            if getattr(record, name) is not None:
+                rows[name] = [float(getattr(record, name))]
         for name, values in rows.items():
             dataset = file[name]
             first = dataset.shape[0]
@@ -133,12 +147,14 @@ def read_currents(path) -> Currents:
         stored = file["stored"][()]
         index = file["index"][()]
         values = file["current"][()]
-        sensitive = file["sensitive_pairs"][()] if "sensitive_pairs" in file else [None] * len(numbers)
+        sensitive, without_field = (
+            file[name][()] if name in file else [None] * len(numbers) for name in _OF_A_DRIFT
+        )
     events = []
     first_electrode = 0
     first_value = 0
-    for number, start, count, charge, n_pairs, n_stored, n_sensitive in zip(
-        numbers, starts, counts, charges, pairs, stored, sensitive, strict=True
+    for number, start, count, charge, n_pairs, n_stored, n_sensitive, n_without_field in zip(
+        numbers, starts, counts, charges, pairs, stored, sensitive, without_field, strict=True
     ):
         last_electrode = first_electrode + int(n_stored)
         last_value = first_value + int(n_stored) * int(count)
@@ -150,6 +166,7 @@ def read_currents(path) -> Currents:
             EventCurrents(
                 int(number), float(start), current, charge, float(n_pairs),
                 None if n_sensitive is None else float(n_sensitive),
+                None if n_without_field is None else float(n_without_field),
             )
         )
         first_electrode, first_value = last_electrode, last_value

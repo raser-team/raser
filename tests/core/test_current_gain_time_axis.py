@@ -1,6 +1,9 @@
 """The gain current is binned on the time axis of the current it multiplies."""
 
+import math
 from types import SimpleNamespace
+
+import numpy as np
 
 import pytest
 
@@ -141,3 +144,135 @@ def test_sensitive_pairs_leave_out_the_pairs_born_where_the_device_conducts():
 
     assert current.pairs == 207.0
     assert current.sensitive_pairs == 100.0
+
+
+class _Trapping(_UniformField):
+    """Electrons and holes trapped at 2e9 /s everywhere."""
+
+    def get_trap_e_cached(self, x, y, z):
+        return 2.0e9
+
+    def get_trap_h_cached(self, x, y, z):
+        return 2.0e9
+
+
+def _crossing_time(path, depth):
+    """When a path, falling or rising, passes the depth, by linear interpolation."""
+    z, t = path[:, 2], path[:, 3]
+    k = int(np.flatnonzero((z[:-1] - depth) * (z[1:] - depth) <= 0)[0])
+    return t[k] + (depth - z[k]) / (z[k + 1] - z[k]) * (t[k + 1] - t[k])
+
+
+def test_the_planar_gain_multiplies_the_electrons_left_when_they_cross_the_gain_depth():
+    # electrons from z = 25 um pass the gain depth, 1 um, at t; of 100,
+    # 100 exp(-2e9 t) are left to multiply by GAIN
+    current = CalCurrent(
+        SimpleNamespace(**{**vars(_lgad()), "irradiation_model": "constant"}),
+        _Trapping(),
+        [100.0],
+        [[50.0, 50.0, 25.0, 0.0]],
+        diffusion=False,
+    )
+
+    crossing = _crossing_time(current.electron_system.paths[0], 1.0)
+    made = sum(current.gain_current.hole_system.carriers)
+    assert made == pytest.approx(GAIN * 100.0 * math.exp(-2.0e9 * crossing), rel=1e-6)
+    assert made < 0.8 * GAIN * 100.0
+
+
+class _HolesMultiplyAt49um(_Trapping):
+    """Holes, trapped at 8e9 /s and not electrons' 2e9 /s, multiply at 49 um."""
+
+    def get_trap_h_cached(self, x, y, z):
+        return 8.0e9
+
+    def planar_gain_depth(self, my_d):
+        return 49.0
+
+    def planar_gain_carrier(self, my_d):
+        return 1
+
+
+def test_the_planar_gain_takes_the_trapping_of_the_carrier_that_multiplies():
+    current = CalCurrent(
+        SimpleNamespace(**{**vars(_lgad()), "irradiation_model": "constant"}),
+        _HolesMultiplyAt49um(),
+        [100.0],
+        [[50.0, 50.0, 25.0, 0.0]],
+        diffusion=False,
+    )
+
+    crossing = _crossing_time(current.hole_system.paths[0], 49.0)
+    made = sum(current.gain_current.hole_system.carriers)
+    assert made == pytest.approx(GAIN * 100.0 * math.exp(-8.0e9 * crossing), rel=1e-6)
+
+
+class _NoFieldAtAll(_UniformField):
+    def get_e_field_cached(self, x, y, z):
+        raise ValueError("outside the mesh")
+
+
+def test_a_cluster_that_never_moved_makes_no_gain():
+    current = CalCurrent(
+        SimpleNamespace(**{**vars(_lgad())}), _NoFieldAtAll(), [100.0], [[50.0, 50.0, 25.0, 0.0]], diffusion=False
+    )
+
+    assert current.gain_current.hole_system is None
+
+
+class _NoFieldBelow10um(_UniformField):
+    def get_e_field_cached(self, x, y, z):
+        if z < 10.0:
+            raise ValueError("outside the mesh")
+        return (0.0, 0.0, 1.0e4)
+
+
+def test_clusters_that_find_no_field_are_counted_with_where_the_first_stopped():
+    # the electrons of 100 pairs at 25 um drift down to 10 um, where the field
+    # has no value; the holes leave by the top face
+    current = CalCurrent(
+        SimpleNamespace(**{**vars(_lgad()), "has_avalanche": False}),
+        _NoFieldBelow10um(),
+        [100.0],
+        [[50.0, 50.0, 25.0, 0.0]],
+        diffusion=False,
+        keep_drift_paths=False,
+    )
+
+    assert current.ends == {"no_field": [1, 100.0], "left_device": [1, 100.0]}
+    x, y, z = current.without_field
+    assert (x, y) == (50.0, 50.0) and 9.0 < z < 10.0
+
+
+def test_untrapped_carriers_are_kept_only_where_carriers_are_trapped_and_while_the_paths_are():
+    device = SimpleNamespace(**{**vars(_lgad()), "has_avalanche": False})
+    untrapped = CalCurrent(device, _UniformField(), [100.0], [[50.0, 50.0, 25.0, 0.0]], diffusion=False)
+    trapped = SimpleNamespace(**{**vars(device), "irradiation_model": "constant"})
+    dropped = CalCurrent(trapped, _Trapping(), [100.0], [[50.0, 50.0, 25.0, 0.0]], diffusion=False, keep_drift_paths=False)
+
+    assert untrapped.electron_system.remaining == [None]
+    assert dropped.electron_system.remaining == [] and dropped.electron_system.paths == []
+
+
+class _TrappedNoFieldBelow10um(_Trapping):
+    def get_e_field_cached(self, x, y, z):
+        if z < 10.0:
+            raise ValueError("outside the mesh")
+        return (0.0, 0.0, 1.0e4)
+
+
+def test_the_carriers_that_find_no_field_are_counted_as_they_are_when_they_stop():
+    # of 100 electrons, 100 exp(-2e9 t) are left when they reach 10 um at t
+    current = CalCurrent(
+        SimpleNamespace(**{**vars(_lgad()), "has_avalanche": False, "irradiation_model": "constant"}),
+        _TrappedNoFieldBelow10um(),
+        [100.0],
+        [[50.0, 50.0, 25.0, 0.0]],
+        diffusion=False,
+    )
+
+    electron = current.electron_system
+    stop = electron.paths[0][-1][3]
+    assert current.carriers_without_field == pytest.approx(100.0 * math.exp(-2.0e9 * stop), rel=0.01)
+    assert current.carriers_without_field == current.ends["no_field"][1]
+    assert current.carriers_without_field < 95.0

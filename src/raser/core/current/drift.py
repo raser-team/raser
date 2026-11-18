@@ -17,16 +17,20 @@ max_drift_time = 100e-9  # s, a carrier still drifting after this stops
 class Drifted:
     """Clusters of carriers of one sign after their drift, one entry each."""
 
-    charges: list  # number of carriers with their sign
+    carriers: list  # number of carriers of each, with their sign
     paths: list  # what `drift` returns: arrays (points, 4) of x, y, z [um], t [s]
     reasons: list  # why each stopped
+    # of each, the carriers not yet trapped at the middle of every step of
+    # its path, with their sign: an array (points - 1,), as `surviving`
+    # gives; None where nothing is trapped
+    remaining: list
 
 
 @dataclass
 class Cluster:
     """A cluster of carriers on its way through the detector."""
 
-    charge: float  # number of carriers with their sign
+    carriers: float  # number of carriers, with their sign
     position: list  # x, y, z [um]
     t: float  # [s]
     start: float  # when it set off [s]
@@ -34,16 +38,16 @@ class Cluster:
     reason: str | None = None  # why it stopped; None while it drifts
 
     @classmethod
-    def starting(cls, x, y, z, t, charge):
-        """A cluster of `charge` carriers at x, y, z [um] and time t [s]."""
-        return cls(charge, [x, y, z], t, t, [(x, y, z, t)])
+    def starting(cls, x, y, z, t, carriers):
+        """A cluster of `carriers` carriers at x, y, z [um] and time t [s]."""
+        return cls(carriers, [x, y, z], t, t, [(x, y, z, t)])
 
 
-def drift(x, y, z, t, charge, my_d, my_f, mobility, delta_t, diffusion=True):
+def drift(x, y, z, t, carriers, my_d, my_f, mobility, delta_t, diffusion=True):
     """Path of one cluster of carriers and why it stopped.
 
-    The cluster starts at x, y, z [um] and time t [s]; the sign of `charge`
-    tells holes from electrons. Each step of `delta_t` [s] moves it along
+    The cluster starts at x, y, z [um] and time t [s]; the sign of `carriers`,
+    their number, tells holes from electrons. Each step of `delta_t` [s] moves it along
     the field of `my_f` [V/cm] with `mobility(temperature, doping, charge,
     field)` [cm^2/V/s]. With `diffusion` each step also moves it at random,
     by a Gaussian of variance 2 D delta_t on each axis, D = mobility kT/e,
@@ -62,7 +66,7 @@ def drift(x, y, z, t, charge, my_d, my_f, mobility, delta_t, diffusion=True):
     A field that is not finite where the cluster is raises ValueError,
     which names the position.
     """
-    cluster = Cluster.starting(x, y, z, t, charge)
+    cluster = Cluster.starting(x, y, z, t, carriers)
     while cluster.reason is None:
         advance(cluster, my_d, my_f, mobility, delta_t, diffusion)
     return np.array(cluster.path), cluster.reason
@@ -77,7 +81,7 @@ def advance(cluster, my_d, my_f, mobility, delta_t, diffusion=True):
     reasons are those of `drift`.
     """
     size = (my_d.l_x, my_d.l_y, my_d.l_z)
-    sign = 1 if cluster.charge > 0 else -1
+    sign = 1 if cluster.carriers > 0 else -1
     position = cluster.position
     if cluster.t - cluster.start >= max_drift_time:
         cluster.reason = "time_out"
@@ -100,7 +104,7 @@ def advance(cluster, my_d, my_f, mobility, delta_t, diffusion=True):
         cluster.reason = "low_field"
         return
     doping = float(my_f.get_doping_cached(*position))
-    mu = mobility(my_d.temperature, doping, cluster.charge, intensity)
+    mu = mobility(my_d.temperature, doping, cluster.carriers, intensity)
     step = [sign * component * mu * delta_t * 1e4 for component in field]  # um
     if diffusion:
         sigma = math.sqrt(2.0 * kboltz * my_d.temperature * mu * delta_t) * 1e4  # um
@@ -122,10 +126,10 @@ def advance(cluster, my_d, my_f, mobility, delta_t, diffusion=True):
         cluster.reason = "left_device"
 
 
-def induced_charges(path, charge, my_f, electrode, offset=(0.0, 0.0)):
+def induced_charges(path, carriers, my_f, electrode, offset=(0.0, 0.0)):
     """Charge that each step of a path induces on one electrode [C].
 
-    `path` is what `drift` returns, `charge` the number of carriers of the
+    `path` is what `drift` returns, `carriers` the number of carriers of the
     cluster with their sign, one number or one for each step as `surviving`
     gives, `electrode` the number of the electrode in `my_f`. By the
     Shockley-Ramo theorem a step from a to b induces
@@ -140,17 +144,26 @@ def induced_charges(path, charge, my_f, electrode, offset=(0.0, 0.0)):
     potential = np.array([
         my_f.get_w_p(x - offset[0], y - offset[1], z, electrode) for x, y, z, _ in path
     ])
-    return charge * e0 * np.diff(potential)
+    return carriers * e0 * np.diff(potential)
 
 
-def surviving(path, charge, my_f):
+def surviving(path, carriers, my_f):
     """Carriers of a cluster not yet trapped, at the middle of each step.
 
-    The trapping rate [1/s] of holes or electrons, by the sign of `charge`,
+    The trapping rate [1/s] of holes or electrons, by the sign of `carriers`,
     is read from `my_f` at the start of each step and held over the step.
     """
-    rate = my_f.get_trap_h_cached if charge > 0 else my_f.get_trap_e_cached
+    rate = my_f.get_trap_h_cached if carriers > 0 else my_f.get_trap_e_cached
     rates = np.array([rate(x, y, z) for x, y, z, _ in path[:-1]])
     decay = rates * np.diff(path[:, 3])
-    return charge * np.exp(-(np.cumsum(decay) - decay / 2))
+    return carriers * np.exp(-(np.cumsum(decay) - decay / 2))
 
+
+
+def surviving_at(path, carriers, my_f, step, fraction):
+    """Carriers of a cluster not yet trapped `fraction` of the way through
+    step `step` of its path, with the rates `surviving` takes."""
+    rate = my_f.get_trap_h_cached if carriers > 0 else my_f.get_trap_e_cached
+    rates = np.array([rate(x, y, z) for x, y, z, _ in path[: step + 1]])
+    decay = rates * np.diff(path[: step + 2, 3])
+    return carriers * np.exp(-(decay[:step].sum() + fraction * decay[step]))
