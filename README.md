@@ -14,11 +14,9 @@ experiment-level analysis through one command-line interface.
 
 - [中文文档总目录](docs/cn/README.md)
 - [中文快速入门（Getting Started）](docs/cn/getting-started.md)
+- [English documentation](docs/en/README.md)
+- [English Getting Started](docs/en/getting-started.md)
 - [Documentation index](docs/README.md)
-
-> Note: The English documentation under [`docs/en/`](docs/en/README.md) has not
-> yet been updated for the current codebase. Please refer to the Chinese
-> documentation for up-to-date guides and reference pages.
 
 - [Container build routes](bootstrap/README.md)
 - [Repository working rules](AGENTS.md)

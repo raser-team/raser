@@ -1,153 +1,101 @@
-# Device
+# Device Model (`core/device`)
 
-_RASER 5.0 sensor definition and project layout_
+`src/raser/core/device/build_device.py` sits above the material model. It locates and reads the device JSON definition file, validates electrode layout and avalanche model settings, and builds a unified `Detector` instance for [field solving](field.md), [energy deposition](deposit.md), [carrier transport](current.md), and [electronics readout](readout.md) to query device dimensions, bias voltage, electrode array, and parallel-plate capacitance estimates. See [../components/device.md](../components/device.md) for the device JSON specification.
 
-A Device describes one sensor. Its project contains `device.json`, including
-the sensor's default state, and reusable data generated specifically for that
-detector. Field data is kept in this project. Results that depend on a particle
-source, scan, or other application scenario remain with the application.
-
----
-
-## 📋 Responsibility
-
-Device is the authority for sensor identity. Its definition contains the
-information needed to decide whether two calculations use the same sensor,
-together with the defaults used during application resolution. Loading
-validates the relationships among coordinate mappings, contacts, the readout
-array, electrical quantities, and model bindings. A coherent set forms
-the runtime sensor definition; an incomplete set fails at the Device boundary.
-
-Changing a Device definition creates a new definition revision. Choosing a
-different operating state creates a resolved project or run state associated
-with the existing definition revision. The Component and Runs contracts
-resolve these values, and Device validates the result against `device.json`.
-
-Device stores model bindings as part of the sensor definition. The Core module
-named by a binding interprets that configuration, performs the calculation,
-and owns the resulting numerical state.
-
-The Device may be used directly with its defaults or referenced by a
-[Device component](../components/device.md) in an application project.
-The component supplies that project's Device state and Field values, while
-`device.json` retains the canonical definition and defaults.
-
-## 🗂️ Project layout
-
-```text
-<device>/
-├── device.json
-└── field/
-    ├── <field-config-hash>/
-    └── ...
+```mermaid
+flowchart LR
+    NAME["device_name / device_dict"] --> FIND["device_file lookup order<br/>1. existing folder/device.json<br/>2. path with suffix or multiple segments<br/>3. work_root/name/device.json<br/>4. component dir device/name.json"]
+    FIND --> DET["Detector instance<br/>bounds / electrode array / avalanche switch / capacitance"]
+    DET --> FLD["core/field"]
+    DET --> DEP["core/deposit"]
+    DET --> CUR["core/current"]
+    DET --> RDO["core/readout"]
 ```
 
-`device.json` is the Device project's canonical definition.
-Each directory under `field/` is named by the hash of the complete Field
-configuration stored with its reusable assets. The configuration and hashing
-rules are defined by [Field](field.md#configuration). Application runs remain
-in the application project and reference the Device and Field configuration
-they used.
+## Device File Lookup and `Detector` Construction
 
-## 📥 Definition contract
+- **`device_file(device_name)`**: Resolves the absolute path of the device JSON in order: "`device.json` under an existing folder → path with a file suffix or multiple path segments → `<work_root>/<device_name>/device.json` (see [../supports/README.md](../supports/README.md) for `work_root`) → component directory `device/<device_name>.json`".
+- **`Detector(device_name, device_dict=None)`**: Reads JSON from disk via `device_json(device_name)` when `device_dict` is `None`, or deep-copies a passed dictionary. Top-level JSON keys are mapped to same-named attributes on `Detector` (with types preserved from JSON and `voltage` converted to `float`), and are then overwritten by derived fields (`det_name`, `device`, `region`, `irradiation_model`, `irradiation_flux`, `dimension`, `electrodes`, `x_ele_num`, `y_ele_num`, `read_ele_num`, `p_x`, `p_y`, `avalanche_model`).
 
-`device.json` provides a self-contained sensor definition. Its declarations
-close against one another: sensitive volumes map into the detector-coordinate
-domain, Field contact names resolve against the Device contacts, and readout
-electrodes follow the declared two-axis array and electrode order. Each model
-binding resolves to a complete configuration. The declared coordinate mapping
-connects the separate Geant4 envelope and runtime domain.
+The configuration keys read by `Detector` from the device JSON are listed below:
 
-The file also provides defaults for configuration resolution. Resolution
-begins with these defaults, then applies Component and invocation replacements.
-`field/` retains the complete configurations produced or imported for the
-Device. `device.json` remains the source of defaults across Field production
-and loading.
+| Key | Default | Unit | Meaning |
+| --- | --- | --- | --- |
+| `det_name` | JSON filename stem (`path.stem`) | None | Detector name, assigned to `det_name`, `device`, and `region` |
+| `material` | None (required for parallel-plate `capacitance` branch) | None | Semiconductor material name (passed to `Material` in [model.md](model.md)) |
+| `det_model` | None (required when accessing `capacitance` without `capacitance_pF`) | None | Device model identifier string |
+| `l_x`, `l_y`, `l_z` | None (required) | $\mu\text{m}$ | Device dimensions along $x$, $y$, and $z$ |
+| `default_dimension` | None (required) | None | Default field dimension (`1`, `2`, or `3`) |
+| `field_dimension` | `default_dimension` | None | Field dimension overriding `default_dimension` |
+| `bias.voltage` | None (required) | V | Bias voltage |
+| `irradiation.irradiation_model` | `None` if no `irradiation` block (required when present) | None | Irradiation defect model name |
+| `irradiation.irradiation_flux` | `0` if no `irradiation` block (required when present) | $\text{cm}^{-2}$ | Irradiation fluence |
+| `mesh.mesher` | `None` | None | Mesh generator identifier (e.g. `"sde"`) |
+| `mesh.plugin` | `False` | None | Whether the 2D mesh lies in the transverse $x$-$y$ plane |
+| `electrodes` | `"pad"` | None | Readout electrode layout: `"pad"`, `"strip"`, or `"pixel"` |
+| `read_ele_num` | `1` for `"pad"`; `x_ele_num * y_ele_num` for `"pixel"` | count | Total number of readout electrodes (required in JSON for `"strip"` layout) |
+| `x_ele_num`, `y_ele_num` | `1, 1` for `"pad"`; `read_ele_num, 1` for `"strip"` | count | Number of electrodes in $x$ and $y$ (required in JSON for `"pixel"` layout) |
+| `p_x` | `l_x` for `"pad"` | $\mu\text{m}$ | Electrode pitch along $x$ (required in JSON for `"strip"` or `"pixel"` layout) |
+| `p_y` | `l_y` for `"pad"` or `"strip"` | $\mu\text{m}$ | Electrode pitch along $y$ (required in JSON for `"pixel"` layout) |
+| `avalanche_model` | `None` | None | Avalanche ionization model name |
+| `enable_gain` | `False` | None | Whether the avalanche gain layer is enabled |
+| `capacitance_pF` | None (optional) | pF | Explicitly specified device capacitance |
+| `depletion_depth` | `l_z` | $\mu\text{m}$ | Depletion depth used in parallel-plate capacitance calculation |
 
-A [Device component](../components/device.md) replaces defaults for an
-application project. A [run record](../lifecycle/runs.md) resolves any narrower
-invocation values and preserves the result. [Field](field.md) then turns the
-resolved values into the configuration whose hash addresses the reusable data.
+## Derived Attributes, Layout Validation, and Capacitance Calculation
 
-## 🔲 Readout geometry
+`Detector` provides the following derived attributes and methods (in-memory object):
 
-The readout surface uses two orthogonal indexing axes. Pad, strip, and pixel
-layouts share one two-axis array contract:
+- **Electrode layout validation (`LAYOUT_KEYS`)**: `electrodes` must be `"pad"`, `"strip"`, or `"pixel"`, with all required keys for that layout present and no exclusive keys from other layouts mixed in.
+- **Avalanche switch `has_avalanche`**: `True` only when `avalanche_model is not None and bool(enable_gain)`; raises an error immediately if `enable_gain` is true while `avalanche_model` is missing.
+- **Parallel-plate capacitance estimate `capacitance` (pF)**: Returns `capacitance_pF` directly if given in JSON; returns `None` if `det_model` (lowercased) contains `"3d"`; otherwise computes $\varepsilon_0 \varepsilon_r (A \times 10^{-12}) / (d \times 10^{-6}) \times 10^{12}$, where $\varepsilon_0 = 8.8541878128\times 10^{-12}\ \text{F/m}$, $\varepsilon_r$ comes from `Material(material).permittivity`, single-electrode area $A = p_x \cdot p_y$ ($\mu\text{m}^2$), and $d = \text{depletion\_depth}$ ($\mu\text{m}$).
 
-| Readout layout | Array contract |
-| --- | --- |
-| Pad | A `1 × 1` array |
-| Strip | A `read_ele_num × 1` or `1 × read_ele_num` array with pitch on the segmented axis |
-| Pixel | An `x_ele_num × y_ele_num` array with pitches `p_x` and `p_y` |
+| Attribute or Method | Type | Unit | Meaning |
+| --- | --- | --- | --- |
+| `device_dict` | `dict` | None | Deep copy of the device JSON contents |
+| `definition_path` | `Path` | None | Absolute path of the device JSON resolved by `device_file(device_name)` |
+| `det_name`, `device`, `region` | `str` | None | Device name |
+| `dimension` | `int` | None | Device field dimension |
+| `voltage` | `float` | V | Bias voltage `float(device_dict["bias"]["voltage"])` |
+| `irradiation_model` | `str \| None` | None | Irradiation model name |
+| `irradiation_flux` | `float \| int` | $\text{cm}^{-2}$ | Irradiation fluence |
+| `mesher` | `str \| None` | None | Mesh generator identifier |
+| `bound` | `dict` | $\mu\text{m}$ | Device coordinate bounds `{'x': (0, l_x), 'y': (0, l_y), 'z': (0, l_z)}` |
+| `electrodes` | `str` | None | Electrode layout (`"pad"`, `"strip"`, or `"pixel"`) |
+| `is_strip`, `is_pixel` | `bool` | None | Whether layout is `"strip"` or `"pixel"` |
+| `x_ele_num`, `y_ele_num`, `read_ele_num` | from JSON | count | Number of readout electrodes along $x$, $y$, and total |
+| `p_x`, `p_y` | from JSON | $\mu\text{m}$ | Size or pitch of a single readout electrode along $x$ and $y$ |
+| `avalanche_model` | `str \| None` | None | Avalanche model name |
+| `has_avalanche` | `bool` | None | Whether both avalanche gain and an avalanche model are enabled |
+| `capacitance` | `float \| None` | pF | Specified capacitance, parallel-plate estimate, or `None` for 3D models |
+| `file(name)` | `Path` | None | Resolves external file paths referenced by the device JSON (relative paths are relative to `definition_path.parent`) |
+| `is_plugin()` | `bool` | None | Returns `bool(device_dict.get("mesh", {}).get("plugin", False))` |
 
-Gain devices add an explicit avalanche model and gain-region definition.
-Devices with multidimensional Field data add contact geometry and the
-corresponding mesh. They use the same ordered `(x, y)` readout array.
+## `Detector` in the Example (`HPK-Si-PiN`)
 
-## 📐 Geometry, units, and coordinates
+In the [Getting Started](../getting-started.md) example, running `raser signal HPK-Si-PiN --scan voltage=100,200 -s 2 -evt 200 --seed 1` writes the full device definition to `work/HPK-Si-PiN/field/run.json`: `"det_model": "planar"`, `"material": "Si"`, 3D dimensions `l_x = 1300`, `l_y = 1300`, `l_z = 50` $\mu\text{m}$, default `dimension = 1`, and default `bias.voltage = 200.0` V (overridden to `100` V at scan point `voltage_100`). Since `electrodes` is omitted in JSON, the device expands as `"pad"` with `read_ele_num = 1` and `p_x = p_y = 1300` $\mu\text{m}$, and reads junction capacitance `3.44162280284 pF` directly from `capacitance_pF = 3.44162280284`.
 
-| Value | Unit or convention |
-| --- | --- |
-| `l_x`, `l_y`, `l_z`, pitches, gain boundary | µm |
-| Bias voltage | V |
-| Temperature | K |
-| Capacitance | pF |
-| Runtime point | Detector coordinates `(x, y, z)` in µm |
-| Runtime bounds | `0 ≤ x ≤ l_x`, `0 ≤ y ≤ l_y`, `0 ≤ z ≤ l_z` unless explicitly mapped otherwise |
+## Common Errors
 
-Runtime bounds are the sensor domain accepted by Field and carrier transport.
-The Geant4 design has an independent envelope and placement and may contain
-inactive layers, support structures, or an imported assembly.
+| Exception Type | Error Message | Trigger Condition |
+| --- | --- | --- |
+| `ValueError` | `` `electrodes` must be pad, strip or pixel, not ... `` | `electrodes` is not in `("pad", "strip", "pixel")` |
+| `ValueError` | `` <path>: `electrodes` is ..., which takes the keys ...; missing ..., keys of another layout ... `` | Missing required keys for the current `electrodes` layout in `LAYOUT_KEYS`, or exclusive keys from another layout are mixed in |
+| `ValueError` | ``gain is enabled but `avalanche_model` is missing in detector settings`` | `enable_gain` is true while `avalanche_model` is `None` |
+| `ValueError` | `depletion_depth must be positive` | `depletion_depth <= 0` when computing parallel-plate capacitance |
+| `KeyError` | `bias`, `default_dimension` | Key missing in JSON |
+| `AttributeError` | `l_x`, `l_y`, `l_z` | Key missing in JSON |
+| `FileNotFoundError` | `Cannot find RASER component device/<name>.json:` and search path list | Device looked up by name is neither in `work/<name>/device.json` nor in the device component directory |
+| `FileNotFoundError` / `IsADirectoryError` | OS file-open errors | `device_name` has a suffix or multiple path segments, and that path is not an existing file |
+| `FileNotFoundError` | `Cannot find <path>, named by <definition_path>` | Path resolved by `Detector.file(name)` is not an existing file |
 
-The Geant4 contract identifies sensitive volumes and maps their coordinates
-into detector coordinates. Carrier transport receives mapped depositions
-inside the runtime domain. The mapping explicitly states the relationship
-between the Geant4 envelope and runtime bounds, including equality when it
-applies.
+## Related Pages
 
-Solver-native units and axes may differ from the Device convention. Their
-conversion is part of the Field contract; downstream transport receives
-detector coordinates.
-
-## ⚙️ Runtime Device contract
-
-Device starts from `device.json`. An application resolves component and
-run-level values according to [Runs](../lifecycle/runs.md), then asks Device to
-validate the result. The runtime Device combines the unchanged sensor
-definition with that resolved state.
-
-[Field configuration](field.md#configuration) places the resolved values in
-`config.json` and uses its hash as the data-directory name. Applications record
-the same configuration and hash in [run.json](../lifecycle/runs.md). Device
-passes resolved values to Field. Field derives the asset directory from the
-configuration hash and restores its files.
-
-Device may declare the sensor electrical values used as pre-input for sensor
-modelling. Field AC results provide values associated with a calculated Field
-configuration. [Frontend](frontend.md) uses the selected values to construct
-the sensor netlist.
-
-<!-- TODO: Define resolution between Device electrical values and Field AC results. -->
-
-Gain activation requires both an avalanche-model binding and its gain-region
-geometry.
-
-## 🔗 Downstream contract
-
-| Consumer | Device values used |
-| --- | --- |
-| [Field](field.md) | Structure, material, doping, contacts, mesh, operating conditions, and Field and Damage selections |
-| [Interaction](interaction.md) | Geant4 geometry, sensitive-volume mapping, material, and runtime domain |
-| [Carrier and current](current.md) | Runtime domain, material, temperature, contacts, readout array, and Gain and Transport selections |
-| [Frontend](frontend.md) | Sensor electrical definition, readout electrodes, and Readout selection |
-| [Metrics](metrics.md) | Device identity, geometry, pitches, and electrode count |
-
-## ✍️ Extension contract
-
-1. Define the runtime domain and detector-coordinate convention.
-2. Define the Geant4 geometry and its mapping to that domain.
-3. Declare both readout-axis counts, pitches, and contacts.
-4. Declare `field_source`, `field_dimension`, and the Damage, Transport, Gain,
-   and Readout model selections.
-5. Declare capacitance explicitly in pF.
-6. Supply a default Device state and Field values.
+- [Getting Started](../getting-started.md)
+- [../components/device.md](../components/device.md)
+- [model.md](model.md)
+- [field.md](field.md)
+- [deposit.md](deposit.md)
+- [current.md](current.md)
+- [readout.md](readout.md)
+- [../supports/README.md](../supports/README.md)
