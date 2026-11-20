@@ -141,6 +141,68 @@ class DevsimMesh:
         devsim.create_device(mesh=mesh_name, device=mesh_name)
 
     def setDoping(self):
+        """Install dopant models; honor region-specific HEMT doping."""
+        if (
+            self.device_dict.get("hemt_physics", {}).get("transport_model")
+            == "drift_diffusion_v1"
+            and not self.solve_paras.get("weightfield", False)
+            and not self.solve_paras.get("ac-weightfield", False)
+        ):
+            doping = self.device_dict["doping"]
+            by_region = doping.get("by_region", {})
+            if not isinstance(by_region, dict):
+                raise TypeError("doping.by_region must be a mapping")
+            active = ("AlGaN_barrier", "GaN_buffer")
+            present = set(devsim.get_region_list(device=self.device))
+            if not set(active).issubset(present):
+                raise ValueError(f"HEMT semiconductor regions missing: {present}")
+            unknown = set(by_region) - set(active)
+            if unknown:
+                raise ValueError(f"Unknown HEMT doping regions: {sorted(unknown)}")
+            for region in active:
+                local = by_region.get(region, {})
+                if not isinstance(local, dict):
+                    raise TypeError(f"doping.by_region[{region}] must be a mapping")
+                for name in ("Acceptors", "Donors"):
+                    expr = str(local.get(name, doping.get(name, "0")))
+                    # Preserve optional radiation-induced additions if defined.
+                    ir_key = name + "_ir"
+                    if ir_key in local or ir_key in doping:
+                        radiation = str(local.get(ir_key, doping.get(ir_key, "0")))
+                        expr = f"({expr})+({radiation})"
+                    model_create.CreateNodeModel(self.device, region, name, expr)
+                model_create.CreateNodeModel(
+                    self.device, region, "NetDoping", "Donors-Acceptors"
+                )
+                for name in ("Acceptors", "Donors", "NetDoping"):
+                    devsim.edge_from_node_model(
+                        device=self.device, region=region, node_model=name
+                    )
+            return
+
+        doping = self.device_dict["doping"]
+                                                        
+        by_region = doping.get("by_region", {})
+        if not isinstance(by_region, dict):
+            raise TypeError("doping.by_region must be an object")
+        for region in self.semiconductor_regions:
+            local = by_region.get(region, {})
+            acceptors = str(local.get("Acceptors", doping["Acceptors"]))
+            donors = str(local.get("Donors", doping["Donors"]))
+            if "Acceptors_ir" in doping:
+                acceptors = f"({acceptors})+({doping['Acceptors_ir']})"
+            if "Donors_ir" in doping:
+                donors = f"({donors})+({doping['Donors_ir']})"
+
+            model_create.CreateNodeModel(self.device, region, "Acceptors", acceptors)
+            model_create.CreateNodeModel(self.device, region, "Donors", donors)
+            model_create.CreateNodeModel( 
+                self.device, region, "NetDoping", "Donors-Acceptors"
+            )
+            for name in ("Acceptors", "Donors", "NetDoping"):
+                devsim.edge_from_node_model(
+                    device=self.device, region=region, node_model=name
+                )
         '''
         Doping
         '''

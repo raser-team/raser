@@ -219,6 +219,10 @@ class Detector:
         return donors - acceptors
 
     def _resolve_capacitance(self):
+        # HEMT DC transport does not use the generic detector capacitance.
+        if self.device_dict.get("hemt_physics", {}).get("transport_model") == "drift_diffusion_v1":
+            return None
+
         if "capacitance_pF" in self.device_dict:
             return float(self.device_dict["capacitance_pF"])
         if "capacitance" in self.device_dict:

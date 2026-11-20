@@ -182,6 +182,59 @@ def delete_init(device, region):
     devsim.delete_node_model(device=device, region=region, name="IntrinsicCharge:Potential")
 
 def create_parameter(MyDetector, device, region):
+    if (
+        MyDetector.device_dict.get("hemt_physics", {}).get("transport_model")
+        == "drift_diffusion_v1"
+    ):
+        # Initialize real DEVSIM material regions (AlGaN_barrier/GaN_buffer),
+        # not detector.region, which is merely the device name.
+        from .hemt_material_params import initialize_hemt_materials
+        return initialize_hemt_materials(
+            MyDetector, device, CreateGlobalConstant, model_create.CreateNodeModel
+        )
+
+    T = float(MyDetector.device_dict['temperature'])
+    hemt = MyDetector.device_dict.get('hemt_physics')
+    regions = devsim.get_region_list(device=device) if hemt is not None else [region]
+    if hemt is not None:
+        values = _hemt_ambacher_values(
+            float(hemt['al_mole_fraction']),
+            pseudomorphic=bool(hemt.get('pseudomorphic_barrier', True)),
+            ga_face=bool(hemt.get('ga_face', True)),
+        )
+        values = _hemt_literature_values(values, hemt)
+        if not {'AlGaN', 'GaN'}.issubset({devsim.get_material(device=device, region=r) for r in regions}):
+            raise ValueError('HEMT requires both AlGaN and GaN material regions')
+
+    for current_region in regions:
+        material = devsim.get_material(device=device, region=current_region)
+        if material == 'air':
+            continue
+        CreateGlobalConstant(T, device, current_region)
+        if hemt is not None and material in ('GaN', 'AlGaN'):
+            _hemt_material_constants(T, device, current_region, material, values)
+        elif material == 'SiliconCarbide':
+            CreateSiliconCarbideConstant(T, device, current_region)
+            CreateHatakeyamaImpact(T, device, current_region)
+            CreateFineExponentialModels(T, device, current_region)
+            CreateTAT(T, device, current_region)
+        elif material == 'Silicon':
+            CreateSiliconConstant(T, device, current_region)
+            CreateVanOvenstraetenImpact(T, device, current_region)
+        elif material == 'GaN':
+            CreateGaNConstant(T, device, current_region)
+        elif material == 'gas':
+            CreateGasConstant(T, device, current_region)
+        elif material == 'AlGaN':
+            raise ValueError('AlGaN requires a hemt_physics configuration')
+
+        if 'parameter' in MyDetector.device_dict:
+            entry = MyDetector.device_dict['parameter']
+            devsim.set_parameter(device=device, region=current_region,
+                                 name=entry['name'], value=entry['value'])
+        model_create.CreateNodeModel(
+            device, current_region, 'U_const', MyDetector.device_dict.get('U_const', 0)
+        )
     T = MyDetector.device_dict['temperature']
     CreateGlobalConstant(T, device, region)
     if devsim.get_material(device=device, region=region) == "SiliconCarbide":
