@@ -1,0 +1,42 @@
+# 触发环节（`stages/trigger`）
+
+`trigger` 是仿真链的第 6 个环节，排在[数字化环节（`stages/digitizer`）](digitizer.md)之后、[事件重建环节（`stages/reconstruction`）](reconstruction.md)之前，命令是 `raser trigger`（短命令 `raser trig`）。它读 `digitizer` 节点里的数字波形、`config.json` 的 `trigger` 段，以及[触发组件（`components/trigger`）](../components/trigger.md)里的触发条件，像真实触发设备（例如示波器的触发）那样决定哪些事例被记录。被记录的事例写进本环节的节点 `nodes/trigger/<节点号>/`，由视图 `points/<点名>/trigger` 指向，交给 `reconstruction`。真实设备里属于触发的事都归这里。
+
+## 行为
+
+### 跑到触发
+
+`raser trigger` 在当前文件夹或给定路径的实验上跑到 `trigger`，缺的上游自动补上：
+
+```bash
+raser trigger [路径]
+raser trig [路径]
+```
+
+不给路径就是当前文件夹，给了就是相对或绝对路径。上游的 `field`、`deposit`、`current`、`readout`、`digitizer` 节点指纹相同就复用，不管它们是在哪个点、哪次运行里算出来的；缺的按链的顺序先算。`trigger` 节点同样按指纹复用。代码版本和节点记录的不一致时，只给一条提示，结果照常复用。节点、参数表与复用见[片与重跑](../lifecycle/slices.md)。
+
+### 按幅度阈值触发
+
+`HPK-Si-PiN` 示例按幅度阈值触发：波形越过阈值的事例被记录，没越过的就丢掉。
+
+## 规则
+
+### 执行流程
+
+1. 读 `digitizer` 节点里的数字波形，以及 `trigger` 段和触发组件里的触发条件。
+2. 按触发条件逐个事例判断，决定哪些事例被记录。
+3. 把被记录的事例和本环节的图写进 `trigger` 节点。
+
+本环节节点的指纹由 `trigger` 段里用到的设置值、触发组件里用到的部分，以及上游 `digitizer` 节点的节点号组成。
+
+## 接口
+
+### 设置
+
+本环节的设置写在 `config.json` 的 `trigger` 段里。用 `--set trigger.<键>=<值>` 改一个设置，用 `--scan trigger.<键>=<值1>,<值2>` 扫描。触发条件放在 `components/trigger/` 下；一台设备同时管采样和触发时（例如示波器），设置在 [`components/digitizer/`](../components/digitizer.md) 下只放一份，`digitizer` 和 `trigger` 都读它。公共运行参数见[命令行接口（`raser`）](../cli.md)，配置分段与扫描见[实验、扫描点与种子](../lifecycle/experiments.md)。
+
+### 读写的文件
+
+- **`digitizer` 节点**：数字波形，由[数字化环节（`stages/digitizer`）](digitizer.md)写出，本环节只读。
+- **`nodes/trigger/<节点号>/`**：本环节写出的被记录事例和图，加一份 `node.json`，记下本环节的输入、代码版本、运行环境和运行状态。写到一半的节点带 `.part` 后缀，写完才改成正式的名字。
+- **`points/<点名>/trigger`**：指向本环节节点的软链接；各扫描点用的节点号记在实验文件夹的 `points.json` 里。

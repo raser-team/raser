@@ -1,68 +1,47 @@
 # 命令行接口（`raser`）
 
-`raser`（定义于 `src/raser/cli/raser.py`）是 RASER 的统一命令行入口。`cli` 只负责分发：解析顶层全局选项、识别实验目录或短命令别名、设置工程与组件搜索路径上下文，并将参数交给对应的模块执行。各子命令的参数均由各自模块注册，具体选项含义与默认值见各命令自己的文档页面。
+`raser` 是统一命令行入口，`cli` 只负责把命令和参数分发给对应的环节、测试、应用或生命周期模块。环节名和它们的短命令、`status`、`new`、`model`、`device` 是保留字，实验文件夹不用这些名字。
 
-## 命令一览
+## 命令
 
-| 命令（短别名） | 做什么 | 注册模块 | 页面 |
-| --- | --- | --- | --- |
-| `field`（`fld`） | 求解器件电势、电场、权重场与 IV/CV，使用 `-ext` 时导入单个偏压的 TCAD 场解并求解权重势，或求解某个实验各扫描点所需的共享场 | `raser.stages.field` | [stages/field.md](stages/field.md) |
-| `deposit`（`dep`） | 在实验上跑到 `deposit` 这一步为止；只给器件名时，用默认的 `signal` 实验（文件夹 `work/<器件>/signal`） | `raser.stages.stage_commands` | [stages/deposit.md](stages/deposit.md) |
-| `current`（`cur`） | 在实验上跑到 `current` 这一步为止，缺的上游自动补；只给器件名时，用默认的 `signal` 实验（文件夹 `work/<器件>/signal`） | `raser.stages.stage_commands` | [stages/current.md](stages/current.md) |
-| `readout`（`rdo`） | 在实验上跑到 `readout` 这一步为止，缺的上游自动补；只给器件名时，用默认的 `signal` 实验（文件夹 `work/<器件>/signal`） | `raser.stages.stage_commands` | [stages/readout.md](stages/readout.md) |
-| `reconstruction`（`reco`） | 在实验上跑到 `reconstruction` 这一步为止，缺的上游自动补；只给器件名时，用默认的 `signal` 实验（文件夹 `work/<器件>/signal`） | `raser.stages.stage_commands` | [stages/reconstruction.md](stages/reconstruction.md) |
-| `analysis`（`ana`） | 汇总实验各请求扫描点已完成作业的电荷收集效率与时间分辨结果（若有扫描点无已完成作业，处理其余点后报错） | `raser.stages.analysis` | [stages/analysis.md](stages/analysis.md) |
-| `status` | 查看实验各扫描点与各环节的作业运行状态 | `raser.lifecycle.status` | [lifecycle/slices.md](lifecycle/slices.md) |
-| `signal` | 运行单器件信号仿真工作流 | `raser.bench.signal` | [bench/signal.md](bench/signal.md) |
-| `cce` | 运行电荷收集效率实验工作流 | `raser.bench.cce` | [bench/cce.md](bench/cce.md) |
-| `timeres` | 运行时间分辨实验工作流 | `raser.bench.timeres` | [bench/timeres.md](bench/timeres.md) |
-| `tct` | 运行瞬态电流技术（TCT）激光脉冲仿真工作流 | `raser.bench.tct` | [bench/tct.md](bench/tct.md) |
-| `telescope` | 运行束流望远镜（`taichu_v1`、`taichu_v2`）空间分辨仿真工作流 | `raser.bench.telescope` | [bench/telescope.md](bench/telescope.md) |
-| `bmos` | 运行束流监测在线系统（BMOS）仿真工作流 | `raser.apps.bmos` | [apps/bmos.md](apps/bmos.md) |
-| `cflm` | 运行 CEPC 快速亮度监测器（CFLM）24 垫片仿真工作流 | `raser.apps.cflm` | [apps/cflm.md](apps/cflm.md) |
+| 命令 | 做什么 | 页面 |
+| --- | --- | --- |
+| `raser signal <器件>` | 对这块器件跑 signal 测试：整条链跑完，给出电荷收集效率 | [bench/signal.md](bench/signal.md) |
+| `raser timeres <器件>` | 对这块器件跑时间分辨（Time Resolution）测试 | [bench/timeres.md](bench/timeres.md) |
+| `raser tct <器件>` | 对这块器件跑瞬态电流技术（Transient Current Technique）测试 | [bench/tct.md](bench/tct.md) |
+| `raser telescope <器件>` | 把这块器件放在束流望远镜中间当被测器件，跑空间分辨测试 | [bench/telescope.md](bench/telescope.md) |
+| `raser bmos` | 跑在线束流监测系统（Beam Monitor Online System） | [apps/bmos.md](apps/bmos.md) |
+| `raser cflm` | 跑 CEPC 快速亮度监测器（CEPC Fast Luminosity Monitor） | [apps/cflm.md](apps/cflm.md) |
+| `raser hbf` | 跑氢硼聚变（Hydrogen–Boron Fusion，p–¹¹B） | [apps/hbf.md](apps/hbf.md) |
+| `raser pimg` | 跑质子成像（Proton Imaging） | [apps/pimg.md](apps/pimg.md) |
+| `raser field [路径]`（短命令 `fld`） | 不给路径就是当前文件夹，给了就是相对或绝对路径；算器件里的电场、权重场、IV/CV | [stages/field.md](stages/field.md) |
+| `raser deposit [路径]`（短命令 `dep`） | 在当前文件夹或给定路径的实验上跑到 `deposit`（用 Geant4 算粒子沉积的能量），缺的上游自动补上 | [stages/deposit.md](stages/deposit.md) |
+| `raser current [路径]`（短命令 `cur`） | 在当前文件夹或给定路径的实验上跑到 `current`（让载流子在场中漂移，算电极上的感应电流），缺的上游自动补上 | [stages/current.md](stages/current.md) |
+| `raser readout [路径]`（短命令 `rdo`） | 在当前文件夹或给定路径的实验上跑到 `readout`（把电流送进器件等效电路和前端放大器，得到波形），缺的上游自动补上 | [stages/readout.md](stages/readout.md) |
+| `raser digitizer [路径]`（短命令 `digi`） | 在当前文件夹或给定路径的实验上跑到 `digitizer`（按示波器或数字化板的采样和量化把波形变成数字波形），缺的上游自动补上 | [stages/digitizer.md](stages/digitizer.md) |
+| `raser trigger [路径]`（短命令 `trig`） | 在当前文件夹或给定路径的实验上跑到 `trigger`（按真实触发设备的条件决定记录哪些事例），缺的上游自动补上 | [stages/trigger.md](stages/trigger.md) |
+| `raser reconstruction [路径]`（短命令 `reco`） | 在当前文件夹或给定路径的实验上跑到 `reconstruction`（从波形里取击中时间和幅度，束流测试里做径迹拟合），缺的上游自动补上 | [stages/reconstruction.md](stages/reconstruction.md) |
+| `raser analysis [路径]`（短命令 `ana`） | 在当前文件夹或给定路径的实验上跑到 `analysis`（统计效率、时间分辨，并在 `<实验>/analysis/` 下出趋势图），缺的上游自动补上 | [stages/analysis.md](stages/analysis.md) |
+| `raser status [路径]` | 打印 project 的参数表：各实验、各扫描点、各环节的状态和节点号 | [lifecycle/slices.md](lifecycle/slices.md) |
+| `raser new --from <示例> <路径>` | 把 `examples/<示例>` 整个复制成新 project，配置完整，之后和示例互不影响 | [lifecycle/experiments.md](lifecycle/experiments.md) |
+| `raser model --draw <模型>` | 画迁移率、碰撞电离系数等随电场、温度、掺杂的曲线 | [core/model.md](core/model.md) |
+| `raser device --draw <器件>` | 画几何、电极、掺杂 | [core/device.md](core/device.md) |
+| `raser <环节> --draw <对象>` | 画本环节的对象，例如 `readout` 画原理图和冲击响应，`field` 画网格和网格节点上的掺杂 | [stages/README.md](stages/README.md) |
 
-## 分发机制与全局选项
+## 全局选项
 
-### 1. 顶层全局选项（位于子命令之前）
+- `-b`：把运行作业提交到集群队列。
+- `-t`：与 `-b` 联用，只检查并预览提交信息，不真正提交作业。
+- `--help`：打印顶层或子命令的帮助信息并退出。
+- `--version`：打印当前 `raser` 版本号并退出。
 
-- `-h`、`--help`：打印顶层帮助信息并退出；在子命令后传入可查看该子命令自身注册的参数说明（`raser <命令> --help`）。
-- `--version`：输出当前版本（例如 `raser 5.0`）并退出。
-- `-b`、`--batch`：将支持作业提交的子命令（工作流与环节命令）提交到集群；可叠写为 `-bb`、`-bbb` 等，重复次数对应申请的内存档位（每档 `8000` MB）。
-- `-t`、`--test`：与顶层 `-b` 联用时等价于开启支持作业提交的子命令的 `--dry-run`。
+## 共用运行参数
 
-### 2. 实验目录内的自动命令补全
+- `-s`：指定每个扫描点并行运行的作业数。
+- `--seed`：指定整数随机种子，让仿真结果可重复；不给时用当前时间戳作种子。
+- `--same-seeds`：让各扫描点的同编号作业共用随机种子，从而复用未受扫描影响的上游结果。
+- `--set`：用“段.键”作地址修改配置文件中的设置，例如 `--set field.voltage=100`。
+- `--scan`：用“段.键”作地址扫描一个或多个设置，例如 `--scan field.voltage=100,200`。
+- `--dry-run`：只打印将要运行的扫描点、环节和作业状态，不启动实际计算。
 
-当当前工作目录包含实验配置文件 `config.json`，配置中的 `"workflow"` 首词已注册，且命令行参数中未出现 `-h`、`--help`、`--version` 或任何与已注册命令名/短别名相同的词时，`raser` 会从当前目录的 `config.json` 读取 `"workflow"`（若存在 `"device"` 键则再读取 `"device"`）并自动插入到全局选项之后。因此在实验文件夹（如 `work/HPK-Si-PiN/signal`）内直接执行 `raser -s 2` 等价于执行 `raser signal HPK-Si-PiN -s 2`。
-
-### 3. 共用运行参数
-
-除 `status` 外的各工作流与环节命令均由 `lifecycle` 注册共用运行参数：
-
-- **作业与随机种子**：`-s` / `--jobs` 指定每个扫描点的并行作业数；`--seed` 指定运行种子整数；`--same-seeds` 使各扫描点同编号作业在对应切片使用相同随机种子，并共享输入和依赖未变的切片。以上三个参数仅由带种子的工作流（`Workflow.seeds=True`）及四个环节命令（`dep|cur|rdo|reco`）注册。
-- **参数设置与扫描**：`--set key=value` 固定单个参数或组件文件内点分地址的值，`--scan key=v1,v2,...` 对参数或文件内键路径做扫描（普通实验运行写入实验 `config.json`；`--dry-run` 预览及 `raser field <实验目录>` 仅用于选择本次点，不写入实验配置）。
-- **集群提交与预览**：`-b` / `--batch`、`-mem`（`8000 * mem` MB）用于提交集群作业；`--dry-run` 仅打印待运行扫描点、作业与切片状态（`raser field <实验目录>` 打印各点共享片是否就绪）而不启动计算。
-
-上述共用参数的详细规则、配置合并优先级与扫描文件夹命名方式见 [lifecycle/experiments.md](lifecycle/experiments.md)，集群提交与作业锁机制见 [lifecycle/jobs.md](lifecycle/jobs.md)。
-
-### 4. 运行路径环境变量
-
-- `RASER_WORK_PATH`：工作根目录（源码树下默认为 `<仓库根目录>/work`，包安装下默认为 `<当前目录>/work`）。
-- `RASER_PROJECT_PATH`：非空时在 `infer_project_root()` 路径推导中显式指定当前工程根目录，覆盖按器件名推导的 `<RASER_WORK_PATH>/<device>`（独立的 `deposit`、`current`、`readout`、`reconstruction` 命令仅传器件名时直接使用 `<RASER_WORK_PATH>/<device>/signal` 及其工程上下文）。
-- `RASER_COMPONENT_PATH`：附加组件搜索路径（以系统路径分隔符连接），优先于内置组件目录 `src/raser/components/` 被检索（详见 [supports/README.md](supports/README.md)）。
-
-## 常见报错
-
-- `raser: <what>. <how>`（退出码 `1`）：命令执行期间捕获 `MissingDependency`，或导入过程中触发 `error.name` 恰为 `"ROOT"` 或 `"cppyy"` 的 `ModuleNotFoundError` 时输出对应提示，例如缺少 `g4ppyy`、`ngspice` 或 `ROOT`。
-- `<target>: neither an experiment folder (a folder with a config.json) nor a device; give one of them, e.g. work/<device>/cce or HPK-Si-PiN`（退出码 `1`）：传给 `raser dep|cur|rdo|reco` 的参数既不是含 `config.json` 的实验目录，也未能找到对应器件文件。
-- `<folder>: the experiment <workflow> has no <stage> slice; its slices: <names>`（退出码 `1`）：目标实验的工作流中不包含所请求的环节。
-
-## 相关页面
-
-- [README.md](README.md)
-- [getting-started.md](getting-started.md)
-- [architecture.md](architecture.md)
-- [lifecycle/experiments.md](lifecycle/experiments.md)
-- [lifecycle/slices.md](lifecycle/slices.md)
-- [lifecycle/jobs.md](lifecycle/jobs.md)
-- [stages/README.md](stages/README.md)
-- [supports/README.md](supports/README.md)
+配置文件分段规则、扫描点展开与集群作业调度的细节见 [lifecycle/experiments.md](lifecycle/experiments.md) 和 [lifecycle/jobs.md](lifecycle/jobs.md)。

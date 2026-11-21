@@ -1,134 +1,212 @@
-# 单探测器信号测试台（`bench/signal`）
+# 单器件信号测试（`bench/signal`）
 
-`raser signal` 是 RASER 的单探测器全链路信号仿真基准工作流。它在标准仿真链的起点组装 `deposit`、`field`、`current`、`readout`、`reconstruction` 五个切片（沿用 [`stages/README.md`](../stages/README.md) 的链默认配置），将放射源或束流在单个器件中的能量沉积一路转化为电子学输出波形与重建特征表，供后续 [`raser analysis`](../stages/analysis.md) 统计效率与时间分辨率。
+`signal`（`raser_bench` 包）是单器件的基准全链路测试，以命令行给定的被测器件为主体。它从 [探测器组件（`components/device`）](../components/device.md)、[能量沉积组件（`components/deposit`）](../components/deposit.md)、[前端读出电路组件（`components/readout`）](../components/readout.md)、[数字化器组件（`components/digitizer`）](../components/digitizer.md) 和 [触发组件（`components/trigger`）](../components/trigger.md) 读入单块器件与单个源、装置、电子学配置，依次走完 [`field`](../stages/field.md)、[`deposit`](../stages/deposit.md)、[`current`](../stages/current.md)、[`readout`](../stages/readout.md)、[`digitizer`](../stages/digitizer.md)、[`trigger`](../stages/trigger.md)、[`reconstruction`](../stages/reconstruction.md) 和 [`analysis`](../stages/analysis.md) 八个环节，输出被测器件的电荷收集效率和相对真实沉积时刻的时间分辨。相对真实沉积时刻的时间分辨在实验里不可观测，要测实验可观测的时间分辨用 [`timeres`](timeres.md)。
 
-```mermaid
-flowchart LR
-    IN["器件 JSON / 信号源 / g4setup<br/>与放大器链配置"] --> DEP["deposit<br/>能量沉积与电离对"]
-    IN --> FLD["field（共享）<br/>work/&lt;det_name&gt;/field/"]
-    DEP -- "deposit_&lt;job&gt;.h5" --> CUR["current<br/>载流子漂移与感应电流"]
-    FLD -- "电势 / 权重场 / 俘获率 / 导电区" --> CUR
-    CUR -- "current_&lt;job&gt;.h5" --> RDO["readout<br/>等效电路与放大器波形"]
-    FLD -- "等效电路 / CV / 未耗尽层" --> RDO
-    RDO -- "readout_&lt;job&gt;.h5" --> RECO["reconstruction<br/>基线 / 幅度 / 定时 / 团簇"]
-    DEP -.-> ANA["raser analysis<br/>work/&lt;det_name&gt;/signal/analysis/"]
-    CUR -.-> ANA
-    RECO -.-> ANA
-```
+## 装置与通用范式
 
-## 命令
+### 通用做法与物理定义
 
-```bash
-raser signal <det_name> [source] [选项]
-```
+学术界测试单块半导体探测器的信号响应与电荷收集效率（Charge Collection Efficiency，CCE）时，用放射源（$\beta$ 源、$\alpha$ 源）、单能粒子束流或脉冲激光照射施加反向偏压的被测器件，读出电极上的感应电流经前端放大器、数字化器与触发判选记录为电压波形，由收集到的电荷与入射粒子在灵敏区电离产生的初始电荷之比给出电荷收集效率。
 
-## 输入
+在 RASER 中，单个事例的电荷收集效率 $\eta$ 与重建定时时刻相对真实沉积时刻的时间差 $\Delta t$ 分别为：
 
-- **链路默认配置**：读取 `raser.stages.chain.DEFAULTS`（默认源 `"decay/Sr90"`、几何环境 `"device_alone"`、`-evt 1`、`--plots 100`、放大器 `"SantaCruz+Gali52+Termination50"`、`-threshold 10.0`、`-amplitude_threshold 10.0`）。
-- **组件搜索路径**：挂载 `src/raser/bench/signal/components`（提供 `g4setup/Sr90_collimator.py`、`g4setup/pcb_readout_gdml.py` 与 `g4macro/vis_pcb.mac`）及工程、全局组件目录（见 [`../supports/README.md`](../supports/README.md)）。
-- **器件、源与前端电路文件**：`<det_name>.json`（[`../components/device.md`](../components/device.md)）、`<source>.json`（[`../components/source.md`](../components/source.md)）与 `--amplifier` 指定的 `<part>.cir`（[`../components/afe.md`](../components/afe.md)）。
-- **Geant4 环境脚本 `<g4setup>.py`**：默认 `"device_alone"`，可选 `"Sr90_collimator"`、`"pcb_readout_gdml"` 等（[`../components/g4setup.md`](../components/g4setup.md)）。
-  - 选用 `"pcb_readout_gdml"` 时，`GDMLDetectorConstruction` 依次在各组件根目录、各组件根目录下的 `g4experiment/` 与 `src/raser/` 下查找并读取 `pcb_readout.gdml`。
-  - 辅助脚本 `src/raser/bench/signal/patch_pcb_gdml_material.py`（直接作为 Python 脚本运行）读取项目路径下的 `g4experiment/pcb_readout_raw.gdml`；确认 `pcb_readout_gdml.py` 中 `gdml.position_um == [0, 0, 0]` 且 `gdml.auto_center == False` 后，计算去除首尾 10% 游离点后的 `Mesh2Tess_*` 几何中心并取负值写入 `<position name="center" x="..." y="..." z="..." unit="mm"/>`，移除 `dummy` 物理体积，将包含 `WorldBox` 的外层体积重命名为 `World_Wrapper`（尺寸设为 `2000000 x 2000000 x 2000000 um`）并将 `"Material"` 替换为 `"FR4"`，写出项目路径下的 `g4experiment/pcb_readout.gdml`。
-- **共享场目录 `work/<det_name>/field/`**：若目标偏压与辐照注量下的场尚未就绪，工作流在启动作业前自动调用 [`raser field`](../stages/field.md) 求解。
+$$\eta = \frac{\left|\sum_{j} Q_{j}\right|}{N_{\text{pairs}}\,e_0} \tag{1}$$
 
-## 输出
+$$\Delta t = t_{\text{reco}} - t_{\text{truth}}, \qquad t_{\text{truth}} = \min_{k} t_{k} \tag{2}$$
 
-实验目录为 `work/<det_name>/signal/`，顶层写入实验配置 `config.json`；各扫描点种子目录 `<point>/<seed_folder>/` 下写入 `run.json` 与 `batch/`（[`../lifecycle/experiments.md`](../lifecycle/experiments.md)、[`../lifecycle/slices.md`](../lifecycle/slices.md)）。每个作业 `<job>` 在持有各切片的点目录 `batch/` 下依次写出：
+其中：
 
-| 输出文件 / 目录 | 写出切片 | 主要内容与说明 |
-| --- | --- | --- |
-| `batch/deposit_<job>.h5` | [`deposit`](../stages/deposit.md) | 沉积能量（`MeV`）、坐标（`um`）、时刻（`s`）与电离电子-空穴对数 |
-| `batch/current_<job>.h5` | [`current`](../stages/current.md) | 各电极感应电流（`A`）、时间步长 `dt`（`s`）与积分电荷 `charge`（`C`） |
-| `plots/job_<job>/event_<number>/` | [`current`](../stages/current.md) | 前 `--plots`（默认 `100`）个记录事例的载流子漂移路径图与电极感应电流图 |
-| `batch/readout_<job>.h5` | [`readout`](../stages/readout.md) | 波形电压 `voltage`（`V`）、起始时刻 `t0`（`s`）、时间步长 `dt`（`s`）、脉冲边沿 `pulse_edge` 与器件等效电路参数 `device_circuit`（JSON 字符串，未给器件电路值时不写） |
-| `batch/reconstruction_<job>.h5` | [`reconstruction`](../stages/reconstruction.md) | 基线、噪声、幅度（`V`）、指定触发沿（默认 `pulse_edge`）过阈时刻 `ToA`、过阈时间 `ToT`、时间重心 `CoG`、恒比定时 `CFD`（`s`）、主瓣面积 `area`（`V s`）及簇大小与重心 |
+- $\eta$：单事例电荷收集效率（无量纲；存在雪崩倍增时 $\eta > 1$）；
+- $Q_j$：第 $j$ 个读出电极的带符号净感应电荷，$\text{C}$（由 `current_<job>.h5` 的 `charge` 数据集给出，含时间窗前后的欠流箱与溢流箱）；
+- $N_{\text{pairs}}$：该事例在器件内电离产生的初始电子-空穴对总数（倍增前），对（由 `current_<job>.h5` 的 `pairs` 数据集给出）；
+- $e_0$：元电荷，代码中常数 `ELEMENTARY_CHARGE` 取 $1.602176634\times 10^{-19}\ \text{C}$；
+- $t_{\text{reco}}$：由重建波形提取的脉冲定时时刻（过阈时刻 `ToA`、时间重心 `CoG` 或各恒比分数时刻 `CFD10`–`CFD90`），$\text{s}$；
+- $t_k$：该事例在 `deposit_<job>.h5` 中第 $k$ 个能量沉积步的全局时刻，$\text{s}$，$t_{\text{truth}}$ 为该事例最早沉积步的时刻 `truth`，$\text{s}$；
+- $\Delta t$：重建时刻相对真实最早沉积时刻的时间差，$\text{s}$。
 
-开启 `-g4_vis` 时，绘制等于 `-evt`（或 `-gen`）取值的生成事例数（默认 `1` 个生成事例）的几何与径迹（`gdml_import` 几何使用宏 `vis_pcb.mac`）；若 `--g4-vis-driver`（不区分大小写）为 `"TSG"`、`"TSG_FILE"`、`"TSG_OFFSCREEN"`（写出 `g4_geometry.png`）或以 `"OGL"` 开头，在运行目录写出 `g4_geometry` 图像（其余以 `"TSG"` 开头的驱动会触发 `ValueError: the driver '<driver>' writes no picture to a given path; use a TSG or an OGL driver, or no output`），随后作业以 `SystemExit` 结束。
+式 (1) 由 [`core/analysis/collection.py`](../core/analysis.md) 的 `collection_efficiency(charge, pairs)` 计算，并由 [`stages/analysis/collection.py`](../stages/analysis.md) 的 `efficiency_spread` 汇总样本均值 `mean`、均值标准误 `mean_error` 与样本标准差 `spread`（自由度修正 `ddof=1`）。式 (2) 由 [`stages/analysis/timing.py`](../stages/analysis.md) 的 `event_times` 与 `time_widths` 计算，对 `trigger` 记录下来的事例调用 [`core/analysis/resolution.py`](../core/analysis.md) 的 `core_width` 做截断高斯最大似然迭代拟合，给出核心宽度 `sigma` 与 `sigma68`（单位 $\text{s}$）。半导体探测器信号形成与电荷收集测量原理见文献 [1]（G. Lutz, *Semiconductor Radiation Detectors: Device Physics*, Springer (2007), doi:10.1007/978-3-540-71679-2）。
 
-## 示例运行（`HPK-Si-PiN` 偏压扫描）
+局限：式 (2) 直接以仿真记录的真实最早沉积时刻 $t_{\text{truth}}$ 为参考，不含参考探测器时间抖动与符合触发，在真实实验中不可直接观测。
 
-以 [快速入门](../getting-started.md) 中的全链路示例运行 `HPK-Si-PiN` 平面硅探测器（`--dry-run` 可在正式运行前预览扫描点与切片计划）：
+### Geant4 装置几何
 
-```bash
-raser signal HPK-Si-PiN --scan voltage=100,200 -s 2 -evt 200 --seed 1
-```
+默认装置为 `device_alone`（`src/raser/components/g4setup/device_alone.py`，见 [`../components/deposit.md`](../components/deposit.md)）：世界立方体材料为真空 `"G4_Galactic"`（默认半边长 `WORLD_HALF_SIDE = 25000` $\mu\text{m}$），被测器件逻辑体 `"Device"` 单独置于世界中心，顶面中心位于原点 $(0, 0, 0)\ \mu\text{m}$，占据 $x \in [-l_x/2, l_x/2]$、$y \in [-l_y/2, l_y/2]$、$z \in [0, l_z]\ \mu\text{m}$，器件内最大步长 `maxstep = 2` $\mu\text{m}$；放射源或束流起点位于顶面上方 $17\ \text{mm}$ 处（`at = [0, 0, -17000]` $\mu\text{m}$），瞄准原点 `towards = [0, 0, 0]` $\mu\text{m}$，入射倾角 `angle = 0` $\text{degree}$。
 
-本次运行使用默认放射源 `decay/Sr90`、`device_alone` 几何与 `SantaCruz+Gali52+Termination50` 放大器链，完整记录如下事实：
+电荷收集效率就由这个装置给出，和时间分辨用同一批事例，测效率不另换装置。
 
-- **自动求解共享场与扫描点落点**：由于 `work/HPK-Si-PiN/field/` 尚未求解，`raser signal` 先自动调用 `raser field HPK-Si-PiN -bias 100.0` 与 `-bias 200.0` 写入共享场目录；`200 V` 为器件文件默认偏压，结果直接落在实验根下的 `work/HPK-Si-PiN/signal/seed_1/`，`100 V` 落在 `work/HPK-Si-PiN/signal/voltage_100/seed_1/`。
-- **切片文件与统计（以 `seed_1/batch/` 作业 `0` 为例）**：
-  - `deposit_0.h5`：Geant4 生成 `7359` 个事例，记下 `200` 个有效沉积事例（`generated_fraction = 0.017037`），共 `5476` 条沉积步记录。
-  - `current_0.h5`：`dt = 5e-12 s`，`electrodes = ['top']`，写出 `200` 个事例的 `charge` `(200, 1)`、`pairs` `(200,)` 等数据集与前 `100` 个事例的漂移路径、感应电流图（位于 `plots/job_0/event_<事例号>/`）。
-  - `readout_0.h5`：`dt = 5e-12 s`，`electrodes = ['top']`，`pulse_edge = ['falling']`，`device_circuit` 记录结电容 `3.44162280284e-12 F`。
-  - `reconstruction_0.h5`：`threshold = 0.01 V`、`amplitude_threshold = 0.01 V`、`edge = ['falling']`、`fractions = [0.1, ..., 0.9]`，写出 `CFD` `(200, 1, 9)`、`ToA` `(200, 1)`、`selected` `(200,)` 等数据集。
-- **下游统计（`raser analysis work/HPK-Si-PiN/signal`）**：汇总两个偏压点各 `400` 个记录事例，在 `analysis/` 下写入 `points.json`、`points.png` 及各点 `result.json`、`events.h5` 与分布图。在 `200 V` 下平均电荷收集效率为 `0.9348`（`spread = 0.1445`），`276` 个事例超过 `10 mV` 幅度阈值，`CFD30` 时间分辨 `sigma = 33.35 ps`、`sigma68 = 31.66 ps`；在 `100 V` 下平均收集效率为 `0.9195`，选中 `257` 个事例。
+此外，`signal` 组件目录（`src/raser/bench/signal/components/g4setup/`）还提供 `Sr90_collimator`（空气 `"G4_AIR"` 中在 $z = -14000\ \mu\text{m}$ 处放置 $10000 \times 10000 \times 5000\ \mu\text{m}$、中心圆孔半径 `tub_radius = 500` $\mu\text{m}$、半深 `tub_depth = 2600` $\mu\text{m}$ 的黄铜 `"G4_BRASS"` 准直器，跨越 $z \in [-16500, -11500]\ \mu\text{m}$）和 `pcb_readout_gdml`（`"geant4_model": "gdml_import"`，导入外部 `pcb_readout.gdml`，世界半边长 `world_half_size_um = 2000000` $\mu\text{m}$）。
+
+### 四类信号源
+
+换源就是换 `deposit` 环节读的源组件，链和输出不变：
+
+- **$\beta$ 源**：默认是 `decay/Sr90`（`src/raser/components/source/decay/Sr90.json`，`"kind": "decay_source"`）。每个事例在半径 `par_radius = 2500` $\mu\text{m}$（直径 $5\ \text{mm}$）的圆盘上等概率抽取 $^{90}\text{Sr}$（`[38, 90]`）或子核 $^{90}\text{Y}$（`[39, 90]`）静止衰变一次，衰变产物在围绕轴线半顶角 `par_cone = 15` $\text{degree}$ 的圆锥内各向同性出射（立体角占比 $f_{\text{gen}} = (1 - \cos 15^\circ)/2 \approx 0.017037$）。电子穿透器件，整条径迹穿过灵敏区，近似最小电离粒子。
+- **$\alpha$ 源**：例如 `decay/Am241`（`src/raser/components/source/decay/Am241.json`，`"kind": "decay_source"`，`par_type = "alpha"`，单能动能 `par_energy = 5.54` $\text{MeV}$）。$\alpha$ 粒子在器件表层很浅的深度内停下，能量沉积集中在入射面附近。
+- **激光**：单光子吸收（`"SPA"`）或双光子吸收（`"TPA"`），从顶面、底面或侧面（`"top"`、`"bottom"`、`"edge"`）入射，在焦点 $(x_{\text{focus}}, y_{\text{focus}}, z_{\text{focus}}) = (\text{fx\_rel}\cdot l_x,\, \text{fy\_rel}\cdot l_y,\, \text{fz\_rel}\cdot l_z)$（单位 $\mu\text{m}$）附近产生载流子。激光组件的键见 [`../components/deposit.md`](../components/deposit.md)。
+
+- **束流**：单能粒子束（`"kind": "beam"`），例如质子束 `beam/proton`（`src/raser/components/source/beam/proton.json`，`par_type = "proton"`，动能 `par_energy = 1000.0` $\text{MeV}$，横向随机偏移半宽 `par_randx = par_randy = 0` $\mu\text{m}$）。一个事例里可以发射单个粒子，也可以通过 `particles` 列表同时发射多个粒子（见 [`../apps/bmos.md`](../apps/bmos.md)）。
 
 ![HPK-Si-PiN 单事例载流子漂移路径](../images/current-drift-path-HPK-Si-PiN.png)
 
+`HPK-Si-PiN` 在默认 `decay/Sr90` 源下一个事例的电子和空穴漂移路径：$\beta$ 电子穿透整个器件，沿径迹产生的载流子分别向两极漂移。
+
 ![HPK-Si-PiN 单事例感应电流](../images/current-event-HPK-Si-PiN.png)
 
-![HPK-Si-PiN 电荷收集效率与时间分辨随偏压变化](../images/analysis-points-HPK-Si-PiN.png)
+同一个 Sr90 $\beta$ 电子事例在读出电极上的感应电流：电子分量、空穴分量和总电流。
 
-完整的终端输出、状态查询命令与其余分布图见 [快速入门](../getting-started.md)。
+### 代码执行步骤与内置常数
 
-## 选项表
+单个 `signal` 作业按以下顺序执行：
 
-| 选项名 | 默认值 | 单位 | 含义 |
+1. **检查与求解共享场（`field`）**：主命令在启动作业前调用 `field.SHARED.ready` 检查 `<project>/field/` 下是否存在匹配当前器件、偏压 `voltage`（$\text{V}$）与辐照注量 `irradiation`（$\text{neq/cm}^2$）的电场和权重场；若未就绪则先行启动 `raser field` 求解。作业执行 `field` 片时将 `{"field": "<共享场目录>"}` 写入 `field_<job>.done`。
+2. **能量沉积与电离对生成（`deposit`）**：`stages/deposit.py` 调用 `write_simulated_deposits` 运行 Geant4（或 `toy_mip`）。仅保留在 `"Device"` 内总沉积能量 $E_{\text{tot}} > 0$ 且满足 $\text{edep\_min} \le E_{\text{tot}} \le \text{edep\_max}$（单位 $\text{MeV}$，未设上下限时仅要求 $E_{\text{tot}} > 0$）的事例，直至录满 `events_per_job` 个事例（最多生成 `generated_limit` 个源事例，超过仍未录满则抛出 `RuntimeError`）或生成满 `generated_per_job` 个源事例。每步沉积能量 $E_k$（$\text{MeV}$）在 `ionized_pairs` 中除以材料平均电离能 $\varepsilon_{\text{pair}}\times 10^{-6}$（$\text{MeV}$）并按 `fano` 开关抽样电子-空穴对数，将坐标从 Geant4 中心坐标系平移 $+l_x/2, +l_y/2$ 到 $[0, l_x] \times [0, l_y] \times [0, l_z]\ \mu\text{m}$ 写入 `deposit_<job>.h5`。若录得 `0` 个事例，抛出 `Ended` 提前结束作业。
+3. **载流子漂移与感应电流分箱（`current`）**：`stages/current.py` 加载 `DevsimField`，调用 `write_induced_currents`（默认开启热扩散 `diffusion=True`）对每个记录事例在器件与电极阵列边界内推进电子、空穴漂移（含辐照俘获与雪崩倍增），按 Shockley-Ramo 定理在时间箱宽 `t_bin`（1D 为 $5\ \text{ps}$，2D/3D 为 $50\ \text{ps}$）上分箱累加感应电流并写出 `current_<job>.h5`，同时为前 `plots` 个事例绘制漂移路径与电流图。
+4. **等效电路与前端放大器读出（`readout`）**：`stages/readout.py` 构建器件等效电路 `DeviceCircuit` 并按 `+` 拆分加载 `amplifier` 指定的 SPICE 子电路链，调用 `ngspice` 求解瞬态响应与频域热噪声谱（以作业片种子独立合成时域高斯热噪声叠入波形），仅保存最大电压摆幅 $\ge 10^{-3} V_{\max}$ 的通道写入 `readout_<job>.h5`。
+5. **数字化与触发（`digitizer`、`trigger`）**：`digitizer` 按数字化器组件的采样和量化把模拟波形变成数字波形，`trigger` 按触发条件挑出要记录的事例。
+6. **波形特征提取与成簇（`reconstruction`）**：`stages/reconstruction.py` 将 `threshold` 与 `amplitude_threshold` 从 $\text{mV}$ 乘以 $10^{-3}$ 换为 $\text{V}$，扣除波形开头 `BASELINE_POINTS = 200` 个采样点的均值基线并按脉冲边沿 `edge` 翻正，提取幅度、`ToA`、`ToT`、`CoG`、`area` 及各 `fractions` 对应的 `CFD` 时刻，以幅度不低于 `amplitude_threshold` 的电极为种子跨电极成簇，写入 `reconstruction_<job>.h5`。
+7. **收集效率与时间分辨统计（`analysis`）**：`stages/analysis` 汇总各扫描点所有已完成作业，按式 (1)、式 (2) 计算收集效率分布和选中事例的时间分辨，写出单点 `result.json`、`events.h5`、分布图及多扫描点对比文件 `points.json`、`points.png`。
+
+全链路涉及的内置常数如下表：
+
+| 常数名 | 取值 | 单位 | 定义位置与含义 |
 | --- | --- | --- | --- |
-| `det_name` | 无（必填位置参数） | 无 | 探测器组件名称或路径 |
-| `source` | `"decay/Sr90"` | 无 | 信号源组件名称或路径（可选位置参数） |
-| `--g4setup` | `"device_alone"` | 无 | Geant4 几何环境组件名称或路径 |
-| `-evt`, `--events-per-job` | `1` | 事例数 | 每个作业记录的事例数（与 `-gen` 二选一） |
-| `-gen`, `--generated-per-job` | `None` | 事例数 | 每个作业生成的源事例数（替代 `-evt`） |
-| `--generated-limit` | `None`（运行时取 `10000000`） | 事例数 | 为录满 `-evt` 个事例允许生成的最大源事例数 |
-| `--edep-min` | `None` | `MeV` | 记录事例在探测器内沉积总能量的下限 |
-| `--edep-max` | `None` | `MeV` | 记录事例在探测器内沉积总能量的上限 |
-| `fano`（通过 `--set`/`--scan` 设置） | `True` | 无 | 是否按 Fano 因子抽样每个沉积步的电子-空穴对数 |
-| `-g4_vis` | `False` | 无 | 启动 Geant4 几何与径迹可视化（绘制 `-evt` 或 `-gen` 个生成事例，默认 `1`；`gdml_import` 几何用 `vis_pcb.mac`），完成后以 `SystemExit` 结束作业 |
-| `--g4-vis-driver` | `"OGL"` | 无 | `-g4_vis` 使用的 Geant4 可视化驱动名称 |
-| `--plots` | `100` | 事例数 | 每个作业绘制漂移路径与电流图的前 N 个记录事例 |
-| `-vol`, `--voltage` | 取 `device.bias.voltage` | `V` | 探测器偏置电压（写入 `device.bias.voltage`） |
-| `-irr`, `--irradiation` | `None`（未给定时取器件 `irradiation_flux`，无则为 `0`） | `neq/cm^2` | 辐照注量 |
-| `-amp`, `--amplifier` | `"SantaCruz+Gali52+Termination50"` | 无 | 以 `+` 连接的前端放大器级与终端负载名称 |
-| `--sheet-resistance` | `None` | `Ohm` | 覆盖器件文件中阻性层的方块电阻 |
-| `-threshold` | `10.0` | `mV` | 脉冲时间量与面积计算的过阈阈值 |
-| `-amplitude_threshold` | `10.0` | `mV` | 事例入选与簇种子判定的幅度阈值 |
-| `fractions`（通过 `--set`/`--scan` 设置） | `[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]` | 无 | 恒比定时（CFD）的幅度分数列表 |
-| `--edge` | `None`（取 `readout` 导出的脉冲边沿） | 无 | 阈值触发边沿，可选 `"rising"` 或 `"falling"` |
-| `-s`, `--jobs` | `None`（单作业） | 作业数 | 并发或提交的索引作业数 |
-| `--seed` | 随机生成 31 位整数 | 无 | 随机数主种子 |
-| `--same-seeds` | `False` | 无 | 各扫描点是否共用同一批随机数种子 |
-| `-b`, `--batch` | `False` | 无 | 将作业提交到集群队列 |
-| `-mem` | `1` | 档位 | 集群作业内存档位 |
-| `--dry-run` | `False` | 无 | 打印将要运行的点、切片和作业列表后直接返回 |
-| `--scan` | `[]` | 无 | 扫描参数 `地址=值1,值2,...`（可重复指定） |
-| `--set` | `[]` | 无 | 固定单个参数 `地址=值`（可重复指定） |
+| `WORLD_HALF_SIDE` | `25000` | $\mu\text{m}$ | `src/raser/core/deposit/simulate_deposits.py:30`，Geant4 世界立方体默认最小半边长 |
+| `GENERATED_LIMIT` | `10000000` | 事例 | `src/raser/core/deposit/generation.py:8`，未指定 `generated_limit` 时单作业最大生成源事例数上限 |
+| `PAIR_ENERGY_EV` | `"Si": 3.6`, `"SiC": 8.4`, `"Diamond": 13.1` | $\text{eV}$ | `src/raser/core/deposit/ionization.py:12-18`，各材料产生一对电子-空穴对的平均电离能 |
+| `FANO_FACTOR` | `"Si": 0.115`, `"SiC": 0.128`, `"Diamond": 0.382` | 无量纲 | `src/raser/core/deposit/ionization.py:20-25`，各材料电离对数涨落的 Fano 因子 |
+| `t_bin`, `delta_t` | 1D: `5e-12`, `2e-12`；2D/3D: `50e-12`, `20e-12` | $\text{s}$ | `src/raser/core/current/cal_current.py:30-50`，感应电流时间箱宽与单步漂移时间步长 |
+| `PART_EDGE` | `1e-3` | 无量纲 | `src/raser/core/readout/job.py:23`，保存输出波形通道所需的最小电压摆幅占最大通道摆幅比例 |
+| `MILLIVOLT` | `1.0e-3` | $\text{V/mV}$ | `src/raser/stages/reconstruction.py:28`，将 `threshold` 与 `amplitude_threshold` 从 $\text{mV}$ 换算为 $\text{V}$ 的系数 |
+| `BASELINE_POINTS` | `200` | 采样点 | `src/raser/core/reconstruction/event.py:7`，波形开头用于计算基线均值与噪声标准差的固定采样点数 |
+| `ELEMENTARY_CHARGE` | `1.602176634e-19` | $\text{C}$ | `src/raser/core/analysis/collection.py:5`，式 (1) 计算电荷收集效率使用的元电荷 |
+| `MINIMUM_EVENTS`, `ROUNDS` | `20`, `6` | 事例, 轮 | `src/raser/core/analysis/resolution.py:8-9`，截断高斯时间分辨拟合所需最少样本数与最大窗口收缩迭代轮数 |
+| `PICOSECOND` | `1.0e-12` | $\text{s/ps}$ | `src/raser/stages/analysis/plots.py:8`，时间差与时间分辨作图的秒到皮秒换算系数 |
 
-## 常见报错
+## 用到的环节和组件
 
-| 报错信息 | 触发原因 |
-| --- | --- |
-| `ValueError: events_per_job and generated_per_job are given at once in the command line; give one of them` | 命令行同时给出了 `-evt` 与 `-gen`（若在 `config.json` 的 `"set"` 中同时给出则报 `in the "set" of config.json`） |
-| `ValueError: events_per_job (<events>) and generated_per_job (<generated>): a job records a number of events or generates one, so exactly one of them is set` | `events_per_job` 与 `generated_per_job` 最终同时为空 |
-| `RuntimeError: <recorded> of the <events> events asked for were recorded when the limit of <generated> generated events was reached ...` | 生成的源事例达到 `generated_limit` 时仍未录满请求的 `events_per_job` 个事例 |
-| `` FileNotFoundError: no field of <det_name> ready for this run: solve it with `raser field <det_name>` `` | 场切片执行时未找到就绪的求解场 |
-| `FileNotFoundError: Cannot find GDML file: pcb_readout.gdml\nSearched:\n  - <候选路径列表>` | 使用 `--g4setup pcb_readout_gdml` 时在各组件根、各组件根下 `g4experiment/` 与 `src/raser/` 中均未找到 `pcb_readout.gdml` |
-| `SystemExit: [Error] ... 的 gdml 段应当是 position_um = [0, 0, 0]、auto_center = False ...` | `patch_pcb_gdml_material.py` 检查 `pcb_readout_gdml.py` 的 `gdml` 配置不满足居中前提时退出 |
+### 环节
 
-## 相关页面
+- [`field`](../stages/field.md)：求解或复用被测器件在目标偏压与辐照注量下的电场、权重场、导电区标志及结电容/未耗尽层参数，存放在 `<project>/field/`。
+- [`deposit`](../stages/deposit.md)：根据所选源与 Geant4 装置模拟粒子在被测器件内的能量沉积步并转化为初始电子-空穴对。
+- [`current`](../stages/current.md)：将沉积产生的电子-空穴对放入求解场中漂移、扩散与倍增，算出各读出电极上的时域感应电流与净感应电荷。
+- [`readout`](../stages/readout.md)：把感应电流送入器件等效电路与 SPICE 前端放大器链，求解输出电压波形并叠加电路热噪声。
+- [`digitizer`](../stages/digitizer.md)：按数字化器采样率与量化位数把模拟输出波形转换为数字波形。
+- [`trigger`](../stages/trigger.md)：按触发设备判选条件筛选记录事例。
+- [`reconstruction`](../stages/reconstruction.md)：从读出波形中扣除前 `200` 点基线，提取脉冲幅度、`ToA`、`ToT`、`CoG`、`area`、`CFD` 与多电极团簇特征。
+- [`analysis`](../stages/analysis.md)：汇总各扫描点的已完成作业，拟合电荷收集效率与相对真实沉积时刻的时间分辨并绘制单点分布图和跨点趋势图。
 
-- [`../getting-started.md`](../getting-started.md)
-- [`../cli.md`](../cli.md)
-- [`../lifecycle/experiments.md`](../lifecycle/experiments.md)
-- [`../lifecycle/slices.md`](../lifecycle/slices.md)
-- [`../components/device.md`](../components/device.md)
-- [`../components/source.md`](../components/source.md)
-- [`../components/g4setup.md`](../components/g4setup.md)
-- [`../components/afe.md`](../components/afe.md)
-- [`../stages/deposit.md`](../stages/deposit.md)
-- [`../stages/field.md`](../stages/field.md)
-- [`../stages/current.md`](../stages/current.md)
-- [`../stages/readout.md`](../stages/readout.md)
-- [`../stages/reconstruction.md`](../stages/reconstruction.md)
-- [`../stages/analysis.md`](../stages/analysis.md)
+### 组件
+
+- [探测器组件（`components/device`）](../components/device.md)：提供被测器件的尺寸、材料、掺杂、偏压、温度、辐照模型、雪崩模型与等效电路参数（如 `HPK-Si-PiN.json`、`NJU-PiN.json`）。
+- [能量沉积组件（`components/deposit`）](../components/deposit.md)：提供放射源与束流（如默认 `decay/Sr90.json`、`decay/Am241.json`、`beam/proton.json`）、激光（如 `PIL037_top_SiC.json`）及 Geant4 装置（如默认 `device_alone.py`、`Sr90_collimator.py`）。
+- [前端读出电路组件（`components/readout`）](../components/readout.md)：提供以 `+` 串联的 SPICE 放大器级与终端负载子电路（默认 `SantaCruz+Gali52+Termination50`）。
+- [数字化器组件（`components/digitizer`）](../components/digitizer.md)：提供示波器或数字化板的采样和量化设置；兼管触发的设备（如示波器 `scope`），它的触发条件也写在这里。
+- [触发组件（`components/trigger`）](../components/trigger.md)：提供独立触发设备的触发判选条件定义。
+
+## 跑法与配置
+
+直接对被测器件运行 `signal`（快速入门示例，链上每一步的结果和图见[快速入门第 4 节](../getting-started.md#4-链上每一步的结果)）：
+
+```bash
+raser signal HPK-Si-PiN
+```
+
+在 `config.json` 的 `deposit` 段里设置 `source` 或在命令行用 `--set` 切换信号源（例如换为 $\alpha$ 源 `decay/Am241`）：
+
+```bash
+raser signal HPK-Si-PiN --set deposit.source=decay/Am241
+```
+
+用 `--scan` 扫描偏压、扫描源的能量或扫描激光脉冲能量与波长都在 `signal` 里做；当激光相对器件的位置作为扫描轴时，改用 [`tct`](tct.md)：
+
+```bash
+raser signal HPK-Si-PiN --scan field.voltage=100,200
+```
+
+按 [架构总纲](../architecture.md#project) 的分段格式，实验文件夹 `<project>/signal/config.json` 按环节分段记录配置：
+
+```json
+{
+  "workflow": "signal",
+  "device": "HPK-Si-PiN",
+  "field": {
+    "voltage": 200.0,
+    "irradiation": null
+  },
+  "deposit": {
+    "source": "decay/Sr90",
+    "g4setup": "device_alone",
+    "events_per_job": 200,
+    "fano": true,
+    "plots": 100
+  },
+  "current": {
+    "plots": 100
+  },
+  "readout": {
+    "amplifier": "SantaCruz+Gali52+Termination50",
+    "sheet_resistance": null
+  },
+  "reconstruction": {
+    "threshold": 10.0,
+    "amplitude_threshold": 10.0,
+    "fractions": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+    "edge": null
+  }
+}
+```
+
+使用者在 `signal` 中能设的配置键如下表（`src/raser/stages/chain.py:14-106`）：
+
+| 段.键（代码键名） | 默认值 | 单位 | 含义 |
+| --- | --- | --- | --- |
+| `field.voltage`（等同 `field.device.bias.voltage`） | 取器件文件 `bias.voltage` | $\text{V}$ | 被测器件反向偏置电压（命令行 `-vol`/`--voltage`） |
+| `field.irradiation`（`irradiation`） | `None`（未给定时取器件 `irradiation.irradiation_flux`，无则为 `0`） | $\text{neq/cm}^2$ | 被测器件辐照注量（命令行 `-irr`/`--irradiation`） |
+| `deposit.source`（`source`） | `"decay/Sr90"` | 无 | 放射源或束流组件名称或路径（命令行可选位置参数 `source`） |
+| `deposit.g4setup`（`g4setup`） | `"device_alone"` | 无 | Geant4 装置组件名称或路径（命令行 `--g4setup`） |
+| `deposit.events_per_job`（`events_per_job`） | `1` | 事例 | 每作业需记录的有效沉积事例数（命令行 `-evt`/`--events-per-job`，与 `generated_per_job` 互斥） |
+| `deposit.generated_per_job`（`generated_per_job`） | `None` | 事例 | 每作业由源生成的总事例数（命令行 `-gen`/`--generated-per-job`，与 `events_per_job` 互斥） |
+| `deposit.generated_limit`（`generated_limit`） | `None`（运行时取 `10000000`） | 事例 | 为录满 `events_per_job` 允许生成的最大源事例数上限（命令行 `--generated-limit`） |
+| `deposit.edep_min`（`edep_min`） | `None` | $\text{MeV}$ | 记录事例在器件内总沉积能量下限（命令行 `--edep-min`） |
+| `deposit.edep_max`（`edep_max`） | `None` | $\text{MeV}$ | 记录事例在器件内总沉积能量上限（命令行 `--edep-max`） |
+| `deposit.fano`（`fano`） | `True` | 无 | 电离对数转化是否开启 Fano 涨落抽样 |
+| `deposit.plots` | `100` | 事例 | 每作业画 Geant4 几何与径迹图的前若干个记录事例数 |
+| `current.plots` | `100` | 事例 | 每作业画载流子漂移路径图与电流图的前若干个记录事例数 |
+| `readout.amplifier`（`amplifier`） | `"SantaCruz+Gali52+Termination50"` | 无 | 以 `+` 连接的前端放大器与终端负载组件链（命令行 `-amp`/`--amplifier`） |
+| `readout.sheet_resistance`（`sheet_resistance`） | `None` | $\Omega$ | 覆盖含 `resistive_layer` 器件的阻性层方阻（命令行 `--sheet-resistance`） |
+| `reconstruction.threshold`（`threshold`） | `10.0` | $\text{mV}$ | 提取 `ToA`、`ToT`、`CoG`、`area` 及邻近电极入簇的过阈阈值（命令行 `-threshold`） |
+| `reconstruction.amplitude_threshold`（`amplitude_threshold`） | `10.0` | $\text{mV}$ | 找团簇种子的脉冲幅度阈值（事例记不记录由 `trigger` 判定）（命令行 `-amplitude_threshold`） |
+| `reconstruction.fractions`（`fractions`） | `[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]` | 无量纲 | 恒比定时（`CFD`）的幅度比例列表，每项须位于 `(0, 1)` 开区间内 |
+| `reconstruction.edge`（`edge`） | `None`（沿用 `readout` 写出的 `pulse_edge`） | 无 | 阈值作用的脉冲边沿方向，可选 `"rising"` 或 `"falling"`（命令行 `--edge`） |
+
+其余参数（Geant4 世界默认半边长 `WORLD_HALF_SIDE = 25000 um`、默认最大生成事例数上限 `GENERATED_LIMIT = 10000000`、材料平均电离能 `PAIR_ENERGY_EV` 与 Fano 因子 `FANO_FACTOR`、漂移时间窗与时间步长档位 `t_bin`/`delta_t`、热扩散开关 `diffusion = True`、`ngspice` 频域噪声起始频率 `1e3 Hz` 与温度 `27 °C`、保存波形通道最小摆幅比 `PART_EDGE = 1e-3`、重建基线点数 `BASELINE_POINTS = 200`、截断高斯拟合初窗 `median ± 8 * MAD`、最少样本数 `MINIMUM_EVENTS = 20` 与最大迭代轮数 `ROUNDS = 6`）全部写死在代码里。
+
+## 输出
+
+结果存放在被测器件 project 下的 `<project>/signal/`（如 `work/<器件>/signal/` 或 `examples/<器件>/signal/`），存放结构见 [架构总纲](../architecture.md#结果)：底层按各环节输入指纹存入 `<project>/signal/nodes/<环节>/<节点号>/`（内含该环节输出文件与 `node.json`），上层在 `<project>/signal/points/<点名>/<环节>` 生成指向对应节点的软链接视图并在 `<project>/signal/points.json` 记录参数表，跨点统计与趋势图存放在 `<project>/signal/analysis/` 下，器件共享场存放在 `<project>/field/` 下。
+
+### 数据文件
+
+| 文件名 | 写出环节 | 内容与主要字段 | 单位 |
+| --- | --- | --- | --- |
+| `deposit_<job>.h5` | [`deposit`](../stages/deposit.md) | 沉积步数据：属性 `generated_events`、`recorded_events`、`generated_fraction`、`edep_min`/`edep_max`；数据集 `event`、`count`、`detector`、`x`/`y`/`z`、`t`、`e`、`pairs` | 坐标 $\mu\text{m}$，时间 $\text{s}$，能量 $\text{MeV}$，`pairs` 为对 |
+| `current_<job>.h5` | [`current`](../stages/current.md) | 感应电流与净电荷：属性 `electrodes`、`dt`；数据集 `event`、`t0`、`count`、`pairs`、`sensitive_pairs`、`carriers_without_field`、`charge`、`stored`、`index`、`current` | `dt`、`t0` 为 $\text{s}$，`charge` 为 $\text{C}$，`current` 为 $\text{A}$ |
+| `readout_<job>.h5` | [`readout`](../stages/readout.md) | 前端读出电压波形：属性 `electrodes`、`dt`、`pulse_edge`、`device_circuit`；数据集 `event`、`t0`、`count`、`stored`、`index`、`voltage` | `dt`、`t0` 为 $\text{s}$，`voltage` 为 $\text{V}$ |
+| `reconstruction_<job>.h5` | [`reconstruction`](../stages/reconstruction.md) | 重建事件特征表：属性 `threshold`、`amplitude_threshold`、`fractions`、`edge`；数据集 `event`、`selected`、`cluster_size`、`cluster_center`、`traced`、`baseline`、`noise`、`amplitude`、`above`、`ToA`、`ToT`、`CoG`、`area`、`CFD` | 电压与阈值 $\text{V}$，时间 $\text{s}$，面积 $\text{V}\cdot\text{s}$ |
+| `analysis/[<点名>/]result.json` | [`analysis`](../stages/analysis.md) | 单扫描点汇总：含 `reconstruction` 设置、`collection`（`events`、`mean`、`mean_error`、`spread`）和 `timing`（`events`、`selected`、`polarity` 及 `ToA`、`CoG`、`CFD*` 的 `mean`、`sigma`、`sigma_error`、`sigma68`、`window`） | 阈值 $\text{mV}$，效率无量纲，时间与分辨 $\text{s}$ |
+| `analysis/[<点名>/]events.h5` | [`analysis`](../stages/analysis.md) | 单扫描点全部选中事例的一维数据集：`job`、`event`、`ToA`、`ToT`、`amplitude`、`baseline`、`noise`、`truth`、`CoG`、`CFD<percent>` | 电压 $\text{V}$，时间 $\text{s}$ |
+| `analysis/points.json` | [`analysis`](../stages/analysis.md) | 多扫描点（已完成点数 $> 1$）对比表：每点一行，含 `"point"`、扫描键值、`"events"`、`"efficiency"`、`"efficiency_error"`、`"selected"` 及各定时通道的 `"sigma68"`、`"sigma"`、`"sigma_error"` | 效率无量纲，时间分辨 $\text{s}$ |
+
+### 图像文件
+
+| 文件名 | 写出环节 | 内容 | 坐标与物理量单位 |
+| --- | --- | --- | --- |
+| `plots/job_<job>/g4_geometry.png` | [`deposit`](../stages/deposit.md) | `deposit.plots > 0` 且使用 Geant4 源时离屏绘出的装置几何与前 `deposit.plots` 个记录事例径迹图 | 空间尺寸 $\mu\text{m}$ |
+| `plots/job_<job>/event_<event>/<det_model>_drift_path.pdf`, `.root` | [`current`](../stages/current.md) | 前 `current.plots` 个记录事例的三维器件边界与载流子漂移轨迹图（上）及 $x$-$z$ 平面投影图（下） | 空间轴 $\mu\text{m}$ |
+| `plots/job_<job>/event_<event>/No_<k>electrode_basic_infor.pdf`, `.root` | [`current`](../stages/current.md) | 前 `current.plots` 个记录事例中非零电流电极 $k$ 的 `electron`、`hole`、`total`（及雪崩增益）感应电流波形 | 横轴 `Time [s]`，纵轴 `Current [A]` |
+| `plots/job_<job>/event_<event>/cce.pdf`, `.root` | [`current`](../stages/current.md) | 条形（`strip`）或像素（`pixel`）器件在前 `current.plots` 个记录事例中各电极收集到的电子数分布 | 电极编号，收集电荷折算电子数（轴标题标作 `charge[Coulomb]`） |
+| `analysis/[<点名>/]efficiency.png` | [`analysis`](../stages/analysis.md) | 扫描点全部记录事例（事例数 $\ge 2$）的电荷收集效率 `60` 箱直方图，虚线标出均值 | 横轴无量纲效率，纵轴 `events` |
+| `analysis/[<点名>/]amplitude.png` | [`analysis`](../stages/analysis.md) | 扫描点全部选中事例基线以上脉冲幅度的 `60` 箱直方图，虚线标出 `amplitude_threshold` | 横轴 `amplitude above the baseline [mV]`，纵轴 `events` |
+| `analysis/[<点名>/]time_difference.png` | [`analysis`](../stages/analysis.md) | `3 × 4` 子图展示 `ToA`、`CoG` 与各 `CFD*` 通道的 `time - truth` 分布（`mean ± 8 * sigma` 内 `64` 箱）、末轮拟合窗口阴影与截断高斯拟合曲线 | 横轴 `<通道> - truth [ps]`，纵轴事例数 |
+| `analysis/[<点名>/]resolution_of_fraction.png` | [`analysis`](../stages/analysis.md) | 各 `CFD*` 通道的时间分辨 `sigma`（带误差棒）与 `sigma68` 随恒比分数变化的曲线 | 横轴 `fraction of the CFD`（无量纲），纵轴 `width of time - truth [ps]` |
+| `analysis/points.png` | [`analysis`](../stages/analysis.md) | 单一数值扫描轴下多扫描点的电荷收集效率（左）与各 `CFD*` 通道时间分辨 `sigma`（右）随扫描变量的变化曲线 | 横轴为扫描变量，左纵轴无量纲效率，右纵轴 `sigma of time - truth [ps]` |

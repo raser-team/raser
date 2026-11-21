@@ -1,66 +1,73 @@
 # RASER 中文文档
 
-RASER（Radiation Semiconductor，版本 `5.0`，Python `3.11`）是半导体探测器仿真软件，通过命令行入口 `raser` 连接器件场求解、能量沉积、感应电流计算、读出电子学仿真、波形重建、结果分析与实验工作流。
+RASER 是半导体辐射探测器全链路仿真软件，用一套命令行连接器件场求解、粒子能量沉积、载流子漂移、前端读出、数字化、触发、重建和统计分析。
 
-## 目录
+## 总览
 
-### 总览与入门
+- [README.md](README.md)：中文文档总目录。
+- [getting-started.md](getting-started.md)：安装与激活环境、跑通 `HPK-Si-PiN` 示例、按视图查看结果并建立自己的 project。
+- [architecture.md](architecture.md)：布局、实验类、project、结果、链、组件、资产。
+- [cli.md](cli.md)：`raser` 命令分发、全部命令清单、全局选项与共用运行参数。
 
-- [README.md](README.md)：中文文档总目录与一句话介绍。
-- [getting-started.md](getting-started.md)：安装与激活环境后第一次运行一个器件（`HPK-Si-PiN`）。
-- [architecture.md](architecture.md)：源码目录分层、`pyproject.toml` 的 `importlinter` 依赖契约、链上环节与顺序、各环节交接的切片文件、实验与环节的关系。
-- [cli.md](cli.md)：`raser` 的全部命令、短命令别名、模块注册表与公共选项。
+## lifecycle
 
-### 生命周期（`lifecycle`）
+- [lifecycle/experiments.md](lifecycle/experiments.md)：project 与实验文件夹、`config.json`、`run.json`、`--set` 与 `--scan` 参数扫描、随机种子。
+- [lifecycle/slices.md](lifecycle/slices.md)：环节切片依赖、代码版本提示、完成标记与 `raser status` 状态查看。
+- [lifecycle/jobs.md](lifecycle/jobs.md)：并行作业拆分、日志、文件锁、断点续跑与集群提交。
 
-- [lifecycle/experiments.md](lifecycle/experiments.md)：实验文件夹、`config.json`、`run.json`、扫描点、`--set`/`--scan`、种子与 `--same-seeds`。
-- [lifecycle/slices.md](lifecycle/slices.md)：切片（`Slice`）、`needs` 依赖、过期判断、`.done` 标记、重跑与 `raser status`。
-- [lifecycle/jobs.md](lifecycle/jobs.md)：作业拆分、日志文件、文件锁、断点续跑与集群提交。
+## 环节（stages）
 
-### 仿真链环节（`stages`）
+八个环节按仿真链顺序排列，地位相同，总览见 [stages/README.md](stages/README.md)（链式组装、切片数据文件路径与环节命令入口）：
 
-- [stages/README.md](stages/README.md)：`src/raser/stages/chain.py`、`files.py`、`stage_commands.py`，作业切片链顺序、切片数据文件路径与环节命令入口。
-- [stages/field.md](stages/field.md)：`stages/field`，求解器件电势、电场、权重场、IV/CV 曲线（或使用 `-ext` 导入单个偏压 TCAD 场解并据此求解权重势）的命令、选项与共享切片输出。
-- [stages/deposit.md](stages/deposit.md)：`stages/deposit`，计算放射源或束流在器件中的能量沉积与电离电子-空穴对的命令与切片。
-- [stages/current.md](stages/current.md)：`stages/current`，在已求解场中漂移载流子并计算各读出电极感应电流的命令与切片。
-- [stages/readout.md](stages/readout.md)：`stages/readout`，求解器件等效电路与放大器链输出电压波形的命令与切片。
-- [stages/reconstruction.md](stages/reconstruction.md)：`stages/reconstruction`，从读出波形提取基线、幅度、定时量、脉冲面积与团簇特征的命令与切片。
-- [stages/analysis.md](stages/analysis.md)：`stages/analysis`，汇总实验各扫描点的电荷收集效率与时间分辨并输出统计文件与图表。
+1. [stages/field.md](stages/field.md)：`field` 环节，算器件里的电场、权重场、IV/CV 与器件等效电路参数。
+2. [stages/deposit.md](stages/deposit.md)：`deposit` 环节，用 Geant4 算粒子沉积的能量与电离电子-空穴对。
+3. [stages/current.md](stages/current.md)：`current` 环节，让载流子在场中漂移，算电极上的感应电流。
+4. [stages/readout.md](stages/readout.md)：`readout` 环节，把电流送进器件等效电路和前端放大器，得到波形。
+5. [stages/digitizer.md](stages/digitizer.md)：`digitizer` 环节，按示波器或数字化板的采样和量化把波形变成数字波形。
+6. [stages/trigger.md](stages/trigger.md)：`trigger` 环节，按真实触发设备的条件决定记录哪些事例。
+7. [stages/reconstruction.md](stages/reconstruction.md)：`reconstruction` 环节，从波形里取击中时间和幅度，束流测试里做径迹拟合。
+8. [stages/analysis.md](stages/analysis.md)：`analysis` 环节，统计各扫描点的效率与时间分辨，并在 `<实验>/analysis/` 下出趋势图。
 
-### 核心（`core`）
+## core
 
-- [core/model.md](core/model.md)：`core/model`，半导体材料参数、能带结构、掺杂、迁移率、复合、不完全电离与碰撞电离公式。
-- [core/device.md](core/device.md)：`core/device`，从器件 JSON 定义构建 `Detector` 对象、电极排布、电容计算与几何边界。
-- [core/field.md](core/field.md)：`core/field`，DEVSIM 电势/电场/权重场/IV/CV 求解、TCAD 导入、插值场查询 `DevsimField` 与器件等效 SPICE 电路构造。
-- [core/deposit.md](core/deposit.md)：`core/deposit`，Geant4 粒子输运、简化 MIP 径迹、激光吸收、电离对数计算与 `deposit_<job>.h5` 读写。
-- [core/current.md](core/current.md)：`core/current`，载流子漂移、扩散、俘获、雪崩倍增、Shockley-Ramo 感应电流计算与 `current_<job>.h5` 读写。
-- [core/readout.md](core/readout.md)：`core/readout`，SPICE 放大器链瞬态求解、热噪声频谱抽样、脉冲边沿判定与 `readout_<job>.h5` 读写。
-- [core/digitizer.md](core/digitizer.md)：`core/digitizer`，基于 `pymtl3` 的寄存器递增器数字电路模型与仿真。
-- [core/reconstruction.md](core/reconstruction.md)：`core/reconstruction`，波形脉冲极性转换、基线扣除、定时量（`ToA`、`ToT`、`CoG`、`CFD`）、脉冲面积、团簇算法与 `reconstruction_<job>.h5` 读写。
-- [core/analysis.md](core/analysis.md)：`core/analysis`，电荷收集效率计算、截断高斯迭代拟合核心宽度 `core_width` 与 `WaveformStatistics`。
+- [core/model.md](core/model.md)：半导体物理模型注册表，含能带、掺杂、迁移率、复合与碰撞电离模型。
+- [core/device.md](core/device.md)：器件几何、电极排布与掺杂定义解析。
+- [core/field.md](core/field.md)：DEVSIM 电势、电场、权重场、IV/CV 求解、TCAD 导入与器件等效电路构造。
+- [core/deposit.md](core/deposit.md)：Geant4 粒子输运、激光吸收与电离电子-空穴对计算。
+- [core/current.md](core/current.md)：载流子漂移、扩散、俘获、雪崩倍增与 Shockley-Ramo 感应电流计算。
+- [core/readout.md](core/readout.md)：SPICE 前端电路瞬态求解与噪声叠加。
+- [core/digitizer.md](core/digitizer.md)：波形采样、量化与数字电路仿真。
+- [core/reconstruction.md](core/reconstruction.md)：基线扣除、定时量（`ToA`、`ToT`、`CoG`、`CFD`）、脉冲面积与团簇重建算法。
+- [core/analysis.md](core/analysis.md)：电荷收集效率统计与时间分辨截断高斯拟合。
 
-### 组件定义（`components`）
+## components
 
-- [components/device.md](components/device.md)：`components/device`，平面型、条型、像素型、3D、LGAD 与 HEMT 等器件 JSON 定义及网格脚本。
-- [components/source.md](components/source.md)：`components/source`，束流（`beam`）、放射源衰变（`decay`）与简化最小电离粒子（`toy`）源 JSON 定义。
-- [components/laser.md](components/laser.md)：`components/laser`，TCT 激光注入参数 JSON 定义与硅材料吸收系数表。
-- [components/g4setup.md](components/g4setup.md)：`components/g4setup` 与 `components/g4macro`，Geant4 几何环境 Python 脚本（`G4SETUP`）与可视化宏。
-- [components/afe.md](components/afe.md)：`components/afe`，前端放大器与端接电路 SPICE 子电路文件（`.cir`）。
-- [components/adc.md](components/adc.md)：`components/adc`，含 `threshold`、`amplitude_threshold` 两个键的 `scope.json`。
+组件是可以复用的定义，放在 `raser/components/` 下，按读它的环节分文件夹：
 
-### 基准实验（`bench`）
+- [components/device.md](components/device.md)：器件的几何、电极、掺杂，以及选用的物理模型。
+- [components/deposit.md](components/deposit.md)：入射粒子的来源：Geant4 装置、放射源和束流、激光。
+- [components/readout.md](components/readout.md)：前端放大器和端接电路。
+- [components/digitizer.md](components/digitizer.md)：示波器、数字化板的采样和量化设置。
+- [components/trigger.md](components/trigger.md)：触发条件。
 
-- [bench/cce.md](bench/cce.md)：`raser cce`，电荷收集实验工作流。
-- [bench/signal.md](bench/signal.md)：`raser signal`，单器件信号仿真工作流。
-- [bench/tct.md](bench/tct.md)：`raser tct`，瞬态电流技术（TCT）激光脉冲仿真工作流。
-- [bench/telescope.md](bench/telescope.md)：`raser telescope`，束流望远镜（`taichu_v1`、`taichu_v2`）空间分辨仿真工作流。
-- [bench/timeres.md](bench/timeres.md)：`raser timeres`，时间分辨实验工作流。
+## 测试（bench）
 
-### 专用应用（`apps`）
+官方测试类都在 `raser_bench` 包里，每个测试是一个继承 `raser` 实验基类的 Python 类，输出放在 `work/<器件>/<测试>/`：
 
-- [apps/bmos.md](apps/bmos.md)：`raser bmos`，束流监测在线系统（BMOS）束团脉冲仿真工作流。
-- [apps/cflm.md](apps/cflm.md)：`raser cflm`，CEPC 快速亮度监测器（CFLM）24 垫片束团丢失电子仿真工作流。
+- [bench/signal.md](bench/signal.md)：`raser signal`，单器件全链路信号测试，给出电荷收集效率。
+- [bench/timeres.md](bench/timeres.md)：`raser timeres`，时间分辨（Time Resolution）测试。
+- [bench/tct.md](bench/tct.md)：`raser tct`，瞬态电流技术（Transient Current Technique）测试，扫激光相对器件的位置。
+- [bench/telescope.md](bench/telescope.md)：`raser telescope`，束流望远镜空间分辨测试，默认用 TAICHU 做参考器件。
 
-### 工程支撑（`supports`）
+## 应用（apps）
 
-- [supports/README.md](supports/README.md)：`supports`，运行时路径解析、输出目录边界检查、缺失依赖异常、进程清理回调与内存统计装饰器。
+官方应用类都在 `raser_app` 包里，每个应用是一个继承 `raser` 实验基类的 Python 类，输出放在 `work/<应用>/`：
+
+- [apps/bmos.md](apps/bmos.md)：`raser bmos`，在线束流监测系统（Beam Monitor Online System）应用。
+- [apps/cflm.md](apps/cflm.md)：`raser cflm`，CEPC 快速亮度监测器（CEPC Fast Luminosity Monitor）应用。
+- [apps/hbf.md](apps/hbf.md)：`raser hbf`，氢硼聚变（Hydrogen–Boron Fusion，p–¹¹B）应用。
+- [apps/pimg.md](apps/pimg.md)：`raser pimg`，质子成像（Proton Imaging）应用。
+
+## supports
+
+- [supports/README.md](supports/README.md)：路径解析、输出边界检查、缺失依赖提示与进程清理等工程支撑。

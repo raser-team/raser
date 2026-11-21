@@ -1,104 +1,131 @@
-# 束流监测在线系统应用（`apps/bmos`）
+# 在线束流监测系统（`apps/bmos`）
 
-`raser bmos` 是束流监测在线系统（Beam Monitor Online System）专用应用工作流。它在标准五片仿真链（`deposit`、`field`、`current`、`readout`、`reconstruction`）上，将默认信号源设置为多粒子束团源 `bunch`（每个 Geant4 事例同时发射 3 个横向间距 `1 um` 的 `80 MeV` 质子）并默认关闭逐事例绘图（`--plots 0`），实验目录写入 `work/<det_name>/bmos/`。
+`bmos`（Beam Monitor Online System，在线束流监测系统，`raser_app` 包）是 [`signal`](../bench/signal.md) 换用多粒子束团源 `bunch`（每个事例代表一个束团，同时发射 `3` 个 `80 MeV` 质子）并默认关闭逐事例绘图（`deposit.plots = 0`、`current.plots = 0`）的一份配置。它以束流路径上的监测器件为主体，读取 [探测器组件（`components/device`）](../components/device.md)、[能量沉积组件（`components/deposit`）](../components/deposit.md)、[前端读出电路组件（`components/readout`）](../components/readout.md)、[数字化器组件（`components/digitizer`）](../components/digitizer.md) 和 [触发组件（`components/trigger`）](../components/trigger.md)，依次走完 [`field`](../stages/field.md)、[`deposit`](../stages/deposit.md)、[`current`](../stages/current.md)、[`readout`](../stages/readout.md)、[`digitizer`](../stages/digitizer.md)、[`trigger`](../stages/trigger.md)、[`reconstruction`](../stages/reconstruction.md) 和 [`analysis`](../stages/analysis.md) 八个环节，输出束团在监测器件上产生的叠加电流脉冲、读出电压波形、电荷收集效率与时间分辨。
 
-```mermaid
-flowchart LR
-    SRC["束团源 bunch.json<br/>3 个 80 MeV 质子 / 事例"] --> DEP["deposit<br/>能量沉积与电离对"]
-    DEV["器件与放大器配置"] --> DEP
-    DEV --> FLD["field（共享）<br/>work/&lt;det_name&gt;/field/"]
-    DEP -- "deposit_&lt;job&gt;.h5" --> CUR["current<br/>默认 --plots 0"]
-    FLD --> CUR
-    CUR -- "current_&lt;job&gt;.h5" --> RDO["readout"]
-    FLD --> RDO
-    RDO -- "readout_&lt;job&gt;.h5" --> RECO["reconstruction"]
-    DEP -.-> ANA["raser analysis work/&lt;det_name&gt;/bmos"]
-    CUR -.-> ANA
-    RECO -.-> ANA
-```
+## 装置与通用范式
 
-## 命令
+### 通用做法与物理定义
+
+学术界在质子或重离子加速器束流线上做在线束流监测（Beam Monitor Online System）时，将耐辐照宽禁带半导体探测器（如 4H-SiC PiN 二极管 `NJU-PiN-bmos`）直接放置在束流路径上，逐束团（bunch）测量束团内多个带电粒子同时穿过探测器时叠加产生的瞬态感应电流脉冲与总收集电荷，从而在线监测每个束团的流强（粒子数）、到达时刻与脉冲幅度分布。
+
+在 RASER 中，单个束团作为单个 Geant4 事例模拟。设一个束团同时发射 $M$ 个粒子，第 $m$ 个粒子及其次级产物在器件内留下的沉积步集合为 $\mathcal{S}_m$，第 $k$ 个沉积步转化的初始电子-空穴对数为 $N_{\text{pairs}, k}$，则单个束团在器件内产生的总初始电子-空穴对数 $N_{\text{bunch}}$ 与束团电荷收集效率 $\eta$ 为：
+
+$$N_{\text{bunch}} = \sum_{m=1}^{M}\sum_{k \in \mathcal{S}_m} N_{\text{pairs}, k}, \qquad \eta = \frac{\left|\sum_{j} Q_{j}\right|}{N_{\text{bunch}}\,e_0} \tag{1}$$
+
+其中：
+
+- $M$：单个束团（单个事例）同时发射的初级粒子数，个（默认 `bunch.json` 中 $M = 3$）；
+- $N_{\text{pairs}, k}$：第 $k$ 个沉积步由沉积能量 $E_k$（$\text{MeV}$）除以平均电离能 $\varepsilon_{\text{pair}}\times 10^{-6}$ 并经 Fano 抽样得到的电子-空穴对数，对；
+- $N_{\text{bunch}}$：单束团在器件内产生的总初始电子-空穴对数（写入 `current_<job>.h5` 的 `pairs` 数据集），对；
+- $Q_j$：第 $j$ 个读出电极在该束团全部载流子漂移过程中感应的带符号净电荷，$\text{C}$；
+- $e_0$：元电荷，代码中常数 `ELEMENTARY_CHARGE` 取 $1.602176634\times 10^{-19}\ \text{C}$；
+- $\eta$：单束团电荷收集效率（无量纲）。
+
+式 (1) 由 [`core/deposit/ionization.py`](../core/deposit.md) 的 `ionized_pairs` 与 [`core/analysis/collection.py`](../core/analysis.md) 的 `collection_efficiency` 计算；束团到达时间差 $\Delta t = t_{\text{reco}} - t_{\text{truth}}$ 及截断高斯时间分辨拟合与 [`signal`](../bench/signal.md#通用做法与物理定义) 的式 (2) 完全一致。用碳化硅半导体探测器进行带电粒子束流监测的综述见文献 [1]（M. De Napoli, “SiC detectors: A review on the use of silicon carbide as radiation detection material”, *Front. Phys.* 10 (2022) 898833, doi:10.3389/fphy.2022.898833）。
+
+### 束团源 `bunch` 与装置几何
+
+`bmos` 默认使用 `device_alone` Geant4 装置（`src/raser/components/g4setup/device_alone.py`）和专属束团源 `bunch`（`src/raser/apps/bmos/components/source/bunch.json`）：
+
+- **Geant4 装置（`device_alone`）**：世界立方体材料为真空 `"G4_Galactic"`（默认半边长 `WORLD_HALF_SIDE = 25000` $\mu\text{m}$），监测器件逻辑体 `"Device"` 顶面中心位于原点 $(0, 0, 0)\ \mu\text{m}$、占据 $x \in [-l_x/2, l_x/2]$、$y \in [-l_y/2, l_y/2]$、$z \in [0, l_z]\ \mu\text{m}$，器件内最大步长 `maxstep = 2` $\mu\text{m}$；源基准位置 `at = [0, 0, -17000]` $\mu\text{m}$（顶面上方 $17\ \text{mm}$），瞄准点 `towards = [0, 0, 0]` $\mu\text{m}$，入射倾角 `angle = 0` $\text{degree}$。
+- **束团源（`bunch.json`）**：源类型 `"kind": "beam"`，粒子种类 `"par_type": "proton"`（质子），单粒子动能 `"par_energy": 80` $\text{MeV}$，横向方向随机偏移半宽 `par_randx = 0`、`par_randy = 0` $\mu\text{m}$。`"particles"` 列表包含 `3` 个同时发射的质子项，相对于基准起点 `at` 和瞄准点 `towards` 的平移向量 `"offset"` 依次为：
+  - 质子 1：`offset = [-1, 1, 0]` $\mu\text{m}$（从 `[-1, 1, -17000]` $\mu\text{m}$ 沿 $+z$ 射向 `[-1, 1, 0]` $\mu\text{m}$）；
+  - 质子 2：`offset = [0, 1, 0]` $\mu\text{m}$（从 `[0, 1, -17000]` $\mu\text{m}$ 沿 $+z$ 射向 `[0, 1, 0]` $\mu\text{m}$）；
+  - 质子 3：`offset = [1, 1, 0]` $\mu\text{m}$（从 `[1, 1, -17000]` $\mu\text{m}$ 沿 $+z$ 射向 `[1, 1, 0]` $\mu\text{m}$）。
+
+  三个 $80\ \text{MeV}$ 质子在 $y = +1\ \mu\text{m}$ 平面内沿 $x$ 方向以 $1\ \mu\text{m}$ 间距并排同时射入器件。
+
+局限：`bunch.json` 中同一束团的 `3` 个质子在完全相同的初始时刻（`0.0 s`）沿平行方向发射，不含真实加速器束团的纵向时间宽度（bunch length）与横向束斑高斯角散；`current` 环节将同一束团内 `3` 个质子产生的载流子团簇在静态外加电场中各自独立漂移并线性叠加感应电流，不计高密度径迹之间的等离子体与空间电荷互屏蔽效应。
+
+### 代码执行步骤与内置常数
+
+`bmos` 的工作流定义（`src/raser/apps/bmos/__init__.py:11-28`）直接复用 `stages.chain` 的全部切片与执行函数，仅将 `defaults` 中的 `"source"` 覆盖为 `"bunch"`、`"plots"` 覆盖为 `0` 并挂载组件路径 `"apps/bmos"`：
+
+1. **共享场检查与求解（`field`）**：定位或自动调用 `raser field` 求解监测器件在目标偏压 `voltage`（$\text{V}$）与辐照注量 `irradiation`（$\text{neq/cm}^2$）下的共享场。
+2. **单束团多粒子Geant4沉积（`deposit`）**：`GeneralPrimaryGeneratorAction` 在每个 Geant4 事例中循环遍历 `bunch.json` 的 `particles` 列表，对每个粒子调用 `beam.GeneratePrimaryVertex(event)`（`beam` 取自 `shot["guns"]`），同时发射 `3` 个 `80 MeV` 质子；汇总整个束团在 `"Device"` 内的全部沉积步，当束团总沉积能量满足能量窗时记为 `1` 个有效束团事例，直至录满 `events_per_job`（默认 `1`）个束团并写入 `deposit_<job>.h5`。
+3. **漂移、读出、重建与统计（`current`、`readout`、`reconstruction`、`analysis`）**：将同一束团的全部电子-空穴对团簇在求解场中漂移并累加为单条束团感应电流写入 `current_<job>.h5`（默认 `plots = 0` 不画单束团漂移图），随后经 [`readout`](../stages/readout.md)、[`reconstruction`](../stages/reconstruction.md) 和 [`analysis`](../stages/analysis.md) 求出束团输出电压波形、脉冲特征、电荷收集效率与时间分辨，步骤及内置常数（`WORLD_HALF_SIDE = 25000 um`、`GENERATED_LIMIT = 10000000`、`t_bin`/`delta_t`、`PART_EDGE = 1e-3`、`BASELINE_POINTS = 200`、`ELEMENTARY_CHARGE = 1.602176634e-19 C`、`MINIMUM_EVENTS = 20`、`ROUNDS = 6`）与 [`signal`](../bench/signal.md#代码执行步骤与内置常数) 完全相同。
+
+## 用到的环节和组件
+
+### 环节
+
+- [`field`](../stages/field.md)、[`deposit`](../stages/deposit.md)、[`current`](../stages/current.md)、[`readout`](../stages/readout.md)、[`digitizer`](../stages/digitizer.md)、[`trigger`](../stages/trigger.md)、[`reconstruction`](../stages/reconstruction.md)、[`analysis`](../stages/analysis.md)：与 [`signal`](../bench/signal.md#用到的环节和组件) 完全相同，其中 [`deposit`](../stages/deposit.md) 每事例同时输运一个束团内的 `3` 个 `80 MeV` 质子，[`current`](../stages/current.md) 默认关闭逐束团绘图（`plots = 0`）。
+
+### 组件
+
+- [探测器组件（`components/device`）](../components/device.md)：提供在线束流监测器件定义（如专用的 4H-SiC PiN 器件 `NJU-PiN-bmos.json`，尺寸 $5000 \times 5000 \times 100\ \mu\text{m}$，默认偏压 `-500.0 V`）。
+- [能量沉积组件（`components/deposit`）](../components/deposit.md)：提供默认多粒子束团源 `bunch.json`（`src/raser/apps/bmos/components/source/bunch.json`）及默认 Geant4 装置 `device_alone.py`。
+- [前端读出电路组件（`components/readout`）](../components/readout.md)、[数字化器组件（`components/digitizer`）](../components/digitizer.md)、[触发组件（`components/trigger`）](../components/trigger.md)：提供 SPICE 前端放大器链（默认 `SantaCruz+Gali52+Termination50`）、数字化采样量化与触发阈值定义。
+
+## 跑法与配置
+
+按顶层设计（[架构总纲](../architecture.md#实验是-python-类)、[命令行接口](../cli.md#命令)），运行 `bmos` 应用或用 `--set`、`--scan` 扫描偏压、器件与束流参数：
 
 ```bash
-raser bmos <det_name> [source] [选项]
+raser bmos
+raser bmos --scan field.voltage=-300,-500
 ```
 
-## 输入
+按 [架构总纲](../architecture.md#project) 的分段格式，实验文件夹 `work/bmos/config.json` 的配置结构为：
 
-- **组件搜索路径**：挂载 `src/raser/apps/bmos/components`（提供 `source/bunch.json`）及项目和全局 `components/`（见 [`../supports/README.md`](../supports/README.md)）。
-- **默认束团源 `src/raser/apps/bmos/components/source/bunch.json`**（[`../components/source.md`](../components/source.md)）：
-  - `"kind": "beam"`、`"par_type": "proton"`、`"par_energy": 80`（`MeV`）。
-  - `"particles"` 包含 3 个粒子项，`"offset"` 依次为 `[-1, 1, 0]`、`[0, 1, 0]`、`[1, 1, 0]`（`um`）；每个 Geant4 事例代表一个束团，同时发射这 3 个 80 MeV 质子。
-- **器件、Geant4 环境与前端电路**：`<det_name>.json`（[`../components/device.md`](../components/device.md)）、`<g4setup>.py`（默认 `"device_alone"`，[`../components/g4setup.md`](../components/g4setup.md)）与 `--amplifier` 指定的 `<part>.cir`（[`../components/afe.md`](../components/afe.md)）。
-- **共享场目录 `work/<det_name>/field/`**：若目标偏压与辐照注量下的场尚未就绪，工作流在启动作业前自动调用 [`raser field`](../stages/field.md) 求解。
+```json
+{
+  "workflow": "bmos",
+  "device": "NJU-PiN-bmos",
+  "field": {
+    "voltage": -500.0,
+    "irradiation": null
+  },
+  "deposit": {
+    "source": "bunch",
+    "g4setup": "device_alone",
+    "events_per_job": 1,
+    "fano": true,
+    "plots": 0
+  },
+  "current": {
+    "plots": 0
+  },
+  "readout": {
+    "amplifier": "SantaCruz+Gali52+Termination50",
+    "sheet_resistance": null
+  },
+  "reconstruction": {
+    "threshold": 10.0,
+    "amplitude_threshold": 10.0,
+    "fractions": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+    "edge": null
+  }
+}
+```
+
+使用者在 `bmos` 中能设的配置键如下表（`src/raser/apps/bmos/__init__.py:11-21` 与 `src/raser/stages/chain.py:14-106`）：
+
+| 段.键（代码键名） | 默认值 | 单位 | 含义 |
+| --- | --- | --- | --- |
+| `field.voltage`（等同 `field.device.bias.voltage`） | 取器件文件 `bias.voltage` | $\text{V}$ | 监测器件反向偏置电压（命令行 `-vol`/`--voltage`） |
+| `field.irradiation`（`irradiation`） | `None`（未给定时取器件 `irradiation.irradiation_flux`，无则为 `0`） | $\text{neq/cm}^2$ | 监测器件辐照注量（命令行 `-irr`/`--irradiation`） |
+| `deposit.source`（`source`） | `"bunch"` | 无 | 信号源组件名称或路径（命令行可选位置参数 `source`） |
+| `deposit.g4setup`（`g4setup`） | `"device_alone"` | 无 | Geant4 装置组件名称或路径（命令行 `--g4setup`） |
+| `deposit.events_per_job`（`events_per_job`） | `1` | 事例（束团） | 每作业需记录的有效沉积束团数（命令行 `-evt`/`--events-per-job`，与 `generated_per_job` 互斥） |
+| `deposit.generated_per_job`（`generated_per_job`） | `None` | 事例（束团） | 每作业由源生成的总束团数（命令行 `-gen`/`--generated-per-job`，与 `events_per_job` 互斥） |
+| `deposit.generated_limit`（`generated_limit`） | `None`（运行时取 `10000000`） | 事例（束团） | 为录满 `events_per_job` 允许生成的最大束团数上限（命令行 `--generated-limit`） |
+| `deposit.edep_min`（`edep_min`） | `None` | $\text{MeV}$ | 记录束团在器件内总沉积能量下限（命令行 `--edep-min`） |
+| `deposit.edep_max`（`edep_max`） | `None` | $\text{MeV}$ | 记录束团在器件内总沉积能量上限（命令行 `--edep-max`） |
+| `deposit.fano`（`fano`） | `True` | 无 | 电离对数转化是否开启 Fano 涨落抽样 |
+| `deposit.plots` | `0` | 事例（束团） | 每作业画 Geant4 几何与径迹图的前若干个记录束团数 |
+| `current.plots` | `0` | 事例（束团） | 每作业画载流子漂移路径图与电流图的前若干个记录束团数 |
+| `readout.amplifier`（`amplifier`） | `"SantaCruz+Gali52+Termination50"` | 无 | 以 `+` 连接的前端放大器与终端负载组件链（命令行 `-amp`/`--amplifier`） |
+| `readout.sheet_resistance`（`sheet_resistance`） | `None` | $\Omega$ | 覆盖含 `resistive_layer` 器件的阻性层方阻（命令行 `--sheet-resistance`） |
+| `reconstruction.threshold`（`threshold`） | `10.0` | $\text{mV}$ | 提取 `ToA`、`ToT`、`CoG`、`area` 及邻近电极入簇的过阈阈值（命令行 `-threshold`） |
+| `reconstruction.amplitude_threshold`（`amplitude_threshold`） | `10.0` | $\text{mV}$ | 找团簇种子的脉冲幅度阈值（事例记不记录由 `trigger` 判定）（命令行 `-amplitude_threshold`） |
+| `reconstruction.fractions`（`fractions`） | `[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]` | 无量纲 | 恒比定时（`CFD`）的幅度比例列表，每项须位于 `(0, 1)` 开区间内 |
+| `reconstruction.edge`（`edge`） | `None`（沿用 `readout` 写出的 `pulse_edge`） | 无 | 阈值作用的脉冲边沿方向，可选 `"rising"` 或 `"falling"`（命令行 `--edge`） |
+
+其余参数（Geant4 世界默认半边长 `25000 um`、默认最大生成束团数上限 `10000000`、材料平均电离能与 Fano 因子、漂移时间窗与时间步长档位、热扩散开关 `diffusion = True`、`ngspice` 噪声分析频率范围与 `27 °C` 温度、重建基线点数 `200`、截断高斯拟合最少样本数 `20` 与最大迭代轮数 `6`）全部写死在代码里。
 
 ## 输出
 
-实验目录为 `work/<det_name>/bmos/`，目录组织与标准五片链的输出格式参见 [快速入门](../getting-started.md)、[`../lifecycle/experiments.md`](../lifecycle/experiments.md) 与 [`../lifecycle/slices.md`](../lifecycle/slices.md)。每个作业 `<job>` 在持有各切片的点目录 `batch/` 下依次写出：
+按 [架构总纲](../architecture.md#实验是-python-类) 与 [结果](../architecture.md#结果) 的设计，应用类的结果存放在 `work/bmos/` 下（底层节点在 `work/bmos/nodes/<环节>/<节点号>/`，按扫描点视图在 `work/bmos/points/<点名>/<环节>`，参数表为 `work/bmos/points.json`，跨点统计与趋势图在 `work/bmos/analysis/`）。
 
-- `deposit_<job>.h5`：每个记录束团（事例）在探测器内的能量沉积（`MeV`）、坐标（`um`）、时刻（`s`）与电离电子-空穴对数（见 [`../stages/deposit.md`](../stages/deposit.md)）。
-- `current_<job>.h5`：各读出电极的感应电流时间序列（`A`）、时间步长 `dt`（`s`）与积分电荷 `charge`（`C`）；当 `--plots` 大于 `0` 时，在 `plots/job_<job>/event_<number>/` 下写出前 `plots` 个事例的载流子漂移路径图与电流图（见 [`../stages/current.md`](../stages/current.md)）。
-- `readout_<job>.h5`：经前端电子学链与噪声叠加后的输出电压波形 `voltage`（`V`）、时间步长 `dt`（`s`）、脉冲边沿 `pulse_edge` 与器件电路参数 `device_circuit`（JSON 字符串，未给器件电路值时不写）（见 [`../stages/readout.md`](../stages/readout.md)）。
-- `reconstruction_<job>.h5`：各事例各电极的基线、噪声、幅度（`V`）、指定触发沿（默认沿用 `readout` 的 `pulse_edge`）过阈时刻 `ToA`、过阈时间 `ToT`、时间重心 `CoG`、恒比定时 `CFD`（`s`）、主瓣面积 `area`（`V s`）及簇大小与重心（见 [`../stages/reconstruction.md`](../stages/reconstruction.md)）。
-
-开启 `-g4_vis` 时，绘制等于 `-evt`（或 `-gen`）取值的生成事例数（默认 `1` 个生成事例）的几何与径迹；若 `--g4-vis-driver`（不区分大小写）为 `"TSG"`、`"TSG_FILE"`、`"TSG_OFFSCREEN"`（写出 `g4_geometry.png`）或以 `"OGL"` 开头，在运行目录下写出 `g4_geometry` 图像（其余以 `"TSG"` 开头的驱动会触发 `ValueError: the driver '<driver>' writes no picture to a given path; use a TSG or an OGL driver, or no output`），随后作业以 `SystemExit` 结束。
-
-## 选项表
-
-| 选项名 | 默认值 | 单位 | 含义 |
-| --- | --- | --- | --- |
-| `det_name` | 无（必填位置参数） | 无 | 探测器组件名称或路径 |
-| `source` | `"bunch"` | 无 | 信号源组件名称或路径（可选位置参数） |
-| `--g4setup` | `"device_alone"` | 无 | Geant4 几何环境组件名称或路径 |
-| `-evt`, `--events-per-job` | `1` | 事例数 | 每个作业记录的事例数（与 `-gen` 二选一） |
-| `-gen`, `--generated-per-job` | `None` | 事例数 | 每个作业生成的源事例数（替代 `-evt`） |
-| `--generated-limit` | `None`（运行时取 `10000000`） | 事例数 | 为录满 `-evt` 个事例允许生成的最大源事例数 |
-| `--edep-min` | `None` | `MeV` | 记录事例在探测器内沉积总能量的下限 |
-| `--edep-max` | `None` | `MeV` | 记录事例在探测器内沉积总能量的上限 |
-| `fano`（通过 `--set`/`--scan` 设置） | `True` | 无 | 是否按 Fano 因子抽样每个沉积步的电子-空穴对数 |
-| `-g4_vis` | `False` | 无 | 启动 Geant4 几何与径迹可视化（绘制 `-evt` 或 `-gen` 个生成事例），完成后以 `SystemExit` 结束作业 |
-| `--g4-vis-driver` | `"OGL"` | 无 | `-g4_vis` 使用的 Geant4 可视化驱动名称 |
-| `--plots` | `0` | 事例数 | 每个作业绘制漂移路径与电流图的前 N 个记录事例 |
-| `-vol`, `--voltage` | 取 `device.bias.voltage` | `V` | 探测器偏置电压（写入 `device.bias.voltage`） |
-| `-irr`, `--irradiation` | `None`（未给定时取器件 `irradiation_flux`，无则为 `0`） | `neq/cm^2` | 辐照注量 |
-| `-amp`, `--amplifier` | `"SantaCruz+Gali52+Termination50"` | 无 | 以 `+` 连接的前端放大器级与终端负载名称 |
-| `--sheet-resistance` | `None` | `Ohm` | 覆盖器件文件中阻性层的方块电阻 |
-| `-threshold` | `10.0` | `mV` | 脉冲时间量与面积计算的过阈阈值 |
-| `-amplitude_threshold` | `10.0` | `mV` | 事例入选与簇种子判定的幅度阈值 |
-| `fractions`（通过 `--set`/`--scan` 设置） | `[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]` | 无 | 恒比定时（CFD）的幅度分数列表 |
-| `--edge` | `None`（取 `readout` 导出的脉冲边沿） | 无 | 阈值触发边沿，可选 `"rising"` 或 `"falling"` |
-| `-s`, `--jobs` | `None`（单作业） | 作业数 | 并发或提交的索引作业数 |
-| `--seed` | 随机生成 31 位整数 | 无 | 随机数主种子 |
-| `--same-seeds` | `False` | 无 | 各扫描点是否共用同一批随机数种子 |
-| `-b`, `--batch` | `False` | 无 | 将作业提交到集群队列 |
-| `-mem` | `1` | 档位 | 集群作业内存档位 |
-| `--dry-run` | `False` | 无 | 打印将要运行的点、切片和作业列表后直接返回 |
-| `--scan` | `[]` | 无 | 扫描参数 `地址=值1,值2,...`（可重复指定） |
-| `--set` | `[]` | 无 | 固定单个参数 `地址=值`（可重复指定） |
-
-## 常见报错
-
-| 报错信息 | 触发原因 |
-| --- | --- |
-| `ValueError: events_per_job and generated_per_job are given at once in the command line; give one of them` | 命令行同时给出了 `-evt` 与 `-gen`（若在 `config.json` 的 `"set"` 中同时给出则报 `in the "set" of config.json`） |
-| `ValueError: events_per_job (<events>) and generated_per_job (<generated>): a job records a number of events or generates one, so exactly one of them is set` | `events_per_job` 与 `generated_per_job` 最终同时为空 |
-| `RuntimeError: <recorded> of the <events> events asked for were recorded when the limit of <generated> generated events was reached ...` | 生成的源事例达到 `generated_limit` 时仍未录满请求的 `events_per_job` 个事例 |
-| `` FileNotFoundError: no field of <det_name> ready for this run: solve it with `raser field <det_name>` `` | 场切片执行时未找到就绪的求解场 |
-| `ValueError: <det_name> has no resistive layer to give a sheet resistance of <sheet_ohm> Ohm` | 对未配置 `resistive_layer` 的探测器传入了 `--sheet-resistance` |
-
-## 相关页面
-
-- [`../getting-started.md`](../getting-started.md)
-- [`../cli.md`](../cli.md)
-- [`../lifecycle/experiments.md`](../lifecycle/experiments.md)
-- [`../lifecycle/slices.md`](../lifecycle/slices.md)
-- [`../components/device.md`](../components/device.md)
-- [`../components/source.md`](../components/source.md)
-- [`../components/g4setup.md`](../components/g4setup.md)
-- [`../components/afe.md`](../components/afe.md)
-- [`../stages/deposit.md`](../stages/deposit.md)
-- [`../stages/field.md`](../stages/field.md)
-- [`../stages/current.md`](../stages/current.md)
-- [`../stages/readout.md`](../stages/readout.md)
-- [`../stages/reconstruction.md`](../stages/reconstruction.md)
-- [`../stages/analysis.md`](../stages/analysis.md)
+每个作业写出的数据文件（`deposit_<job>.h5`、`current_<job>.h5`、`readout_<job>.h5`、`reconstruction_<job>.h5`）以及 [`analysis`](../stages/analysis.md) 写出的统计结果（`result.json`、`events.h5`、`points.json`）和图像文件（`efficiency.png`、`amplitude.png`、`time_difference.png`、`resolution_of_fraction.png`、`points.png`，以及 `plots > 0` 时的 `g4_geometry.png`、`<det_model>_drift_path.pdf`/`.root`、`No_<k>electrode_basic_infor.pdf`/`.root`）的文件名、字段与单位同 [`signal`](../bench/signal.md#输出)，其中每个记录事例对应一个束团。

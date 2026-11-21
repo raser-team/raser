@@ -1,0 +1,96 @@
+# 数字化环节（`stages/digitizer`）
+
+`digitizer` 是仿真链的第 5 个环节，排在[电子学读出环节（`stages/readout`）](readout.md)之后、[触发环节（`stages/trigger`）](trigger.md)之前，命令是 `raser digitizer`（短命令 `raser digi`）。它读 `readout` 节点里放大后的波形、`config.json` 的 `digitizer` 段，以及 `digitizer` 段选用的[数字化器组件（`components/digitizer`）](../components/digitizer.md)，即一台示波器或数字化板的设置。它让每个电极的波形依次经过设备的模拟带宽、采样和量化，得到每个事例整段的数字波形，计算交给[数字化器（`core/digitizer`）](../core/digitizer.md)。数字波形写进本环节的节点 `nodes/digitizer/<节点号>/`，由视图 `points/<点名>/digitizer` 指向，交给 `trigger`。真实设备里属于模拟带宽、采样、量化的事都归这里。
+
+## 行为
+
+### 跑到数字化
+
+`raser digitizer` 在当前文件夹或给定路径的实验上跑到 `digitizer`，缺的上游自动补上：
+
+```bash
+raser digitizer [路径]
+raser digi [路径]
+```
+
+不给路径就是当前文件夹，给了就是相对或绝对路径。上游的 `field`、`deposit`、`current`、`readout` 节点指纹相同就复用，不管它们是在哪个点、哪次运行里算出来的；缺的按链的顺序先算。`digitizer` 节点同样按指纹复用。代码版本和节点记录的不一致时，只给一条提示，结果照常复用。节点、参数表与复用见[片与重跑](../lifecycle/slices.md)。
+
+### 换设备与改面板设置
+
+`digitizer` 段的 `device` 选用一台设备，设备的各项设置在它的组件文件里。改面板上调的量，例如把 `MXR608A` 的满量程从 `0.04 V` 放大到 `0.08 V`，或者扫两档满量程：
+
+```bash
+raser digi --set digitizer.MXR608A.full_scale_V=0.08
+raser digi --scan digitizer.MXR608A.full_scale_V=0.04,0.08
+```
+
+改的是 `digitizer` 用到的设置，所以得到新的 `digitizer` 节点；`readout` 及更早的节点指纹不变，照常复用。
+
+### 一个事例整段数字化
+
+`digitizer` 对每个事例的整段波形采样、量化，`readout` 节点里的事例全部写进数字波形文件。超出满量程的点截在最大或最小码，每个电极被截的点数记在文件里。
+
+## 规则
+
+### 执行流程
+
+1. **读入**：读 `readout` 节点的波形文件、`digitizer` 段，以及 `digitizer.device` 指定的数字化器组件。组件按名字查找：project 文件夹里自己的组件优先，找不到再到组件库找。
+2. **带宽**：每个电极的波形过一个高斯响应的低通，$-3\ \text{dB}$ 点在组件的 `bandwidth_GHz`；响应的式子见[数字化器（`core/digitizer`）](../core/digitizer.md#带宽)。
+3. **采样**：
+   - 一台设备的所有通道共用一个采样时钟。`readout` 文件属性 `electrodes` 里的读出通道数多于组件的 `channels` 时，按 `electrodes` 的顺序每 `channels` 个分为一组，每组用一台同型号的设备，各台的时钟相位各自抽取。
+   - 每个事例、每台设备抽一个在 $[0, T_s)$ 上均匀分布的时钟相位 $\varphi$，$T_s = 1/$`sampling_rate_GSps` 为采样间隔；采样时刻为 $t_k = t_0 + \varphi + k\,T_s$（$t_0$ 为 `readout` 文件里该事例的 `t0`，$k = 0, 1, \dots$），每个采样点再加一个均方根为 `aperture_jitter_ps` 的高斯孔径抖动。
+   - 在带宽滤波后的波形上线性插值，取各采样时刻的电压。
+4. **量化**：$\text{LSB} = $`full_scale_V`$/2^N$，$N$ 为组件的 `bits`；码 $= \lfloor(V - $`offset_V`$)/\text{LSB}\rfloor + 2^{N-1}$，截到 $[0,\ 2^N - 1]$。每个电极被截的点数逐个记下。
+5. **写出**：把数字波形文件和本环节的图写进 `digitizer` 节点。图有两种：前几个事例的带宽滤波后模拟波形与采样点叠画，以及码的直方图。
+
+### 种子
+
+采样的随机量（时钟相位 $\varphi$、孔径抖动）由 `digitizer` 自己的种子抽取。这个种子进本环节节点的指纹，和 `readout` 管 NGspice 噪声的种子各自独立取。
+
+### 节点指纹
+
+本环节节点的指纹由 `digitizer` 段里的设置值、所选数字化器组件里 `digitizer` 用到的键、`digitizer` 自己的种子，以及上游 `readout` 节点的节点号组成。
+
+## 软件实现
+
+- `src/raser/stages/digitizer.py`：本环节的模块，读入 `readout` 节点的波形、`digitizer` 段和组件，按上面的流程调用 `core/digitizer` 的采样与量化，写出数字波形文件和图。
+- `src/raser/core/digitizer/`：带宽、采样与量化的计算，见[数字化器（`core/digitizer`）](../core/digitizer.md)。
+
+## 接口
+
+### 设置
+
+`config.json` 的 `digitizer` 段只有一个键：
+
+| 段.键 | 默认值 | 单位 | 含义 |
+| --- | --- | --- | --- |
+| `digitizer.device` | `"MXR608A"` | 无 | 选用的数字化器组件名，对应 `components/digitizer/<组件名>.json` |
+
+设备的设置都写在组件文件里，按“段.组件.键”寻址：用 `--set digitizer.<组件>.<键>=<值>` 改一个，用 `--scan digitizer.<组件>.<键>=<值1>,<值2>` 扫描，例如 `--set digitizer.MXR608A.sampling_rate_GSps=8`。设备本身定死的键（如 `bits`、`bandwidth_GHz`）也能这样改，等于换了一台假想的设备。各键的名字、单位和含义见[数字化器组件](../components/digitizer.md#键的含义)。一台设备同时管采样和触发时（例如示波器），它的触发条件写在同一个组件文件里，由 `trigger` 读。公共运行参数见[命令行接口（`raser`）](../cli.md)，配置分段与扫描见[实验、扫描点与种子](../lifecycle/experiments.md)。
+
+### 读写的文件
+
+- **读：`readout` 节点的波形文件**：放大后的波形，由[电子学读出环节（`stages/readout`）](readout.md)写出，本环节只读。
+- **写：`nodes/digitizer/<节点号>/digitizer_<job>.h5`**：数字波形文件，沿用 `readout` 波形文件的稀疏存法，只存 `readout` 文件里存了波形的电极。
+
+  | 类别 | 名称 | 形状与类型 | 单位 | 含义 |
+  | --- | --- | --- | --- | --- |
+  | 属性（`attrs`） | `electrodes` | `(outputs,)`，变长字符串数组 | 无 | 读出通道名，照抄 `readout` 文件 |
+  | 属性（`attrs`） | `sampling_period` | 标量，`float64` | $\text{s}$ | 采样间隔 $T_s$ |
+  | 属性（`attrs`） | `lsb_V` | 标量，`float64` | $\text{V}$ | 每档电压 LSB |
+  | 属性（`attrs`） | `offset_V` | 标量，`float64` | $\text{V}$ | 量程中心 |
+  | 属性（`attrs`） | `bits` | 标量，整数 | 位 | ADC 位数 $N$ |
+  | 属性（`attrs`） | `pulse_edge` | `(outputs,)`，变长字符串数组 | 无 | 与 `electrodes` 一一对应的脉冲方向，照抄 `readout` 文件 |
+  | 属性（`attrs`） | `device` | 标量，字符串 | 无 | 所用的数字化器组件名 |
+  | 数据集（`datasets`） | `event` | `(events,)`，`int64` | 无 | 事例编号 |
+  | 数据集（`datasets`） | `t0` | `(events,)`，`float64` | $\text{s}$ | 该事例第一个采样点的时刻，已含时钟相位 |
+  | 数据集（`datasets`） | `count` | `(events,)`，`int64` | 点 | 该事例每个电极的采样点数 |
+  | 数据集（`datasets`） | `stored` | `(events,)`，`int64` | 个 | 该事例存了数字波形的电极数 |
+  | 数据集（`datasets`） | `index` | `(sum(stored),)`，`int64` | 无 | 存了的电极在 `electrodes` 中从 `0` 起的下标，按 `stored` 切分到各事例 |
+  | 数据集（`datasets`） | `clipped` | `(sum(stored),)`，`int64` | 点 | 该电极被截在最大或最小码的点数 |
+  | 数据集（`datasets`） | `code` | `(sum(stored * count),)`，`int16` | 无 | 按事例和存了的电极依次展开的码，每个电极占所属事例的 `count` 个点 |
+
+  码换回电压：$V = (\texttt{code} - 2^{N-1} + 0.5)\cdot\texttt{lsb\_V} + \texttt{offset\_V}$，其中 $N$ 为属性 `bits`；第 $k$ 个点（从 `0` 起）的标称时刻为 `t0` $+ k\cdot$`sampling_period`。第 $i$ 个事例（从 `0` 起）的码从 `code` 里前 $i$ 个事例 `stored * count` 之和处起，依次是该事例 `index` 所列各电极的 `count` 个点。
+- **写：本环节的图**：前几个事例的带宽滤波后模拟波形与采样点叠画、码的直方图，放在本环节的节点里。
+- **写：`nodes/digitizer/<节点号>/node.json`**：记下本环节的输入、代码版本、运行环境和运行状态。写到一半的节点带 `.part` 后缀，写完才改成正式的名字。
+- **写：`points.json` 与 `points/<点名>/digitizer`**：参数表记各点 `digitizer` 用的节点号；视图软链接指向该节点。

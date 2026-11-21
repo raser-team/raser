@@ -1,38 +1,138 @@
 # 数字化器（`core/digitizer`）
 
-`src/raser/core/digitizer/` 在模块分层中位于 [电子学读出](readout.md) 与 [事件重建](reconstruction.md) 之间（见 [../architecture.md](../architecture.md)），包含基于 `pymtl3` 构建的 8 位寄存器自增器硬件模型 `RegIncr`（`regincr.py`）及其仿真运行入口 `regincr_sim.main()`（`regincr_sim.py`）。用户可通过 Python 直接导入并运行该模块进行数字逻辑仿真与波形导出。
+`src/raser/core/digitizer/` 是[数字化环节（`stages/digitizer`）](../stages/digitizer.md)的底层模块。它接[电子学读出](readout.md)给出的各电极放大后电压波形，按[数字化器组件](../components/digitizer.md)里示波器或数字化板的设置，依次做模拟带宽滤波、采样和量化，得到每个事例的码和每个电极被截的点数。数字化环节把结果写成数字波形文件，交给[触发环节（`stages/trigger`）](../stages/trigger.md)。
 
-```mermaid
-flowchart LR
-    IN["s.in_ (Bits8) + s.reset"] --> FF["时序逻辑块 @mtl.update_ff<br/>复位清零 / 锁存至 s.reg_out"]
-    FF --> COMB["组合逻辑块 @mtl.update<br/>s.out = s.reg_out + 1"]
-    COMB --> OUT["s.out (Bits8) / line_trace"]
-    SIM["regincr_sim.main()"] --> OUT
-    SIM --> VCD["VCD 与文本波形输出<br/>digitizer/fpga/regincr_sim"]
-```
+## 物理
 
-## 硬件组件与仿真入口
+### 带宽
 
-### `RegIncr` 硬件组件（`regincr.py`）
+设备的模拟前端有有限的带宽，会把波形的快沿变慢。本模块用高斯响应的低通代表它，幅频响应为：
 
-`RegIncr` 继承自 `pymtl3.Component`，内部包含以下端口与逻辑块：
+$$|H(f)| = \exp\!\left(-\frac{\ln 2}{2}\left(\frac{f}{B}\right)^2\right) \tag{1}$$
 
-- **`s.in_`**：8 位无符号输入端口 `pymtl3.InPort(pymtl3.Bits8)`。
-- **`s.reset`**：`pymtl3.Component` 内置复位端口；在时序块 `block1`（`@mtl.update_ff`）中，当 `s.reset` 为真时将内部 8 位连线 `s.reg_out` 置 `0`，否则将 `s.in_` 锁存至 `s.reg_out`。
-- **`s.out`**：8 位无符号输出端口 `pymtl3.OutPort(pymtl3.Bits8)`，在组合逻辑块 `block2`（`@mtl.update`）中计算 `s.out @= s.reg_out + 1`。
-- **`line_trace(s)`**：返回 `"{}({}){}".format(s.in_, s.reg_out, s.out)` 格式的行追踪字符串。
+对应的冲激响应是高斯函数，其时间宽度与阶跃响应的上升时间为：
 
-### `regincr_sim.main()` 仿真入口（`regincr_sim.py`）
+$$\sigma_t = \frac{\sqrt{\ln 2}}{2\pi B} \tag{2}$$
 
-在 Python 中导入并执行 `raser.core.digitizer.regincr_sim.main()`：
+$$t_r^{10\text{–}90} \approx \frac{0.34}{B} \tag{3}$$
 
-- **输入序列**：将 `[0x01, 0x13, 0x25, 0x37]` 末尾追加 3 个 `0`（即 `[0x01, 0x13, 0x25, 0x37, 0, 0, 0]`），在每个时钟周期依次写入 `model.in_`。
-- **VCD 波形输出**：调用 `raser.supports.output.output(__file__, "fpga")`（见 [../supports/README.md](../supports/README.md)）创建目录 `<project_root>/digitizer/fpga`，并将 `vcd_path = os.path.join(path, "regincr_sim")`（无后缀）传给 `mtl.DefaultPassGroup(textwave=True, linetrace=True, vcdwave=vcd_path)` 生成 VCD 波形。
-- **标准输出**：打印输入列表、VCD 保存路径提示 `vcd file has been saved in <vcd_path>`、每个周期的 `cycle = <sim_cycle_count>: in = <in_>, out = <out>`，并在结束时调用 `model.print_textwave()` 打印文本波形。
+其中：
 
-## 相关页面
+- $f$：频率，$\text{Hz}$；
+- $B$：模拟带宽，即 $|H(B)| = 1/\sqrt{2}$（$-3\ \text{dB}$）的频率，$\text{Hz}$，取组件的 `bandwidth_GHz`（乘 $10^9$）；
+- $H(f)$：滤波器的频率响应（无量纲）；
+- $\sigma_t$：冲激响应 $h(t) \propto \exp(-t^2 / 2\sigma_t^2)$ 的标准差，$\text{s}$；
+- $t_r^{10\text{–}90}$：阶跃响应从终值的 $10\%$ 升到 $90\%$ 的时间，$\text{s}$。
 
-- [../architecture.md](../architecture.md)
-- [readout.md](readout.md)
-- [reconstruction.md](reconstruction.md)
-- [../supports/README.md](../supports/README.md)
+响应形状固定为高斯。放大器与本模块的带宽是串联的：波形先经 `readout` 的放大器链，再经本模块的高斯滤波，输出的上升时间由这两次滤波共同决定。式 (1)–(3) 出处待补。
+
+### 采样
+
+设备的采样时钟自由运行，和信号没有同步关系，所以每个事例第一个采样点相对信号的相位是随机的；每个采样时刻还带孔径抖动。第 $k$ 个采样时刻为：
+
+$$t_k = t_0 + \varphi + k\,T_s + \delta_k,\qquad \varphi \sim U[0, T_s),\qquad \delta_k \sim \mathcal{N}(0, \sigma_a^2) \tag{4}$$
+
+其中：
+
+- $t_k$：第 $k$ 个采样时刻（$k = 0, 1, \dots$），$\text{s}$；
+- $t_0$：`readout` 波形里该事例的起始时刻 `t0`，$\text{s}$；
+- $T_s$：采样间隔，$\text{s}$，等于组件 `sampling_rate_GSps`（$\text{GS/s}$）的倒数；
+- $\varphi$：该事例、该台设备的时钟相位，$\text{s}$，在 $[0, T_s)$ 上均匀分布；
+- $\delta_k$：第 $k$ 个采样点的孔径抖动，$\text{s}$，零均值高斯分布；
+- $\sigma_a$：孔径抖动的均方根，$\text{s}$，取组件的 `aperture_jitter_ps`（乘 $10^{-12}$）。
+
+同一台设备的各通道共用 $\varphi$。孔径抖动对采样系统的影响见文献 [1]。
+
+### 量化
+
+$N$ 位 ADC 把满量程分成 $2^N$ 档，超出满量程的点截在最大或最小码：
+
+$$\text{LSB} = \frac{V_{\text{FS}}}{2^N} \tag{5}$$
+
+$$c = \min\!\left(\max\!\left(\left\lfloor \frac{V - V_{\text{off}}}{\text{LSB}} \right\rfloor + 2^{N-1},\ 0\right),\ 2^N - 1\right) \tag{6}$$
+
+$$\hat V = \left(c - 2^{N-1} + 0.5\right)\text{LSB} + V_{\text{off}} \tag{7}$$
+
+$$\sigma_q = \frac{\text{LSB}}{\sqrt{12}} \tag{8}$$
+
+其中：
+
+- $V_{\text{FS}}$：满量程，$\text{V}$，取组件的 `full_scale_V`；
+- $N$：ADC 位数（无量纲），取组件的 `bits`；
+- $\text{LSB}$：每档电压，$\text{V}$；
+- $V$：采样时刻的电压，$\text{V}$；
+- $V_{\text{off}}$：量程中心，$\text{V}$，取组件的 `offset_V`；
+- $c$：码，取值 $0, 1, \dots, 2^N - 1$ 的整数；
+- $\hat V$：由码换回的电压，$\text{V}$，取该档的中点；
+- $\sigma_q$：未被截的点上量化误差 $V - \hat V$ 的均方根，$\text{V}$。
+
+式 (8) 见文献 [2]。
+
+## 算法
+
+单个事例按以下顺序处理：
+
+1. **读入**：取该事例各存了波形的电极的电压序列（`readout` 文件的 `voltage`，时间步 `dt`）、事例起始时刻 `t0`，以及组件的各键。
+2. **带宽**：每个电极的电压序列按式 (1) 过高斯低通，$B = $`bandwidth_GHz`$\times 10^9\ \text{Hz}$。
+3. **采样**：
+   1. `readout` 文件属性 `electrodes` 里的读出通道数多于 `channels` 时，按 `electrodes` 的顺序每 `channels` 个分为一组，每组一台同型号设备。
+   2. 每台设备从 $U[0, T_s)$ 抽一个时钟相位 $\varphi$，$T_s = 10^{-9}/$`sampling_rate_GSps` $\text{s}$。
+   3. 按式 (4) 得各采样时刻，每个采样点从 $\mathcal{N}(0, \sigma_a^2)$ 抽一个孔径抖动。
+   4. 在滤波后的电压序列上线性插值，取各采样时刻的电压。
+4. **量化**：按式 (5)、(6) 把每个采样电压变成码；式 (6) 截断前码 $< 0$ 或 $> 2^N - 1$ 的点数逐电极记为被截点数。
+5. **写出**：码、被截点数和事例的第一个采样时刻 $t_0 + \varphi$ 交给数字化环节写进数字波形文件。
+
+随机量 $\varphi$、$\delta_k$ 由 `digitizer` 自己的种子抽取，和 `readout` 的种子各自独立。
+
+## 软件实现
+
+### 模块与函数分工
+
+- `__init__.py`：包文档字符串，声明本包用于采样、量化及其背后的数字电路。
+- 采样与量化的函数（将来新增，用 numpy 实现）：输入为一个事例的电压波形和设置，输出码与被截点数。
+- `regincr.py`、`regincr_sim.py`：legacy：包里现有的 `pymtl3` 示例，留作将来纯数字逻辑（例如 FPGA 触发逻辑）的参考，在 Python 里单独调用 `regincr_sim.main()` 运行。`RegIncr` 是一个 8 位寄存器自增器，每个时钟周期锁存输入、输出锁存值加 1；`main()` 用代码里写定的一组输入仿真 7 个时钟周期，把 VCD 波形写成 `<project_root>/digitizer/fpga/regincr_sim.vcd`（`<project_root>` 取环境变量 `RASER_PROJECT_PATH`，未设时为当前目录），并在标准输出打印逐周期端口值和字符波形。
+
+## 接口
+
+### 设置
+
+本模块用到的设置都来自[数字化器组件](../components/digitizer.md)：`channels`、`bits`、`bandwidth_GHz`、`aperture_jitter_ps`、`sampling_rate_GSps`、`full_scale_V`、`offset_V`，各键的单位与含义见该页的“键的含义”。带宽响应的形状固定为高斯。用 `raser digitizer` 跑时，由数字化环节读入组件并交给本模块；设法见[数字化环节](../stages/digitizer.md#设置)。
+
+### 输入
+
+`readout` 节点的波形文件，由[电子学读出环节（`stages/readout`）](../stages/readout.md)写出：本模块用到属性 `electrodes`、`dt`（$\text{s}$）、`pulse_edge`，数据集 `event`、`t0`（$\text{s}$）、`count`、`stored`、`index`、`voltage`（$\text{V}$）。格式见[电子学读出（`core/readout`）](readout.md)。
+
+### 输出：`digitizer_<job>.h5`
+
+数字化环节把本模块的结果写进 `nodes/digitizer/<节点号>/digitizer_<job>.h5`，沿用 `readout` 波形文件的稀疏存法，只存 `readout` 文件里存了波形的电极。
+
+**文件属性（Attributes）**
+
+| 属性名 | 类型 | 单位 | 含义 |
+| --- | --- | --- | --- |
+| `electrodes` | 变长字符串数组 | 无 | 读出通道名，照抄 `readout` 文件 |
+| `sampling_period` | `float64` | $\text{s}$ | 采样间隔 $T_s$ |
+| `lsb_V` | `float64` | $\text{V}$ | 每档电压 $\text{LSB}$ |
+| `offset_V` | `float64` | $\text{V}$ | 量程中心 $V_{\text{off}}$ |
+| `bits` | 整数 | 位 | ADC 位数 $N$ |
+| `pulse_edge` | 变长字符串数组 | 无 | 与 `electrodes` 一一对应的脉冲方向，照抄 `readout` 文件 |
+| `device` | 字符串 | 无 | 所用的数字化器组件名 |
+
+**数据集（Datasets）**
+
+| 数据集名 | 形状与类型 | 单位 | 含义 |
+| --- | --- | --- | --- |
+| `event` | `(events,)`, `int64` | 无 | 事例编号 |
+| `t0` | `(events,)`, `float64` | $\text{s}$ | 第一个采样点的时刻 $t_0 + \varphi$，已含时钟相位 |
+| `count` | `(events,)`, `int64` | 点 | 该事例每个电极的采样点数 |
+| `stored` | `(events,)`, `int64` | 个 | 该事例存了数字波形的电极数 |
+| `index` | `(sum(stored),)`, `int64` | 无 | 存了的电极在 `electrodes` 中从 `0` 起的下标，按 `stored` 切分到各事例 |
+| `clipped` | `(sum(stored),)`, `int64` | 点 | 该电极被截在最大或最小码的点数 |
+| `code` | `(sum(stored * count),)`, `int16` | 无 | 码 $c$，按事例与存了的电极依次展开，每个电极占所属事例的 `count` 个点 |
+
+码按式 (7) 换回电压：$\hat V = (\texttt{code} - 2^{N-1} + 0.5)\cdot\texttt{lsb\_V} + \texttt{offset\_V}$，$N$ 取属性 `bits`。
+
+## 参考文献
+
+- [1] M. Shinagawa, Y. Akazawa, T. Wakimoto, “Jitter analysis of high-speed sampling systems”, IEEE J. Solid-State Circuits 25 (1990) 220, doi:10.1109/4.50307
+- [2] W. R. Bennett, “Spectra of Quantized Signals”, Bell Syst. Tech. J. 27 (1948) 446, doi:10.1002/j.1538-7305.1948.tb01340.x
