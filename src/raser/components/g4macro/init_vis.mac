@@ -3,7 +3,6 @@
 #
 # Set some default verbose
 /control/verbose 0
-/control/saveHistory
 /run/verbose 0
 /process/em/verbose 0
 /process/had/verbose 0

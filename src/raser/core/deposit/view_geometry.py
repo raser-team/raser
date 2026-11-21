@@ -6,6 +6,7 @@ import os
 
 from raser.supports.paths import component_path
 
+from .geant4.drivers import register_driver
 from .simulate_deposits import g4_configuration
 from .simulate_deposits import tilted
 
@@ -21,7 +22,6 @@ _DRIVERS_WITHOUT_SESSION = {
     "VRML2FILE",
 }
 _TSG_DRIVERS = {"TSG", "TSG_FILE", "TSG_OFFSCREEN"}
-
 
 def view_geometry(
     my_d,
@@ -65,16 +65,19 @@ def view_geometry(
                 vis_manager = g4b.G4VisExecutive()
                 vis_manager.Initialize()
             self.visManager = vis_manager
+            register_driver(g4b, driver)
             command(f"/vis/open {driver}")
+            # the off-screen driver writes a picture at every refresh: name it
+            # before the macros draw anything
+            if output and tsg:
+                command("/vis/tsg/offscreen/set/format zb_png")
+                command(f"/vis/tsg/offscreen/set/file {output}.png")
             if self.geant4_model == "gdml_import":
                 command(f"/control/execute {component_path('g4macro', 'vis_pcb.mac')}")
             else:
                 command(f"/control/execute {component_path('g4macro', 'init_vis.mac')}")
                 command(f"/control/execute {component_path('g4macro', 'vis.mac')}")
-            if output and tsg:
-                command("/vis/tsg/offscreen/set/format zb_png")
-                command(f"/vis/tsg/offscreen/set/file {output}.png")
-            elif output:
+            if output and not tsg:
                 command("/vis/viewer/set/background 1 1 1")
                 command("/vis/ogl/set/printMode vectored")
                 command("/vis/ogl/set/printSize 2000 2000")

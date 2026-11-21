@@ -189,6 +189,8 @@ def simulate_deposits(
     fano: bool = True,
     generated: int | None = None,
     generated_limit: int = GENERATED_LIMIT,
+    picture: str | None = None,
+    drawn: int = 0,
 ) -> Deposits:
     """Deposits of `source` in the device, each with the electron-hole pairs
     it created in the material of the device: `events` recorded events,
@@ -203,9 +205,13 @@ def simulate_deposits(
     without, it is energy / pair energy.
     A toy MIP takes only the step limit from the g4setup and does not use
     g4_seed. The g4setup places the source, see `g4_configuration`.
+    picture is the path, without its extension, of a png of the Geant4
+    geometry and the first `drawn` recorded events, drawn during the run;
+    a toy MIP draws none.
     """
     deposits = _energy_deposits(
-        my_d, source, g4setup, events, g4_seed, edep_min, edep_max, generated, generated_limit
+        my_d, source, g4setup, events, g4_seed, edep_min, edep_max, generated, generated_limit,
+        picture, drawn,
     )
     deposits.generated_fraction = generated_fraction(source)
     for event in deposits.events:
@@ -214,7 +220,8 @@ def simulate_deposits(
 
 
 def _energy_deposits(
-    my_d, source, g4setup, events, g4_seed, edep_min, edep_max, generated, generated_limit
+    my_d, source, g4setup, events, g4_seed, edep_min, edep_max, generated, generated_limit,
+    picture=None, drawn=0,
 ) -> Deposits:
     kind = source.get("kind")
     if kind != "toy_mip" and kind not in G4_KINDS:
@@ -235,7 +242,9 @@ def _energy_deposits(
     configuration = g4_configuration(
         source, g4setup, events, edep_min, edep_max, generated, generated_limit
     )
-    my_g4 = GeneralG4Interaction(my_d, tilted(configuration, my_d.l_z), g4_seed)
+    my_g4 = GeneralG4Interaction(
+        my_d, tilted(configuration, my_d.l_z), g4_seed, picture=picture, drawn=drawn
+    )
     try:
         return my_g4.deposits()
     finally:
@@ -254,11 +263,14 @@ def write_simulated_deposits(
     fano: bool = True,
     generated: int | None = None,
     generated_limit: int = GENERATED_LIMIT,
+    picture: str | None = None,
+    drawn: int = 0,
 ) -> int:
     """simulate_deposits, written to the deposits file; a file an earlier
     start left there is replaced. Returns the number of recorded events."""
     deposits = simulate_deposits(
-        my_d, source, g4setup, events, g4_seed, edep_min, edep_max, fano, generated, generated_limit
+        my_d, source, g4setup, events, g4_seed, edep_min, edep_max, fano, generated, generated_limit,
+        picture, drawn,
     )
     write_deposits(deposits_path, deposits)
     return len(deposits.events)

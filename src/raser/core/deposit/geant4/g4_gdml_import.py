@@ -161,6 +161,9 @@ class GDMLDetectorConstruction(GeneralDetectorConstruction):
         self.solid = {}
         self.logical = {}
         self.physical = {}
+        # Geant4 keeps only a pointer to each G4VisAttributes; they live as
+        # long as the geometry does.
+        self.visuals = []
         self.checkOverlaps = False
         self.g4_dic = g4_dic
         self.gdml_cfg = g4_dic.get('gdml', {})
@@ -245,6 +248,7 @@ class GDMLDetectorConstruction(GeneralDetectorConstruction):
             attr.SetForceWireframe(True)
         if solid:
             attr.SetForceSolid(True)
+        self.visuals.append(attr)
         return attr
 
     def _apply_vis_recursive(self, logical_volume, vis_attr, visited=None, include_root=True):

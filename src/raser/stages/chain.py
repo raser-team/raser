@@ -41,6 +41,7 @@ DEPOSIT_DEFAULTS = {"source": "decay/Sr90", "g4setup": "device_alone", "events_p
 
 
 def deposit_arguments(parser):
+    parser.add_argument("--plots", type=int, help="draw the first N recorded events of each job")
     parser.add_argument(
         "source",
         nargs="?",
@@ -59,12 +60,12 @@ def deposit_arguments(parser):
         "--edep-max", type=float, help="most energy deposited in the device [MeV]"
     )
     parser.add_argument(
-        "-g4_vis", help="visualization of Geant4 experiment", action="store_true"
+        "-g4_vis", help="open a window to turn the Geant4 geometry and tracks in", action="store_true"
     )
     parser.add_argument(
         "--g4-vis-driver",
-        default="OGL",
-        help="Geant4 visualization driver of -g4_vis (default: OGL)",
+        default="TSG_QT_GLES",
+        help="Geant4 visualization driver of -g4_vis (default: TSG_QT_GLES, a window)",
     )
 
 
@@ -72,7 +73,6 @@ CURRENT_DEFAULTS = {"plots": 100}
 
 
 def current_arguments(parser):
-    parser.add_argument("--plots", type=int, help="draw the first N recorded events of each job")
     parser.add_argument("-vol", "--voltage", type=float, help="bias voltage")
     parser.add_argument("-irr", "--irradiation", type=float, help="irradiation flux")
 
@@ -182,7 +182,8 @@ def _shared_field(device):
 
 
 DEPOSIT_KEYS = (
-    "source", "g4setup", "events_per_job", "generated_per_job", "generated_limit", "edep_min", "edep_max", "fano"
+    "source", "g4setup", "events_per_job", "generated_per_job", "generated_limit", "edep_min", "edep_max", "fano",
+    "plots",
 )
 # A job records a number of events or generates one: one of the two is given.
 EXCLUSIVE = (("events_per_job", "generated_per_job"),)

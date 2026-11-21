@@ -22,6 +22,9 @@ class GeneralDetectorConstruction(g4b.G4VUserDetectorConstruction):
         self.logical = {}
         self.physical = {}
         self.compound_materials = {}
+        # Geant4 keeps only a pointer to each G4VisAttributes; they live as
+        # long as the geometry does.
+        self.visuals = []
         self.checkOverlaps = True
         self.create_world(g4_dic["world"], world_half_side(my_d, g4_dic))
         self.geant4_model = g4_dic["geant4_model"]
@@ -160,6 +163,7 @@ class GeneralDetectorConstruction(g4b.G4VUserDetectorConstruction):
             0,
             self.checkOverlaps,
         )
+        self.visuals.append(visual)
         self.logical[name].SetVisAttributes(visual)
 
     def create_binary_compounds(self, object):
@@ -231,6 +235,7 @@ class GeneralDetectorConstruction(g4b.G4VUserDetectorConstruction):
             0,
             self.checkOverlaps,
         )
+        self.visuals.append(visual)
         self.logical[name].SetVisAttributes(visual)
 
     def Construct(self):  # return the world volume

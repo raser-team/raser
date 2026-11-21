@@ -12,6 +12,7 @@ from raser.core.deposit.generation import GENERATED_LIMIT
 from raser.core.deposit.simulate_deposits import write_simulated_deposits
 from raser.core.deposit.view_geometry import view_geometry
 from raser.lifecycle.slices import Ended
+from raser.stages.files import _job
 from raser.stages.files import output
 
 
@@ -32,10 +33,11 @@ def deposits(kwargs):
         )
     limit = kwargs.get("generated_limit")
     if kwargs.get("g4_vis"):
-        # Only the Geant4 geometry and the tracks are drawn: the job ends here.
+        # A window to turn the Geant4 geometry and the tracks in: the job ends
+        # when it is closed. An off-screen driver writes the picture instead.
         driver = kwargs["g4_vis_driver"]
         picture = None
-        if driver.upper().startswith(("TSG", "OGL")):  # the drivers that write a picture
+        if driver.upper() in ("TSG", "TSG_FILE", "TSG_OFFSCREEN"):
             picture = os.path.join(kwargs["_run_path"], "g4_geometry")
         view_geometry(
             my_d,
@@ -59,7 +61,22 @@ def deposits(kwargs):
         kwargs["fano"],
         None if generated is None else int(generated),
         GENERATED_LIMIT if limit is None else int(limit),
+        *_picture(kwargs),
     )
     if not recorded:
         # the file keeps the number of generated events; nothing is left to drift
         raise Ended
+
+
+def _picture(kwargs):
+    """The picture of the Geant4 geometry and the first `plots` recorded
+    events of this job, plots/job_<job>/g4_geometry.png beside the batch of
+    the deposits, and the number of events drawn; none for plots 0."""
+    drawn = int(kwargs.get("plots") or 0)
+    if not drawn:
+        return None, 0
+    folder = os.path.join(
+        os.path.dirname(kwargs["_slice_batch_paths"]["deposit"]), "plots", "job_%s" % _job(kwargs)
+    )
+    os.makedirs(folder, exist_ok=True)
+    return os.path.join(folder, "g4_geometry"), drawn

@@ -19,6 +19,8 @@ class GeneralEventAction(g4b.G4UserEventAction):
         self.recorded_events = recorded_events
         self.recorded = 0
         self.ended = 0
+        # the first this many recorded events are kept for the picture of the run
+        self.drawn = 0
         self.fRunAction = runAction
         self.point_in = point_in
         self.point_out = point_out
@@ -56,6 +58,8 @@ class GeneralEventAction(g4b.G4UserEventAction):
         # recorded: an event that left energy in the device, within the window
         if self.in_edep_window():
             self.recorded += 1
+            if self.recorded <= self.drawn:
+                g4b.G4EventManager.GetEventManager().KeepTheCurrentEvent()
             if self.recorded == self.recorded_events:
                 g4b.G4RunManager.GetRunManager().AbortRun(True)
 

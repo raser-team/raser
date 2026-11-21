@@ -6,11 +6,13 @@ Description:  interaction.py
 """
 
 from raser.core.deposit.geant4.g4ppyy_runtime import g4b
+from raser.supports.paths import component_path
 
 from ..deposits import deposits_of_steps
 from ..generation import too_few
 from .detector_construction import GeneralDetectorConstruction
 from .action_initialization import GeneralActionInitialization
+from .drivers import register_driver
 
 g4b.include("G4RunManager.hh")
 g4b.include("G4RadioactiveDecayPhysics.hh")
@@ -41,6 +43,8 @@ class GeneralG4Interaction:
         g4_vis=False,
         MyDetectorConstruction=GeneralDetectorConstruction,
         MyActionInitialization=GeneralActionInitialization,
+        picture=None,
+        drawn=0,
     ):
         """
         Description:
@@ -58,6 +62,11 @@ class GeneralG4Interaction:
         @Modify:
             2025/05/15
         """
+        # picture: the path, without its extension, of a png of the geometry
+        # and the first `drawn` recorded events, drawn off screen during the
+        # run; None or drawn 0 draws nothing
+        self.picture = picture if drawn else None
+        self.drawn = int(drawn)
         # g4_vis keeps its place among the arguments until the callers that
         # pass it by position are gone.
         if g4_vis:
@@ -190,13 +199,40 @@ class GeneralG4Interaction:
         UImanager.ApplyCommand("/process/em/verbose %d" % (verbose))
         UImanager.ApplyCommand("/process/had/verbose %d" % (verbose))
         UImanager.ApplyCommand("/run/initialize")
+        if self.picture is not None:
+            self._open_picture(UImanager)
         self.g4RunManager.BeamOn(self.total_events)
+        if self.picture is not None:
+            self._close_picture(UImanager)
         if self.recorded_events is None:
             self.generated_events = self.total_events
             return
         counted = self.action_initialization.event_action
         self.generated_events = counted.ended
         self.recorded = counted.recorded
+
+    def _open_picture(self, ui):
+        """Draw the geometry and the recorded events the event action keeps,
+        off screen, into the picture."""
+
+        def command(text):
+            status = ui.ApplyCommand(text)
+            if status != 0:
+                raise RuntimeError(f"Geant4 refused the command {text!r} (status {status})")
+
+        register_driver(g4b, "TSG_OFFSCREEN")
+        self.action_initialization.event_action.drawn = self.drawn
+        command("/vis/open TSG_OFFSCREEN")
+        command("/vis/tsg/offscreen/set/format zb_png")
+        command(f"/vis/tsg/offscreen/set/file {self.picture}.png")
+        command(f"/control/execute {component_path('g4macro', 'vis.mac')}")
+        command("/vis/drawOnlyToBeKeptEvents")
+        command(f"/vis/scene/endOfEventAction accumulate {self.drawn}")
+
+    def _close_picture(self, ui):
+        ui.ApplyCommand("/vis/viewer/flush")
+        ui.ApplyCommand("/vis/viewer/rebuild")
+        ui.ApplyCommand("/vis/disable")
 
     def deposits(self):
         """The recorded events as Deposits in the coordinates of the device.
