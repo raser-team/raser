@@ -67,6 +67,7 @@ def draw_iv(device,V,I,path):
     canvas.Update()
     canvas.SaveAs(os.path.join(path, "simIV{}to{}_picture.root".format(min(V),max(V))))
     canvas.SaveAs(os.path.join(path, "simIV{}to{}_picture.pdf".format(min(V),max(V))))
+    canvas.Close()
 
 
 def draw_noise(device,V,noise,path):
@@ -117,6 +118,7 @@ def draw_noise(device,V,noise,path):
     canvas.Update()
     canvas.SaveAs(os.path.join(path, "simnoise{}to{}_picture.root".format(min(V),max(V))))
     canvas.SaveAs(os.path.join(path, "simnoise{}to{}_picture.pdf".format(min(V),max(V))))
+    canvas.Close()
 
 
 
@@ -184,6 +186,7 @@ def draw_cv(device,V,C,path):
     canvas.Update()
     canvas.SaveAs(os.path.join(path, "simCV{}to{}_picture.root".format(min(V),max(V))))
     canvas.SaveAs(os.path.join(path, "simCV{}to{}_picture.pdf".format(min(V),max(V))))
+    canvas.Close()
 
 def draw_electrons(device, positions, electrons, bias_voltages,path):
     fig1=matplotlib.pyplot.figure()

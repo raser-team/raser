@@ -7,6 +7,7 @@
 @Version :   3.0
 '''
 
+import json
 import pickle
 import os
 import logging
@@ -14,9 +15,13 @@ import math
 import re
 from pathlib import Path
 
+import numpy as np
 import ROOT
-from .assets import resolve_field_pickle
-from .interpolation import calculate_gradient
+from scipy.spatial import Delaunay
+from scipy.spatial import cKDTree
+from ..current.model import Material
+from .assets import field_pickle_path
+from .gradient import gradient
 from .interpolation import interpolate_1d
 from .interpolation import interpolate_2d
 from .interpolation import interpolate_3d
@@ -34,45 +39,15 @@ resolution_default_plugin_2d = {'x': 0.1, 'y': 0.1, 'z': 10000.0}
 resolution_default_3d = {'z': 0.5, 'x': 1, 'y': 1}
 
 class DevsimField:
-    def __init__(self, device_name, dimension, voltage, read_out_contact, mesher, is_plugin=False, irradiation_flux=0, 
+    def __init__(self, device_name, voltage, read_out_contact, irradiation_flux=0,
                  bounds=None, resolution=None, field_set="default", field_directory=None,
                  interpolation_bins=None):
         self.name = device_name
         self.voltage = voltage
-        self.dimension = dimension
+        self.irradiation_flux = irradiation_flux
         self.read_out_contact = read_out_contact
-        self.is_plugin = is_plugin  # 保存插件标志
-        self.mesher = mesher  # 保存mesher标志
         self.interpolation_bins = interpolation_bins
 
-        # 初始化缓存相关属性
-        if self.dimension == 1:
-            resolution_default = resolution_default_1d
-        elif self.dimension == 2:
-            if is_plugin:
-                resolution_default = resolution_default_plugin_2d
-            else:
-                resolution_default = resolution_default_2d
-        elif self.dimension == 3:
-            resolution_default = resolution_default_3d
-
-        try:
-            self.resolution = resolution or resolution_default
-            # 验证字典中的所有分辨率值
-            for key, value in self.resolution.items():
-                try:
-                    float_value = float(value)
-                    if float_value <= 0:
-                        self.resolution[key] = resolution_default[key]
-                    else:
-                        self.resolution[key] = float_value
-                except (TypeError, ValueError):
-                    self.resolution[key] = resolution_default[key]
-        except (TypeError, AttributeError):
-            # 如果resolution不是字典，使用默认值
-            logger.warning("Invalid resolution format, using default resolution: {}".format(resolution_default))
-            self.resolution = resolution_default
-        
         self.bounds = bounds or {}
         
         # 初始化缓存字典
@@ -96,16 +71,52 @@ class DevsimField:
             else project_path("field", field_set)
         ) + os.sep
 
-        # Weighting Potential is universal for all irradiation flux
-        # TODO: Net Doping should be here too
+        # The weighting potential of each read-out electrode at the bias of the field.
         WeightingPotentialFiles = []
         for contact in read_out_contact:
-            WeightingPotentialFiles.append(path + "weightingfield/{}/Potential_{}V.pkl".format(contact['name'], 1))
+            WeightingPotentialFiles.append(path + "weightingfield/{}/Potential_{}V.pkl".format(contact['name'], voltage))
 
         # TODO: Select assets only through an explicit field set.
         if irradiation_flux != 0 and field_set == "default" and not explicit_directory:
             path = str(project_path("field", str(irradiation_flux))) + os.sep
 
+        # The device axis along each coordinate of the stored points.
+        record = os.path.join(path, "run.json")
+        if not os.path.exists(record):
+            raise FileNotFoundError(
+                "{} is missing: solve the field again, or write the axes of its "
+                'files there, for example {{"axes": ["z"]}}'.format(record)
+            )
+        with open(record) as file:
+            self.axes = tuple(json.load(file)["axes"])
+
+        # 初始化缓存相关属性
+        if len(self.axes) == 1:
+            resolution_default = resolution_default_1d
+        elif self.axes == ("x", "y"):
+            resolution_default = resolution_default_plugin_2d
+        elif len(self.axes) == 2:
+            resolution_default = resolution_default_2d
+        else:
+            resolution_default = resolution_default_3d
+
+        try:
+            self.resolution = resolution or resolution_default
+            # 验证字典中的所有分辨率值
+            for key, value in self.resolution.items():
+                try:
+                    float_value = float(value)
+                    if float_value <= 0:
+                        self.resolution[key] = resolution_default[key]
+                    else:
+                        self.resolution[key] = float_value
+                except (TypeError, ValueError):
+                    self.resolution[key] = resolution_default[key]
+        except (TypeError, AttributeError):
+            # 如果resolution不是字典，使用默认值
+            logger.warning("Invalid resolution format, using default resolution: {}".format(resolution_default))
+            self.resolution = resolution_default
+        
         DopingFile = None
         doping_file_pattern = re.compile(r'^NetDoping_(-?\d+\.?\d*)V\.pkl$')
         for filename in os.listdir(path):
@@ -114,30 +125,41 @@ class DevsimField:
                 # example: DopingFile = path + "NetDoping_0V.pkl"
                 break
 
-        PotentialFile = resolve_field_pickle(path, "Potential", self.voltage)
-        TrappingRate_pFile = resolve_field_pickle(path, "TrappingRate_p", self.voltage)
-        TrappingRate_nFile = resolve_field_pickle(path, "TrappingRate_n", self.voltage)
+        PotentialFile = field_pickle_path(path, "Potential", self.voltage)
+        TrappingRate_pFile = field_pickle_path(path, "TrappingRate_p", self.voltage)
+        TrappingRate_nFile = field_pickle_path(path, "TrappingRate_n", self.voltage)
+        ConductiveFile = field_pickle_path(path, "Conductive", self.voltage)
 
         self.set_doping(DopingFile) #self.Doping
         self.set_potential(PotentialFile) #self.Potential, self.x_efield, self.y_efield, self.z_efield
         self.set_trap_p(TrappingRate_pFile) # self.TrappingRate_p
         self.set_trap_n(TrappingRate_nFile) # self.TrappingRate_n
         self.set_w_p(WeightingPotentialFiles) #self.weighting_potential[]
+        self.set_conductive(ConductiveFile) # self.conductive_nodes, self.conductive_values
         
         logger.info(f"DevsimField initialization complete, resolution: {self.resolution} um")
 
+    def _stored(self, file, what):
+        """What one file of the field holds. A file that is missing, or that
+        has fewer dimensions than the field, is an error that names it."""
+        if file is None or not os.path.exists(file):
+            raise FileNotFoundError(
+                "the {} of {} at {} V is not solved: {} is missing".format(
+                    what, self.name, self.voltage, file or "its file"
+                )
+            )
+        with open(file, 'rb') as stream:
+            stored = pickle.load(stream)
+        if stored['metadata']['dimension'] < len(self.axes):
+            raise ValueError(
+                "the {} in {} has {} dimensions, the field has {}".format(
+                    what, file, stored['metadata']['dimension'], len(self.axes)
+                )
+            )
+        return stored
+
     def set_doping(self, DopingFile):
-        try:
-            with open(DopingFile,'rb') as file:
-                DopingNotUniform=pickle.load(file)
-                print("Doping file loaded for {}".format(self.name))
-                if DopingNotUniform['metadata']['dimension'] < self.dimension:
-                    print("Doping dimension not match")
-                    return
-        except (FileNotFoundError, TypeError):
-            print("Doping file not found at {}, please run field simulation first".format(DopingFile))
-            print("or manually set the doping file")
-            return
+        DopingNotUniform = self._stored(DopingFile, "net doping")
         
         if DopingNotUniform['metadata']['dimension'] == 1:
             DopingUniform = interpolate_1d(DopingNotUniform)
@@ -151,17 +173,7 @@ class DevsimField:
         self.Doping = DopingUniform
 
     def set_potential(self, PotentialFile):
-        try:
-            with open(PotentialFile,'rb') as file:
-                PotentialNotUniform=pickle.load(file)
-                print("Potential file loaded for {}".format(self.name))
-                if PotentialNotUniform['metadata']['dimension'] < self.dimension:
-                    print("Potential dimension not match")
-                    return
-        except FileNotFoundError:
-            print("Potential file not found at {}, please run field simulation first".format(PotentialFile))
-            print("or manually set the potential file")
-            return
+        PotentialNotUniform = self._stored(PotentialFile, "potential")
         
         if PotentialNotUniform['metadata']['dimension'] == 1:
             PotentialUniform = interpolate_1d(PotentialNotUniform)
@@ -173,25 +185,23 @@ class DevsimField:
             )
 
         self.Potential = PotentialUniform
+        # The ends of the mesh along each of its axes, in cm.
+        points = np.asarray(PotentialNotUniform['points'], dtype=float).reshape(
+            len(PotentialNotUniform['points']), -1
+        )
+        self.potential_ranges = list(zip(points.min(axis=0).tolist(), points.max(axis=0).tolist()))
+        self.potential_points = points
 
     def set_w_p(self, WeightingPotentialFiles):
         self.WeightingPotential = []
         for i in range(len(self.read_out_contact)):
-            WeightingPotentialFile = resolve_field_pickle(
-                os.path.dirname(WeightingPotentialFiles[i]), "Potential", 1
+            WeightingPotentialFile = field_pickle_path(
+                os.path.dirname(WeightingPotentialFiles[i]), "Potential", self.voltage
             )
-            try:
-                with open(WeightingPotentialFile,'rb') as file:
-                    WeightingPotentialNotUniform=pickle.load(file)
-                    print("Weighting Potential file loaded for {} at electrode {}".format(self.name, i+1))
-                    if ( WeightingPotentialNotUniform['metadata']['dimension'] < self.dimension
-                    ):
-                        print("Weighting Potential dimension not match")
-                        return
-            except FileNotFoundError:
-                print("Weighting Potential file not found at {}, please run field simulation first".format(WeightingPotentialFile))
-                print("or manually set the Weighting Potential file")
-                return
+            WeightingPotentialNotUniform = self._stored(
+                WeightingPotentialFile,
+                "weighting potential of {}".format(self.read_out_contact[i]['name']),
+            )
             
             if WeightingPotentialNotUniform['metadata']['dimension'] == 1:
                 WeightingPotentialUniform = interpolate_1d(WeightingPotentialNotUniform)
@@ -203,19 +213,20 @@ class DevsimField:
                 )
 
             self.WeightingPotential.append(WeightingPotentialUniform)
+            if i == 0:  # the ends of its mesh along each axis, in cm
+                points = np.asarray(WeightingPotentialNotUniform['points'], dtype=float).reshape(
+                    len(WeightingPotentialNotUniform['points']), -1
+                )
+                self.weighting_ranges = list(zip(points.min(axis=0).tolist(), points.max(axis=0).tolist()))
+                # Cells of the row on either side of the electrode's own: what
+                # the solve stored, or what the device lists for a potential
+                # that was not solved here.
+                self.cells_either_side = WeightingPotentialNotUniform['metadata'].get(
+                    'cells_either_side', self.read_out_contact[0].get('x_span', 0)
+                )
     
     def set_trap_p(self, TrappingRate_pFile):
-        try:
-            with open(TrappingRate_pFile,'rb') as file:
-                TrappingRate_pNotUniform=pickle.load(file)
-                print("TrappingRate_p file loaded for {}".format(self.name))
-                if TrappingRate_pNotUniform['metadata']['dimension'] < self.dimension:
-                    print("TrappingRate_p dimension not match")
-                    return
-        except FileNotFoundError:
-            print("TrappingRate_p file not found at {}, please run field simulation first".format(TrappingRate_pFile))
-            print("or manually set the hole trapping rate file")
-            return
+        TrappingRate_pNotUniform = self._stored(TrappingRate_pFile, "hole trapping rate")
         
         if TrappingRate_pNotUniform['metadata']['dimension'] == 1:
             TrappingRate_pUniform = interpolate_1d(TrappingRate_pNotUniform)
@@ -229,17 +240,7 @@ class DevsimField:
         self.TrappingRate_p = TrappingRate_pUniform
     
     def set_trap_n(self, TrappingRate_nFile):
-        try:
-            with open(TrappingRate_nFile,'rb') as file:
-                TrappingRate_nNotUniform=pickle.load(file)
-                print("TrappingRate_n file loaded for {}".format(self.name))
-                if TrappingRate_nNotUniform['metadata']['dimension'] != self.dimension:
-                    print("TrappingRate_n dimension not match")
-                    return
-        except FileNotFoundError:
-            print("TrappingRate_n file not found at {}, please run field simulation first".format(TrappingRate_nFile))
-            print("or manually set the electron trapping rate file")
-            return
+        TrappingRate_nNotUniform = self._stored(TrappingRate_nFile, "electron trapping rate")
         
         if TrappingRate_nNotUniform['metadata']['dimension'] == 1:
             TrappingRate_nUniform = interpolate_1d(TrappingRate_nNotUniform)
@@ -252,100 +253,78 @@ class DevsimField:
 
         self.TrappingRate_n = TrappingRate_nUniform
         
-    # 3D pickle points are stored in detector order (x, y, z).
-    # 2D planar fields keep the legacy (z, x) convention.
 
-    def _get_doping(self, x, y, z):
+    def set_conductive(self, ConductiveFile):
+        stored = self._stored(ConductiveFile, "conductive part")
+        points = np.asarray(stored['points'], dtype=float).reshape(len(stored['points']), -1)
+        self.conductive_nodes = cKDTree(points)
+        self.conductive_values = np.asarray(stored['values']) > 0.5
+        # The cells of the mesh: the intervals between its nodes in one
+        # dimension, the simplices that join its nodes otherwise.
+        if points.shape[1] == 1:
+            self.conductive_order = np.argsort(points[:, 0])
+            self.conductive_line = points[self.conductive_order, 0]
+        else:
+            self.conductive_cells = Delaunay(points)
+
+    def _along_axes(self, x, y, z):
+        """A position, as the coordinates the field files are stored in."""
+        position = {"x": x, "y": y, "z": z}
+        return [position[axis] for axis in self.axes]
+
+    def _in_the_cell(self, x, y, z):
+        """A position in cm, as the coordinates of the solved electric field.
+
+        The electric field of a row of equal electrodes repeats from one to
+        the next. Where the device is wider than the mesh the field was
+        solved on, a position is taken back into one cell of that mesh, the
+        middle one if it holds several. A cell is as wide as the weighting
+        potential of the one listed electrode divided by the cells it is on.
+        """
+        position = {"x": x, "y": y, "z": z}
+        if len(self.read_out_contact) != 1:
+            return [position[axis] for axis in self.axes]
+        for axis, (low, high), (first, last) in zip(self.axes, self.potential_ranges, self.weighting_ranges):
+            if axis == "z" or axis not in self.bounds:
+                continue
+            start, end = (edge * 1e-4 for edge in self.bounds[axis])
+            if end - start > (high - low) * (1 + 1e-6):
+                span = self.cells_either_side if axis == "x" else self.read_out_contact[0].get("y_span", 0)
+                cell = (last - first) / (2 * span + 1)
+                middle = round((high - low) / cell) // 2
+                position[axis] = low + middle * cell + (position[axis] - start) % cell
+        return [position[axis] for axis in self.axes]
+
+    def get_doping(self, x, y, z):
         """
         input: position in um
         output: doping in cm^-3
         """
         x, y, z = x/1e4, y/1e4, z/1e4 # um to cm
-        if self.dimension == 1:
-            return self.Doping(z)
-        elif self.dimension == 2:
-            if self.is_plugin:
-                return self.Doping(x, y)  # 2D插件使用x,y
-            else:
-                return self.Doping(z, x)
-        elif self.dimension == 3:
-            if self.mesher == "sde": # SDE使用x,y,z坐标
-                return self.Doping(x, y, z)
-            else :
-                return self.Doping(z, x, y)
+        return self.Doping(*self._in_the_cell(x, y, z))
     
-    def _get_potential(self, x, y, z):
+    def get_potential(self, x, y, z):
         """
         input: position in um
         output: potential in V
         """
         x, y, z = x/1e4, y/1e4, z/1e4 # um to cm
-        if self.dimension == 1:
-            return self.Potential(z)
-        elif self.dimension == 2:
-            if self.is_plugin:
-                return self.Potential(x, y)  # 2D插件使用x,y
-            else:
-                return self.Potential(z, x)
-        elif self.dimension == 3:
-            if self.mesher == "sde": # SDE使用x,y,z坐标
-                return self.Potential(x, y, z)
-            else:
-                return self.Potential(z, x, y)
+        return self.Potential(*self._in_the_cell(x, y, z))
     
-    def _get_e_field(self, x, y, z):
+    def get_e_field(self, x, y, z):
         """
         input: position in um
         output: intensity in V/cm
         """ 
         x, y, z = x / 1e4, y / 1e4, z / 1e4  # um to cm
 
-        if self.dimension == 1:
-            nabla_U = calculate_gradient(self.Potential, [z])
-            E_z = -1 * nabla_U[0]
-            return (0, 0, E_z)
+        nabla_U = gradient(self.Potential, self._in_the_cell(x, y, z), self.potential_ranges)
+        E = {axis: -1 * component for axis, component in zip(self.axes, nabla_U)}
+        return (E.get("x", 0), E.get("y", 0), E.get("z", 0))
 
-        elif self.dimension == 2:
-            if self.is_plugin:
-                # 2D插件使用x,y坐标
-                nabla_U = calculate_gradient(self.Potential, [x, y])
-                E_x = -1 * nabla_U[0]
-                E_y = -1 * nabla_U[1]
-                return (E_x, E_y, 0)
-            else:
-                nabla_U = calculate_gradient(self.Potential, [z, x])
-                E_z = -1 * nabla_U[0]
-                E_x = -1 * nabla_U[1]
-                return (E_x, 0, E_z)
-
-        elif self.dimension == 3:
-            if self.mesher == "sde": # SDE使用x,y,z坐标
-                nabla_U = calculate_gradient(self.Potential, [x, y, z])
-                E_x = -1 * nabla_U[0]
-                E_y = -1 * nabla_U[1]
-                E_z = -1 * nabla_U[2]
-                return (E_x, E_y, E_z)
-            else:
-                nabla_U = calculate_gradient(self.Potential, [z, x, y])
-                E_z = -1 * nabla_U[0]
-                E_x = -1 * nabla_U[1]
-                E_y = -1 * nabla_U[2]
-                return (E_x, E_y, E_z)
-
-    def _get_w_p(self, x, y, z, i): # used in cal current
+    def get_w_p(self, x, y, z, i): # used in cal current
         x, y, z = x/1e4, y/1e4, z/1e4 # um to cm
-        if self.dimension == 1:
-            U_w = self.WeightingPotential[i](z)
-        elif self.dimension == 2:
-            if self.is_plugin:
-                U_w = self.WeightingPotential[i](x, y)  # 2D插件使用x,y
-            else:
-                U_w = self.WeightingPotential[i](z, x)
-        elif self.dimension == 3:
-            if self.mesher == "sde": # SDE使用x,y,z坐标
-                U_w = self.WeightingPotential[i](x, y, z)
-            else:
-                U_w = self.WeightingPotential[i](z, x, y)
+        U_w = self.WeightingPotential[i](*self._along_axes(x, y, z))
 
         # exclude non-physical values
         if U_w < 0:
@@ -364,51 +343,140 @@ class DevsimField:
             return U_w
 
     
-    def _get_trap_e(self, x, y, z):
+    def get_conductive(self, x, y, z):
+        """
+        input: position in um
+        output: whether the device conducts there at the bias of the field:
+        every node of the cell of the mesh that holds the position does, as
+        in the weighting field, where an edge conducts when both its nodes
+        do; a position outside the mesh is answered by the nearest node
+        """
+        x, y, z = x/1e4, y/1e4, z/1e4 # um to cm
+        place = self._in_the_cell(x, y, z)
+        if len(place) == 1:
+            after = int(np.searchsorted(self.conductive_line, place[0]))
+            if 0 < after < len(self.conductive_line):
+                ends = self.conductive_order[after - 1 : after + 1]
+                return bool(self.conductive_values[ends].all())
+        else:
+            cell = int(self.conductive_cells.find_simplex(place))
+            if cell >= 0:
+                return bool(self.conductive_values[self.conductive_cells.simplices[cell]].all())
+        return bool(self.conductive_values[self.conductive_nodes.query(place)[1]])
+
+    def get_trap_e(self, x, y, z):
         """
         input: position in um
         output: electron trapping rate in s^-1
         """
         x, y, z = x/1e4, y/1e4, z/1e4 # um to cm
-        if self.dimension == 1:
-            return self.TrappingRate_n(z)
-        
-        elif self.dimension == 2:
-            if self.is_plugin:
-                return self.TrappingRate_n(x, y)  # 2D插件使用x,y
-            else:
-                return self.TrappingRate_n(z, x)
-        
-        elif self.dimension == 3:
-            if self.mesher == "sde": # SDE使用x,y,z坐标
-                return self.TrappingRate_n(x, y, z)
-            else:
-                return self.TrappingRate_n(z, x, y)
+        return self.TrappingRate_n(*self._in_the_cell(x, y, z))
 
-    def _get_trap_h(self, x, y, z):
+    def get_trap_h(self, x, y, z):
         """
         input: position in um
         output: hole trapping rate in s^-1
         """
         x, y, z = x/1e4, y/1e4, z/1e4 # um to cm
-        if self.dimension == 1:
-            return self.TrappingRate_p(z)
-        elif self.dimension == 2:
-            if self.is_plugin:
-                return self.TrappingRate_p(x, y)  # 2D插件使用x,y
-            else:
-                return self.TrappingRate_p(z, x)
-        elif self.dimension == 3:
-            if self.mesher == "sde": # SDE使用x,y,z坐标
-                return self.TrappingRate_p(x, y, z)
-            else:
-                return self.TrappingRate_p(z, x, y)
+        return self.TrappingRate_p(*self._in_the_cell(x, y, z))
 
     # 缓存方法
+    _planar_gain = None
+
+    def planar_gain(self, my_d):
+        """Gain of a planar device for the pairs made in its bulk: on the side
+        of the gain layer that is away from the face the layer lies at."""
+        self._integrate_planar_gain(my_d)
+        return self._planar_gain
+
+    def planar_gain_at(self, my_d, z):
+        """Gain of a planar device for a pair made at the depth z in um: how
+        many more pairs it becomes. The pairs made in front of the gain layer
+        send the other carrier through it, and have another gain."""
+        self._integrate_planar_gain(my_d)
+        nodes, log_growth, det = self._planar_gain_profile
+        return float(np.exp(np.interp(z * 1e-4, nodes, log_growth)) / (1 - det) - 1)
+
+    def _integrate_planar_gain(self, my_d):
+        """One integration through the whole depth, along the line through the
+        middle of the device."""
+        # gain(z) = K(z) / {1 - int[alpha_p * K dz]} - 1
+        # K(z) = exp{int_b^z[(alpha_n - alpha_p) dz]}
+        # b is the face the electrons leave by; a pair made there sends its
+        # hole through the device, a pair made at the other face its electron
+        if self._planar_gain is not None:
+            return
+        if "z" not in self.axes:
+            raise ValueError(
+                "the field of {} is stored along {}, without the depth z: it has no planar gain".format(
+                    self.name, self.axes
+                )
+            )
+        cal_coefficient = Material(my_d.material, avalanche_model=my_d.avalanche_model).cal_coefficient
+
+        # One field in every interval of the mesh, as the solve has it: the
+        # potential is linear between two nodes.
+        z = np.unique(self.potential_points[:, self.axes.index("z")])  # cm
+        potential = np.array(
+            [self.get_potential(0.5 * my_d.l_x, 0.5 * my_d.l_y, depth * 1e4) for depth in z], dtype=float
+        )
+        width = np.diff(z)
+        field = -np.diff(potential) / width  # V/cm
+        alpha_n = np.array([cal_coefficient(abs(E), -1, my_d.temperature) for E in field])
+        alpha_p = np.array([cal_coefficient(abs(E), +1, my_d.temperature) for E in field])
+
+        # The gain layer is where the field is strongest, and the multiplied
+        # carriers start from the middle of that interval.
+        strongest = int(np.argmax(np.abs(field)))
+        self._planar_gain_depth = 0.5 * (z[strongest] + z[strongest + 1]) * 1e4  # um
+        # Electrons drift against the field, holes along it.
+        electrons_to_front = field[strongest] > 0
+        # The carriers of the bulk that multiply are the ones that drift
+        # towards the face the layer lies at.
+        layer_at_front = z[strongest] + z[strongest + 1] <= z[0] + z[-1]
+        self._planar_gain_carrier = -1 if electrons_to_front == layer_at_front else +1
+
+        # K at the nodes, counted from the face the electrons leave by. Both
+        # integrals are exact for a field that is constant in each interval.
+        rate = alpha_n - alpha_p
+        steps = rate * width
+        if electrons_to_front:
+            log_growth = np.concatenate([[0.0], np.cumsum(steps)])
+            nearer = log_growth[:-1]
+        else:
+            log_growth = np.concatenate([np.cumsum(steps[::-1])[::-1], [0.0]])
+            nearer = log_growth[1:]
+        even = rate == 0
+        within = np.where(even, width, np.expm1(steps) / np.where(even, 1.0, rate))
+        det = float(np.sum(alpha_p * np.exp(nearer) * within))  # determinant of breakdown
+        if det >= 1:
+            raise ValueError(
+                "{} breaks down at {} V: the breakdown integral is {:.4g}, not below 1".format(
+                    self.name, self.voltage, det
+                )
+            )
+
+        # K at every node comes with the one integration
+        self._planar_gain_profile = (z, log_growth, det)
+        bulk = log_growth[-1] if layer_at_front else log_growth[0]
+        self._planar_gain = float(np.exp(bulk) / (1 - det) - 1)
+
+    def planar_gain_depth(self, my_d):
+        """The depth in um that the carriers of the planar gain start from:
+        the middle of the mesh interval where the field is strongest."""
+        self.planar_gain(my_d)
+        return self._planar_gain_depth
+
+    def planar_gain_carrier(self, my_d):
+        """The charge sign of the carriers that the planar gain multiplies:
+        -1 for electrons, +1 for holes. They drift from the bulk into the gain layer."""
+        self.planar_gain(my_d)
+        return self._planar_gain_carrier
+
     def get_e_field_cached(self, x, y, z):
         try:
             if not self._is_position_valid(x, y, z):
-                return self._get_e_field(x, y, z) # 不缓存异常位置的电场值，继承报错
+                return self.get_e_field(x, y, z) # 不缓存异常位置的电场值，继承报错
                 
             key_x, key_y, key_z = self._get_index_coords(x, y, z)
             key = (key_x, key_y, key_z)
@@ -418,7 +486,7 @@ class DevsimField:
                 return self.e_field_cache[key]
             else:
                 self._cache_stats['misses'] += 1
-                e_field = self._get_e_field(x, y, z)
+                e_field = self.get_e_field(x, y, z)
                 if e_field is not None:
                     self.e_field_cache[key] = e_field
                 return e_field
@@ -426,13 +494,13 @@ class DevsimField:
         except Exception as e:
             self._cache_stats['errors'] += 1
             logger.warning(f"failed when getting field cache ({x:.1f}, {y:.1f}, {z:.1f}): {e}")
-            return self._get_e_field(x, y, z) # 出错时不使用缓存，直接计算电场值，继承报错
+            return self.get_e_field(x, y, z) # 出错时不使用缓存，直接计算电场值，继承报错
     
     # TODO: Propagate invalid field data instead of returning physical zero values.
     def get_doping_cached(self, x, y, z):
         try:
             if not self._is_position_valid(x, y, z):
-                return self._get_doping(x, y, z)
+                return self.get_doping(x, y, z)
                 
             key_x, key_y, key_z = self._get_index_coords(x, y, z)
             key = (key_x, key_y, key_z)
@@ -440,7 +508,7 @@ class DevsimField:
             if key in self.doping_cache:
                 return self.doping_cache[key]
             else:
-                doping = self._get_doping(x, y, z)
+                doping = self.get_doping(x, y, z)
                 if doping is not None:
                     self.doping_cache[key] = doping
                 return doping
@@ -451,13 +519,13 @@ class DevsimField:
     def get_w_p_cached(self, x, y, z, n):
         try:
             if not self._is_position_valid(x, y, z):
-                return self._get_w_p(x, y, z, n)
+                return self.get_w_p(x, y, z, n)
             key_x, key_y, key_z = self._get_index_coords(x, y, z)
             key = (key_x, key_y, key_z, n)
             if key in self.w_p_cache:
                 return self.w_p_cache[key]
             else:
-                w_p = self._get_w_p(x, y, z, n)
+                w_p = self.get_w_p(x, y, z, n)
                 if w_p is not None:
                     self.w_p_cache[key] = w_p
                 return w_p
@@ -471,7 +539,7 @@ class DevsimField:
         """获取空穴陷阱率 - 带缓存"""
         try:
             if not self._is_position_valid(x, y, z):
-                return self._get_trap_h(x, y, z)
+                return self.get_trap_h(x, y, z)
                 
             key_x, key_y, key_z = self._get_index_coords(x, y, z)
             key = (key_x, key_y, key_z)
@@ -481,7 +549,7 @@ class DevsimField:
                 return self.trap_h_cache[key]
             else:
                 self._cache_stats['trap_h_misses'] += 1
-                trap_rate = self._get_trap_h(x, y, z)
+                trap_rate = self.get_trap_h(x, y, z)
                 if trap_rate is not None:
                     self.trap_h_cache[key] = trap_rate
                 return trap_rate
@@ -494,7 +562,7 @@ class DevsimField:
         """获取电子陷阱率 - 带缓存"""
         try:
             if not self._is_position_valid(x, y, z):
-                return self._get_trap_e(x, y, z)
+                return self.get_trap_e(x, y, z)
                 
             key_x, key_y, key_z = self._get_index_coords(x, y, z)
             key = (key_x, key_y, key_z)
@@ -504,7 +572,7 @@ class DevsimField:
                 return self.trap_e_cache[key]
             else:
                 self._cache_stats['trap_e_misses'] += 1
-                trap_rate = self._get_trap_e(x, y, z)
+                trap_rate = self.get_trap_e(x, y, z)
                 if trap_rate is not None:
                     self.trap_e_cache[key] = trap_rate
                 return trap_rate

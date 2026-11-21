@@ -61,6 +61,31 @@ def CreateSiliconCarbideConstant(T, device, region):
     devsim.set_parameter(device=device, region=region, name="taun", value=2.5e-6)
     devsim.set_parameter(device=device, region=region, name="taup", value=0.5e-6)
 
+def CreateDiamondConstant(T, device, region):
+    # define Diamond parameters
+    N_c = 1.8e19 * pow(T / 300, 1.5)
+    N_v = 1.5e19 * pow(T / 300, 1.5)
+    devsim.set_parameter(device=device, region=region, name="N_c", value=N_c)
+    devsim.set_parameter(device=device, region=region, name="N_v", value=N_v)
+
+    E_g = 5.47 * 1.6e-19
+    devsim.set_parameter(device=device, region=region, name="E_g", value=E_g)
+
+    devsim.set_parameter(device=device, region=region, name="eps", value=5.7)
+    eps_0 = 8.85e-14
+    devsim.set_parameter(device=device, region=region, name="Permittivity", value=5.7 * eps_0)
+    k = 1.3806503e-23  # J/K
+    N_i = pow(N_c * N_v, 0.5) * math.exp(-E_g / (2 * k * T))
+    devsim.set_parameter(device=device, region=region, name="n_i", value=N_i)
+
+    devsim.set_parameter(device=device, region=region, name="mu_n", value=110)
+    devsim.set_parameter(device=device, region=region, name="mu_p", value=1100)
+
+    devsim.set_parameter(device=device, region=region, name="n1", value=N_i)
+    devsim.set_parameter(device=device, region=region, name="p1", value=N_i)
+    devsim.set_parameter(device=device, region=region, name="taun", value=5.6e-7)
+    devsim.set_parameter(device=device, region=region, name="taup", value=2.4e-7)
+
 def CreateSiliconConstant(T, device, region):
     # define Silicon parameters
     N_c = 2.82e19 * pow(T / 300, 1.5)
@@ -192,6 +217,8 @@ def create_parameter(MyDetector, device, region):
     elif devsim.get_material(device=device, region=region) == "Silicon":
         CreateSiliconConstant(T, device, region)
         CreateVanOvenstraetenImpact(T, device, region)
+    elif devsim.get_material(device=device, region=region) == "Diamond":
+        CreateDiamondConstant(T, device, region)
     elif devsim.get_material(device=device, region=region) == "gas":
         CreateGasConstant(T, device, region)
 

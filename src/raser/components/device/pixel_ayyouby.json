@@ -1,6 +1,7 @@
 {
     "det_name": "pixel_ayyouby",
     "det_model": "lgadpixel",
+    "electrodes": "pixel",
     "material": "Si",
     "l_x": 58,
     "l_y": 58,
@@ -15,9 +16,8 @@
         "voltage": -200.0
     },
     "temperature": 300.0,
-    "avalanche_bond": 5.5,
     "avalanche_model": "vanOverstraeten",
-    "gain_algorithm": "local_path",
+    "enable_gain": true,
     "local_gain_integration_steps": 11,
     "area_factor": 1,
     "default_dimension": 3,

@@ -65,11 +65,11 @@ apptainer build --mksquashfs-args '-processors 1' \
 
 该镜像提供项目 Python 环境、ngspice 与 EL9 运行库。ROOT 来自匹配的 `x86_64-el9` LCG view，Geant4 来自外部 EL9 安装。可选源码归档可缓存在 `bootstrap/ingredients/` 下。
 
-单进程 squashfs 选项用于受限集群节点。镜像细节见[容器路径说明](../../bootstrap/README.md)。
+单进程 squashfs 选项可避免受限集群节点上的线程创建失败。镜像细节见[容器路径说明](../../bootstrap/README.md)。
 
 ### 原生 Apple Silicon
 
-固定版本的 Python 包要求 arm64 上的 macOS 14 或更新版本。ROOT 与 Geant4 11.3.2 及其数据集由 conda 提供；ngspice 构建至该 conda 环境中。同一安装脚本及其选项覆盖本平台：
+本路径面向 Apple 芯片的 Mac。ROOT 与 Geant4 11.3.2 及其数据集由 conda 提供；ngspice 构建至该 conda 环境中。同一安装脚本及其选项覆盖本平台：
 
 ```bash
 env/install_conda.sh

@@ -15,7 +15,7 @@ completion.
 
 | Owner | Namespace |
 | --- | --- |
-| Application workflow | `<project>/<workflow>/<run_id>/...` |
+| Application workflow | `<project>/<workflow>/<seed folder>/...` |
 | Direct Core command | `<project>/<core-subsystem>/...` |
 | External caller | `<project>/<declared-owner>/...` |
 

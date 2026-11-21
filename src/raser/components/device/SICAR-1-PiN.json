@@ -13,7 +13,6 @@
     },
 
     "U_const":-5e10,
-    "avalanche_bond" : 3.0,
     "avalanche_model" : "Hatakeyama",
 
     "bias" : {

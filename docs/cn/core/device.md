@@ -34,7 +34,7 @@ Device 可直接采用其默认值，也可由应用项目中的 [Device 组件]
 
 该文件还提供配置解析的默认值。解析从这些默认值开始，随后应用 Component 与调用替换值。`field/` 保留为 Device 产生或导入的完整配置。`device.json` 是 Field 生成与加载期间的默认值来源。
 
-[Device 组件](../components/device.md)为应用项目替换默认值。[运行记录](../supports/runs.md)解析更具体的调用值并保存结果。[Field](field.md) 随后将解析值转为配置，其哈希用于寻址可复用数据。
+[Device 组件](../components/device.md)为应用项目替换默认值。[运行记录](../lifecycle/runs.md)解析更具体的调用值并保存结果。[Field](field.md) 随后将解析值转为配置，其哈希用于寻址可复用数据。
 
 ## 🔲 读出几何
 
@@ -67,9 +67,9 @@ Geant4 契约标识灵敏体，并将其坐标映射到探测器坐标。载流�
 
 ## ⚙️ 运行时 Device 契约
 
-Device 从 `device.json` 开始。应用按照 [Runs](../supports/runs.md) 解析组件值与运行级值，再由 Device 校验结果。运行时 Device 将传感器定义与已解析状态组合。
+Device 从 `device.json` 开始。应用按照 [Runs](../lifecycle/runs.md) 解析组件值与运行级值，再由 Device 校验结果。运行时 Device 将传感器定义与已解析状态组合。
 
-[Field 配置](field.md#配置)将解析值写入 `config.json`，并以其哈希作为数据目录名。应用在 [run.json](../supports/runs.md) 中记录相同配置与哈希。Device 将解析值传给 Field。Field 根据配置哈希得到资产目录并恢复其中的文件。
+[Field 配置](field.md#配置)将解析值写入 `config.json`，并以其哈希作为数据目录名。应用在 [run.json](../lifecycle/runs.md) 中记录相同配置与哈希。Device 将解析值传给 Field。Field 根据配置哈希得到资产目录并恢复其中的文件。
 
 Device 可声明作为传感器建模预输入的传感器电学值。Field AC 结果提供与已计算 Field 配置关联的数值。[Frontend](frontend.md) 使用所选数值构建传感器网表。
 

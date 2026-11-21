@@ -12,8 +12,10 @@ project that defines its meaning.
 flowchart TB
     user([User]) --> cli[CLI]
     cli --> apps[Applications]
-    cli --> core[Core]
-    apps --> core
+    apps --> lifecycle[Lifecycle]
+    apps --> core[Core]
+    lifecycle --> core
+    lifecycle --> supports
     apps --> components[Components]
     apps --> supports[Supports]
     core --> supports
@@ -23,7 +25,8 @@ The CLI routes commands. Applications assemble complete calculations. An
 application project uses Components to select a Device, PCB, or ASIC project,
 place their geometries through a G4Setup, and connect the Source, Laser, AFE,
 or ADC used by the scenario. Core contains reusable scientific calculations.
-Supports provides project paths, run records, and shared execution utilities.
+Lifecycle manages experiments, run records, and job execution. Supports
+provides project paths and shared utilities.
 
 The installed package follows this layout:
 
@@ -31,6 +34,7 @@ The installed package follows this layout:
 src/raser/
 ├── cli/
 ├── apps/
+├── lifecycle/
 ├── components/
 ├── core/
 └── supports/
@@ -53,7 +57,7 @@ Products defined by a sensor configuration are stored with Device. Products
 that also depend on an application scenario are stored with that application.
 The detailed storage contracts are defined by [Device](core/device.md),
 [Field](core/field.md), [Device components](components/device.md), and
-[Run records](supports/runs.md).
+[Run records](lifecycle/runs.md).
 
 ## Scientific data flow
 
@@ -67,13 +71,13 @@ flowchart LR
     field --> current
     interaction --> current
 
-    device --> frontend[Frontend]
-    field --> frontend
+    field --> frontend[Frontend]
     current --> frontend
     electronics[PCB, ASIC, or AFE definition] --> frontend
 
+    current --> metrics[Metrics]
     frontend --> waveform[Waveforms]
-    waveform --> metrics[Metrics]
+    waveform --> metrics
     waveform --> adc[ADC]
     adc --> metrics
 ```
@@ -85,11 +89,14 @@ G4Setup with a Source or Laser and supplies carrier creation positions and
 populations.
 
 Current transports those populations and produces one instantaneous induced
-current source for each readout electrode. Frontend turns Device values or
-Field AC data into a sensor netlist, then connects that netlist, the induced
-current sources, and the selected AFE in one circuit calculation.
+current source for each readout electrode. Sensor capacitance and the other
+sensor electrical values are calculated and provided by Field in principle;
+custom values may also be used. Frontend turns these electrical values into a
+sensor netlist, then connects that netlist, the induced current sources, and
+the selected AFE in one circuit calculation.
 
-Metrics receives analog waveforms or ADC samples together with the readout
+Metrics receives electrode induced currents, analog waveforms, or ADC samples
+together with the readout
 layout and analysis settings. Applications select the calculations, pass their
 explicit inputs, and store the resulting run products.
 

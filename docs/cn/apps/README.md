@@ -6,12 +6,13 @@
 
 所选对象记录为具有明确类型的[组件](../components/README.md)。Device 组件提供传感器及其工作状态。Source 或 Laser 组件定义激励。PCB、ASIC、AFE 和 ADC 组件定义测量所用的电子学。周围几何参与相互作用时，G4Setup 组件定义 Geant4 场景。
 
-应用将这些定义交给 [Core](../core/README.md)，并通过 [Runs](../supports/runs.md) 记录解析后的选择。依赖具体场景的结果保存在应用项目中。
+应用将这些定义交给 [Core](../core/README.md)，并通过 [Runs](../lifecycle/runs.md) 记录解析后的选择。依赖具体场景的结果保存在应用项目中。
 
 ## 应用绑定
 
 | 应用 | 绑定组件 | 计算 |
 | --- | --- | --- |
+| [Field](field.md) | Device | 静电场、权重场、IV 与 CV |
 | [Signal](signal.md) | Device、Source 与前端电子学 | 粒子相互作用、感应电流与前端波形 |
 | [TCT](tct.md) | Device、Laser 与前端电子学 | 激光注入、感应电流与扫描响应 |
 | [时间分辨](timeres.md) | Device、Source、前端电子学、ADC 及其 G4Setup | 时间分辨装置中的信号生成与时间分析 |
@@ -35,4 +36,4 @@
         └── analysis/
 ```
 
-具体运行布局由[运行记录](../supports/runs.md)定义。
+具体运行布局由[运行记录](../lifecycle/runs.md)定义。

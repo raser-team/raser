@@ -1,14 +1,14 @@
 import os
 import random
 import ROOT
+from raser.core.seeding import stream
 from raser.supports.output import output
 
 def main():
     
     output_path = output(__file__, "N0_3_4")
     
-    random.seed(3020122)                # process list using python random  
-    rand = ROOT.TRandom3(3020122)       # generate Poisson distribution using ROOT random
+    rand = stream("p1_sample")          # generate Poisson distribution using ROOT random
     average_hit = 3.06
     total_samples = 100000
     hitnumber = []

@@ -13,24 +13,23 @@ Description:
 """
 
 import sys
-import random
 import math
 import json
 import os
 
 import numpy as np
-import g4ppyy as g4b
+from raser.core.interaction.geant4.g4ppyy_runtime import g4b
 
 g4b.include("G4VUserDetectorConstruction.hh")
 g4b.include("G4UserLimits.hh")
 
-from raser.core.interaction.interaction import GeneralG4Interaction
-from raser.core.interaction.action_initialization import GeneralActionInitialization
-from raser.core.interaction.detector_construction import GeneralDetectorConstruction
-from raser.core.interaction.primary_generator_action import GeneralPrimaryGeneratorAction
-from raser.core.interaction.event_action import GeneralEventAction
-from raser.core.interaction.stepping_action import GeneralSteppingAction
-from raser.core.interaction.run_action import GeneralRunAction
+from raser.core.interaction.geant4.interaction import GeneralG4Interaction
+from raser.core.interaction.geant4.action_initialization import GeneralActionInitialization
+from raser.core.interaction.geant4.detector_construction import GeneralDetectorConstruction
+from raser.core.interaction.geant4.primary_generator_action import GeneralPrimaryGeneratorAction
+from raser.core.interaction.geant4.event_action import GeneralEventAction
+from raser.core.interaction.geant4.stepping_action import GeneralSteppingAction
+from raser.core.interaction.geant4.run_action import GeneralRunAction
 from raser.supports.paths import app_file_path
 
 verbose = 0
@@ -40,7 +39,7 @@ flag = 0
 # Geant4 main process
 class TelescopeG4Interaction(GeneralG4Interaction):
     def __init__(
-        self, my_d, g4experiment, g4_seed=random.randint(0, 1e7), g4_vis=False
+        self, my_d, g4experiment, g4_seed, events, g4_vis=False
     ):
         """
         Description:
@@ -60,6 +59,7 @@ class TelescopeG4Interaction(GeneralG4Interaction):
         geant4_json = app_file_path("telescope", g4experiment + ".json")
         with open(geant4_json) as f:
             g4_dic = json.load(f)
+        g4_dic["total_events"] = events
         # my_g4d = PixelDetectorConstruction(g4_dic,g4_dic['maxstep'])
 
         devicenames, localpositions = [], []
@@ -67,6 +67,7 @@ class TelescopeG4Interaction(GeneralG4Interaction):
         self.localpositions = localpositions
         self.ltz = g4_dic["ltz"]
         self.seedcharge = g4_dic["seedcharge"]
+        self.collection_window = g4_dic["collection_window_s"]
 
         class WrappedTelescopeActionInitialization(TelescopeActionInitialization):
             # make sure the class has the same parameters as the original class
@@ -82,7 +83,9 @@ class TelescopeG4Interaction(GeneralG4Interaction):
                 edep_devices,
                 p_steps,
                 energy_steps,
+                time_steps,
                 events_angles,
+                edep_window,
                 geant4_model,
             ):
                 super().__init__(
@@ -96,7 +99,9 @@ class TelescopeG4Interaction(GeneralG4Interaction):
                     edep_devices,
                     p_steps,
                     energy_steps,
+                    time_steps,
                     events_angles,
+                    edep_window,
                     devicenames,
                     localpositions,
                     geant4_model,
@@ -104,7 +109,7 @@ class TelescopeG4Interaction(GeneralG4Interaction):
 
         super().__init__(
             my_d,
-            g4experiment,
+            g4_dic,
             g4_seed,
             g4_vis,
             PixelDetectorConstruction,
@@ -127,7 +132,7 @@ class PixelDetectorConstruction(g4b.G4VUserDetectorConstruction):
     "Pixel Detector Construction"
 
     def __init__(self, my_d, g4_dic, detector_material, maxStep=0.5):
-        g4b.G4VUserDetectorConstruction.__init__(self)
+        super().__init__()
         self.g4_dic = g4_dic
         self.solid = {}
         self.logical = {}
@@ -161,11 +166,11 @@ class PixelDetectorConstruction(g4b.G4VUserDetectorConstruction):
             self.solid["world"], material, "world"
         )
         self.physical["world"] = g4b.G4PVPlacement(
-            None,
+            g4b.cppyy.nullptr,
             g4b.G4ThreeVector(0, 0, 0),
             self.logical["world"],
             "world",
-            None,
+            g4b.cppyy.nullptr,
             False,
             0,
             self.checkOverlaps,
@@ -221,8 +226,8 @@ class PixelDetectorConstruction(g4b.G4VUserDetectorConstruction):
                     self.solid[p_name], p_mixture, p_name
                 )
 
-                g4b.G4PVPlacement(
-                    None,
+                self.physical[p_name] = g4b.G4PVPlacement(
+                    g4b.cppyy.nullptr,
                     p_translation,
                     self.logical[p_name],
                     p_name,
@@ -269,8 +274,8 @@ class PixelDetectorConstruction(g4b.G4VUserDetectorConstruction):
                     0.0 * g4b.um,
                 )
                 t_pixelname = pixel_type + "_" + str(i) + "_" + str(j) + "_" + name
-                g4b.G4PVPlacement(
-                    None,
+                self.physical[t_pixelname] = g4b.G4PVPlacement(
+                    g4b.cppyy.nullptr,
                     t_translation,
                     self.logical[pixel_type],
                     t_pixelname,
@@ -304,7 +309,9 @@ class TelescopeEventAction(GeneralEventAction):
         edep_devices,
         p_steps,
         energy_steps,
+        time_steps,
         events_angles,
+        edep_window,
         devicenames,
         localpositions,
     ):
@@ -316,7 +323,9 @@ class TelescopeEventAction(GeneralEventAction):
             edep_devices,
             p_steps,
             energy_steps,
+            time_steps,
             events_angles,
+            edep_window,
         )
         # use in pixel_detector
         self.devicenames = devicenames
@@ -329,7 +338,8 @@ class TelescopeEventAction(GeneralEventAction):
 
     def EndOfEventAction(self, event):
         super().EndOfEventAction(event)
-        self.save_telescope_events(self.volume_name, self.localposition)
+        if self.in_edep_window():
+            self.save_telescope_events(self.volume_name, self.localposition)
 
     def RecordPixel(self, step):
         edep = step.GetTotalEnergyDeposit()
@@ -343,13 +353,16 @@ class TelescopeEventAction(GeneralEventAction):
         volume = touchable.GetVolume()
 
         transform = touchable.GetHistory().GetTopTransform()
-        localpos = transform.TransformPoint(point_in)
+        # the middle of the step: its start lies on the surface of the pixel
+        # when the particle enters, and rounding can put it outside
+        localpos = transform.TransformPoint((point_in + point_out) / 2)
 
         self.edep_device += edep
         self.p_step.append(
             [point_in.getX() * 1000, point_in.getY() * 1000, point_in.getZ() * 1000]
         )
         self.energy_step.append(edep)
+        self.time_step.append(point_pre.GetGlobalTime() / g4b.s)
         # save only in RecordPixel
         self.volume_name.append(volume.GetName())
         self.localposition.append(
@@ -397,12 +410,14 @@ class TelescopeActionInitialization(g4b.G4VUserActionInitialization):
         edep_devices,
         p_steps,
         energy_steps,
+        time_steps,
         events_angles,
+        edep_window,
         devicenames,
         localpositions,
         geant4_model,
     ):
-        g4b.G4VUserActionInitialization.__init__(self)
+        super().__init__()
         self.par_in = par_in
         self.par_out = par_out
         self.par_type = par_type
@@ -415,7 +430,9 @@ class TelescopeActionInitialization(g4b.G4VUserActionInitialization):
         self.edep_devices = edep_devices
         self.p_steps = p_steps
         self.energy_steps = energy_steps
+        self.time_steps = time_steps
         self.events_angles = events_angles
+        self.edep_window = edep_window
         self.devicenames = devicenames
         self.localpositions = localpositions
 
@@ -442,7 +459,9 @@ class TelescopeActionInitialization(g4b.G4VUserActionInitialization):
             self.edep_devices,
             self.p_steps,
             self.energy_steps,
+            self.time_steps,
             self.events_angles,
+            self.edep_window,
             self.devicenames,
             self.localpositions,
         )

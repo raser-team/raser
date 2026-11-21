@@ -12,8 +12,8 @@
     "spacial_FWHM" : 25,
     "central_time" : 20e-9,
 
-    "r_step" : 1,
-    "h_step" : 5000,
+    "pairs_per_group" : 1000,
+    "groups" : 3200,
 
     "fx_rel" : 0.0,
     "fy_rel" : 0.5,

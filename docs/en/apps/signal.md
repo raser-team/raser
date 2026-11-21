@@ -6,13 +6,16 @@ the frontend electronics used to read the sensor.
 
 ## Setup
 
-The Device component selects the sensor state and Field configuration. The
-Source component supplies the particle definition and its incidence on the
-Device Geant4 geometry. The frontend selection identifies the sensor
+The Device component selects the sensor state and Field configuration. An
+invocation may use `--field` to select existing Field data under the Device
+project. The Source component supplies the particle definition and its
+incidence on the Device Geant4 geometry. The frontend selection identifies the sensor
 electrical model and the AFE, PCB, or ASIC circuit connected to its electrodes.
 
 Run configuration supplies the event count, seed, execution mode, and any
-values selected for that run. The resolved setup is recorded in `run.json`.
+values selected for that run. `-evt` gives the event count of each job and `-s`
+gives the job count; the two are independent. The resolved setup is recorded
+in `run.json`.
 
 ## Calculation
 

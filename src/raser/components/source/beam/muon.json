@@ -5,6 +5,7 @@
     "par_energy" : 1000.0,
     "par_in" : [0, 0, 1000],
     "par_out" : [0, 0, -1000],
+    "par_angle" : 0,
     "par_randx" : 0,
     "par_randy" : 0
 }

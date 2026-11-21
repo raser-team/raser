@@ -65,7 +65,7 @@ Device. `device.json` remains the source of defaults across Field production
 and loading.
 
 A [Device component](../components/device.md) replaces defaults for an
-application project. A [run record](../supports/runs.md) resolves any narrower
+application project. A [run record](../lifecycle/runs.md) resolves any narrower
 invocation values and preserves the result. [Field](field.md) then turns the
 resolved values into the configuration whose hash addresses the reusable data.
 
@@ -112,13 +112,13 @@ detector coordinates.
 ## ⚙️ Runtime Device contract
 
 Device starts from `device.json`. An application resolves component and
-run-level values according to [Runs](../supports/runs.md), then asks Device to
+run-level values according to [Runs](../lifecycle/runs.md), then asks Device to
 validate the result. The runtime Device combines the unchanged sensor
 definition with that resolved state.
 
 [Field configuration](field.md#configuration) places the resolved values in
 `config.json` and uses its hash as the data-directory name. Applications record
-the same configuration and hash in [run.json](../supports/runs.md). Device
+the same configuration and hash in [run.json](../lifecycle/runs.md). Device
 passes resolved values to Field. Field derives the asset directory from the
 configuration hash and restores its files.
 

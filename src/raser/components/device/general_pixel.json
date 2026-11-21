@@ -1,6 +1,7 @@
 {
     "det_name": "pixel_test",
     "det_model": "pixel",  
+    "electrodes": "pixel",
     "material": "Si",
     "l_x": 900,  
     "l_y": 900,  

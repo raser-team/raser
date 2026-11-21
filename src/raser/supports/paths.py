@@ -50,20 +50,38 @@ def infer_project_root(input_value: str | os.PathLike | None):
 
 
 @contextmanager
-def project_root_context(project_path_value: str | os.PathLike | None):
-    if project_path_value is None:
+def _environment(name: str, value: str | None):
+    if value is None:
         yield
         return
 
-    previous = os.environ.get("RASER_PROJECT_PATH")
-    os.environ["RASER_PROJECT_PATH"] = str(project_path_value)
+    previous = os.environ.get(name)
+    os.environ[name] = value
     try:
         yield
     finally:
         if previous is None:
-            os.environ.pop("RASER_PROJECT_PATH", None)
+            os.environ.pop(name, None)
         else:
-            os.environ["RASER_PROJECT_PATH"] = previous
+            os.environ[name] = previous
+
+
+@contextmanager
+def project_root_context(
+    project_path_value: str | os.PathLike | None,
+    component_apps: tuple[str, ...] = (),
+):
+    project = None if project_path_value is None else str(project_path_value)
+    components = None
+    if component_apps:
+        roots = [str(app_component_root(app)) for app in component_apps]
+        previous = os.environ.get("RASER_COMPONENT_PATH")
+        if previous:
+            roots.append(previous)
+        components = os.pathsep.join(roots)
+    with _environment("RASER_PROJECT_PATH", project):
+        with _environment("RASER_COMPONENT_PATH", components):
+            yield
 
 
 def _as_path_list(paths: str | os.PathLike | list[str | os.PathLike] | None):

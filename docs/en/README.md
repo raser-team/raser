@@ -29,6 +29,7 @@ PCB, ASIC, and ADC designs are maintained under
 
 | Document | Scenario |
 | --- | --- |
+| [Field](apps/field.md) | Field-data calculation for a Device |
 | [Signal](apps/signal.md) | Particle-source response of a Device |
 | [TCT](apps/tct.md) | Laser transient-current and position scans |
 | [Time resolution](apps/timeres.md) | Timing measurement with its own apparatus |
@@ -53,12 +54,17 @@ scenario.
 | [Source components](components/source/README.md) | Beam and decay sources |
 | [Laser component](components/laser.md) | Optical injection |
 
+## Lifecycle
+
+| Document | Subject |
+| --- | --- |
+| [Runs](lifecycle/runs.md) | Experiments, scans, and run records |
+| [Jobs](lifecycle/jobs.md) | Local and cluster execution |
+
 ## Supports
 
 | Document | Subject |
 | --- | --- |
 | [Supports](supports/README.md) | Shared runtime services |
 | [Paths](supports/paths.md) | Project context and definition lookup |
-| [Runs](supports/runs.md) | Resolved run configuration and records |
-| [Jobs](supports/jobs.md) | Local and cluster execution |
 | [Output](supports/output.md) | Artifact paths and writers |

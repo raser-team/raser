@@ -1,6 +1,5 @@
 {
   "source": "decay/Sr90",
-  "afe": "Broad_Band_UCSC",
-  "adc": "Alibava",
+  "afe": "SantaCruz+Gali52+Termination50",
   "g4setup": "time_resolution"
 }

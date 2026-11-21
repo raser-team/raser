@@ -1,6 +1,7 @@
 {
     "det_name" : "general_strip",
     "det_model" : "strip",
+    "electrodes" : "strip",
     "material" : "Si",
 
     "l_x" : 1000,
@@ -20,14 +21,8 @@
     },
     
     "temperature" : 300,
-    "vector_delta_t": 1e-12,
-    "vector_boundary_tolerance": 0.1,
-    "vector_min_field_strength": 25.0,
-    "current_smoothing_window": 0,
-    "current_savgol_window": 0,
-    "current_savgol_poly": 0,
 
-    "area_factor" : 1,
+    "area_factor" : 0.1,
     "default_dimension" : 2,
     "read_out_contact" : [{"x_span":4, "y_span":0, "name":"top"}],
     "field_shift_x" : 100,

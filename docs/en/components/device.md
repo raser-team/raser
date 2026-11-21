@@ -19,7 +19,7 @@ The entry contains:
 
 Resolution starts from the defaults in `device.json`, applies the values in
 the Device component, and then applies named run and invocation values through
-[Run records](../supports/runs.md). The resolved state addresses one Field
+[Run records](../lifecycle/runs.md). The resolved state addresses one Field
 configuration stored by the Device project.
 
 The application records the Device reference, definition revision, resolved

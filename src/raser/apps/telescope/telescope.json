@@ -4,6 +4,7 @@
 
     "ltz": [20000.0,60000.0,100000.0,140000.0,180000.0,220000.0],
     "seedcharge": 100,
+    "collection_window_s": 10e-9,
 
     "object" : {
         "pixel"  : {
@@ -137,7 +138,7 @@
     "par_energy" : 5000,
     "maxstep" : 2,
     "g4_vis" : false,
-    "par_in" : [0, 0, -600000],
+    "par_in" : [0, 0, -400000],
     "par_out" : [0, 0, 100000],
     "par_randx": 750,
     "par_randy": 750

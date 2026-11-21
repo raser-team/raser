@@ -8,25 +8,22 @@ Description:
 @version    : 3.0
 '''
 
-import random
 import math
 import os
-from array import array
 import csv
-from contextlib import contextmanager
-import time
 import logging
 import numpy as np
 import ROOT
 ROOT.gROOT.SetBatch(True)
 
 from .model import Material
-from .carrier import VectorizedCarrierSystem
+from .drift import Drifted, drift, induced_charges, surviving
+from . import draw
+from .draw_drift_path import draw_drift_path
+from .currents import EventCurrents, append_currents
 
 from ..interaction.carrier_list import CarrierListFromG4P
-from ..interaction.toy_mip import ToyMIPLineSource
-from .convolution import signal_convolution
-from .vector import Vector
+from ..interaction.deposits import EventDeposits, read_deposits
 from raser.supports.output import output
 
 t_bin = {
@@ -60,17 +57,60 @@ if not logging.getLogger().handlers:
 logger.setLevel(logging.INFO)
 
 
-class StageTimings(dict):
-    @contextmanager
-    def record(self, name):
-        start = time.perf_counter()
-        try:
-            yield
-        finally:
-            self[name] = time.perf_counter() - start
+def spread_over_bins(bins, value, t_from, t_to, t_first, bin_width):
+    """Add what one drift step induces to the output bins its time covers.
 
-    def summary(self):
-        return {name: round(seconds, 6) for name, seconds in self.items()}
+    `bins` holds the underflow bin, the bins that start at `t_first`, and the
+    overflow bin. Each bin receives the share of `value` that the step, lasting
+    from `t_from` to `t_to`, spends inside it.
+    """
+    first = math.floor((t_from - t_first) / bin_width)
+    last = math.floor((t_to - t_first) / bin_width)
+    for index in range(first, last + 1):
+        start = max(t_from, t_first + index * bin_width)
+        end = min(t_to, t_first + (index + 1) * bin_width)
+        share = max(end - start, 0.0) / (t_to - t_from)
+        bins[min(max(index + 1, 0), len(bins) - 1)] += value * share
+
+
+def fill_histogram(histogram, bins):
+    """Copy binned values, underflow and overflow included, into a TH1F.
+
+    Histograms remain for the callers that still read them.
+    """
+    for index, value in enumerate(bins):
+        histogram.SetBinContent(index, float(value))
+
+
+def electrode_names(read_out_contact, read_ele_num):
+    """Names of the readout electrodes, in the order of the currents.
+
+    A device that lists every electrode gives their names. One that lists a
+    single electrode repeated over strips or pixels gives that name with
+    the number of the electrode, counted from 1 like the listed ones.
+    """
+    if len(read_out_contact) == read_ele_num:
+        return [contact["name"] for contact in read_out_contact]
+    if len(read_out_contact) == 1:
+        return [
+            "{}{}".format(read_out_contact[0]["name"], number + 1)
+            for number in range(read_ele_num)
+        ]
+    raise ValueError(
+        "{} readout contacts cannot name {} electrodes".format(
+            len(read_out_contact), read_ele_num
+        )
+    )
+
+
+def gain_algorithm(my_f):
+    """How the gain is calculated in a field.
+
+    A field of one dimension is that of a planar device, whose gain is the
+    planar integral; in fields of more dimensions carriers multiply along
+    their drift paths.
+    """
+    return "planar_integral" if len(my_f.axes) == 1 else "local_path"
 
 
 class CalCurrent:
@@ -85,18 +125,18 @@ class CalCurrent:
         track_position : float[]
             position of the generated carriers
     Attributes:
-        electrons, holes : VectorizedCarrierSystem[]
-            the generated carriers, able to calculate their movement
+        electron_system, hole_system : Drifted
+            the generated carriers after their drift
     Modify:
         2024/11/09
     """
-    def __init__(self, my_d, my_f, ionized_pairs, track_position, keep_drift_paths=True):
-        self.timings = StageTimings()
+    def __init__(self, my_d, my_f, ionized_pairs, track_position, keep_drift_paths=True, diffusion=True):
         self.keep_drift_paths = bool(keep_drift_paths)
-        if getattr(my_d, "has_avalanche", False) and getattr(my_d, "gain_algorithm", None) == "local_path":
+        self.diffusion = bool(diffusion)
+        self.pairs = float(sum(ionized_pairs))  # electron-hole pairs given, before gain
+        if my_d.has_avalanche and gain_algorithm(my_f) == "local_path":
             self.keep_drift_paths = True
-        with self.timings.record("total"):
-            self._run_current_calculation(my_d, my_f, ionized_pairs, track_position)
+        self._run_current_calculation(my_d, my_f, ionized_pairs, track_position)
 
     def _run_current_calculation(self, my_d, my_f, ionized_pairs, track_position):
         logger.info("current calculation start...")
@@ -108,8 +148,6 @@ class CalCurrent:
             relative_end = t_end[1]
             relative_start = t_start[1]
         self.delta_t = delta_t[1] if my_d.is_plugin() else delta_t[my_d.dimension]
-        # 漂移步长、时间轴换算和俘获衰减必须使用同一个步长
-        self.delta_t = getattr(my_d, "vector_delta_t", self.delta_t)
         creation_times = [float(position[3]) for position in track_position]
         first_creation = min(creation_times, default=0.0)
         last_creation = max(creation_times, default=0.0)
@@ -122,154 +160,161 @@ class CalCurrent:
             self.x_ele_num = my_d.x_ele_num
             self.y_ele_num = my_d.y_ele_num
         self.read_out_contact = my_d.read_out_contact
+        self.electrodes = electrode_names(self.read_out_contact, self.read_ele_num)
         
-        self.electron_system = None
-        self.hole_system = None
-        
-        self.smoothing_window = max(0, int(getattr(my_d, "current_smoothing_window", 0)))
-        self.savgol_window = max(0, int(getattr(my_d, "current_savgol_window", 0)))
-        self.savgol_poly = max(0, int(getattr(my_d, "current_savgol_poly", 0)))
-        if self.savgol_window and self.savgol_window % 2 == 0:
-            self.savgol_window += 1  # Savitzky-Golay 需要奇数窗口
-        if self.savgol_window and self.savgol_poly >= self.savgol_window:
-            self.savgol_poly = max(0, self.savgol_window - 1)
-        self._savgol_kernel = None
+        # the carriers to drift: those created inside the detector, over an electrode
+        starts = []
+        pairs = []
+        for position, n_pairs in zip(track_position, ionized_pairs):
+            x, y, z, t = position
+            if self._is_in_sensor(x, y, z, my_d) and self._is_in_field_range(x, y, my_d):
+                starts.append((x, y, z, t))
+                pairs.append(n_pairs)
 
-        # 准备载流子数据
-        electron_positions = []
-        electron_charges = []
-        electron_times = []
-        electron_signals = []
-        
-        hole_positions = []
-        hole_charges = []
-        hole_times = []
-        hole_signals = []
+        logger.info(f"carriers inside the detector: {len(starts)} electrons, {len(starts)} holes")
+        self.electron_system = self.drift_all(my_d, my_f, starts, [-n_pairs for n_pairs in pairs])
+        self.hole_system = self.drift_all(my_d, my_f, starts, pairs)
 
-        with self.timings.record("carrier_filter"):
-            for i in range(len(track_position)):
-                x, y, z, t = track_position[i]
-                t_num = int(t / self.delta_t + t_tol)
-                charge = ionized_pairs[i]
-                
-                # 过滤在探测器边界外的载流子
-                if self._is_in_sensor(x, y, z, my_d) and self._is_in_field_range(x, y, my_d, my_d.x_ele_num, my_d.y_ele_num):
-                    # 电子
-                    electron_positions.append([x, y, z])
-                    electron_charges.append(-charge)  # 电子带负电
-                    electron_times.append(t_num)
-                    electron_signals.append([])  # 空信号列表
-                    
-                    # 空穴
-                    hole_positions.append([x, y, z])
-                    hole_charges.append(charge)  # 空穴带正电
-                    hole_times.append(t_num)
-                    hole_signals.append([])
+        # number of carriers that stopped for each reason; those of the gain are added with the gain current
+        self.ends = self.count_ends()
 
-        logger.info(f"载流子过滤完成: {len(electron_positions)}个电子, {len(hole_positions)}个空穴")
-
-        # 创建向量化系统
-        with self.timings.record("carrier_system_init"):
-            if electron_positions:
-                self.electron_system = VectorizedCarrierSystem(
-                    electron_positions, electron_charges, electron_times, electron_signals,
-                    my_d.material, "electron", self.read_out_contact, my_d,
-                    keep_drift_paths=self.keep_drift_paths,
-                )
-            
-            if hole_positions:
-                self.hole_system = VectorizedCarrierSystem(
-                    hole_positions, hole_charges, hole_times, hole_signals,
-                    my_d.material, "hole", self.read_out_contact, my_d,
-                    keep_drift_paths=self.keep_drift_paths,
-                )
-
-        logger.info("向量化系统初始化完成")
-        
-        # 执行漂移和信号计算
-        self.drifting_loop(my_d, my_f)
-
-        # 初始化电流直方图
-        with self.timings.record("current_histogram"):
-            self.current_define(self.read_ele_num)
-            for i in range(self.read_ele_num):
-                self.sum_cu[i].Reset()
-                self.positive_cu[i].Reset()
-                self.negative_cu[i].Reset()
-            
-            # 计算电流
-            self.get_current(my_d.x_ele_num, my_d.y_ele_num, self.read_out_contact)
-            
-            # 合并电流
-            for i in range(self.read_ele_num):
-                self.sum_cu[i].Add(self.positive_cu[i])
-                self.sum_cu[i].Add(self.negative_cu[i])
-            
-            if self.smoothing_window > 1:
-                self._apply_smoothing()
+        # the currents: arrays (read_ele_num, n_bin + 2) in A; the first and last columns hold the parts before and after the time window
+        hole_bins = self.binned(my_d, my_f, self.hole_system)
+        electron_bins = self.binned(my_d, my_f, self.electron_system)
+        sum_bins = hole_bins + electron_bins
 
         self.det_model = my_d.det_model
-        if getattr(my_d, "has_avalanche", False):
+        if my_d.has_avalanche:
             self.gain_current = CalCurrentGain(my_d, my_f, self)
-            for i in range(self.read_ele_num):
-                self.sum_cu[i].Add(self.gain_current.negative_cu[i])
-                self.sum_cu[i].Add(self.gain_current.positive_cu[i])
+            sum_bins += self.gain_current.hole_bins + self.gain_current.electron_bins
+            for reason, count in self.gain_current.count_ends().items():
+                self.ends[reason] = self.ends.get(reason, 0) + count
+
+        # current of each electrode inside the time window, (read_ele_num, n_bin), in A
+        self.hole_current = hole_bins[:, 1:-1]
+        self.electron_current = electron_bins[:, 1:-1]
+        self.current = sum_bins[:, 1:-1]
+        # signed net charge of each electrode in C: all the induced charge, the part outside the time window included
+        self.charge = sum_bins.sum(axis=1) * self.t_bin
+
+        # fill the histograms for the callers that still read them
+        self.current_define(self.read_ele_num)
+        for i in range(self.read_ele_num):
+            fill_histogram(self.positive_cu[i], hole_bins[i])
+            fill_histogram(self.negative_cu[i], electron_bins[i])
+            fill_histogram(self.sum_cu[i], sum_bins[i])
+
+        if not self.keep_drift_paths:
+            gain = getattr(self, "gain_current", self)
+            for carrier_system in (
+                self.electron_system, self.hole_system, gain.electron_system, gain.hole_system
+            ):
+                if carrier_system is not None:
+                    carrier_system.paths = []
 
     def _is_in_sensor(self, x, y, z, my_d):
-        """检查位置是否在探测器内"""
+        """Whether the position is inside the detector."""
         return (0 <= x <= my_d.l_x and 
                 0 <= y <= my_d.l_y and 
                 0 <= z <= my_d.l_z)
 
-    def _is_in_field_range(self, x, y, my_d, n_x, n_y):
-        """检查位置是否在电场范围内"""
-        # 计算电极编号
-        try:
-            x_num = int((x - my_d.l_x/2) // getattr(my_d, 'p_x', my_d.l_x) + n_x/2.0)
-            y_num = int((y - my_d.l_y/2) // getattr(my_d, 'p_y', my_d.l_y) + n_y/2.0)
-            return (0 <= x_num < n_x and 0 <= y_num < n_y)
-        except:
-            return True  # 如果计算失败，默认在范围内
+    def _is_in_field_range(self, x, y, my_d):
+        """Whether the position is over one of the electrodes."""
+        x_num, y_num = self.electrode_under(x, y, my_d)
+        return 0 <= x_num < my_d.x_ele_num and 0 <= y_num < my_d.y_ele_num
 
-    def drifting_loop(self, my_d, my_f):
-        """漂移循环 - 使用向量化系统"""
-        logger.info(f"向量化漂移: 电子系统={self.electron_system is not None}, 空穴系统={self.hole_system is not None}")
-        delta_t_sim = self.delta_t
-        
-        try:            
-            # 批量处理电子
-            if self.electron_system:
-                logger.info(f"电子数量: {len(self.electron_system.positions)}")
-                with self.timings.record("electron_drift"):
-                    self.electron_system.drift_batch(my_d, my_f, delta_t=delta_t_sim)
-                logger.info("电子漂移结束，开始信号计算...")
-                with self.timings.record("electron_signal"):
-                    self.electron_system.get_signal_batch(my_d, my_f, delta_t=delta_t_sim)
-            
-            # 批量处理空穴
-            if self.hole_system:
-                logger.info(f"空穴数量: {len(self.hole_system.positions)}")
-                with self.timings.record("hole_drift"):
-                    self.hole_system.drift_batch(my_d, my_f, delta_t=delta_t_sim)
-                logger.info("空穴漂移结束，开始信号计算...")
-                with self.timings.record("hole_signal"):
-                    self.hole_system.get_signal_batch(my_d, my_f, delta_t=delta_t_sim)
-                            
-            cache_stats = my_f.get_cache_stats()
-            logger.info(
-                "电场缓存统计: 命中=%d, 未命中=%d, 错误=%d, 备用=%d, 命中率=%.2f%%",
-                cache_stats['hits'], cache_stats['misses'], cache_stats['errors'],
-                cache_stats['fallbacks'], cache_stats['hit_rate'] * 100.0
+    @staticmethod
+    def electrode_under(x, y, my_d):
+        """Numbers along x and y of the electrode a position is under.
+
+        The electrodes, x_ele_num by y_ele_num at pitches p_x and p_y, are
+        centred on the device.
+        """
+        numbers = []
+        for here, length, pitch, count in (
+            (x, my_d.l_x, my_d.p_x, my_d.x_ele_num), (y, my_d.l_y, my_d.p_y, my_d.y_ele_num)
+        ):
+            first_edge = (length - count * pitch) / 2
+            number = math.floor((here - first_edge) / pitch)
+            # the far edge of the last electrode belongs to it
+            numbers.append(count - 1 if here == first_edge + count * pitch else number)
+        return numbers
+
+    def drift_all(self, my_d, my_f, starts, charges):
+        """Drift a cluster from each of `starts` (x, y, z [um], t [s]); None without any."""
+        if not starts:
+            return None
+        mobility = Material(my_d.material).cal_mobility
+        drifted = Drifted(list(charges), [], [])
+        for (x, y, z, t), charge in zip(starts, charges):
+            path, reason = drift(
+                x, y, z, t, charge, my_d, my_f, mobility, self.delta_t, self.diffusion
             )
-                            
-        except Exception as e:
-            logger.exception("漂移循环错误: %s", e)
-            raise
-    
-        logger.info("漂移和信号计算完成")
+            drifted.paths.append(path)
+            drifted.reasons.append(reason)
+        return drifted
+
+    def count_ends(self):
+        """How many clusters stopped for each reason."""
+        ends = {}
+        for carrier_system in (self.electron_system, self.hole_system):
+            if carrier_system is not None:
+                for reason in carrier_system.reasons:
+                    ends[reason] = ends.get(reason, 0) + 1
+        return ends
+
+    def electrodes_near(self, x, y, my_d, my_f):
+        """The electrodes a cluster starting at x, y may induce charge on.
+
+        For each: its number among the currents, its number in the field,
+        and the offset `induced_charges` takes. A device that lists every
+        electrode gives them all. Where one listed electrode repeats, its
+        weighting potential is the same for every electrode: the field holds
+        it once, on a row of cells that starts at 0 with the electrode in
+        the middle one, and the offset moves an electrode onto that cell.
+        The electrodes of the cells the potential is on are given, counted
+        from the one above the start: further away it is left out as nothing.
+        """
+        if len(self.read_out_contact) != 1:
+            return [(number, number, (0.0, 0.0)) for number in range(len(self.read_out_contact))]
+        x_num, y_num = self.electrode_under(x, y, my_d)
+        x_span = my_f.cells_either_side
+        y_span = self.read_out_contact[0].get('y_span', 0)
+        x_first = (my_d.l_x - my_d.x_ele_num * my_d.p_x) / 2
+        y_first = (my_d.l_y - my_d.y_ele_num * my_d.p_y) / 2
+        near = []
+        for i in range(max(x_num - x_span, 0), min(x_num + x_span, my_d.x_ele_num - 1) + 1):
+            for j in range(max(y_num - y_span, 0), min(y_num + y_span, my_d.y_ele_num - 1) + 1):
+                offset = (x_first + (i - x_span) * my_d.p_x, y_first + (j - y_span) * my_d.p_y)
+                near.append((i * my_d.y_ele_num + j, 0, offset))
+        return near
+
+    def binned(self, my_d, my_f, carrier_system):
+        """Binned current of the clusters of one sign.
+
+        An array (read_ele_num, n_bin + 2) in A: per electrode the part
+        before t_start, the n_bin bins of the time window, and the part
+        after t_end.
+        """
+        bins = np.zeros((self.read_ele_num, self.n_bin + 2), dtype=np.float64)
+        if carrier_system is None:
+            return bins
+        bin_width = (self.t_end - self.t_start) / self.n_bin
+        for charge, path in zip(carrier_system.charges, carrier_system.paths):
+            if len(path) < 2:
+                continue
+            if my_d.irradiation_model is not None:
+                charge = surviving(path, charge, my_f)
+            for number, in_field, offset in self.electrodes_near(path[0][0], path[0][1], my_d, my_f):
+                induced = induced_charges(path, charge, my_f, in_field, offset)
+                for value, t_from, t_to in zip(induced, path[:-1, 3], path[1:, 3]):
+                    spread_over_bins(
+                        bins[number], value / self.t_bin, t_from, t_to, self.t_start, bin_width
+                    )
+        return bins
 
     def current_define(self, read_ele_num):
-        """定义电流直方图"""
+        """Create the current histograms."""
         self.positive_cu = []
         self.negative_cu = []
         self.sum_cu = []
@@ -282,490 +327,81 @@ class CalCurrent:
             self.sum_cu.append(ROOT.TH1F("charge"+str(i+1),"Total Current"+" No."+str(i+1)+"electrode",
                                     self.n_bin, self.t_start, self.t_end))
             
-    def get_current(self, n_x, n_y, read_out_contact):
-        """从向量化系统获取电流"""
-        logger.info("开始计算电流...")
-        
-        # 重置电流直方图
-        for i in range(self.read_ele_num):
-            self.positive_cu[i].Reset()
-            self.negative_cu[i].Reset()
-        
-        hole_signals_found = 0
-        electron_signals_found = 0
-        
-        # 单电极配置
-        if len(read_out_contact) == 1:
-            x_span = read_out_contact[0]['x_span']
-            y_span = read_out_contact[0]['y_span']
-            total_electrodes = (2 * x_span + 1) * (2 * y_span + 1)
-            
-            logger.info(f"电流计算: 单电极配置, x_span={x_span}, y_span={y_span}, 总电极数={total_electrodes}")
-            
-            # 处理空穴电流
-            if self.hole_system:
-                hole_signals_found = self._process_system_current(
-                    self.hole_system, n_x, n_y, 
-                    x_span, y_span, total_electrodes, "hole"
-                )
-            
-            # 处理电子电流
-            if self.electron_system:
-                electron_signals_found = self._process_system_current(
-                    self.electron_system, n_x, n_y,
-                    x_span, y_span, total_electrodes, "electron"
-                )
-        else:
-            total_electrodes = len(read_out_contact)
-            logger.info(f"电流计算: 多电极配置, 总电极数={total_electrodes}")
-            if self.hole_system:
-                hole_signals_found = self._process_system_current_direct(
-                    self.hole_system, total_electrodes, "hole"
-                )
-            if self.electron_system:
-                electron_signals_found = self._process_system_current_direct(
-                    self.electron_system, total_electrodes, "electron"
-                )
-        
-        logger.info(f"电流计算完成: 空穴{hole_signals_found}点, 电子{electron_signals_found}点")
-        
-        # 验证电流结果
-        for i in range(self.read_ele_num):
-            hole_integral = self.positive_cu[i].Integral() * self.t_bin
-            electron_integral = self.negative_cu[i].Integral() * self.t_bin
-            logger.info(f"电极{i}: 空穴电荷={hole_integral:.2e}C, 电子电荷={electron_integral:.2e}C")
-
-    def _process_system_current(self, carrier_system, n_x, n_y, 
-                              x_span, y_span, total_electrodes, carrier_type):
-        """处理单个载流子系统的电流计算"""
-        signals_found = 0
-        if carrier_type == "hole":
-            histograms = self.positive_cu
-        elif carrier_type == "electron":
-            histograms = self.negative_cu
-        else:
-            logger.warning(f"未知的载流子类型: {carrier_type}")
-            return signals_found
-
-        bin_accumulators = [
-            np.zeros(hist.GetNbinsX() + 2, dtype=np.float64)
-            for hist in histograms
-        ]
-        axis = histograms[0].GetXaxis()
-        x_min = axis.GetXmin()
-        x_max = axis.GetXmax()
-        bin_width = (x_max - x_min) / histograms[0].GetNbinsX()
-
-        for carrier_idx in range(len(carrier_system.positions)):
-            # 检查这个载流子是否有信号
-            if (carrier_idx >= len(carrier_system.signals) or 
-                not carrier_system.signals[carrier_idx]):
-                continue
-            
-            carrier_signals = carrier_system.signals[carrier_idx]
-            path_reduced = carrier_system.paths_reduced[carrier_idx]
-            
-            # 处理每个电极
-            for electrode_idx in range(total_electrodes):
-                if electrode_idx >= len(carrier_signals):
-                    continue
-                
-                electrode_signals = carrier_signals[electrode_idx]
-                if not electrode_signals:
-                    continue
-                
-                # 计算电极的j,k坐标
-                j = electrode_idx // (2 * y_span + 1)
-                k = electrode_idx % (2 * y_span + 1)
-                
-                # 处理每个路径段的信号
-                for step_idx in range(len(path_reduced)-1):                    
-                    signal_value = electrode_signals[step_idx]
-
-                    # 获取路径点的电极编号
-                    x_num = path_reduced[step_idx][4] + (j - x_span)
-                    y_num = path_reduced[step_idx][5] + (k - y_span)
-                    
-                    # 检查电极编号是否有效
-                    if 0 <= x_num < n_x and 0 <= y_num < n_y:
-                        target_electrode = x_num * n_y + y_num
-                        if target_electrode < self.read_ele_num:
-                            time_point = path_reduced[step_idx][3]
-                            current_value = signal_value / self.t_bin
-                            time_value = time_point * self.delta_t + t_tol
-                            if time_value < x_min:
-                                bin_idx = 0
-                            elif time_value >= x_max:
-                                bin_idx = histograms[target_electrode].GetNbinsX() + 1
-                            else:
-                                bin_idx = int((time_value - x_min) / bin_width) + 1
-                            bin_accumulators[target_electrode][bin_idx] += current_value
-                            signals_found += 1
-                            
-                            # 调试前几个信号
-                            if signals_found <= 3:
-                                logger.info(f"{carrier_type}信号: t={time_point*self.delta_t+t_tol:.2e}s, I={current_value:.2e}A, 电极={target_electrode}")
-
-        for electrode_idx, accumulator in enumerate(bin_accumulators):
-            nonzero_bins = np.nonzero(accumulator)[0]
-            hist = histograms[electrode_idx]
-            for bin_idx in nonzero_bins:
-                hist.SetBinContent(
-                    int(bin_idx),
-                    hist.GetBinContent(int(bin_idx)) + float(accumulator[bin_idx])
-                )
-            hist.SetEntries(hist.GetEntries() + float(np.sum(accumulator != 0.0)))
-
-        return signals_found
-
-    def _process_system_current_direct(
-        self, carrier_system, total_electrodes, carrier_type
-    ):
-        if carrier_type == "hole":
-            histograms = self.positive_cu
-        elif carrier_type == "electron":
-            histograms = self.negative_cu
-        else:
-            raise ValueError(f"未知载流子类型: {carrier_type}")
-
-        bin_accumulators = [
-            np.zeros(hist.GetNbinsX() + 2, dtype=np.float64)
-            for hist in histograms
-        ]
-        axis = histograms[0].GetXaxis()
-        x_min = axis.GetXmin()
-        x_max = axis.GetXmax()
-        bin_width = (x_max - x_min) / histograms[0].GetNbinsX()
-        signals_found = 0
-
-        for carrier_idx, carrier_signals in enumerate(carrier_system.signals):
-            if not carrier_signals:
-                continue
-            path = carrier_system.paths_reduced[carrier_idx]
-            for electrode_idx, electrode_signals in enumerate(
-                carrier_signals[:total_electrodes]
-            ):
-                for step_idx, signal_value in enumerate(
-                    electrode_signals[: max(0, len(path) - 1)]
-                ):
-                    time_value = path[step_idx][3] * self.delta_t + t_tol
-                    if time_value < x_min:
-                        bin_idx = 0
-                    elif time_value >= x_max:
-                        bin_idx = histograms[electrode_idx].GetNbinsX() + 1
-                    else:
-                        bin_idx = int((time_value - x_min) / bin_width) + 1
-                    bin_accumulators[electrode_idx][bin_idx] += (
-                        signal_value / self.t_bin
-                    )
-                    signals_found += 1
-
-        for electrode_idx, accumulator in enumerate(bin_accumulators):
-            hist = histograms[electrode_idx]
-            for bin_idx in np.nonzero(accumulator)[0]:
-                hist.SetBinContent(
-                    int(bin_idx),
-                    hist.GetBinContent(int(bin_idx)) + float(accumulator[bin_idx]),
-                )
-            hist.SetEntries(hist.GetEntries() + float(np.sum(accumulator != 0.0)))
-        return signals_found
-    
-    def _apply_smoothing(self):
-        """对电流直方图进行多阶段平滑，减少高频噪声"""
-        def _moving_average(hist, kernel, window):
-            nbins = hist.GetNbinsX()
-            if nbins == 0 or nbins < window:
-                return
-            data = np.array([hist.GetBinContent(i) for i in range(1, nbins + 1)], dtype=np.float64)
-            pad_left = window // 2
-            pad_right = window - 1 - pad_left
-            padded = np.pad(data, (pad_left, pad_right), mode='edge')
-            smoothed = np.convolve(padded, kernel, mode='valid')
-            for idx, value in enumerate(smoothed, start=1):
-                hist.SetBinContent(idx, float(value))
-
-        def _savgol(hist):
-            nbins = hist.GetNbinsX()
-            window = self.savgol_window
-            if nbins == 0 or window <= 1 or nbins < window:
-                return
-            data = np.array([hist.GetBinContent(i) for i in range(1, nbins + 1)], dtype=np.float64)
-            kernel = self._get_savgol_kernel()
-            pad = window // 2
-            padded = np.pad(data, (pad, pad), mode='edge')
-            smoothed = np.convolve(padded, kernel, mode='valid')
-            for idx, value in enumerate(smoothed, start=1):
-                hist.SetBinContent(idx, float(value))
-
-        targets = [self.positive_cu, self.negative_cu, self.sum_cu]
-        if hasattr(self, "gain_current"):
-            targets.append(getattr(self.gain_current, "positive_cu", []))
-            targets.append(getattr(self.gain_current, "negative_cu", []))
-
-        if self.smoothing_window > 1:
-            ma_window = self.smoothing_window
-            if ma_window % 2 == 0:
-                ma_window += 1
-            kernel = np.ones(ma_window, dtype=np.float64) / float(ma_window)
-            logger.info("应用滑动窗口平滑 (窗口=%d)", ma_window)
-            for hist_list in targets:
-                for hist in hist_list:
-                    _moving_average(hist, kernel, ma_window)
-
-        if self.savgol_window > 1:
-            logger.info(
-                "应用 Savitzky-Golay 平滑 (窗口=%d, 多项式阶=%d)",
-                self.savgol_window,
-                self.savgol_poly,
-            )
-            for hist_list in targets:
-                for hist in hist_list:
-                    _savgol(hist)
-
-    def _get_savgol_kernel(self):
-        if self._savgol_kernel is not None:
-            return self._savgol_kernel
-        window = self.savgol_window
-        if window <= 1:
-            self._savgol_kernel = np.array([1.0], dtype=np.float64)
-            return self._savgol_kernel
-        poly = min(self.savgol_poly, window - 1)
-        half = window // 2
-        x = np.arange(-half, half + 1, dtype=np.float64)
-        A = np.vander(x, poly + 1, increasing=True)
-        ATA = A.T @ A
-        ATA_inv = np.linalg.pinv(ATA)
-        coeffs = ATA_inv @ A.T
-        kernel = coeffs[0]
-        kernel /= np.sum(kernel)
-        self._savgol_kernel = kernel
-        return self._savgol_kernel
-
     def draw_currents(self, path, tag=""):
-        """
-        @description:
-            Save current in root file
-        @param:
-            None     
-        @Returns:
-            None
-        @Modify:
-            2021/08/31
-        """
-        for read_ele_num in range(self.read_ele_num):
-            c=ROOT.TCanvas("c","canvas1",1600,1300)
-            c.cd()
-            c.Update()
-            c.SetLeftMargin(0.25)
-            # c.SetTopMargin(0.12)
-            c.SetRightMargin(0.15)
-            c.SetBottomMargin(0.17)
-            ROOT.gStyle.SetOptStat(ROOT.kFALSE)
-            ROOT.gStyle.SetOptStat(0)
-
-            #self.sum_cu.GetXaxis().SetTitleOffset(1.2)
-            #self.sum_cu.GetXaxis().SetTitleSize(0.05)
-            #self.sum_cu.GetXaxis().SetLabelSize(0.04)
-            self.sum_cu[read_ele_num].GetXaxis().SetNdivisions(510)
-            #self.sum_cu.GetYaxis().SetTitleOffset(1.1)
-            #self.sum_cu.GetYaxis().SetTitleSize(0.05)
-            #self.sum_cu.GetYaxis().SetLabelSize(0.04)
-            self.sum_cu[read_ele_num].GetYaxis().SetNdivisions(505)
-            #self.sum_cu.GetXaxis().CenterTitle()
-            #self.sum_cu.GetYaxis().CenterTitle() 
-            self.sum_cu[read_ele_num].GetXaxis().SetTitle("Time [s]")
-            self.sum_cu[read_ele_num].GetYaxis().SetTitle("Current [A]")
-            self.sum_cu[read_ele_num].GetXaxis().SetLabelSize(0.08)
-            self.sum_cu[read_ele_num].GetXaxis().SetTitleSize(0.08)
-            self.sum_cu[read_ele_num].GetYaxis().SetLabelSize(0.08)
-            self.sum_cu[read_ele_num].GetYaxis().SetTitleSize(0.08)
-            self.sum_cu[read_ele_num].GetYaxis().SetTitleOffset(1.2)
-            self.sum_cu[read_ele_num].SetTitle("")
-            self.sum_cu[read_ele_num].SetNdivisions(5)
-            self.sum_cu[read_ele_num].Draw("HIST")
-            self.positive_cu[read_ele_num].Draw("SAME HIST")
-            self.negative_cu[read_ele_num].Draw("SAME HIST")
-            self.sum_cu[read_ele_num].Draw("SAME HIST")
-
-            self.positive_cu[read_ele_num].SetLineColor(877)#kViolet-3
-            self.negative_cu[read_ele_num].SetLineColor(600)#kBlue
-            self.sum_cu[read_ele_num].SetLineColor(418)#kGreen+2
-
-            self.positive_cu[read_ele_num].SetLineWidth(2)
-            self.negative_cu[read_ele_num].SetLineWidth(2)
-            self.sum_cu[read_ele_num].SetLineWidth(2)
-            c.Update()
-
-            if hasattr(self, "gain_current"):
-                self.gain_current.positive_cu[read_ele_num].Draw("SAME HIST")
-                self.gain_current.negative_cu[read_ele_num].Draw("SAME HIST")
-                self.gain_current.positive_cu[read_ele_num].SetLineColor(617)#kMagneta+1
-                self.gain_current.negative_cu[read_ele_num].SetLineColor(867)#kAzure+7
-                self.gain_current.positive_cu[read_ele_num].SetLineWidth(2)
-                self.gain_current.negative_cu[read_ele_num].SetLineWidth(2)
-
-            legend = ROOT.TLegend(0.5, 0.2, 0.8, 0.5)
-            legend.AddEntry(self.negative_cu[read_ele_num], "electron", "l")
-            legend.AddEntry(self.positive_cu[read_ele_num], "hole", "l")
-
-            if hasattr(self, "gain_current"):
-                legend.AddEntry(self.gain_current.negative_cu[read_ele_num], "electron gain", "l")
-                legend.AddEntry(self.gain_current.positive_cu[read_ele_num], "hole gain", "l")
-
-            legend.AddEntry(self.sum_cu[read_ele_num], "total", "l")
-            
-            legend.SetBorderSize(0)
-            #legend.SetTextFont(43)
-            legend.SetTextSize(0.08)
-            legend.Draw("same")
-            c.Update()
-
-            c.SaveAs(path+'/'+tag+"No_"+str(read_ele_num+1)+"electrode"+"_basic_infor.pdf")
-            c.SaveAs(path+'/'+tag+"No_"+str(read_ele_num+1)+"electrode"+"_basic_infor.root")
-            del c
+        gain = getattr(self, "gain_current", None)
+        draw.draw_currents(
+            path, self.t_start, (self.t_end - self.t_start) / self.n_bin,
+            self.current, self.hole_current, self.electron_current,
+            None if gain is None else gain.hole_bins[:, 1:-1],
+            None if gain is None else gain.electron_bins[:, 1:-1],
+            tag=tag,
+        )
 
     def charge_collection_strip(self, path):
-        charge=array('d')
-        x=array('d')
-        for i in range(self.read_ele_num):
-            x.append(i+1)
-            sum_charge=0
-            for j in range(self.n_bin):
-                sum_charge=sum_charge+self.sum_cu[i].GetBinContent(j)*self.t_bin
-            charge.append(sum_charge/1.6e-19)
-        logger.info("Collected charge per electrode (e): %s", list(charge))
-        n=int(len(charge))
-        c1=ROOT.TCanvas("c1","canvas1",1000,1000)
-        cce=ROOT.TGraph(n,x,charge)
-        cce.SetMarkerStyle(3)
-        cce.Draw()
-        cce.SetTitle("Charge Collection Efficiency")
-        cce.GetXaxis().SetTitle("elenumber")
-        cce.GetYaxis().SetTitle("charge[Coulomb]")
-        c1.SaveAs(path+"/cce.pdf")
-        c1.SaveAs(path+"/cce.root")
+        draw.charge_collection_strip(path, self.charge)
 
     def charge_collection_pixel(self, path):
-        charge = []
-        c1=ROOT.TCanvas("c1","canvas1",1000,1000)
-        cce=ROOT.TH2I("cce", "Charge Collection Efficiency", self.x_ele_num, 0, self.x_ele_num, self.y_ele_num, 0, self.y_ele_num)
-        for i in range(self.x_ele_num*self.y_ele_num):
-            sum_charge=0
-            for j in range(self.n_bin):
-                sum_charge=sum_charge+self.sum_cu[i].GetBinContent(j)*self.t_bin
-            cce.Fill(i%self.x_ele_num, i//self.x_ele_num, sum_charge/1.6e-19)
-            charge.append(sum_charge/1.6e-19)
-        logger.info("Collected charge per electrode (e): %s", list(charge))
-        cce.Draw("COLZ")
-        cce.SetTitle("Charge Collection Efficiency")
-        cce.GetXaxis().SetTitle("x_elenumber")
-        cce.GetYaxis().SetTitle("y_elenumber")
-        cce.GetZaxis().SetTitle("charge[Coulomb]")
-        c1.SaveAs(path+"/cce.pdf")
-        c1.SaveAs(path+"/cce.root")
-    
+        draw.charge_collection_pixel(path, self.charge, self.x_ele_num, self.y_ele_num)
+
 class CalCurrentGain(CalCurrent):
     '''Calculation of gain carriers and gain current, simplified version'''
     def __init__(self, my_d, my_f, my_current):
-        self.timings = StageTimings()
         self.keep_drift_paths = getattr(my_current, "keep_drift_paths", True)
-        self.t_bin = t_bin[my_d.dimension]
-        self.t_end = t_end[my_d.dimension]
-        self.t_start = t_start[my_d.dimension]
-        self.delta_t = getattr(my_d, "vector_delta_t", delta_t[my_d.dimension])
-        self.n_bin = int((self.t_end+t_tol-self.t_start)/self.t_bin)
+        self.diffusion = my_current.diffusion
+        self.t_bin = my_current.t_bin
+        self.t_end = my_current.t_end
+        self.t_start = my_current.t_start
+        self.delta_t = my_current.delta_t
+        self.n_bin = my_current.n_bin
 
         self.read_ele_num = my_current.read_ele_num
         self.read_out_contact = my_current.read_out_contact
 
-        # 创建增益载流子系统
-        self.electron_system = None
-        self.hole_system = None
-        
-        # 创建增益载流子
-        gain_positions = []
-        gain_electron_charges = []
-        gain_hole_charges = []
-        gain_times = []
-        gain_signals = []
-
-        if getattr(my_d, "gain_algorithm", "planar_integral") == "local_path":
-            self._build_local_gain_carriers(
-                my_d, my_f, my_current,
-                gain_positions, gain_electron_charges, gain_hole_charges, gain_times, gain_signals,
-            )
+        # the gain carriers: where and when they start, and how many pairs
+        gain_starts = []
+        gain_pairs = []
+        if gain_algorithm(my_f) == "local_path":
+            self._build_local_gain_carriers(my_d, my_f, my_current, gain_starts, gain_pairs)
         else:
-            gain_rate = getattr(my_d, "gain_rate", 0.0)
-            logger.info("gain_rate=%s", gain_rate)
-            self._build_planar_gain_carriers(
-                my_d, my_current, gain_rate,
-                gain_positions, gain_electron_charges, gain_hole_charges, gain_times, gain_signals,
-            )
+            self._build_planar_gain_carriers(my_d, my_f, my_current, gain_starts, gain_pairs)
 
-        logger.info("gain carriers generated: %d", len(gain_positions))
+        logger.info("gain carriers generated: %d", len(gain_starts))
 
-        # 创建增益载流子系统
-        if gain_electron_charges:
-            self.electron_system = VectorizedCarrierSystem(
-                gain_positions, gain_electron_charges, gain_times, gain_signals,
-                my_d.material, "electron_gain", self.read_out_contact, my_d,
-                keep_drift_paths=getattr(my_current, "keep_drift_paths", True),
-            )
-        else:
-            logger.info("No gain electrons generated.")
-        
-        if gain_hole_charges:
-            self.hole_system = VectorizedCarrierSystem(
-                gain_positions, gain_hole_charges, gain_times, gain_signals,
-                my_d.material, "hole_gain", self.read_out_contact, my_d,
-                keep_drift_paths=getattr(my_current, "keep_drift_paths", True),
-            )
-        else:
-            logger.info("No gain holes generated.")
+        self.electron_system = self.drift_all(my_d, my_f, gain_starts, [-pairs for pairs in gain_pairs])
+        self.hole_system = self.drift_all(my_d, my_f, gain_starts, gain_pairs)
 
-        # 执行漂移
-        self.drifting_loop(my_d, my_f)
+        # the currents
+        self.hole_bins = self.binned(my_d, my_f, self.hole_system)
+        self.electron_bins = self.binned(my_d, my_f, self.electron_system)
 
-        # 初始化电流
+        # fill the histograms for the callers that still read them
         self.current_define(self.read_ele_num)
         for i in range(self.read_ele_num):
-            self.positive_cu[i].Reset()
-            self.negative_cu[i].Reset()
-        
-        # 计算电流
-        self.get_current(my_d.x_ele_num, my_d.y_ele_num, self.read_out_contact)
+            fill_histogram(self.positive_cu[i], self.hole_bins[i])
+            fill_histogram(self.negative_cu[i], self.electron_bins[i])
 
-    def _build_planar_gain_carriers(self, my_d, my_current, gain_rate, gain_positions,
-                                    gain_electron_charges, gain_hole_charges,
-                                    gain_times, gain_signals):
-        if my_d.avalanche_bond is None:
-            raise ValueError("planar_integral gain algorithm requires `avalanche_bond` in detector settings")
+    def _build_planar_gain_carriers(self, my_d, my_f, my_current, gain_starts, gain_pairs):
+        logger.info("gain_rate=%s", my_f.planar_gain(my_d))
 
-        if my_d.voltage < 0:  # p层在d=0，空穴倍增为电子
+        # the carriers that drift from the bulk into the gain layer
+        if my_f.planar_gain_carrier(my_d) > 0:
             source_system = my_current.hole_system
-            electron_sign = -1
-            hole_sign = 1
-        else:  # n层在d=0，电子倍增为空穴
+        else:
             source_system = my_current.electron_system
-            electron_sign = 1
-            hole_sign = -1
 
         if source_system is None:
             logger.warning("No carrier system found for planar gain calculation.")
             return
 
-        for i in range(len(source_system.positions)):
-            charge = source_system.charges[i] * gain_rate
-            last_pos = source_system.positions[i]
-            gain_positions.append([last_pos[0], last_pos[1], my_d.avalanche_bond])
-            gain_electron_charges.append(electron_sign * charge)
-            gain_hole_charges.append(hole_sign * charge)
-            gain_times.append(int(source_system.times[i]))
-            gain_signals.append([])
+        # each cluster multiplies where it stops: its pairs start at the gain
+        # layer at that time, as many as the depth it was made at gives
+        gain_depth = my_f.planar_gain_depth(my_d)
+        for charge, path in zip(source_system.charges, source_system.paths):
+            x, y, _, t = path[-1]
+            gain_starts.append((x, y, gain_depth, t))
+            gain_pairs.append(abs(charge) * my_f.planar_gain_at(my_d, path[0][2]))
 
-    def _build_local_gain_carriers(self, my_d, my_f, my_current, gain_positions,
-                                   gain_electron_charges, gain_hole_charges,
-                                   gain_times, gain_signals):
+    def _build_local_gain_carriers(self, my_d, my_f, my_current, gain_starts, gain_pairs):
         cal_coefficient = Material(my_d.material, avalanche_model=my_d.avalanche_model).cal_coefficient
         min_pairs = max(float(getattr(my_d, "gain_pair_threshold", 0.05)), 0.0)
         max_carriers = int(getattr(my_d, "gain_max_carriers", 50000))
@@ -803,7 +439,7 @@ class CalCurrentGain(CalCurrent):
                         z = z0 + fraction * (z1 - z0)
                         try:
                             field_vector = my_f.get_e_field_cached(x, y, z)
-                            field = Vector(*field_vector).get_length()
+                            field = math.hypot(*field_vector)
                         except Exception:
                             field_failures += 1
                             continue
@@ -824,31 +460,30 @@ class CalCurrentGain(CalCurrent):
                     if not math.isfinite(exponent):
                         continue
                     exponent = min(exponent, 50.0)
-                    gain_pairs = active_pairs * math.expm1(exponent)
-                    if gain_pairs <= 0:
+                    new_pairs = active_pairs * math.expm1(exponent)
+                    if new_pairs <= 0:
                         continue
-                    active_pairs += gain_pairs
-                    pending_pairs += gain_pairs
+                    active_pairs += new_pairs
+                    pending_pairs += new_pairs
                     if pending_pairs < min_pairs:
                         continue
 
                     slices = emit_slices
                     if max_carriers > 0:
-                        capacity = max_carriers - len(gain_positions)
+                        capacity = max_carriers - len(gain_starts)
                         if capacity <= 0:
-                            if gain_positions:
-                                gain_electron_charges[-1] -= pending_pairs
-                                gain_hole_charges[-1] += pending_pairs
+                            if gain_starts:
+                                gain_pairs[-1] += pending_pairs
                             logger.warning("Gain carrier generation reached configured limit (%d).", max_carriers)
                             return
                         slices = min(slices, capacity)
                     for slice_idx in range(slices):
                         fraction = (slice_idx + 0.5) / slices
-                        gain_positions.append([x0 + fraction * dx, y0 + fraction * dy, z0 + fraction * dz])
-                        gain_electron_charges.append(-pending_pairs / slices)
-                        gain_hole_charges.append(pending_pairs / slices)
-                        gain_times.append(int(round(t0 + fraction * (t1 - t0))))
-                        gain_signals.append([])
+                        gain_starts.append((
+                            x0 + fraction * dx, y0 + fraction * dy, z0 + fraction * dz,
+                            t0 + fraction * (t1 - t0),
+                        ))
+                        gain_pairs.append(pending_pairs / slices)
                     pending_pairs = 0.0
                     emitted_segments += 1
 
@@ -897,58 +532,113 @@ class CalCurrentG4P(CalCurrent):
         )
 
 
-class CalCurrentToyMIP(CalCurrent):
-    def __init__(self, my_d, my_f, source: ToyMIPLineSource, keep_drift_paths=True):
-        self.generated_pairs = sum(source.ionized_pairs)
-        super().__init__(
-            my_d,
-            my_f,
-            source.ionized_pairs,
-            source.track_position,
-            keep_drift_paths=keep_drift_paths,
-        )
-
-
 class CalCurrentLaser(CalCurrent):
-    def __init__(self, my_d, my_f, my_l, keep_drift_paths=True):
+    def __init__(self, my_d, my_f, my_l, keep_drift_paths=True, diffusion=True):
         super().__init__(
             my_d,
             my_f,
             my_l.ionized_pairs,
             my_l.track_position,
             keep_drift_paths=keep_drift_paths,
+            diffusion=diffusion,
         )
         
-        for i in range(self.read_ele_num):
-            
-            # convolute the signal with the laser pulse shape in time
-            convolved_positive_cu = ROOT.TH1F("convolved_charge+", "Positive Current",
-                                        self.n_bin, self.t_start, self.t_end)
-            convolved_negative_cu = ROOT.TH1F("convolved_charge-", "Negative Current",
-                                        self.n_bin, self.t_start, self.t_end)
-            convolved_sum_cu = ROOT.TH1F("convolved_charge","Total Current",
-                                        self.n_bin, self.t_start, self.t_end)
-            
-            convolved_positive_cu.Reset()
-            convolved_negative_cu.Reset()
-            convolved_sum_cu.Reset()
+        # convolute the currents with the laser pulse shape in time
+        bin_width = (self.t_end - self.t_start) / self.n_bin
+        bins = np.arange(self.n_bin)
+        pulse = my_l.timePulse((bins[:, None] - bins[None, :]) * bin_width) * bin_width
+        convolved = [
+            (self.hole_current, self.positive_cu),
+            (self.electron_current, self.negative_cu),
+            (self.current, self.sum_cu),
+        ]
+        if hasattr(self, "gain_current"):
+            convolved.append((self.gain_current.hole_bins[:, 1:-1], self.gain_current.positive_cu))
+            convolved.append((self.gain_current.electron_bins[:, 1:-1], self.gain_current.negative_cu))
+        for currents, histograms in convolved:
+            currents[:] = currents @ pulse
+            for i in range(self.read_ele_num):
+                fill_histogram(histograms[i], np.pad(currents[i], 1))
 
-            signal_convolution(self.positive_cu[i],convolved_positive_cu,[my_l.timePulse])
-            signal_convolution(self.negative_cu[i],convolved_negative_cu,[my_l.timePulse])
-            signal_convolution(self.sum_cu[i],convolved_sum_cu,[my_l.timePulse])
 
-            self.positive_cu[i] = convolved_positive_cu
-            self.negative_cu[i] = convolved_negative_cu
-            self.sum_cu[i] = convolved_sum_cu
+def deposits_in(record, detector):
+    """The deposits of an event that lie in the detector of this name."""
+    kept = [k for k, name in enumerate(record.detector) if name == detector]
+    return EventDeposits(
+        record.event,
+        *([column[k] for k in kept] for column in (record.detector, record.x, record.y, record.z, record.t, record.e)),
+        pairs=None if record.pairs is None else [record.pairs[k] for k in kept],
+    )
 
-            if hasattr(self, "gain_current"):
-                convolved_gain_positive_cu = ROOT.TH1F("convolved_gain_charge+","Gain Positive Current",
-                                        self.n_bin, self.t_start, self.t_end)
-                convolved_gain_negative_cu = ROOT.TH1F("convolved_gain_charge-","Gain Negative Current",
-                                        self.n_bin, self.t_start, self.t_end)
-                convolved_gain_positive_cu.Reset()
-                convolved_gain_negative_cu.Reset()
-                signal_convolution(self.gain_current.positive_cu[i],convolved_gain_positive_cu,[my_l.timePulse])
-                signal_convolution(self.gain_current.negative_cu[i],convolved_gain_negative_cu,[my_l.timePulse])
-                self.gain_current.positive_cu[i] = convolved_gain_positive_cu
-                self.gain_current.negative_cu[i] = convolved_gain_negative_cu
+
+def write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, plot_path=None, detector=None):
+    """Drift the pairs of every event of the deposits file in the field and
+    write the currents they induce to the currents file, event by event.
+
+    With `detector`, only the deposits that lie in the detector of that name
+    are drifted, and an event without any of them writes no row.
+
+    A currents file an earlier start left there is replaced. The first `plots`
+    events are also drawn, each in plot_path/event_<number>: the drift paths
+    with the deposits, and the currents.
+    """
+    deposits = read_deposits(deposits_path)
+    if not deposits.events:
+        raise ValueError(f"{deposits_path} holds no event: there is no current to write")
+    events = deposits.events
+    if detector is not None:
+        events = [record for record in (deposits_in(record, detector) for record in events) if record.detector]
+        if not events:
+            raise ValueError(
+                f"{deposits_path} holds no deposit in the detector {detector}: there is no current to write"
+            )
+    if os.path.exists(currents_path):
+        os.remove(currents_path)
+    for count, record in enumerate(events):
+        drawn = count < plots
+        positions = [list(point) for point in zip(record.x, record.y, record.z, record.t)]
+        my_current = CalCurrent(my_d, my_f, record.pairs, positions, keep_drift_paths=drawn)
+        append_currents(
+            currents_path,
+            my_current.electrodes,
+            my_current.t_bin,
+            EventCurrents(
+                record.event,
+                my_current.t_start,
+                my_current.current,
+                my_current.charge,
+                my_current.pairs,
+            ),
+        )
+        if drawn:
+            path = os.path.join(plot_path, "event_%s" % (record.event))
+            os.makedirs(path, exist_ok=True)
+            draw_drift_path(my_d, list(zip(record.x, record.y, record.z)), my_f, my_current, path)
+            my_current.draw_currents(path)
+            if my_d.is_strip:
+                my_current.charge_collection_strip(path)
+            if my_d.is_pixel:
+                my_current.charge_collection_pixel(path)
+
+
+def write_laser_currents(currents_path, my_d, my_f, my_l, plot_path=None):
+    """Drift the pairs of one laser pulse in the field, without diffusion, and
+    write the currents they induce to the currents file as its event 0.
+
+    A currents file an earlier start left there is replaced. With plot_path
+    the currents are also drawn there.
+    """
+    if os.path.exists(currents_path):
+        os.remove(currents_path)
+    my_current = CalCurrentLaser(my_d, my_f, my_l, diffusion=False)
+    append_currents(
+        currents_path,
+        my_current.electrodes,
+        my_current.t_bin,
+        EventCurrents(
+            0, my_current.t_start, my_current.current, my_current.charge, my_current.pairs
+        ),
+    )
+    if plot_path is not None:
+        os.makedirs(plot_path, exist_ok=True)
+        my_current.draw_currents(plot_path)

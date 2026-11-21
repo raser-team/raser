@@ -1,6 +1,7 @@
 {
     "det_name" : "Taichu3",
     "det_model" : "pixel",
+    "electrodes" : "pixel",
     "material" : "Si",
 
     "l_x" : 1500,
@@ -11,6 +12,8 @@
     "p_y" : 25.0,
     "x_ele_num" : 60,
     "y_ele_num" : 60,
+    "e_width_x" : 10.0,
+    "e_width_y" : 10.0,
 
     "doping":{
         "Acceptors" : "1e12",

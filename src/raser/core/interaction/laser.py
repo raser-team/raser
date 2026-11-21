@@ -12,7 +12,30 @@ ROOT.gROOT.SetBatch(True)
 import numpy as np
 
 from raser.core.device.build_device import Detector
-from raser.core.interaction.laser_physics import tpa_carrier_density
+from raser.supports.paths import optional_component_path
+
+
+def absorption_coefficient(material: str, wavelength: float) -> float:
+    """Band-to-band absorption coefficient [1/m] at 300 K of light of this
+    wavelength [um], from the table components/laser/absorption/<material>.txt.
+
+    Between the rows the logarithm of the coefficient is interpolated. Light of
+    a longer wavelength than the table reaches is not absorbed band to band.
+    """
+    path = optional_component_path("laser", "absorption", material + ".txt")
+    if path is None:
+        raise ValueError(
+            f"no absorption table of {material}: give alpha [1/m] in the laser file"
+        )
+    nm, per_cm = np.loadtxt(path, unpack=True)
+    if wavelength * 1e3 < nm[0]:
+        raise ValueError(
+            f"the absorption table of {material} starts at {nm[0]:.0f} nm, "
+            f"the laser has {wavelength * 1e3:.0f} nm: give alpha [1/m] in the laser file"
+        )
+    if wavelength * 1e3 > nm[-1]:
+        return 0.0
+    return 100.0 * float(np.exp(np.interp(wavelength * 1e3, nm, np.log(per_cm))))
 
 class LaserInjection:
     """
@@ -39,18 +62,22 @@ class LaserInjection:
         self.direction = laser_dic["direction"]
         #material parameters to certain wavelength of the beam
         self.refractionIndex = laser_dic["refractionIndex"]
-        if self.tech == "SPA":
-            self.alpha = laser_dic["alpha"] # m^-1
         if self.tech == "TPA":
             self.beta_2 = laser_dic["beta_2"]
         #laser parameters
         self.wavelength = laser_dic["wavelength"]*1e-3 #um
+        # m^-1; the laser file may give the one of its sample. A two-photon
+        # laser has it too: below the gap it is what the defects absorb.
+        if "alpha" in laser_dic:
+            self.alpha = laser_dic["alpha"]
+        else:
+            self.alpha = absorption_coefficient(my_d.material, self.wavelength)
         self.temporal_FWHM = laser_dic["temporal_FWHM"]
         self.pulse_energy = laser_dic["pulse_energy"]
-        # TODO: Rename spacial_FWHM to spatial_FWHM and fix l_Rayleigh handling.
+        # TODO: Rename spacial_FWHM to spatial_FWHM.
         self.spacial_FWHM = laser_dic["spacial_FWHM"]#um
         self.central_time = laser_dic["central_time"]
-        if "l_Reyleigh" not in laser_dic:
+        if "l_Rayleigh" not in laser_dic:
             w_0 = self.spacial_FWHM / (2 * np.log(2))**0.5
             self.l_Rayleigh = np.pi*w_0**2*self.refractionIndex/self.wavelength
         else:
@@ -66,157 +93,111 @@ class LaserInjection:
         self.fx_abs = self.fx_rel * self.l_x
         self.fy_abs = self.fy_rel * self.l_y
         self.fz_abs = self.fz_rel * self.l_z
-        #accuracy parameters
-        self.r_step = laser_dic["r_step"]#um
-        self.h_step = laser_dic["h_step"]#um
-      
-        self.mesh_definition(my_d)
+        #accuracy parameters: no group of carriers holds more pairs than this,
+        #and each kind of absorption has at least so many groups
+        self.pairs_per_group = laser_dic["pairs_per_group"]
+        self.groups = laser_dic["groups"]
 
-    def mesh_definition(self,my_d):
-        self.r_char = self.spacial_FWHM / 2
-        if self.tech == "SPA":
-            self.h_char = max(my_d.l_x, my_d.l_y, my_d.l_z)
-        elif self.tech == "TPA":
-            self.h_char = self.l_Rayleigh
-        else:
+        self.track_position = []
+        self.ionized_pairs = []
+        photon_energy = 6.626e-34 * 2.998e8 / (self.wavelength * 1e-6) # J
+        photons = self.pulse_energy / photon_energy
+        if self.alpha != 0:
+            # one pair per absorbed photon: α * photons * exp(-α s) per metre
+            self._add_groups(
+                lambda s, w2: self.alpha * photons * np.exp(-self.alpha * s * 1e-6), 2
+            )
+        if self.tech == "TPA":
+            # β_2 * ∫I(t)² dt / (2 hν) over the cross section of the beam is
+            # β_2 * E² * exp(-2 α s) / (2 hν π w²) per metre for a Gaussian pulse,
+            # whose square integrates to sqrt(2 ln2) / (sqrt(π) * temporal_FWHM)
+            pulse_squared = (2 * np.log(2))**0.5 / (np.pi**0.5 * self.temporal_FWHM)
+            self._add_groups(
+                lambda s, w2: self.beta_2 * pulse_squared * self.pulse_energy ** 2
+                * np.exp(-2 * self.alpha * s * 1e-6) / (2 * photon_energy * np.pi * w2 * 1e-12),
+                4,
+            )
+        elif self.tech != "SPA":
             raise NameError(self.tech)
-
-        self.change_coordinate()
-        x_min = max(0,self.fx_abs - 3 * self.x_char)
-        x_max = min(my_d.l_x,self.fx_abs + 3 * self.x_char)
-        y_min = max(0,self.fy_abs - 3 * self.y_char)
-        y_max = min(my_d.l_y,self.fy_abs + 3 * self.y_char)
-        z_min = max(0,self.fz_abs - 3 * self.z_char)
-        z_max = min(my_d.l_z,self.fz_abs + 3 * self.z_char)
-
-        self.x_left_most, self.x_right_most = self.window(x_min, x_max, 0, my_d.l_x)
-        self.y_left_most, self.y_right_most = self.window(y_min, y_max, 0, my_d.l_y)
-        self.z_left_most, self.z_right_most = self.window(z_min, z_max, 0, my_d.l_z)
-        
-        xArray = np.linspace(x_min, x_max, int((x_max - x_min) / self.x_step) + 1)
-        yArray = np.linspace(y_min, y_max, int((y_max - y_min) / self.y_step) + 1)
-        zArray = np.linspace(z_min, z_max, int((z_max - z_min) / self.z_step) + 1)
-
-        xCenter = (xArray[:-1] + xArray[1:]) / 2
-        yCenter = (yArray[:-1] + yArray[1:]) / 2
-        zCenter = (zArray[:-1] + zArray[1:]) / 2
-
-        xDiff =xArray[1:] - xArray[:-1]
-        yDiff =yArray[1:] - yArray[:-1]
-        zDiff =zArray[1:] - zArray[:-1]
-
-        YC, XC, ZC = np.meshgrid(yCenter, xCenter, zCenter) #Feature of numpy.meshgrid
-        YD, XD, ZD = np.meshgrid(yDiff, xDiff, zDiff)
-        self.projGrid = self._getCarrierDensity(XC, YC, ZC)\
-            * XD * YD * ZD * 1e-18
-        self.track_position = list(np.transpose(np.array([
-            list(np.ravel(XC)),\
-            list(np.ravel(YC)),\
-            list(np.ravel(ZC)),\
-            [self.central_time for x in np.ravel(XC)],])))
-        self.ionized_pairs = list(np.ravel(self.projGrid))
-
-        # seperate the carrier groups to simulate diffusion
-        group_unit = 1000 # the max number of carriers in one group
-        cut = 1
-        temp_position, temp_pairs = [],[]
-        for position, pairs in zip(self.track_position, self.ionized_pairs):
-            if pairs < cut:
-                continue
-            else:
-                k = int(pairs//group_unit + 1) # divide the carrier pairs into k groups
-                for i in range(k):
-                    temp_position.append(position)
-                    temp_pairs.append(pairs/k)
-
-        self.track_position = temp_position
-        self.ionized_pairs = temp_pairs
 
         print(len(self.ionized_pairs),"pairs of carrier models to drift")
         print(sum(self.ionized_pairs),"total pairs of carriers")
 
-    def change_coordinate(self):
-        #from cylindral coordinate (axis parallel with the beam, origin at focus)
-        #to rectilinear coordinate inside the detector
-        if self.direction in ("top","bottom"):
-            self.z_step = self.h_step
-            self.z_char = self.h_char
-            self.x_step = self.y_step = self.r_step
-            self.x_char = self.y_char = self.r_char
-            if self.direction == "top":
-                absorb_depth = self.l_z * self.fz_rel
-                def _getCarrierDensity(x, y, z):
-                    return self.getCarrierDensity(z - self.fz_abs, absorb_depth, (x - self.fx_abs) ** 2 + (y - self.fy_abs) ** 2,)
-                self._getCarrierDensity = _getCarrierDensity
-            if self.direction == "bottom":
-                absorb_depth = self.l_z * (1 - self.fz_rel)
-                def _getCarrierDensity(x, y, z):
-                    return self.getCarrierDensity(self.l_z - z + self.fz_abs, absorb_depth, (x - self.fx_abs) ** 2 + (y - self.fy_abs) ** 2,)
-                self._getCarrierDensity = _getCarrierDensity
+    def _beam_frame(self):
+        """The beam in the detector: the length of its path [um], the path to
+        the focus, the centre and the limits of the two transverse coordinates,
+        and the place (x, y, z) of a point given by path and transverse offsets."""
+        if self.direction == "top":
+            return (self.l_z, self.fz_abs, (self.fx_abs, self.fy_abs), (self.l_x, self.l_y),
+                    lambda s, u, v: (u, v, s))
+        if self.direction == "bottom":
+            return (self.l_z, self.l_z - self.fz_abs, (self.fx_abs, self.fy_abs), (self.l_x, self.l_y),
+                    lambda s, u, v: (u, v, self.l_z - s))
+        if self.direction == "edge":
+            return (self.l_x, self.fx_abs, (self.fy_abs, self.fz_abs), (self.l_y, self.l_z),
+                    lambda s, u, v: (s, u, v))
+        raise NameError(self.direction)
 
-        elif self.direction == "edge":
-            self.x_step = self.h_step
-            self.x_char = self.h_char
-            self.y_step = self.z_step = self.r_step
-            self.y_char = self.z_char = self.r_char
+    def _add_groups(self, pairs_per_metre, radial_exponent):
+        """Groups of carriers that hold the same number of pairs each.
 
-            absorb_depth = self.l_x * self.fx_rel
-            def _getCarrierDensity(x, y, z):
-                return self.getCarrierDensity(x - self.fx_abs, absorb_depth, (y - self.fy_abs) ** 2 + (z -self.fz_abs) ** 2,)
-            self._getCarrierDensity = _getCarrierDensity
-        else:
-            raise NameError(self.direction)
+        pairs_per_metre(s, w²) is the number of pairs made per metre of path at
+        the path s [um], where the beam has the radius w [um], summed over the
+        cross section. Across the beam the pairs follow exp(-k r² / w²) with
+        k = radial_exponent: 2 for one photon, 4 for two.
 
-    def window(self,inner_min,inner_max,outer_min,outer_max):
-        inner_length = inner_max - inner_min
-        if outer_max - outer_min <= inner_length:
-            return outer_min, outer_max # range shrunk
-        else:
-            if inner_min >= outer_min and inner_max <= outer_max:
-                return inner_min, inner_max
-            elif inner_min <= outer_min:
-                return outer_min, outer_min + inner_length
-            elif inner_max >= outer_max:
-                return outer_max - inner_length, outer_max
-
-    def getCarrierDensity(self, h, depth, r2):
-        #return the carrier density of a given point in a given time period
-        #referring to the vertical and horizontal distance from the focus 
+        The path is cut where the pairs made so far reach equal shares, the
+        cross section into rings and sectors of equal shares, and a group sits
+        at the middle share of its cell. Groups outside the detector are left
+        out: that light does not pass through it.
+        """
+        length, focus, centre, limits, place = self._beam_frame()
         w_0 = self.spacial_FWHM / (2 * np.log(2))**0.5
-        wSquared = (w_0 ** 2) * (1 + (h / self.l_Rayleigh) ** 2)
-        intensity = ((self.pulse_energy)\
-                    * (4 / (np.pi * wSquared * 1e-12))\
-                    * np.exp((-2 * r2 / wSquared))
-        ) # time distribution decoupled
-        
-        h_Planck = 6.626*1e-34
-        speedofLight = 2.998*1e8
-        if self.tech == "SPA":
-            # I = I_0 * exp(-αz)
-            # dE_deposit = (αdz)dE_flux = (αdz)I*dSdt = (αI)*dVdt
-            # dN_ehpair = dE_deposit / Energy_for_each_ionized_ehpair
-            e0 = 1.60217733e-19
-            return ( self.alpha * self.wavelength * 1e-6 * intensity * np.exp(-self.alpha * (h + depth) * 1e-6) / (h_Planck * speedofLight)
-            )
-        elif self.tech == "TPA":
-            return tpa_carrier_density(
-                beta_2=self.beta_2,
-                wavelength_um=self.wavelength,
-                pulse_fluence_W_s_per_m2=intensity,
-                temporal_fwhm_s=self.temporal_FWHM,
-            )
-        
+
+        def w_squared(s):
+            return w_0 ** 2 * (1 + ((s - focus) / self.l_Rayleigh) ** 2)
+
+        finest = min(length, self.l_Rayleigh, 1e6 / self.alpha if self.alpha != 0 else length)
+        path = np.linspace(0, length, int(np.ceil(50 * length / finest)) + 1)
+        per_metre = pairs_per_metre(path, w_squared(path))
+        made = np.concatenate(([0.0], np.cumsum(
+            (per_metre[1:] + per_metre[:-1]) / 2 * np.diff(path) * 1e-6
+        )))
+        total = made[-1]
+
+        rings, sectors = 4, 8
+        slabs = int(np.ceil(max(total / self.pairs_per_group, self.groups) / (rings * sectors)))
+        s = np.interp((np.arange(slabs) + 0.5) / slabs * total, made, path)
+        rho = np.sqrt(-np.log(1 - (np.arange(rings) + 0.5) / rings) / radial_exponent)
+        phi = (np.arange(sectors) + 0.5) / sectors * 2 * np.pi
+        S, RHO, PHI = (grid.ravel() for grid in np.meshgrid(s, rho, phi, indexing="ij"))
+        r = RHO * np.sqrt(w_squared(S))
+        u = centre[0] + r * np.cos(PHI)
+        v = centre[1] + r * np.sin(PHI)
+        inside = (u >= 0) & (u <= limits[0]) & (v >= 0) & (v <= limits[1])
+        x, y, z = place(S[inside], u[inside], v[inside])
+        for position in np.transpose([x, y, z, np.full(len(x), self.central_time)]):
+            self.track_position.append(position)
+            self.ionized_pairs.append(total / (slabs * rings * sectors))
+
     def timePulse(self, t):
         # to reduce run time, convolute the time pulse function with the signal after the signal is calculated
         return np.exp(-4 * np.log(2) * t ** 2 / self.temporal_FWHM ** 2) / ((2*np.pi)**(1/2) * self.temporal_FWHM / (2 * (2*np.log(2))**(1/2)))
     
+    def _extent(self):
+        # the box around the groups, for the pictures
+        places = np.array(self.track_position)[:, :3]
+        low, high = places.min(axis=0), places.max(axis=0)
+        return low, np.where(high > low, high, low + 1.0)
+
     def draw_nocarrier3D(self,path):
         ROOT.gStyle.SetOptStat(0)
         c1 = ROOT.TCanvas("c1","canvas2",200,10,1000,1000)
+        low, high = self._extent()
         h = ROOT.TH3D("h","",\
-            int((self.x_right_most - self.x_left_most) / self.x_step), self.x_left_most, self.x_right_most,\
-            int((self.y_right_most - self.y_left_most) / self.y_step), self.y_left_most, self.y_right_most,\
-            int((self.z_right_most - self.z_left_most) / self.z_step), self.z_left_most, self.z_right_most,)
+            50, low[0], high[0],\
+            50, low[1], high[1],\
+            50, low[2], high[2],)
         for i in range(len(self.track_position)):
             h.Fill(self.track_position[i][0], self.track_position[i][1], self.track_position[i][2], self.ionized_pairs[i],)
         h.Draw()
@@ -245,9 +226,10 @@ class LaserInjection:
     def draw_nocarrier2D(self, path):
         ROOT.gStyle.SetOptStat(0)
         c1 = ROOT.TCanvas("c1","canvas2",200,10,1400,1000)
+        low, high = self._extent()
         h = ROOT.TH2D("h","",\
-            int((self.x_right_most - self.x_left_most) / self.x_step), self.x_left_most, self.x_right_most,\
-            int((self.z_right_most - self.z_left_most) / self.z_step), self.z_left_most, self.z_right_most,)
+            50, low[0], high[0],\
+            50, low[2], high[2],)
         for i in range(len(self.track_position)):
             h.Fill(self.track_position[i][0], self.track_position[i][2], self.ionized_pairs[i],)
         h.Draw("COLZ")

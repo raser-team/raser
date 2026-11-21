@@ -5,73 +5,117 @@ Description:  signal/__init__.py
 @version    : 2.0
 """
 
-from raser.supports import jobs
-from raser.supports import runs
+import json
+from pathlib import Path
+
+from raser.lifecycle.slices import Slice
+from raser.lifecycle.workflow import Workflow
+
+DEFAULTS = json.loads((Path(__file__).parent / "signal.json").read_text("utf-8"))
+KEYS = (
+    "source",
+    "g4setup",
+    "events_per_job",
+    "edep_min",
+    "edep_max",
+    "fano",
+    "plots",
+    "voltage",
+    "irradiation",
+    "amplifier",
+)
+COMPONENTS = {"source": "source", "g4setup": "g4setup"}  # kind of file -> option
+IN_FILE = {"voltage": "device.bias.voltage"}  # option -> where it sits in a file
 
 
-def _command_tail(kwargs):
-    command_prefix = list(kwargs["_entry_command_prefix"])
-    return jobs.command_tail(
-        kwargs["_argv"],
-        command_prefix,
-        {"-s", "--scan", "--job", "--run"},
+def add_arguments(parser):
+    parser.add_argument("det_name", help="Device project")
+    parser.add_argument(
+        "source",
+        nargs="?",
+        help="signal source or beam configuration",
     )
-
-
-def _run_scan(kwargs):
-    scan_number = kwargs["scan"]
-    mem = kwargs["mem"]
-    use_cluster = kwargs["signal_batch"]
-    command_prefix = list(kwargs["_entry_command_prefix"])
-    command_tail_list = _command_tail(kwargs)
-    run_id = runs.ensure_run_id(kwargs)
-    command_tail_list.extend(["--run", run_id])
-    jobs.run_indexed_jobs(
-        command_prefix,
-        command_tail_list,
-        scan_number,
-        use_cluster=use_cluster,
-        mem=mem,
-        destination=command_prefix[0],
+    parser.add_argument("--g4setup", help="what surrounds the device in Geant4")
+    parser.add_argument("-evt", "--events-per-job", type=int, help="events per job")
+    parser.add_argument(
+        "--edep-min", type=float, help="least energy deposited in the device [MeV]"
     )
-
-
-def _run_signal_samples(kwargs):
-    sample_count = kwargs["scan"]
-    kwargs["events_per_job"] = sample_count
-    kwargs["job"] = 0
-    kwargs["scan"] = None
-    kwargs["_signal_plot_samples"] = sample_count
-    from . import gen_signal_scan
-
-    gen_signal_scan.main(kwargs)
-
-
-def run_signal(kwargs):
-    runs.apply_run_config(kwargs)
-    from .workflow import build_plan
-
-    plan = kwargs.get("_workflow_plan") or build_plan(
-        kwargs,
-        workflow=kwargs.get("workflow") or "signal",
+    parser.add_argument(
+        "--edep-max", type=float, help="most energy deposited in the device [MeV]"
     )
-    if kwargs.get("dry_run"):
-        plan.show()
-        return plan
-    from raser.apps._planning import activate_plan
+    parser.add_argument("--plots", type=int, help="draw the first N recorded events of each job")
+    parser.add_argument("-vol", "--voltage", type=float, help="bias voltage")
+    parser.add_argument("-irr", "--irradiation", type=float, help="irradiation flux")
+    parser.add_argument(
+        "-g4_vis", help="visualization of Geant4 experiment", action="store_true"
+    )
+    parser.add_argument(
+        "--g4-vis-driver",
+        default="OGL",
+        help="Geant4 visualization driver of -g4_vis (default: OGL)",
+    )
+    parser.add_argument("-amp", "--amplifier", type=str, help="amplifier")
 
-    if kwargs.get("_run_path") is None:
-        activate_plan(plan, kwargs)
-    if kwargs["scan"] is not None:
-        if kwargs.get("_command") == "signal" and not kwargs["signal_batch"]:
-            _run_signal_samples(kwargs)
-        else:
-            _run_scan(kwargs)
-    elif kwargs["job"] is not None:
-        from . import gen_signal_scan
 
-        gen_signal_scan.main(kwargs)
-    else:
-        from . import gen_signal_main
+def job_command(kwargs):
+    if kwargs.get("g4_vis"):
+        return ["-g4_vis", "--g4-vis-driver", kwargs["g4_vis_driver"]]
+    return []
 
-        gen_signal_main.main(kwargs)
+
+def _deposits(kwargs):
+    from . import gen_signal
+
+    gen_signal.deposits(kwargs)
+
+
+def _currents(kwargs):
+    from . import gen_signal
+
+    gen_signal.currents(kwargs)
+
+
+def _waveforms(kwargs):
+    from . import gen_signal
+
+    gen_signal.waveforms(kwargs)
+
+
+# A slice is named by the file it writes; its keys and kinds of file are what
+# it reads and no slice before it does.
+SLICES = (
+    Slice(
+        "deposits",
+        _deposits,
+        keys=("source", "g4setup", "events_per_job", "edep_min", "edep_max", "fano"),
+        kinds=("source", "g4setup"),
+    ),
+    Slice("currents", _currents, keys=("voltage", "irradiation", "plots")),
+    # The electronics works on what was measured: its points read the same currents.
+    Slice("waveforms", _waveforms, keys=("amplifier",), new_events=False),
+)
+
+
+WORKFLOW = Workflow(
+    name="signal",
+    keys=KEYS,
+    defaults={
+        "source": DEFAULTS["source"],
+        "g4setup": "device_alone",
+        "fano": True,
+        "amplifier": DEFAULTS["afe"],
+        "events_per_job": 1,
+        "plots": 100,
+    },
+    components=COMPONENTS,
+    in_file=IN_FILE,
+    slices=SLICES,
+    command=job_command,
+)
+
+
+def register(subparsers):
+    parser = subparsers.add_parser("signal", help="single signal simulation")
+    add_arguments(parser)
+    WORKFLOW.attach(parser)
+    parser.set_defaults(_project="det_name", _components=("signal",))
