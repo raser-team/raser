@@ -11,7 +11,10 @@ from raser.lifecycle.workflow import Workflow
 WORKFLOW = Workflow(
     name="bmos",
     keys=chain.KEYS,
-    defaults={**chain.DEFAULTS, "source": "bunch", "plots": 0},
+    defaults={**chain.DEFAULTS, "deposit.source": "bunch", "deposit.plots": 0, "current.plots": 0},
+    sections=chain.SECTIONS,
+    scanned=chain.SCANNED,
+    slots=chain.SLOTS,
     components=chain.COMPONENTS,
     readers=chain.READERS,
     in_file=chain.IN_FILE,

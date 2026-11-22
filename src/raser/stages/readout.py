@@ -56,8 +56,8 @@ def waveforms(kwargs, position=None):
         )
     else:
         flux = my_d.irradiation_flux
-        if kwargs.get("irradiation") is not None:
-            flux = float(kwargs["irradiation"])
+        if kwargs.get("irradiation_flux") is not None:
+            flux = float(kwargs["irradiation_flux"])
         row, solved_f, undepleted = field_circuit(
             solved_field(my_d, my_d.voltage, flux), my_d
         )

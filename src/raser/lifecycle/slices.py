@@ -86,7 +86,7 @@ def owners(slices, key) -> set[int]:
     named = {
         k
         for k, piece in enumerate(slices)
-        if key in piece.keys or key in piece.kinds or key.split(".")[0] in piece.kinds
+        if key in piece.keys or any(key == kind or key.startswith(kind + ".") for kind in piece.kinds)
     }
     return named or {k for k in range(len(slices)) if not upstream(slices, k)}
 

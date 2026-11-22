@@ -13,6 +13,9 @@ from raser.lifecycle.workflow import JOB_ENDED
 from raser.lifecycle.workflow import WORKFLOWS
 from raser.lifecycle.workflow import _outdated
 from raser.lifecycle.workflow import _points
+from raser.lifecycle.workflow import flat
+from raser.lifecycle.workflow import read_config
+from raser.lifecycle.workflow import stage_of
 from raser.lifecycle.workflow import waited_for_by
 from raser.supports.paths import project_root_context
 
@@ -127,7 +130,7 @@ def _runs(workflow, root: Path, name: str) -> list[Path]:
 
 
 def _lines(workflow, root: Path, kwargs) -> list[str]:
-    config = json.loads((root / "config.json").read_text())
+    config = read_config(workflow, root)
     _, points, asked = _points(workflow, kwargs, config, {})
     lines = []
     for name in asked:
@@ -142,7 +145,12 @@ def _lines(workflow, root: Path, kwargs) -> list[str]:
                 continue  # kept aside by a rerun
             any_code = {**record, "commit": ""}
             why = _outdated(workflow, any_code, {**any_code, **now})
-            ready = (lambda piece, options=options, files=files: piece.shared.ready(options, files) is not None)
+            ready = (
+                lambda piece, options=options, files=files: piece.shared.ready(
+                    flat(workflow, options, stage_of(piece.name)), files
+                )
+                is not None
+            )
             lines += _folder_lines(workflow, folder, record, why, ready)
     # Points on disk that the config does not ask for: made for another
     # experiment, as a field one of its points needs.

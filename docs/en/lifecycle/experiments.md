@@ -216,6 +216,8 @@ The table below lists the shared run options and configuration sections users ca
 
 ### Format of `config.json`
 
+`config.json` comes with the project: `raser new --from <example> <path>` copies the `config.json` of every experiment of the example along, and a run in place on an example uses the one the example carries. The keys of each section and their meaning are in the settings table of [Simulation Chain and Stage Entry Points (`stages`)](../stages/README.md#settings) and on the page of each stage.
+
 `config.json` is a JSON object. Its top-level keys fall into three groups:
 
 | Key | Type | Meaning |
@@ -223,8 +225,7 @@ The table below lists the shared run options and configuration sections users ca
 | `workflow` | string | Command word of the experiment, such as `"signal"` |
 | `device` | string | Device name; absent for an application that takes no device |
 | `field`, `deposit`, `current`, `readout`, `digitizer`, `trigger`, `reconstruction`, `analysis` | object | One section per stage, holding all settings of that stage; an empty object for a stage the experiment does not have |
-| `scan` | object | Scan axes: "section.key" → list of values; an empty object when nothing is scanned |
-| `names` | object | Short names for long addresses: "section.key" or "section.slot.key" → short name; point names use the short name, `--set` and `--scan` accept both spellings |
+| `names` | object | Short names for long addresses: "section.key" or "section.slot.key" → short name, for example `{"readout.amplifier": "amp"}`; point names use the short name (`amp_SantaCruz`), `--set` and `--scan` accept both spellings |
 | `same_seeds` | boolean | Whether jobs of the same number share their seed across scan points |
 
 The `signal` example of `HPK-Si-PiN`:
@@ -248,7 +249,6 @@ The `signal` example of `HPK-Si-PiN`:
     "fractions": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9], "edge": null
   },
   "analysis": {},
-  "scan": {},
   "names": {},
   "same_seeds": false
 }
@@ -256,8 +256,10 @@ The `signal` example of `HPK-Si-PiN`:
 
 Rules for reading and writing:
 
-1. **One way to give a setting**: `--set <section.key>=<value>` writes the value into its section, `--scan <section.key>=<value1>,<value2>` writes the list of values into `scan`. Both stay in `config.json`, and later commands without options use them. The settings of the chain have no command-line options of their own; switches that hold for one run only (`-g4_vis`, `--g4-vis-driver`) do not enter `config.json`.
-2. **Ending a scan**: giving `--set` for the same address removes that scan axis from `scan` and writes the new value into the section.
-3. **Each stage reads its own section**: a running stage receives the settings of its own section, so `deposit.plots` and `current.plots` are two settings.
-4. **A missing key is an error**: when a key a stage needs is not in its section, the command stops before starting any job and names the missing "section.key", for example `config.json: no deposit.events_per_job`. A key in a section that the stage does not know is an error as well.
-5. **`null` is a value**: keys whose table entry says "`null` takes …" (such as `field.voltage`, which takes the bias in the device file) may be written `null`; the key itself is still written.
+1. **One way to give a setting**: `--set <section.key>=<value>` writes the value into its section, `--scan <section.key>=<value1>,<value2>` writes the list of values into the same place. Both stay in `config.json`, and later commands without options use them. The settings of the chain have no command-line options of their own; switches that hold for one run only (`-g4_vis`, `--g4-vis-driver`) do not enter `config.json`.
+2. **Two kinds of settings**: the settings of the four sections `field`, `deposit`, `current`, `readout` say what is measured and are physics parameters; the settings of the four sections `digitizer`, `trigger`, `reconstruction`, `analysis` say how the measured events are analysed and are analysis parameters. One more value of a physics parameter is one more set of experiments: written as a list in its section it is a scan, one point per value, for example `"field": {"voltage": [100, 200]}`, with points named by the values (`voltage_100`, `voltage_200`). An analysis parameter is not scanned: its list is the value of the parameter itself, such as `reconstruction.fractions`; giving it to `--scan` is an error. To use another analysis parameter, change it with `--set` and run again with the same `--seed`; the events already measured are reused and only the analysis stages are redone. Without `--seed` every run is a new measurement. Giving a physics parameter a list with `--set` is an error as well, with a hint to use `--scan`.
+3. **Ending a scan and restoring a setting**: giving `--set` for an address that is scanned replaces the list in the section by this one value, and the scan ends. An experiment that scans nothing has one point, named `default`; with a scan there is no point `default`. After a scan ends or its values change, the views under `points/` of points that no longer belong to the experiment are removed; the nodes stay. A value given with `--set` stays in its section, and there is no "undo"; to restore it, give `--set` once more with the earlier value, or edit `config.json` directly.
+4. **Keys inside a component**: a key of a section that selects a component is a slot, such as `deposit.source` and `deposit.g4setup`; the device is `field.device`. A key inside the component file is written "section.slot.key", for example `--set deposit.source.par_radius=1000` changes `par_radius` in the source file (the radius of the source disk, $\mu\text{m}$). In `config.json` it is written into the object of the slot, beside the name of the component: `"source": {"name": "decay/Sr90", "par_radius": 1000}`; when scanned it is written as a list, and the point name takes the last two parts of the address (`source.par_radius_1000`). Giving the slot another component (`--set deposit.source=decay/Am241`) removes the keys written in the object. An address that is neither a setting nor under a slot is an error that lists all settings and slots. A key of a component that is itself a list cannot be overridden this way: to change it, copy the component file into the project and edit it there.
+5. **Each stage reads its own section**: a running stage receives the settings of its own section, so `deposit.plots` and `current.plots` are two settings.
+6. **Missing and unknown keys**: a key not written in its section is `null`; when a stage needs its value and it is `null`, an error names the missing "section.key", for example `ValueError: examples/HPK-Si-PiN/signal/config.json has no deposit.generated_limit`; a missing key that is not used raises no error. A key in a section that the stage does not know is an error, for example `config.json: no current.plot; the settings of current are plots`; so is a top-level key other than those in the table above. The program writes every key when it writes `config.json`.
+7. **`null` is a value**: keys whose table entry says "`null` takes …" (such as `field.voltage`, which takes the bias in the device file) take that value when written `null`.

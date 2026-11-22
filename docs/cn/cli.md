@@ -42,7 +42,7 @@
 - `--seed`：指定整数随机种子，让仿真结果可重复；不给时用当前时间戳作种子。
 - `--same-seeds`：让各扫描点的同编号作业共用随机种子，从而复用未受扫描影响的上游结果。
 - `--set`：用“段.键”作地址修改配置文件中的设置，例如 `--set field.voltage=100`。
-- `--scan`：用“段.键”作地址扫描一个或多个设置，例如 `--scan field.voltage=100,200`。
+- `--scan`：用“段.键”作地址扫描一个或多个设置，例如 `--scan field.voltage=100,200`；只有 `field`、`deposit`、`current`、`readout` 四段的设置能扫描，见 [lifecycle/experiments.md](lifecycle/experiments.md)。
 - `--dry-run`：只打印将要运行的扫描点、环节和作业状态，不启动实际计算。
 
 配置文件分段规则、扫描点展开与集群作业调度的细节见 [lifecycle/experiments.md](lifecycle/experiments.md) 和 [lifecycle/jobs.md](lifecycle/jobs.md)。
