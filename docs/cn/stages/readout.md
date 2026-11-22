@@ -161,7 +161,29 @@ FileNotFoundError: no field of <det_name> ready for this run: solve it with `ras
 4. **放大器链与脉冲方向**：
    - `chain = named_chain(str(kwargs["amplifier"]))` 按 `"+"` 拆开 `amplifier`，从组件目录依次加载 `readout/<part>.cir`（子电路语法与内置组件见[前端读出电路组件（`components/readout`）](../components/readout.md)）。找不到时抛出 `FileNotFoundError: Cannot find RASER component readout/<part>.cir:`，检查子电路名的拼写，或确认文件放进了 `readout/`。
    - `pulse_edges(my_d, chain, list(circuit.outputs))` 给出与 `circuit.outputs` 一一对应的脉冲方向。
-5. **求解并写出（`write_waveforms`）**：先删掉同路径的旧波形文件，再逐事例求瞬态电压、按种子叠加时域热噪声、筛掉最大绝对摆幅 `< 1e-3 * largest` 的通道后写出。
+5. **读出线缆、校验线长与换算损耗**：
+   - `readout.cable` 为 `null` 时不接线缆；否则按槽位名字读取组件目录下的 `readout/<线缆名>.json`（键格式见[前端读出电路组件（`components/readout`）](../components/readout.md)），取特性阻抗 $Z_0$（$\Omega$）、速度因子 $\text{VF}$ 与两个频率处的衰减，按[电子学读出（`core/readout`）](../core/readout.md)式 (13)–(15) 换算传播速度 $v$（$\text{m/s}$）与损耗系数 $a_s$、$a_d$。
+   - 校验 `readout.cable.length_m`（“通道名 $\to$ 线长（$\text{m}$）”映射）：
+     - `circuit.outputs` 的每个输出通道都必须给值；缺某个通道时抛出：
+
+       ```text
+       ValueError: readout.cable.length_m.<channel> is missing: give a cable length in m for each output of <det_name> (<outputs>)
+       ```
+
+     - 给了电路里没有的通道名时抛出：
+
+       ```text
+       ValueError: readout.cable.length_m has unknown channels <unknown>; the outputs of <det_name> are <outputs>
+       ```
+
+     - 任意通道的值不是非负有限数（例如负数、`NaN`、`Inf` 或非数值）时抛出：
+
+       ```text
+       ValueError: readout.cable.length_m.<channel> must be a finite non-negative number in m, not <value>
+       ```
+
+   - 为每个输出通道换算纯延迟 $\tau_r = \ell_r / v$（$\text{s}$）及频域复传递因子 $H_r(f)$。
+6. **求解并写出（`write_waveforms`）**：先删掉同路径的旧波形文件，再逐事例求瞬态电压（接了线缆时在网表末级负载前插无损 `T` 元件、按 $\tau_{\max}$ 加长求解窗口、在频域乘 $H_r(f)$ 并把噪声谱密度乘 $|H_r(f)|$）、按种子叠加时域热噪声、筛掉最大绝对摆幅 `< 1e-3 * largest` 的通道后写出。
 
 ## 软件实现
 
@@ -209,6 +231,8 @@ FileNotFoundError: no field of <det_name> ready for this run: solve it with `ras
 | `[路径]` | 当前文件夹 | 无 | 实验文件夹 |
 | `readout.amplifier` | `"SantaCruz+Gali52+Termination50"` | 无 | 以 `"+"` 连接的 `readout/<名称>.cir` 子电路链，前几项是双端口放大级，末项是单端口负载 |
 | `readout.sheet_resistance` | `null`（取器件文件里阻性层的方块电阻） | $\Omega$ | 覆盖阻性层器件的方阻；对常规器件给出会抛出 `ValueError` |
+| `readout.cable` | `null`（不接线缆） | 无 | 读出线缆组件槽位：填线缆组件名（如 `"Belden8259"`）或含 `name` 与 `length_m` 的对象；显式写 `null` 时不接线缆 |
+| `readout.cable.length_m` | 接 `readout.cable` 时必选（如 `{"top": 1.5}`，条形器件 `{"strip1": 2.0, "strip2": 2.0, ...}`） | $\text{m}$ | “通道名 $\to$ 线长”对象；`readout.cable` 不为 `null` 时必须覆盖电路全部输出通道，不能含电路里没有的通道名，值须为非负有限数 |
 | `field.voltage` | `200.0`（写 `null` 时取器件文件里的偏压） | $\text{V}$ | 属于 `field` 段：偏压，用来找场并判定收集电荷的极性 |
 | `field.irradiation_flux` | `null`（取器件文件里的辐照注量，器件文件没有辐照块时为 `0`） | $\text{cm}^{-2}$ | 属于 `field` 段：找场时用的辐照注量 |
 | 器件文件键 `read_out_contact`、`read_ele_num`、`electrodes`、`l_y`、`p_x`、`p_y`、`x_ele_num`、`y_ele_num` | 见 `components/device` 页 | $\mu\text{m}$ / 个 | 决定读出电极名称、布局（`"pad"`、`"strip"`、`"pixel"`）、条长与 RC 格点尺寸 |

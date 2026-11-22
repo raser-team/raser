@@ -101,15 +101,54 @@ where:
 
 The frequency-domain noise spectrum is solved by `output_noise_spectrum` in `spice.py` and `noise_spectra` in `job.py` via `ngspice` at a fixed temperature of $27\ ^\circ\text{C}$ over the frequency band from $10^3\ \text{Hz}$ (`LOWEST_NOISE_HZ`) to $0.5 / \Delta t$; band-power integration and random time-domain synthesis are implemented by `band_power` and `noise_from_spectrum` in `spectral_noise.py`. The `noise_seed` argument of `write_waveforms` is required and is passed in by the stage from `readout`'s own seed (NGspice noise), which enters the `readout` node's fingerprint; an integer adds noise, whereas `None` writes noiseless waveforms. For thermal noise in conductors and frequency-domain transfer noise analysis, see Refs. [2, 4, 5]; for generating stationary Gaussian noise time series from a single-sided power spectral density via inverse Fourier transform of complex Gaussian spectra, see Ref. [6].
 
+### Readout Cables
+
+The signal travels from the front-end amplifier through a coaxial cable to the oscilloscope, where the cable introduces propagation delay, reflections under impedance mismatch, and frequency-dependent attenuation and dispersion. The modeling splits into two parts: delay and reflections are solved in the `ngspice` netlist using a lossless transmission line; frequency-dependent attenuation and dispersion are multiplied in the frequency domain after `ngspice` finishes solving using an analytical transfer factor fitted from the product datasheet. Delay is therefore part of the readout waveform, and downstream [digitizer](digitizer.md), trigger, and reconstruction stages do not need to know about the cable.
+
+The cable is treated as a transmission line of characteristic impedance $Z_0$ ($\Omega$) and propagation speed $v$ ($\text{m/s}$) determined by the speed of light in vacuum $c = 299792458\ \text{m/s}$ and the dimensionless velocity factor $\text{VF}$; for output channel $r$ of cable length $\ell_r$ ($\text{m}$), the inductance per unit length $L'$ ($\text{H/m}$), capacitance per unit length $C'$ ($\text{F/m}$), and pure propagation delay $\tau_r$ ($\text{s}$) are:
+
+$$v = c \cdot \text{VF}, \qquad L' = \frac{Z_0}{v}, \qquad C' = \frac{1}{Z_0 v}, \qquad \tau_r = \frac{\ell_r}{v} \tag{13}$$
+
+High-frequency loss and dispersion act on the signal via a complex transfer factor of frequency $f$ ($\text{Hz}$), with the two loss coefficients $a_s$ and $a_d$ solved jointly from the per-unit-length attenuations $A_1, A_2$ ($\text{dB/m}$) specified by the component at two frequencies $f_1, f_2$ ($\text{Hz}$):
+
+$$H_r(f) = \exp\!\left(-\ell_r \bigl[a_s \sqrt{f}\,(1 + \mathrm{i}) + a_d f\bigr]\right) \tag{14}$$
+
+$$A_j = 8.686\,(a_s \sqrt{f_j} + a_d f_j) \quad (j = 1, 2) \tag{15}$$
+
+where:
+
+- $Z_0$: characteristic impedance of the cable, $\Omega$;
+- $c$: speed of light in vacuum, exact value $299792458\ \text{m/s}$;
+- $\text{VF}$: velocity factor of the cable (dimensionless);
+- $v$: signal propagation speed along the cable, $\text{m/s}$;
+- $L', C'$: distributed inductance ($\text{H/m}$) and capacitance ($\text{F/m}$) per unit length of the cable;
+- $\ell_r$: cable length for output channel $r$, $\text{m}$;
+- $\tau_r$: pure propagation delay of the cable on output channel $r$, $\text{s}$;
+- $f$: frequency, $\text{Hz}$;
+- $H_r(f)$: frequency-domain complex transfer factor of the cable on output channel $r$ (dimensionless, with $H_r(0) = 1$);
+- $a_s$: conductor skin-effect loss coefficient, $\text{Np}\cdot\text{m}^{-1}\cdot\text{Hz}^{-1/2}$; its attenuation and phase shift are both $a_s\sqrt{f}$ (multiplied by $1 + \mathrm{i}$), which is the causal skin-effect form;
+- $a_d$: dielectric loss coefficient, $\text{Np}\cdot\text{m}^{-1}\cdot\text{Hz}^{-1}$;
+- $f_1, f_2$ and $A_1, A_2$: the two reference frequencies ($\text{Hz}$) and corresponding per-unit-length attenuations ($\text{dB/m}$) supplied by the component, with conversion factor $8.686 = 20 / \ln 10$ ($\text{dB/Np}$).
+
+Why split into two parts: the lossy transmission line element (`LTRA`) in `ngspice` 46 only accepts constant per-unit-length resistance and conductance, without frequency-dependent skin effect or dielectric loss; meanwhile `ngspice` does not support HSPICE's frequency-dependent RLGC `W` element (raises an error in tests). A constant-resistance `LTRA` on a $1\text{–}3\ \text{m}$ cable misses $6\text{–}57\ \text{ps}$ of CFD delay caused by dispersion and overestimates amplitude loss by $3\text{–}14\%$ (compared on pulses with $0.2\text{–}2\ \text{ns}$ rise time), so it is not used; while a segmented RLGC ladder network with skin-effect branches can be constructed in `ngspice`, it requires more than a hundred segments per meter and makes the netlist too large for hundreds or thousands of channels.
+
+Approximations and limitations:
+
+- Loss acts only on the single pass from the amplifier to the oscilloscope; additional loss on waves reflected back under impedance mismatch is neglected, which is negligible when both ends are nearly matched.
+- Dielectric loss is treated with a constant loss angle, omitting the very small phase-shift correction it introduces.
+- Amplifier noise passes through the cable, so the output noise spectrum is multiplied by $|H_r(f)|$, while thermal noise generated by the cable itself is neglected.
+
+Example: the Belden 8259 (RG58, $Z_0 = 50\ \Omega$, $\text{VF} = 0.66$) product datasheet specifies attenuation of $17.7\ \text{dB}/100\ \text{m}$ at $100\ \text{MHz}$ and $74.8\ \text{dB}/100\ \text{m}$ at $1000\ \text{MHz}$, solving Eq. (15) to $a_s = 1.72\times 10^{-6}\ \text{Np}\cdot\text{m}^{-1}\cdot\text{Hz}^{-1/2}$ and $a_d = 3.17\times 10^{-11}\ \text{Np}\cdot\text{m}^{-1}\cdot\text{Hz}^{-1}$; back-computing at $400\ \text{MHz}$ gives $40.9\ \text{dB}/100\ \text{m}$ against the datasheet value of $40.7\ \text{dB}/100\ \text{m}$ ($12.4\ \text{dB}/100\ \text{ft}$). Its per-unit-length parameters are $L' = 2.53\times 10^{-7}\ \text{H/m}$ and $C' = 101\ \text{pF/m}$ (datasheet $30.8\ \text{pF/ft}$, consistent), giving a $1\ \text{m}$ pure delay of $5.05\ \text{ns}$ (`ngspice` measured $5.06\ \text{ns}$). See Ref. [7].
+
 ### Output Pulse Polarity
 
 The direction in which a readout channel's output voltage pulse departs from its quiescent baseline (upward for positive pulses `"rising"`, downward for negative pulses `"falling"`) is jointly determined by the sign of the carriers collected by the readout electrode and the net transfer polarity of the front-end amplifier chain. A readout electrode at a higher potential than the opposite electrode collects electrons (negative charge), whereas one at a lower potential collects holes (positive charge); the amplifier chain responds to a positive input charge with either a non-inverting positive swing or an inverting negative swing, and the product of the two signs gives the output pulse polarity:
 
-$$V_{\text{above}} = \begin{cases} V_{\text{bias}}, & \text{if the readout electrode is } \text{bias.electrode} \\ -V_{\text{bias}}, & \text{other readout electrodes (non-bias electrodes grounded)} \end{cases} \tag{13}$$
+$$V_{\text{above}} = \begin{cases} V_{\text{bias}}, & \text{if the readout electrode is } \text{bias.electrode} \\ -V_{\text{bias}}, & \text{other readout electrodes (non-bias electrodes grounded)} \end{cases} \tag{16}$$
 
-$$s_q = \begin{cases} -1, & V_{\text{above}} > 0\ (\text{collecting electrons}) \\ +1, & V_{\text{above}} < 0\ (\text{collecting holes}) \end{cases}, \qquad s_{\text{chain}} = \operatorname{sgn}\!\bigl(V_{\text{probe}}(t^*) - V_{\text{probe}}(t_0)\bigr) \tag{14}$$
+$$s_q = \begin{cases} -1, & V_{\text{above}} > 0\ (\text{collecting electrons}) \\ +1, & V_{\text{above}} < 0\ (\text{collecting holes}) \end{cases}, \qquad s_{\text{chain}} = \operatorname{sgn}\!\bigl(V_{\text{probe}}(t^*) - V_{\text{probe}}(t_0)\bigr) \tag{17}$$
 
-$$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 \\ \text{"falling"}, & s_q \cdot s_{\text{chain}} < 0 \end{cases} \tag{15}$$
+$$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 \\ \text{"falling"}, & s_q \cdot s_{\text{chain}} < 0 \end{cases} \tag{18}$$
 
 where:
 
@@ -173,7 +212,8 @@ The table below lists all built-in constants and hard-coded numerical values in 
    - **Title line and external model deduplication**: Write `" > ".join(["device", *stages, "load"])` on the first line. Collect `"models"` blocks from all amplifier stages and the load in order, keeping only the first occurrence of identical model blocks, and expand them verbatim near the top of the netlist.
    - **Subcircuit definitions and per-channel cascaded instances**: Emit `subcircuit(name, stage)` for each amplifier stage and `subcircuit("load", chain["load"])` for the final load. Then, for the $k$-th device output node `output` in `circuit.outputs.values()` ($k = 1, \dots, N_{\text{out}}$):
      - If `stages` is non-empty, build the node list `nodes = [output, "in<k>_2", ..., "in<k>_<N_stages>", "out<k>"]` and instantiate `X<k>_<j> <nodes[j-1]> <nodes[j]> <stage_name>` ($j = 1, \dots, N_{\text{stages}}$); if `stages` is empty, `nodes = [output]`;
-     - Instantiate the final load `Xload<k> <nodes[-1]> load` and record `nodes[-1]` as the output node to be observed for that channel.
+     - If a readout cable is configured and this channel has length $\ell_r > 0$, insert a lossless transmission line (`ngspice` `T` element with parameters `Z0` $= Z_0$ and `TD` $= \tau_r$, `T<k> <nodes[-1]> 0 <cable_out> 0 Z0=<Z_0> TD=<tau_r>`) before the final load and use `<cable_out>` as the node feeding the load (channels with $\ell_r = 0$ do not insert a `T` element);
+     - Instantiate the final load `Xload<k> <nodes[-1]> load` (`Xload<k> <cable_out> load` when a transmission line is inserted) and record that input node as the output node to be observed for that channel.
    - **Device equivalent circuit and PWL current sources**: `_chain` appends `circuit.lines` at the end, followed by the current-source lines produced by `_current_sources(electrodes, dt, currents, circuit)` (which was already invoked before `_chain`):
      - If `not dt > 0`, raise `ValueError("The bin width must be positive, not <dt> s")`;
      - If `len(electrodes) != len(currents)`, raise `ValueError("<len(currents)> currents for <len(electrodes)> electrodes")`;
@@ -212,7 +252,7 @@ The short-circuit current netlist `write_short_circuit_netlist` contains only th
      - `setplot noise<2*k - 1>` (each `noise` command generates two plots: the odd-numbered one is the spectral density and the even-numbered one is the integrated total noise);
      - `wrdata <raw_k> onoise_spectrum`.
    - Execute the noise netlist with `ngspice -b`, read the frequency column ($\text{Hz}$) and single-sided output voltage noise amplitude spectral density column ($\text{V}/\sqrt{\text{Hz}}$) for each analyzed channel, and expand back via the symmetry mapping into an array `densities` of shape `(len(circuit.outputs), frequencies)`.
-   - The `ngspice` frequency-domain noise analysis runs at $27\ ^\circ\text{C}$, covering `LOWEST_NOISE_HZ = 1e3` $\text{Hz}$ to $0.5 / \Delta t$; each output channel provides its own total output noise spectrum.
+   - The `ngspice` frequency-domain noise analysis runs at $27\ ^\circ\text{C}$, covering `LOWEST_NOISE_HZ = 1e3` $\text{Hz}$ to $0.5 / \Delta t$; each output channel provides its own total output noise spectrum. When a readout cable is connected, each channel's output noise amplitude spectral density is multiplied by the magnitude $|H_r(f)|$ of its cable transfer factor before calling `noise_from_spectrum` over the extended bin count $n_{\text{bin}} + n_{\text{extra}}$; channels with different cable lengths each use their own $|H_r(f)|$-weighted spectra.
 2. **Band-power integration and inverse transform of complex Gaussian spectra (`band_power`, `noise_from_spectrum`)**:
    - `band_power(frequencies_hz, density)` computes `steps = np.diff(frequencies_hz)`: if `frequencies_hz.size < 2` or `np.any(steps <= 0)`, raise `ValueError("A noise spectrum needs at least two increasing frequencies")`. Compute trapezoidal cumulative power by Eq. (8) and return the `np.interp` interpolator.
    - `noise_from_spectrum(frequencies_hz, density, bins, dt, generator)` creates the frequency grid `centres = np.fft.rfftfreq(record, d=dt)` of length $N_{\text{rec}} = 256\,n_{\text{bin}}$, and computes band powers `in_band` and `sigma` via Eqs. (9) and (10).
@@ -229,16 +269,18 @@ The short-circuit current netlist `write_short_circuit_netlist` contains only th
 1. **Pulse-edge polarity determination (`pulse_edges`, `collected_charge_sign`, `chain_sign`)**:
    - Extract the list of readout contact names `contacts = [contact["name"] for contact in my_d.read_out_contact]`. If `len(contacts) == 1`, replicate it as `contacts * len(outputs)`; if after expansion `len(contacts) != len(outputs)`, raise `ValueError("<det_name> lists the read-out electrodes <contacts>, not one for each of the outputs <outputs>")`.
    - `chain_sign(chain)` constructs an all-zero current array of shape `(1, 2000)` with $\Delta t = 10^{-11}\ \text{s}$, sets `current[0, 5] = 1e-15 / dt` ($10^{-4}\ \text{A}$), and calls `solve` on `planar_circuit("probe", 1e-12)` to obtain `voltage`. Compute the deviation from the first bin `swing = voltage - voltage[0]` and take the signed value at maximum absolute deviation `largest = swing[np.argmax(np.abs(swing))]`: if `abs(largest) < NO_ANSWER_V` ($10^{-9}\ \text{V}$), raise `ValueError("The chain moves its output by <largest:.3g> V for 1 fC: it does not answer, so the way its pulses go is not known")`; otherwise return `+1` for `largest > 0` and `-1` for `largest < 0`. When this error occurs, check that the signal in any custom amplifier stage can propagate from the `in` port through its elements to the `out` port (whether node names match, whether the sensing nodes of a voltage-controlled source `E` are connected to signal nodes, whether the gain is `0`, or whether the output is shorted to ground), and whether the output can swing by at least $10^{-9}\ \text{V}$ within the probe's $2000 \times 10\ \text{ps} = 20\ \text{ns}$ window.
-   - For each `contact`, `collected_charge_sign(my_d, contact)` computes `above` via Eq. (13): if `above == 0`, raise `ValueError("<electrode> of <det_name> and its other electrode are at one potential")`; return `-1` for `above > 0` and `+1` for `above < 0`. By Eq. (15), a positive product yields `"rising"` and a negative product yields `"falling"`.
+   - For each `contact`, `collected_charge_sign(my_d, contact)` computes `above` via Eq. (16): if `above == 0`, raise `ValueError("<electrode> of <det_name> and its other electrode are at one potential")`; return `-1` for `above > 0` and `+1` for `above < 0`. By Eq. (18), a positive product yields `"rising"` and a negative product yields `"falling"`.
 2. **Event loop, channel swing filtering, and noise addition (`write_waveforms`)**:
    - Read the entire batch of induced currents with `read_currents(currents_path)`; if the target `waveforms_path` already exists, remove it first with `os.remove(waveforms_path)`.
    - Iterate over each event `event` in `currents.events`:
      - Find the list of electrodes with nonzero current `hit = [name for name, current in zip(currents.electrodes, event.current, strict=True) if np.any(current)]`;
-     - If `hit` is empty (a no-signal event), set `solved = {}`; otherwise call `_solve` on the full circuit when `part_of is None`, or `_solve_part` on the locally expanded circuit when `part_of` is not `None`;
+     - If a readout cable is configured, take the maximum delay $\tau_{\max}$ among the event's stored channels and append $n_{\text{extra}} = \lceil \tau_{\max} / \Delta t \rceil$ time bins at the end of the solve window, with the induced current set to zero in the extended bins;
+     - If `hit` is empty (a no-signal event), set `solved = {}`; otherwise call `_solve` on the full circuit when `part_of is None`, or `_solve_part` on the locally expanded circuit when `part_of` is not `None` (both solving over the extended bin count $n_{\text{bin}} + n_{\text{extra}}$);
      - Compute the maximum absolute voltage swing per solved channel `swing = {name: np.abs(voltage).max() for name, voltage in solved.items()}` and the maximum `largest = max(swing.values(), default=0.0)`;
      - Filter channels in the order of `circuit.outputs` satisfying `name in solved and largest > 0 and swing[name] >= PART_EDGE * largest` into `names`, and assemble the voltage matrix `voltage` of shape `(len(names), bins)` (for no-signal events, `names = []` and `voltage` has shape `(0, bins)`);
-     - If `noise_seed is not None` and `names` is non-empty, generate `noise_from_spectrum` per channel and add it to `voltage`;
-     - Call `append_waveforms` to write the event to the HDF5 file.
+     - If a readout cable is configured and `names` is non-empty, for each stored channel take the first bin's voltage $V_{r,0}$ as reference, zero-pad $V_r - V_{r,0}$ to twice its length and take the real FFT, multiply by the transfer factor $H_r(f)$ from Eq. (14), inverse-transform back to the time domain keeping the first $n_{\text{bin}} + n_{\text{extra}}$ samples, and add $V_{r,0}$ back ($H_r(0) = 1$, leaving the reference level unchanged; zero-padding to twice the length prevents dispersion from wrapping around to the start of the window);
+     - If `noise_seed is not None` and `names` is non-empty, generate `noise_from_spectrum` per channel and add it to `voltage` (when a cable is connected, each channel's output noise spectral density is first multiplied by its $|H_r(f)|$ before synthesis, with channels of different lengths using their own spectra);
+     - Call `append_waveforms` to write the event to the HDF5 file; when a cable is connected, `count` is $n_{\text{bin}} + n_{\text{extra}}$ while `t0` is unchanged, and the `readout.h5` format is unchanged with no new attributes.
 3. **Waveform file validation and append writing (`append_waveforms`, `read_waveforms`, `read_circuit_values`)**:
    - **Input validation**: `append_waveforms` takes `names = electrodes if record.electrodes is None else list(record.electrodes)`. If `names` contains any name not in `electrodes` or any duplicates, raise `ValueError("the event <event> has traces of <names>, not each once of the electrodes <electrodes>")`. Convert `record.voltage` to a `float64` array: if `voltage.ndim != 2 or voltage.shape[0] != len(names)`, raise `ValueError("voltage has shape <shape>, expected (<len(names)>, bins)")`. If `pulse_edge is not None` and either `len(pulse_edge) != len(electrodes)` or not all entries belong to `{"rising", "falling"}`, raise `ValueError("pulse_edge <pulse_edge> is not one of rising and falling for each of the electrodes <electrodes>")`.
    - **Table creation or existing-file layout check**: If the file does not yet exist, create the HDF5 file, write attributes `electrodes`, `dt`, optional `device_circuit` (`json.dumps(circuit_values)`), and optional `pulse_edge`, and create 1D extensible datasets `event`, `t0`, `count`, `stored`, `index`, and `voltage` (with `compression="gzip"`). If the file already exists, first call `_check_layout` to verify that all `DATASETS = ("event", "t0", "count", "stored", "index", "voltage")` are present and `file["voltage"].ndim == 1`, raising `ValueError("<path> is a readout file of an older layout (no ...): run the readout again")` otherwise; then verify that the file attributes `electrodes` and `dt` match those passed in, raising `ValueError("<path> holds waveforms of electrodes <in_file> with dt <dt_file> s, not of <electrodes> with dt <dt> s")` on mismatch.
@@ -391,3 +433,4 @@ In addition, `draw(path, figure_path)` in `schematic.py` renders a single `.cir`
 - [4] J. B. Johnson, “Thermal Agitation of Electricity in Conductors”, Phys. Rev. 32 (1928) 97, doi:10.1103/PhysRev.32.97
 - [5] H. Nyquist, “Thermal Agitation of Electric Charge in Conductors”, Phys. Rev. 32 (1928) 110, doi:10.1103/PhysRev.32.110
 - [6] S. O. Rice, “Mathematical Analysis of Random Noise”, Bell Syst. Tech. J. 23 (1944) 282, doi:10.1002/j.1538-7305.1944.tb00874.x
+- [7] Belden, *Belden 8259 Product Data Sheet*, https://www.belden.com/products/cable/coax-triax-cable/50-ohm-coax-cable/8259

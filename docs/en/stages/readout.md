@@ -161,7 +161,29 @@ Follow the message to run `raser field <det_name>` first, then rerun.
 4. **Amplifier chain and pulse edge directions**:
    - `chain = named_chain(str(kwargs["amplifier"]))` splits `amplifier` on `"+"` and loads each `readout/<part>.cir` sequentially from component directories (see [Front-End Readout Circuit Components (`components/readout`)](../components/readout.md) for subcircuit syntax and built-in components). If missing, raises `FileNotFoundError: Cannot find RASER component readout/<part>.cir:`; check the spelling of the subcircuit name or confirm the file is placed under `readout/`.
    - `pulse_edges(my_d, chain, list(circuit.outputs))` returns the pulse edge directions matching `circuit.outputs` one-to-one.
-5. **Solve and write (`write_waveforms`)**: Removes any existing waveform file at the same path, then solves transient voltages event by event, superposes time-domain thermal noise according to the seed, drops channels whose maximum absolute swing is `< 1e-3 * largest`, and writes the result.
+5. **Readout cable, length validation, and loss conversion**:
+   - When `readout.cable` is `null`, no cable is connected; otherwise read `readout/<cable_name>.json` from component directories by the slot name (see [Front-End Readout Circuit Components (`components/readout`)](../components/readout.md) for JSON keys), take characteristic impedance $Z_0$ ($\Omega$), velocity factor $\text{VF}$, and attenuations at two frequencies, and compute propagation speed $v$ ($\text{m/s}$) and loss coefficients $a_s$ and $a_d$ per Eqs. (13)–(15) in [Electronics Readout (`core/readout`)](../core/readout.md).
+   - Validate `readout.cable.length_m` (mapping from channel name to cable length in $\text{m}$):
+     - Every output channel in `circuit.outputs` must be provided; if a channel is missing, raise:
+
+       ```text
+       ValueError: readout.cable.length_m.<channel> is missing: give a cable length in m for each output of <det_name> (<outputs>)
+       ```
+
+     - If any channel name is not in the circuit's outputs, raise:
+
+       ```text
+       ValueError: readout.cable.length_m has unknown channels <unknown>; the outputs of <det_name> are <outputs>
+       ```
+
+     - If any channel's value is not a finite non-negative number (e.g., negative, `NaN`, `Inf`, or non-numeric), raise:
+
+       ```text
+       ValueError: readout.cable.length_m.<channel> must be a finite non-negative number in m, not <value>
+       ```
+
+   - Convert each output channel's length to pure delay $\tau_r = \ell_r / v$ ($\text{s}$) and frequency-domain complex transfer factor $H_r(f)$.
+6. **Solve and write (`write_waveforms`)**: Removes any existing waveform file at the same path, then solves transient voltages event by event (when a cable is connected, inserts lossless `T` elements before the final load in the netlist, extends the solve window according to $\tau_{\max}$, multiplies $H_r(f)$ in the frequency domain, and weights the noise spectral density by $|H_r(f)|$), superposes time-domain thermal noise according to the seed, drops channels whose maximum absolute swing is `< 1e-3 * largest`, and writes the result.
 
 ## Software Implementation
 
@@ -209,6 +231,8 @@ Only the keys listed below are configurable in this stage; the relative swing th
 | `[path]` | Current folder | None | Experiment folder |
 | `readout.amplifier` | `"SantaCruz+Gali52+Termination50"` | None | Chain of `readout/<name>.cir` subcircuits joined with `"+"`, where leading entries are two-port amplifier stages and the final entry is a one-port load |
 | `readout.sheet_resistance` | `null` (uses the resistive-layer sheet resistance from the device file) | $\Omega$ | Overrides sheet resistance of a resistive-layer device; passing it for a standard device raises `ValueError` |
+| `readout.cable` | `null` (no cable connected) | None | Readout cable component slot: a cable component name (such as `"Belden8259"`) or an object containing `name` and `length_m`; setting `null` explicitly disables the cable |
+| `readout.cable.length_m` | Required when `readout.cable` is not `null` (e.g. `{"top": 1.5}`, or `{"strip1": 2.0, "strip2": 2.0, ...}` for strip devices) | $\text{m}$ | Mapping from channel name to cable length; when `readout.cable` is not `null`, every output channel of the circuit must be given, unknown channel names are rejected, and each value must be a finite non-negative number |
 | `field.voltage` | `200.0` (uses the bias from the device file when set to `null`) | $\text{V}$ | Belongs to the `field` section: bias voltage used to locate the field and determine collected charge polarity |
 | `field.irradiation_flux` | `null` (uses the irradiation fluence from the device file, or `0` if the device file has no irradiation block) | $\text{cm}^{-2}$ | Belongs to the `field` section: irradiation fluence used during field lookup |
 | Device file keys `read_out_contact`, `read_ele_num`, `electrodes`, `l_y`, `p_x`, `p_y`, `x_ele_num`, `y_ele_num` | See the `components/device` page | $\mu\text{m}$ / count | Define readout electrode names, layout (`"pad"`, `"strip"`, `"pixel"`), strip length, and RC node dimensions |

@@ -101,15 +101,54 @@ $$v_{\text{noise}}[m] = \frac{1}{N_{\text{rec}}} \sum_{n=0}^{N_{\text{rec}}-1} \
 
 频域噪声谱由 `spice.py` 的 `output_noise_spectrum` 与 `job.py` 的 `noise_spectra` 调用 `ngspice` 在固定温度 $27\ ^\circ\text{C}$、频段 $10^3\ \text{Hz}$（`LOWEST_NOISE_HZ`）至 $0.5 / \Delta t$ 上求解；频带功率积分与时域随机合成由 `spectral_noise.py` 的 `band_power` 与 `noise_from_spectrum` 实现。`write_waveforms` 的 `noise_seed` 是必给参数，由环节传入 `readout` 自己的种子（NGspice 噪声），这个种子进 `readout` 节点的指纹；为整数时叠加噪声，为 `None` 时输出无噪声波形。导体热噪声与频域传输噪声分析见文献 [2, 4, 5]，由单边功率谱密度经复高斯频谱逆变换生成平稳高斯噪声时序的方法见文献 [6]。
 
+### 读出线缆
+
+信号从前端放大器经同轴电缆送往示波器，电缆会带来传输延迟、阻抗失配时的信号反射，以及随频率增大的衰减与色散。模拟做法分为两部分：延迟与反射在 `ngspice` 网表中用无损传输线求解；频率相关的衰减与色散在 `ngspice` 求解完成后，在频域乘以由产品数据表拟合的解析传递因子。延迟因此成为读出波形的一部分，下游 [数字化器](digitizer.md)、触发与重建都不必感知线缆的存在。
+
+线缆视作特性阻抗为 $Z_0$（$\Omega$）、传播速度为 $v$（$\text{m/s}$）的传输线，由真空光速 $c = 299792458\ \text{m/s}$ 与无量纲速度因子 $\text{VF}$ 确定；第 $r$ 个输出通道的线长为 $\ell_r$（$\text{m}$），其单位长度电感 $L'$（$\text{H/m}$）、单位长度电容 $C'$（$\text{F/m}$）与纯传输延迟 $\tau_r$（$\text{s}$）为：
+
+$$v = c \cdot \text{VF}, \qquad L' = \frac{Z_0}{v}, \qquad C' = \frac{1}{Z_0 v}, \qquad \tau_r = \frac{\ell_r}{v} \tag{13}$$
+
+高频损耗与色散按频率 $f$（$\text{Hz}$）的复传递因子作用在信号上，两个损耗系数 $a_s$、$a_d$ 由组件给定的两个频率 $f_1, f_2$（$\text{Hz}$）处的单位长度衰减 $A_1, A_2$（$\text{dB/m}$）联立解出：
+
+$$H_r(f) = \exp\!\left(-\ell_r \bigl[a_s \sqrt{f}\,(1 + \mathrm{i}) + a_d f\bigr]\right) \tag{14}$$
+
+$$A_j = 8.686\,(a_s \sqrt{f_j} + a_d f_j) \quad (j = 1, 2) \tag{15}$$
+
+其中：
+
+- $Z_0$：线缆特性阻抗，$\Omega$；
+- $c$：真空光速，取精确值 $299792458\ \text{m/s}$；
+- $\text{VF}$：线缆速度因子（无量纲）；
+- $v$：信号在线缆中的传播速度，$\text{m/s}$；
+- $L', C'$：线缆单位长度分布电感（$\text{H/m}$）与分布电容（$\text{F/m}$）；
+- $\ell_r$：第 $r$ 个输出通道对应的线缆长度，$\text{m}$；
+- $\tau_r$：第 $r$ 个输出通道线缆的纯传输延迟，$\text{s}$；
+- $f$：频率，$\text{Hz}$；
+- $H_r(f)$：第 $r$ 个输出通道线缆的频域复传递因子（无量纲，且 $H_r(0) = 1$）；
+- $a_s$：导体趋肤效应损耗系数，$\text{Np}\cdot\text{m}^{-1}\cdot\text{Hz}^{-1/2}$；其衰减项与相移项同为 $a_s\sqrt{f}$（乘以 $1 + \mathrm{i}$），是因果的趋肤效应形式；
+- $a_d$：介质损耗系数，$\text{Np}\cdot\text{m}^{-1}\cdot\text{Hz}^{-1}$；
+- $f_1, f_2$ 与 $A_1, A_2$：组件提供的两个参考频率（$\text{Hz}$）及其对应的单位长度衰减（$\text{dB/m}$），换算系数 $8.686 = 20 / \ln 10$（$\text{dB/Np}$）。
+
+为什么分两部分：`ngspice` 46 的有损传输线元件（`LTRA`）只接受常数的单位长度电阻与电导，不包含随频率变化的趋肤效应与介质损耗；同时 `ngspice` 不支持 HSPICE 中支持频变 RLGC 的 `W` 元件（实测报错）。常数电阻的 `LTRA` 在 $1\text{–}3\ \text{m}$ 线缆上会漏掉色散带来的 $6\text{–}57\ \text{ps}$ 的 CFD 推迟，并把幅度损失高估 $3\text{–}14\%$（在 $0.2\text{–}2\ \text{ns}$ 上升时间的脉冲上比较），因此不采用；而分段 RLGC 加趋肤效应梯形网络虽可在 `ngspice` 中搭建，但每米需要上百段，在几百上千个通道时会导致网表过大。
+
+近似与局限：
+
+- 损耗只作用在从放大器到示波器的那一趟上，阻抗失配时反射回来的波的额外损耗不计，两端接近匹配时可以忽略。
+- 介质损耗按常数损耗角处理，略去它带来的很小的相移修正。
+- 放大器噪声经过电缆，输出噪声谱密度乘 $|H_r(f)|$，电缆自身的热噪声不计。
+
+例子：Belden 8259（RG58，$Z_0 = 50\ \Omega$，$\text{VF} = 0.66$）产品数据表给出 $100\ \text{MHz}$ 处衰减为 $17.7\ \text{dB}/100\ \text{m}$、$1000\ \text{MHz}$ 处为 $74.8\ \text{dB}/100\ \text{m}$，由式 (15) 解得 $a_s = 1.72\times 10^{-6}\ \text{Np}\cdot\text{m}^{-1}\cdot\text{Hz}^{-1/2}$、$a_d = 3.17\times 10^{-11}\ \text{Np}\cdot\text{m}^{-1}\cdot\text{Hz}^{-1}$；回算 $400\ \text{MHz}$ 为 $40.9\ \text{dB}/100\ \text{m}$，与数据表 $40.7\ \text{dB}/100\ \text{m}$（$12.4\ \text{dB}/100\ \text{ft}$）相符。其单位长度参数为 $L' = 2.53\times 10^{-7}\ \text{H/m}$、$C' = 101\ \text{pF/m}$（数据表 $30.8\ \text{pF/ft}$，一致），$1\ \text{m}$ 纯延迟为 $5.05\ \text{ns}$（`ngspice` 实测 $5.06\ \text{ns}$）。见文献 [7]。
+
 ### 输出脉冲的极性
 
 读出通道输出电压脉冲相对静态基线的偏离方向（向上为正脉冲 `"rising"`，向下为负脉冲 `"falling"`）由读出电极收集的载流子电荷符号与前端放大器链的净传递极性共同决定。相对背电极处于高电势的读出电极收集电子（负电荷），处于低电势的读出电极收集空穴（正电荷）；放大器链对正输入电荷产生正响应或反相产生负响应，两者符号相乘给出输出脉冲极性：
 
-$$V_{\text{above}} = \begin{cases} V_{\text{bias}}, & \text{若读出电极为偏置电极 } \text{bias.electrode} \\ -V_{\text{bias}}, & \text{其余读出电极（非偏置电极接地）} \end{cases} \tag{13}$$
+$$V_{\text{above}} = \begin{cases} V_{\text{bias}}, & \text{若读出电极为偏置电极 } \text{bias.electrode} \\ -V_{\text{bias}}, & \text{其余读出电极（非偏置电极接地）} \end{cases} \tag{16}$$
 
-$$s_q = \begin{cases} -1, & V_{\text{above}} > 0\ (\text{收集电子}) \\ +1, & V_{\text{above}} < 0\ (\text{收集空穴}) \end{cases}, \qquad s_{\text{chain}} = \operatorname{sgn}\!\bigl(V_{\text{probe}}(t^*) - V_{\text{probe}}(t_0)\bigr) \tag{14}$$
+$$s_q = \begin{cases} -1, & V_{\text{above}} > 0\ (\text{收集电子}) \\ +1, & V_{\text{above}} < 0\ (\text{收集空穴}) \end{cases}, \qquad s_{\text{chain}} = \operatorname{sgn}\!\bigl(V_{\text{probe}}(t^*) - V_{\text{probe}}(t_0)\bigr) \tag{17}$$
 
-$$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 \\ \text{"falling"}, & s_q \cdot s_{\text{chain}} < 0 \end{cases} \tag{15}$$
+$$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 \\ \text{"falling"}, & s_q \cdot s_{\text{chain}} < 0 \end{cases} \tag{18}$$
 
 其中：
 
@@ -173,7 +212,8 @@ $$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 
    - **首行标题与外部模型去重**：首行写 `" > ".join(["device", *stages, "load"])`。按顺序收集各放大级与负载中的 `"models"` 块，完全相同的模型块只保留首次出现的一份，原样展开到网表顶部。
    - **子电路定义与通道串联实例**：依次写出各放大级的 `subcircuit(name, stage)` 与末级负载的 `subcircuit("load", chain["load"])`。随后对 `circuit.outputs.values()` 中的第 $k$ 个器件输出节点 `output`（$k = 1, \dots, N_{\text{out}}$）：
      - 若 `stages` 非空，构造节点序列 `nodes = [output, "in<k>_2", ..., "in<k>_<N_stages>", "out<k>"]`，依次实例化 `X<k>_<j> <nodes[j-1]> <nodes[j]> <stage_name>`（$j = 1, \dots, N_{\text{stages}}$）；若 `stages` 为空，`nodes = [output]`；
-     - 实例化末级负载 `Xload<k> <nodes[-1]> load`，并将 `nodes[-1]` 记录为该通道待测输出节点。
+     - 若配置了读出线缆且该通道线长 $\ell_r > 0$，在末级负载之前插入一段无损传输线（`ngspice` 的 `T` 元件，参数 `Z0` $= Z_0$ 与 `TD` $= \tau_r$，`T<k> <nodes[-1]> 0 <cable_out> 0 Z0=<Z_0> TD=<tau_r>`），并将 `<cable_out>` 作为接向末级负载的节点（$\ell_r = 0$ 的通道不插 `T` 元件）；
+     - 实例化末级负载 `Xload<k> <nodes[-1]> load`（接入传输线时为 `Xload<k> <cable_out> load`），并将该输入节点记录为该通道待测输出节点。
    - **器件等效电路与 PWL 电流源**：`_chain` 末尾追加 `circuit.lines`，其后接 `_current_sources(electrodes, dt, currents, circuit)` 生成的电流源行（该函数在 `_chain` 之前已被调用）：
      - 若 `not dt > 0`，抛出 `ValueError("The bin width must be positive, not <dt> s")`；
      - 若 `len(electrodes) != len(currents)`，抛出 `ValueError("<len(currents)> currents for <len(electrodes)> electrodes")`；
@@ -212,7 +252,7 @@ $$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 
      - `setplot noise<2*k - 1>`（每次 `noise` 命令生成两个 plot，奇数号为谱密度，偶数号为积分总噪声）；
      - `wrdata <raw_k> onoise_spectrum`。
    - 调用 `ngspice -b` 执行噪声网表，读取各通道的频率列（$\text{Hz}$）与单边输出电压噪声幅度谱密度列（$\text{V}/\sqrt{\text{Hz}}$），按对称映射还原为形状 `(len(circuit.outputs), frequencies)` 的谱密度数组 `densities`。
-   - `ngspice` 频域噪声分析在 $27\ ^\circ\text{C}$ 下执行，噪声谱覆盖 `LOWEST_NOISE_HZ = 1e3` $\text{Hz}$ 至 $0.5 / \Delta t$；每个输出通道给出其自身的总输出噪声谱。
+   - `ngspice` 频域噪声分析在 $27\ ^\circ\text{C}$ 下执行，噪声谱覆盖 `LOWEST_NOISE_HZ = 1e3` $\text{Hz}$ 至 $0.5 / \Delta t$；每个输出通道给出其自身的总输出噪声谱。接有读出线缆时，每个通道的输出噪声幅度谱密度先乘以对应线缆传递因子的模 $|H_r(f)|$，再按扩展后的箱数 $n_{\text{bin}} + n_{\text{extra}}$ 调用 `noise_from_spectrum` 合成时域噪声；各通道线长不同时各自使用自己的 $|H_r(f)|$ 加权谱。
 2. **频带功率积分与复高斯谱逆变换（`band_power`、`noise_from_spectrum`）**：
    - `band_power(frequencies_hz, density)` 计算频率步长 `steps = np.diff(frequencies_hz)`：若 `frequencies_hz.size < 2` 或 `np.any(steps <= 0)`，抛出 `ValueError("A noise spectrum needs at least two increasing frequencies")`。按式 (8) 计算梯形累积功率并返回 `np.interp` 插值函数。
    - `noise_from_spectrum(frequencies_hz, density, bins, dt, generator)` 在长度 $N_{\text{rec}} = 256\,n_{\text{bin}}$ 上生成频率网格 `centres = np.fft.rfftfreq(record, d=dt)`，按式 (9)、式 (10) 求各频带功率 `in_band` 与 `sigma`。
@@ -229,16 +269,18 @@ $$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 
 1. **脉冲边沿极性判定（`pulse_edges`、`collected_charge_sign`、`chain_sign`）**：
    - 提取器件读出接触名称列表 `contacts = [contact["name"] for contact in my_d.read_out_contact]`。若 `len(contacts) == 1`，将其重复扩展为 `contacts * len(outputs)`；若扩展后 `len(contacts) != len(outputs)`，抛出 `ValueError("<det_name> lists the read-out electrodes <contacts>, not one for each of the outputs <outputs>")`。
    - `chain_sign(chain)` 构造 $\Delta t = 10^{-11}\ \text{s}$、形状 `(1, 2000)` 的全零电流数组，置 `current[0, 5] = 1e-15 / dt`（$10^{-4}\ \text{A}$），在 `planar_circuit("probe", 1e-12)` 上调用 `solve` 求输出电压 `voltage`。计算相对首箱的摆动 `swing = voltage - voltage[0]`，取最大绝对偏离处的带符号值 `largest = swing[np.argmax(np.abs(swing))]`：若 `abs(largest) < NO_ANSWER_V`（$10^{-9}\ \text{V}$），抛出 `ValueError("The chain moves its output by <largest:.3g> V for 1 fC: it does not answer, so the way its pulses go is not known")`；否则 `largest > 0` 返回 `+1`，`largest < 0` 返回 `-1`。报这条错时，检查自定义放大级的信号能否从 `in` 端口经各元件到达 `out` 端口（节点名是否接对、压控源 `E` 的跟随节点是否接在信号节点上、增益是否为 `0`、输出是否被接到地），以及输出在探针的 $2000 \times 10\ \text{ps} = 20\ \text{ns}$ 窗口内能否摆动 $10^{-9}\ \text{V}$ 以上。
-   - 对每个 `contact`，`collected_charge_sign(my_d, contact)` 按式 (13) 计算 `above`：若 `above == 0`，抛出 `ValueError("<electrode> of <det_name> and its other electrode are at one potential")`；`above > 0` 返回 `-1`，`above < 0` 返回 `+1`。按式 (15) 将两者乘积大于 `0` 记为 `"rising"`、小于 `0` 记为 `"falling"`。
+   - 对每个 `contact`，`collected_charge_sign(my_d, contact)` 按式 (16) 计算 `above`：若 `above == 0`，抛出 `ValueError("<electrode> of <det_name> and its other electrode are at one potential")`；`above > 0` 返回 `-1`，`above < 0` 返回 `+1`。按式 (18) 将两者乘积大于 `0` 记为 `"rising"`、小于 `0` 记为 `"falling"`。
 2. **事例循环、通道摆幅筛选与叠加噪声（`write_waveforms`）**：
    - 调用 `read_currents(currents_path)` 读入整批感应电流；若目标 `waveforms_path` 已存在，先调用 `os.remove(waveforms_path)` 删除旧文件。
    - 遍历 `currents.events` 中的每个事例 `event`：
      - 找出存在非零电流的电极列表 `hit = [name for name, current in zip(currents.electrodes, event.current, strict=True) if np.any(current)]`；
-     - 若 `hit` 为空（无信号事例），令 `solved = {}`；否则当 `part_of is None` 时调用 `_solve` 求解全电路，当 `part_of` 非 `None` 时调用 `_solve_part` 求解局部扩展电路；
+     - 若配置了读出线缆，取本事例存储通道的最大延迟 $\tau_{\max}$，在求解窗口末尾加 $n_{\text{extra}} = \lceil \tau_{\max} / \Delta t \rceil$ 个时间箱，感应电流在加长部分置零；
+     - 若 `hit` 为空（无信号事例），令 `solved = {}`；否则当 `part_of is None` 时调用 `_solve` 求解全电路，当 `part_of` 非 `None` 时调用 `_solve_part` 求解局部扩展电路（均按加长后的箱数 $n_{\text{bin}} + n_{\text{extra}}$ 求解）；
      - 计算已求解通道的最大绝对电压摆幅 `swing = {name: np.abs(voltage).max() for name, voltage in solved.items()}` 与最大值 `largest = max(swing.values(), default=0.0)`；
      - 按 `circuit.outputs` 的顺序筛选满足 `name in solved and largest > 0 and swing[name] >= PART_EDGE * largest` 的通道列表 `names`，组装形状为 `(len(names), bins)` 的电压矩阵 `voltage`（无信号事例时 `names = []`，`voltage` 形状为 `(0, bins)`）；
-     - 若 `noise_seed is not None` 且 `names` 非空，逐通道生成 `noise_from_spectrum` 并加到 `voltage` 上；
-     - 调用 `append_waveforms` 将当事例写入 HDF5 文件。
+     - 若配置了读出线缆且 `names` 非空，对每个存储通道以第一个时间箱的电压 $V_{r,0}$ 为参照，将 $V_r - V_{r,0}$ 在两倍长度上补零后做实傅里叶变换，乘以式 (14) 的传递因子 $H_r(f)$，逆变换回时域取前 $n_{\text{bin}} + n_{\text{extra}}$ 个点，再加回 $V_{r,0}$（因 $H_r(0) = 1$，参照电平不变；补零到两倍长度使色散不绕回窗口开头）；
+     - 若 `noise_seed is not None` 且 `names` 非空，逐通道生成 `noise_from_spectrum` 并加到 `voltage` 上（接有线缆时，各通道的输出噪声谱密度先乘对应 $|H_r(f)|$ 再合成，各通道线长不同时各用各的谱）；
+     - 调用 `append_waveforms` 将当事例写入 HDF5 文件；接有线缆时 `count` 为 $n_{\text{bin}} + n_{\text{extra}}$，`t0` 不变，`readout.h5` 的格式不变，没有新属性。
 3. **波形文件校验与追加写入（`append_waveforms`、`read_waveforms`、`read_circuit_values`）**：
    - **输入参数校验**：`append_waveforms` 取 `names = electrodes if record.electrodes is None else list(record.electrodes)`。若 `names` 含有不在 `electrodes` 中的名字或存在重复名字，抛出 `ValueError("the event <event> has traces of <names>, not each once of the electrodes <electrodes>")`。将 `record.voltage` 转为 `float64` 数组：若 `voltage.ndim != 2 or voltage.shape[0] != len(names)`，抛出 `ValueError("voltage has shape <shape>, expected (<len(names)>, bins)")`。若 `pulse_edge is not None` 且（`len(pulse_edge) != len(electrodes)` 或元素不全属于 `{"rising", "falling"}`），抛出 `ValueError("pulse_edge <pulse_edge> is not one of rising and falling for each of the electrodes <electrodes>")`。
    - **建表或校验已有文件结构**：若文件尚不存在，创建 HDF5 文件，写入属性 `electrodes`、`dt`、可选 `device_circuit`（`json.dumps(circuit_values)`）和可选 `pulse_edge`，并创建一维可扩展数据集 `event`、`t0`、`count`、`stored`、`index` 与启用 `compression="gzip"` 的 `voltage`。若文件已存在，先调用 `_check_layout` 检查 `DATASETS = ("event", "t0", "count", "stored", "index", "voltage")` 是否齐全且 `file["voltage"].ndim == 1`，不满足时抛出 `ValueError("<path> is a readout file of an older layout (no ...): run the readout again")`；再核对文件属性 `electrodes` 与 `dt` 是否与本次传入一致，不一致时抛出 `ValueError("<path> holds waveforms of electrodes <in_file> with dt <dt_file> s, not of <electrodes> with dt <dt> s")`。
@@ -391,3 +433,4 @@ Cremat CR-110-R2.2 电荷灵敏前放，空载增益 `1.4 V/pC`，衰减时间 `
 - [4] J. B. Johnson, “Thermal Agitation of Electricity in Conductors”, Phys. Rev. 32 (1928) 97, doi:10.1103/PhysRev.32.97
 - [5] H. Nyquist, “Thermal Agitation of Electric Charge in Conductors”, Phys. Rev. 32 (1928) 110, doi:10.1103/PhysRev.32.110
 - [6] S. O. Rice, “Mathematical Analysis of Random Noise”, Bell Syst. Tech. J. 23 (1944) 282, doi:10.1002/j.1538-7305.1944.tb00874.x
+- [7] Belden, *Belden 8259 产品数据表*, https://www.belden.com/products/cable/coax-triax-cable/50-ohm-coax-cable/8259
