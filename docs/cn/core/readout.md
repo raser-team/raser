@@ -39,7 +39,7 @@ $$V_{r,m} = V_r(t_j) + \frac{t_m - t_j}{t_{j+1} - t_j}\bigl[V_r(t_{j+1}) - V_r(t
 - $V_r(t_j)$：第 $r$ 个读出通道输出节点（链中含放大级时为末级放大器输出与负载输入共用的节点 `out<r>`，无放大级仅含负载时为器件输出节点 `circuit.outputs`）在时刻 $t_j$ 的瞬态电压，$\text{V}$；
 - $V_{r,m}$：线性插值到第 $m$ 个时间箱中心 $t_m$ 处的通道输出电压，$\text{V}$。
 
-级联网表构建与瞬态求解由 `spice.py` 中的 `_chain`、`write_netlist`、`_transient`、`_run` 与 `solve` 实现；另由 `write_short_circuit_netlist` 与 `short_circuit_currents` 提供将器件各输出端经零电压源 `Vshort<r> <output> 0 0` 对地短路的瞬态短路电流求解。前端放大器链由 `circuit.py` 的 `named_chain` 从 [前端读出电路组件](../components/readout.md) 加载，示例 `config.json` 里 `readout.amplifier` 写的放大器链为 `"SantaCruz+Gali52+Termination50"`（见 [../stages/readout.md](../stages/readout.md)）。SPICE 改进节点分析与瞬态数值积分见文献 [2, 3]。
+级联网表构建与瞬态求解由 `spice.py` 中的 `_chain`、`write_netlist`、`_transient`、`_run` 与 `solve` 实现；另由 `write_short_circuit_netlist` 与 `short_circuit_currents` 提供将器件各输出端经零电压源 `Vshort<r> <output> 0 0` 对地短路的瞬态短路电流求解。前端放大器链由 `circuit.py` 的 `named_chain` 从 [前端读出电路组件](../components/readout.md) 加载，示例 `config.json` 里 `readout.amplifier` 写的放大器链为 `"SantaCruz+Gali52+Termination50"`（见 [../stages/readout.md](../stages/readout.md)）。SPICE 改进节点分析与瞬态数值积分见文献 [2, 3]。瞬态积分用 `ngspice` 的二阶 Gear 法（`.options method=gear`），不用默认的梯形法：耗尽电容接共用节点、该节点经电阻接地时，`ngspice` 41 的梯形法步长塌缩、求解不返回。
 
 ### 阻性层网络对一点冲击的响应
 
