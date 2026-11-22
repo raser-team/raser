@@ -10,8 +10,16 @@ Description:  physics_avalanche.py
 
 import devsim
 from .model_create import *
-import math
 
+from raser.core.model.impact_ionization import VAN_OVERSTRAETEN
+from raser.core.model.impact_ionization import hatakeyama
+from raser.core.model.recombination import TAT_FIELD_ENHANCEMENT
+
+# The field on an edge as the models of core/model take it: in the
+# thresholds as it is, elsewhere kept 1 V/cm above zero so that b/E stays
+# finite.
+EDGE_FIELD = "abs(ElectricField)+1"
+EDGE_FIELD_IN_THRESHOLDS = {"E": "abs(ElectricField)"}
 
 def CreateImpactGeneration(device, region, impact_model,custom_ion_n='0', custom_ion_p='0' ):   
     
@@ -62,7 +70,7 @@ def CreateImpactGeneration(device, region, impact_model,custom_ion_n='0', custom
     #Create other field related models 
     if material=='SiliconCarbide':
         CreateFESRH(device,region)
-        Ion_coeff_rate +="+R_TAT" #default create trap assisted tunneling in SiC
+        Ion_coeff_rate +="-R_TAT" #default create trap assisted tunneling in SiC
     
     if impact_model == 'Tunnel':
         print("creating tunnel")
@@ -87,57 +95,17 @@ def CreateImpactModel_vanOvenstraeten(device, region):
     """
     van Ovenstraeten Model
     """
-    # constants in gen_devsim_db.py
-
-    Ion_coeff_n  = "ifelse(abs(ElectricField)>1.75e5, (ifelse(abs(ElectricField)>4e5, gamma * n_a_high * exp( - gamma * n_b_high / (abs(ElectricField)+1)),  gamma * n_a_low * exp( - gamma * n_b_low / (abs(ElectricField)+1)))), 0)"
-    Ion_coeff_p  = "ifelse(abs(ElectricField)>1.75e5, (ifelse(abs(ElectricField)>4e5, gamma * p_a_high * exp( - gamma * p_b_high / (abs(ElectricField)+1)),  gamma * p_a_low * exp( - gamma * p_b_low / (abs(ElectricField)+1)))), 0)"
+    Ion_coeff_n = VAN_OVERSTRAETEN["electron"].devsim(EDGE_FIELD_IN_THRESHOLDS, E=EDGE_FIELD, T="T")
+    Ion_coeff_p = VAN_OVERSTRAETEN["hole"].devsim(EDGE_FIELD_IN_THRESHOLDS, E=EDGE_FIELD, T="T")
 
     return Ion_coeff_n, Ion_coeff_p
 
-def CreateImpactModel_Hatakeyama(device, region, cutoff_angle = 4):
+def CreateImpactModel_Hatakeyama(device, region):
     """
-    Hatakeyama Model for cutoff angle of 4°
+    Hatakeyama Model at the off-axis angle of core/model
     """
-
-    sin_cutoff_angle = math.sin(math.radians(cutoff_angle))
-    cos_cutoff_angle = math.cos(math.radians(cutoff_angle))
-
-    if not InEdgeModelList(device, region, "ElectricField_0001"):
-        CreateEdgeModel(device, region, "ElectricField_0001", "abs(ElectricField+1)*{0}".format(cos_cutoff_angle),)
-
-    if not InEdgeModelList(device, region, "ElectricField_1120"):
-        CreateEdgeModel(device, region, "ElectricField_1120", "abs(ElectricField+1)*{0}".format(sin_cutoff_angle),)
-
-    if not InEdgeModelList(device, region, "n_B"):
-        CreateEdgeModel(device, region, "n_B", "abs(ElectricField+1) / pow( pow( ElectricField_1120/n_b_1120 , 2) + pow( ElectricField_0001/n_b_0001 , 2) , 0.5)",)
-
-    if not InEdgeModelList(device, region, "p_B"):
-        CreateEdgeModel(device, region, "p_B", "abs(ElectricField+1) / pow( pow( ElectricField_1120/p_b_1120 , 2) + pow( ElectricField_0001/p_b_0001 , 2) , 0.5)",)
-
-
-    if not InEdgeModelList(device, region, "n_a_aniso"):
-        CreateEdgeModel(device, region, "n_a_aniso", "pow( n_a_1120, pow( n_B*ElectricField_1120/n_b_1120/abs(ElectricField+1), 2) ) * pow( n_a_0001, pow( n_B*ElectricField_0001/n_b_0001/abs(ElectricField+1), 2) )",)
-
-    if not InEdgeModelList(device, region, "p_a_aniso"):
-        CreateEdgeModel(device, region, "p_a_aniso", "pow( p_a_1120, pow( p_B*ElectricField_1120/p_b_1120/abs(ElectricField+1), 2) ) * pow( p_a_0001, pow( p_B*ElectricField_0001/p_b_0001/abs(ElectricField+1), 2) )",)
-
-
-
-    if not InEdgeModelList(device, region, "n_A"):
-        CreateEdgeModel(device, region, "n_A", "log(n_a_0001/n_b_1120)")
-
-    if not InEdgeModelList(device, region, "p_A"):
-        CreateEdgeModel(device, region, "p_A", "log(p_a_0001/p_b_1120)")
-
-    if not InEdgeModelList(device, region, "n_b_aniso"):
-        CreateEdgeModel(device, region, "n_b_aniso", "n_B * pow( 1-pow(n_A,2)* pow( (n_B*ElectricField_1120*ElectricField_0001)/(abs(ElectricField+1)*n_b_1120*n_b_0001), 2), 0.5)",)
-
-    if not InEdgeModelList(device, region, "p_b_aniso"):
-        CreateEdgeModel(device, region, "p_b_aniso", "p_B * pow( 1-pow(p_A,2)* pow( (p_B*ElectricField_1120*ElectricField_0001)/(abs(ElectricField+1)*p_b_1120*p_b_0001), 2), 0.5)",)
-
-    gamma_str = "tanh(0.19/(2*0.0257))/tanh(0.19/(2*0.0257*T/T0))"
-    Ion_coeff_n  = "ifelse(abs(ElectricField)>1e4, {0} * n_a_aniso * exp( - {1} * n_b_aniso / (abs(ElectricField)+1)), 1)".format(gamma_str,gamma_str)
-    Ion_coeff_p  = "ifelse(abs(ElectricField)>1e4, {0} * p_a_aniso * exp( - {1} * p_b_aniso / (abs(ElectricField)+1)), 1)".format(gamma_str,gamma_str)
+    Ion_coeff_n = hatakeyama("electron").devsim(EDGE_FIELD_IN_THRESHOLDS, E=EDGE_FIELD, T="T")
+    Ion_coeff_p = hatakeyama("hole").devsim(EDGE_FIELD_IN_THRESHOLDS, E=EDGE_FIELD, T="T")
 
     return Ion_coeff_n, Ion_coeff_p
 
@@ -194,7 +162,7 @@ def CreateImpactModel_sic_custom(device,region):
     return Ion_coeff_n, Ion_coeff_p
     
 def CreateFESRH(device,region):
-    R_TAT="ifelse(abs(ElectricField)<F_sat,2*(3*3.14159)^0.5*abs(ElectricField)/3.9e4*exp((abs(ElectricField)/3.9e4)^2)*(U_const@n1),2*(3*3.14159)^0.5*abs(F_sat)/3.9e4*exp((F_sat/3.9e4)^2)*(U_const@n1))"
+    R_TAT="({0})*(U_const@n1)".format(TAT_FIELD_ENHANCEMENT.devsim(E="abs(ElectricField)", F_sat="F_sat"))
     CreateEdgeModel(device,region,"R_TAT",R_TAT)
     CreateEdgeModelDerivatives(device,region,"R_TAT",R_TAT,"Potential")
     CreateEdgeModelDerivatives(device,region,"R_TAT",R_TAT,"Electrons")

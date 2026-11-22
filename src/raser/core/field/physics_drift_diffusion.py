@@ -10,6 +10,9 @@ Description:  physics_drift_diffusion.py
 '''
 
 from devsim import *
+
+from raser.core.model.recombination import SRH
+
 from .model_create import *
 from .physics_avalanche import CreateImpactGeneration
 from .physics_irradiation import CreateIrradiation
@@ -91,6 +94,9 @@ def CreateSiliconPotentialOnlyContact(device, region, contact, contact_type, is_
         phi_0 = "E_g/(3*ElectronCharge)"
         contact_model = "Potential - {0} + {3}*({1} - {2}) - {3}*E_g/ElectronCharge + ({3}-1)*{4} + Volt_thermal*log(N_v/n_i)".format(GetContactBiasName(contact), workfun, affinity, gamma, phi_0)
         # The units of affinity and workfun are eV, assume q=1e to get the V
+    elif get_material(device=device, region=region) == "Diamond":
+        # peiyao: the potential of an ohmic contact on diamond is its bias
+        contact_model = "Potential - {0}".format(GetContactBiasName(contact))
     else:
         contact_model = "Potential -{0} + ifelse(NetDoping >0, \
                         -Volt_thermal*log({1}/n_i), \
@@ -187,7 +193,7 @@ def PrintCurrents(device, contact):
 
 
 def CreateSRH(device, region, irradiation_model):
-    USRH="(Electrons*Holes - n_i^2)/(taup*(Electrons + n1) + taun*(Holes + p1))"
+    USRH = SRH.devsim(n="Electrons", p="Holes", n_i="n_i", n1="n1", p1="p1", tau_n="taun", tau_p="taup")
     Gn = "-ElectronCharge * (USRH+U_const)"
     Gp = "+ElectronCharge * (USRH+U_const)"
 
@@ -296,6 +302,10 @@ def CreateSiliconDriftDiffusionAtContact(device, region, contact, contact_type, 
         # The units of affinity and workfun are eV, assume q=1e to get the V
         contact_electrons_model = "Electrons - {0}".format(Equi_Electrons)
         contact_holes_model = "Holes - {0}".format(Equi_Holes)
+    elif get_material(device=device, region=region) == "Diamond":
+        # peiyao: an undoped diamond node at an ohmic contact holds CarrierFloor electrons and holes
+        contact_electrons_model = "Electrons - ifelse(abs(NetDoping) < 1, CarrierFloor, ifelse(NetDoping > 0, {0}, n_i^2/{1}))".format(celec_model, chole_model)
+        contact_holes_model = "Holes - ifelse(abs(NetDoping) < 1, CarrierFloor, ifelse(NetDoping < 0, {1}, n_i^2/{0}))".format(celec_model, chole_model)
     else:
         contact_electrons_model = ( "Electrons - ifelse(NetDoping > 0, {0}, n_i^2/{1})".format(celec_model, chole_model
             ))
@@ -351,14 +361,22 @@ def CreateOxidePotentialOnly(device, region, update_type="default"):
 
 
 #in the future, worry about workfunction
-def CreateOxideContact(device, region, contact):
+def CreateWeightingContact(device, contact):
+    """The contact holds the potential at its bias, without the built-in
+    potential of the doping under it: what a weighting potential asks for."""
     set_parameter(name = "Permittivity", value=9.76*8.85e-14)
-    conteq="Permittivity *ElectricField"
     contact_bias_name  = GetContactBiasName(contact)
     contact_model_name = GetContactNodeModelName(contact)
     eq = "Potential - {0}".format(contact_bias_name)
     CreateContactNodeModel(device, contact, contact_model_name, eq)
     CreateContactNodeModelDerivative(device, contact, contact_model_name, eq, "Potential")
+
+
+def CreateOxideContact(device, region, contact):
+    CreateWeightingContact(device, contact)
+    conteq="Permittivity *ElectricField"
+    contact_bias_name  = GetContactBiasName(contact)
+    contact_model_name = GetContactNodeModelName(contact)
 
     #TODO: make everyone use dfield
     if not InEdgeModelList(device, region, contactcharge_edge):

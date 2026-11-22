@@ -1,6 +1,0 @@
-{
-  "source": "decay/Sr90",
-  "afe": "Broad_Band_UCSC",
-  "adc": "Alibava",
-  "g4setup": "charge_collection"
-}

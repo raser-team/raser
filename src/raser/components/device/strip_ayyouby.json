@@ -1,6 +1,7 @@
 {
     "det_name": "strip_ayyouby",
     "det_model": "lgadstrip",
+    "electrodes": "strip",
     "material": "Si",
     "comment": "Ayyoub-inspired three-channel DJ-LGAD strip. Pitch 20 um, metal and local n++ implant width 18 um, gaps 2 um. Lateral contact windows are 0-18, 20-38, 40-58 um. Each gap has a centered 1 um wide, 1 um deep p-stop with acceptor concentration 1e13 cm^-3. The 1 um deep n++ implants are confined to the metal windows. Buried Gaussian gain layers, bulk backgrounds, and backside p+ retain the exact coefficient-version formulas. Metal width is a user-approved implementation choice, not a specified Ayyoub paper value. Geometry is 58 um by 5 mm by 50 um; 2D DEVSIM x is depth and y is lateral, both in cm. No external guard ring or oxide/interface charge is included. Frontend capacitance uses the same pitch-times-strip-length parallel-plate estimate; mutual strip capacitances are not supplied. Mesh resolves p-stop and implant edges at 0.1 um laterally and the buried gain peaks at 0.05 um in depth.",
     "l_x": 58,
@@ -17,11 +18,10 @@
         "voltage": -200.0
     },
     "temperature": 300.0,
-    "avalanche_bond": 5.5,
     "avalanche_model": "vanOverstraeten",
-    "gain_algorithm": "local_path",
+    "enable_gain": true,
     "local_gain_integration_steps": 11,
-    "area_factor": 0.01,
+    "area_factor": 0.5,
     "default_dimension": 2,
     "read_out_contact": [
         {

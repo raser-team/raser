@@ -8,13 +8,34 @@ from pathlib import Path
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
-REPO_ROOT = PACKAGE_ROOT.parents[1]
+# The folder raser, raser_bench and raser_app are installed in, side by side.
+PACKAGES_ROOT = PACKAGE_ROOT.parent
+
+
+def source_tree(package_root=PACKAGE_ROOT):
+    """The source tree raser runs from, <tree>/src/raser beside <tree>/pyproject.toml,
+    as from a checkout or after pip install -e; None when it is installed as a package."""
+    tree = package_root.parents[1]
+    return (
+        tree
+        if package_root.parent.name == "src" and (tree / "pyproject.toml").is_file()
+        else None
+    )
+
+
+REPO_ROOT = source_tree()
 DEFAULT_COMPONENT_ROOT = PACKAGE_ROOT / "components"
-DEFAULT_WORK_ROOT = REPO_ROOT / "work"
+
+
+def default_work_root(tree=REPO_ROOT, cwd=None):
+    """work/ of the source tree; installed as a package, work/ of the current
+    folder: never the folder the package is installed in."""
+    return tree / "work" if tree is not None else Path(cwd or Path.cwd()) / "work"
 
 
 def work_root():
-    return Path(os.environ.get("RASER_WORK_PATH", DEFAULT_WORK_ROOT))
+    given = os.environ.get("RASER_WORK_PATH")
+    return Path(given) if given is not None else default_work_root()
 
 
 def project_root():
@@ -50,20 +71,38 @@ def infer_project_root(input_value: str | os.PathLike | None):
 
 
 @contextmanager
-def project_root_context(project_path_value: str | os.PathLike | None):
-    if project_path_value is None:
+def _environment(name: str, value: str | None):
+    if value is None:
         yield
         return
 
-    previous = os.environ.get("RASER_PROJECT_PATH")
-    os.environ["RASER_PROJECT_PATH"] = str(project_path_value)
+    previous = os.environ.get(name)
+    os.environ[name] = value
     try:
         yield
     finally:
         if previous is None:
-            os.environ.pop("RASER_PROJECT_PATH", None)
+            os.environ.pop(name, None)
         else:
-            os.environ["RASER_PROJECT_PATH"] = previous
+            os.environ[name] = previous
+
+
+@contextmanager
+def project_root_context(
+    project_path_value: str | os.PathLike | None,
+    component_apps: tuple[str, ...] = (),
+):
+    project = None if project_path_value is None else str(project_path_value)
+    components = None
+    if component_apps:
+        roots = [str(app_component_root(app)) for app in component_apps]
+        previous = os.environ.get("RASER_COMPONENT_PATH")
+        if previous:
+            roots.append(previous)
+        components = os.pathsep.join(roots)
+    with _environment("RASER_PROJECT_PATH", project):
+        with _environment("RASER_COMPONENT_PATH", components):
+            yield
 
 
 def _as_path_list(paths: str | os.PathLike | list[str | os.PathLike] | None):
@@ -94,11 +133,12 @@ def component_roots(
 
 
 def app_component_root(app_name: str):
-    return PACKAGE_ROOT / "apps" / app_name / "components"
+    """The components of an app; `app_name` is its folder beside raser, "raser_bench/signal"."""
+    return PACKAGES_ROOT / app_name / "components"
 
 
 def app_file_path(app_name: str, filename: str):
-    path = PACKAGE_ROOT / "apps" / app_name / filename
+    path = PACKAGES_ROOT / app_name / filename
     if path.exists():
         return path
     raise FileNotFoundError(f"Cannot find RASER app file: {path}")
@@ -115,10 +155,25 @@ def component_candidates(*parts: str, roots=None):
     return [root.joinpath(*parts) for root in search_roots]
 
 
+def _is_there_as_written(root: Path, parts) -> bool:
+    """Whether root/<parts> is there with the letters of `parts` as they are
+    written: a file system that takes HPK-Si-PIN for HPK-Si-PiN finds a
+    component here that the same command does not find on another machine."""
+    if Path(*parts).is_absolute():
+        return root.joinpath(*parts).exists()  # a path of its own, not a name under the root
+    path = root
+    for name in Path(*parts).parts:
+        if name not in (".", "..") and (not path.is_dir() or name not in os.listdir(path)):
+            return False
+        path = path / name
+    return path.exists()
+
+
 def component_path(*parts: str, roots=None):
-    candidates = component_candidates(*parts, roots=roots)
-    for candidate in candidates:
-        if candidate.exists():
+    search_roots = component_roots() if roots is None else list(roots)
+    candidates = component_candidates(*parts, roots=search_roots)
+    for root, candidate in zip(search_roots, candidates, strict=True):
+        if _is_there_as_written(root, parts):
             return candidate
     searched = "\n  - ".join(str(candidate) for candidate in candidates)
     raise FileNotFoundError(
@@ -127,8 +182,9 @@ def component_path(*parts: str, roots=None):
 
 
 def optional_component_path(*parts: str, roots=None):
-    for candidate in component_candidates(*parts, roots=roots):
-        if candidate.exists():
+    search_roots = component_roots() if roots is None else list(roots)
+    for root, candidate in zip(search_roots, component_candidates(*parts, roots=search_roots), strict=True):
+        if _is_there_as_written(root, parts):
             return candidate
     return None
 
@@ -151,14 +207,16 @@ def component_file_path(
 def module_work_name(current_file_path: str | os.PathLike):
     path = Path(current_file_path).resolve()
     try:
-        relative = path.relative_to(PACKAGE_ROOT)
+        relative = path.relative_to(PACKAGES_ROOT)
     except ValueError:
         return path.stem
 
     parts = relative.parts
-    if len(parts) >= 2 and parts[0] in {"apps", "core"}:
+    if len(parts) >= 2 and parts[0] in {"raser_app", "raser_bench"}:
         return parts[1]
-    if parts and parts[0] == "cli":
+    if len(parts) >= 3 and parts[:2] == ("raser", "core"):
+        return parts[2]
+    if parts[:2] == ("raser", "cli"):
         return "cli"
     return path.stem
 

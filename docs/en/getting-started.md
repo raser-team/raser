@@ -1,211 +1,140 @@
-# Getting started
+# Getting Started
 
-> RASER 5.0 · Python 3.11 · Installation and use are separate steps
+This page starts from installation, runs the `HPK-Si-PiN` example in one command, examines the result of each step in chain order, and then shows how to create your own project and change parameters.
 
-Install an environment once. In each new shell, activate one complete route
-before running RASER. That route supplies a matched Python, ROOT, Geant4, and
-ngspice runtime.
-
----
-
-## 📦 Install an environment
-
-Choose one route for the host platform. The commands in this section create
-environments or images. Workflow commands appear under
-[Run RASER](#run-raser).
-
-Run the listed commands once for the selected platform. After that, activation
-is one command per shell.
-
-### Native Linux and WSL
-
-With `conda` on `PATH`, one command creates `.conda/envs/raser` and the project
-venv:
+## 1. Installation
 
 ```bash
 env/install_conda.sh
 ```
 
-The script selects the conda specification for the host architecture. The conda
-environment provides Python 3.11, ROOT, Geant4 11.3.2 with its datasets, and
-ngspice; on x86-64 it also provides MKL, and on aarch64 `env/install-ngspice.sh`
-builds ngspice into the environment. The project venv inherits those packages
-and adds the Python packages pinned in `env/uv.txt`. In WSL, use this route in
-the Linux distribution.
+## 2. Activation
 
-`env/install_conda.sh --without-geant4` leaves Geant4 out of the environment;
-`--without-root` leaves out ROOT and Geant4, because the Geant4 Python bindings
-use the cppyy that ROOT provides. [Use external ROOT or Geant4](#use-external-root-or-geant4)
-describes how activation then finds them.
-
-| Architecture | Conda specification | Explicit specification |
-| --- | --- | --- |
-| x86-64 | `env/conda-linux-x86.yml` | `env/conda-linux-64.lock` |
-| aarch64 | `env/conda-linux-aarch64.yml` | `env/conda-linux-aarch64.lock` |
-
-When exact conda artifacts are required, create the environment from the
-explicit specification and then run the venv steps:
+Activate the environment in a local terminal, or use the CVMFS activation script on a cluster, then check the version:
 
 ```bash
-conda create -p .conda/envs/raser -c conda-forge --file env/conda-linux-64.lock
-conda activate "$PWD/.conda/envs/raser"
-uv venv --system-site-packages --python "$(command -v python3.11)" .venv
-uv pip sync --python .venv/bin/python env/uv.txt
-```
+source env/setup.sh
+# On a cluster:
+source env/setup_cvmfs.sh
 
-### IHEP computing cluster: Conda
-
-On the cluster, source the conda shell integration below, then run the native
-Linux installer:
-
-```bash
-source /cvmfs/common.ihep.ac.cn/software/anaconda/miniconda3-202505/etc/profile.d/conda.sh
-env/install_conda.sh
-```
-
-### IHEP computing cluster: Ubuntu 22.04 SIF
-
-```bash
-apptainer build --mksquashfs-args '-processors 1' \
-    img/raser_ubuntu.sif bootstrap/ubuntu/raser-ubuntu-sif.def
-```
-
-This image supplies the project Python environment, ngspice, and Ubuntu runtime
-libraries. ROOT and Geant4 come from the matched `ubuntu2204` LCG view.
-
-### IHEP computing cluster: EL9 SIF
-
-```bash
-apptainer build --mksquashfs-args '-processors 1' \
-    img/raser_el9.sif bootstrap/el9/raser-el9-sif.def
-```
-
-This image supplies the project Python environment, ngspice, and EL9 runtime
-libraries. ROOT comes from the matched `x86_64-el9` LCG view and Geant4 from the
-external EL9 installation. Optional source archives may be cached under
-`bootstrap/ingredients/`.
-
-The single-processor squashfs option avoids thread-creation failures on
-restricted cluster nodes. See the [container route notes](../../bootstrap/README.md)
-for image-specific details.
-
-### Native Apple Silicon
-
-The pinned Python packages require macOS 14 or newer on arm64. ROOT and Geant4
-11.3.2 with its datasets are provided by conda; ngspice is built into the conda
-environment. The same installer and options cover this platform:
-
-```bash
-env/install_conda.sh
-```
-
-The matching explicit conda specification is also available; after creating the
-environment from it, activate it and run `env/install-ngspice.sh` before the
-venv steps:
-
-```bash
-conda create -p .conda/envs/raser -c conda-forge --file env/conda-macos-arm64.lock
-```
-
-For the Lima-based macOS route, build the Ubuntu SIF and use
-`make run-raser-sif-macos`.
-
-## 🔌 Activate a route
-
-Activate exactly one route:
-
-| Route | Command |
-| --- | --- |
-| Native conda | `source env/setup_cvmfs.sh conda` |
-| Ubuntu 22.04 SIF | `source env/setup_cvmfs.sh ubuntu` |
-| EL9 SIF | `source env/setup_cvmfs.sh el9` |
-| Automatic local selection | `source env/setup_cvmfs.sh` |
-
-Automatic selection prefers a local Ubuntu SIF, then a local EL9 SIF, and then
-the conda route. The conda route loads the configured CVMFS profile when it is
-available; otherwise it loads conda from `PATH`. It then activates
-`.conda/envs/raser`, including when another conda environment is active.
-
-### Use external ROOT or Geant4
-
-On the conda route, an installation named before activation takes precedence
-over the one in `.conda/envs/raser`, whether or not the environment includes
-that package:
-
-```bash
-export RASER_ROOT_INSTALL=/path/to/root      # contains bin/root-config and bin/thisroot.sh; built for Python 3.11
-export RASER_GEANT4_INSTALL=/path/to/geant4  # contains bin/geant4-config and bin/geant4.sh
-source env/setup_cvmfs.sh conda
-```
-
-`RASER_ROOT_INSTALL` names a standalone ROOT installation, such as a CERN
-binary release, an LCG release on CVMFS, or a source build. A ROOT package in
-another conda environment runs only inside that activated environment.
-Activation reports each external installation and its version, and warns when
-an external ROOT meets the Geant4 bundled with the conda ROOT. An environment
-installed with `--without-geant4` and no `RASER_GEANT4_INSTALL` uses the CVMFS
-Geant4 11.3.p02 EL9 build.
-
-The setup adds the project CLI, component search path, and `work/` location to
-the active shell. Dependency installation occurs in the preceding environment
-preparation step.
-
-## 🚀 Run RASER
-
-First verify the active route with the metadata commands:
-
-```bash
 raser --version
-raser --help
 ```
 
-Then run a workflow through the public CLI:
+## 3. First Run
 
 ```bash
-raser field -cv HPK-Si-PiN
 raser signal HPK-Si-PiN
-raser cce NJU-PiN
 ```
 
-Use `raser <command> --help` for options. The public command is `raser`;
-source-tree module paths remain implementation details.
+This simulates electrons emitted from an Sr90 radioactive source passing through `HPK-Si-PiN`: the electrons deposit charge in the device, the charge drifts to induce current, and the signal is amplified, sampled, triggered, and recorded, finally yielding the charge collection efficiency and the time resolution relative to the true time. All settings are written in `examples/HPK-Si-PiN/signal/config.json`, and the results are also stored under `examples/HPK-Si-PiN/`.
 
-## Validate a complete sensor chain
+## 4. Results of Each Step in the Chain
 
-The following commands solve the Device field data and run the three primary
-sensor-response applications with fixed operating values and random seeds:
+This command runs through all eight stages of the chain in order. Below we inspect what each step computes in the same order.
+
+### 4.1 field
+
+The first time this device is used, its electric field, IV, and CV are computed and stored in `examples/HPK-Si-PiN/field/`; other experiments on this device share the same field.
+
+![HPK-Si-PiN IV curve](../images/field/iv-HPK-Si-PiN.png)
+
+Dark current under reverse bias.
+
+![HPK-Si-PiN CV curve](../images/field/cv-HPK-Si-PiN.png)
+
+Capacitance decreases with bias voltage and flattens out once the device is fully depleted.
+
+![HPK-Si-PiN 200 V 1D electric field profile](../images/field/efield-HPK-Si-PiN-200V.png)
+
+Electric field along the depth of the device at `200 V`.
+
+### 4.2 deposit and current
+
+`deposit` uses Geant4 to compute how much energy the electrons leave in the device and where; `current` drifts those charges in the electric field and computes the induced current on the electrodes.
+
+![HPK-Si-PiN single-event carrier drift path](../images/current/drift-path-HPK-Si-PiN.png)
+
+Drift trajectories of electrons and holes in a single event.
+
+![HPK-Si-PiN single-event induced current](../images/current/event-HPK-Si-PiN.png)
+
+Induced current on the readout electrode for the same event: electron component, hole component, and total current.
+
+### 4.3 readout
+
+`readout` feeds the induced current into the device equivalent circuit and then through the front-end amplifier to compute the voltage waveform at the amplifier output. The amplifier used in this example is the SantaCruz board plus Gali52, terminated in 50 Ω:
+
+![SantaCruz amplifier schematic](../images/readout/schematic-SantaCruz.png)
+
+Amplifier noise is also computed in this step and superimposed on the output waveform.
+
+### 4.4 digitizer
+
+Like an oscilloscope or digitizer board, `digitizer` samples points at a fixed sampling rate and quantizes the voltage at each point into a finite number of levels to produce a digital waveform. The sampling rate and bit depth are specified in the `digitizer` section of the configuration.
+
+### 4.5 trigger
+
+Like real trigger hardware, `trigger` decides which events are recorded. This example triggers on an amplitude threshold: events whose waveform crosses the threshold are recorded, and those that do not are discarded.
+
+### 4.6 reconstruction
+
+For each recorded event, `reconstruction` extracts these quantities from the waveform: baseline, amplitude, time of arrival (ToA), constant-fraction discrimination time (CFD), pulse area, and time over threshold.
+
+### 4.7 analysis
+
+`analysis` summarizes all events.
+
+![HPK-Si-PiN charge collection efficiency distribution](../images/analysis/efficiency-HPK-Si-PiN.png)
+
+Distribution of charge collection efficiency; the dashed line is the mean.
+
+![HPK-Si-PiN pulse amplitude distribution](../images/analysis/amplitude-HPK-Si-PiN.png)
+
+Pulse amplitude of recorded events; the dashed line is the amplitude threshold.
+
+![HPK-Si-PiN time difference distribution and truncated Gaussian fit](../images/analysis/time-difference-HPK-Si-PiN.png)
+
+Difference between the times given by various timing methods and the true deposition time. Because simulation knows each event's true deposition time, time resolution can be computed this way; in an experiment the true time is unavailable, so measuring time resolution requires a reference device—see `timeres`.
+
+The results of each step are organized by scan point under `examples/HPK-Si-PiN/signal/points/<point>/<stage>/`, the statistics of each point and the three distributions above are in `points/<point>/analysis/` (the figures in `plots/` there; the point is named `default` when nothing is scanned), and the trend plots across points are placed under `examples/HPK-Si-PiN/signal/analysis/`; see [architecture.md](architecture.md#results) for how they are stored.
+
+## 5. Creating Your Own Project
+
+Copy the example project to `work/my-PiN` with its full configuration so that it is independent of the example thereafter, then run `signal` on your project:
 
 ```bash
-source env/setup_cvmfs.sh conda
-raser field HPK-Si-PiN -bias 200
-raser field -wf HPK-Si-PiN -bias 200
-raser signal HPK-Si-PiN decay/Sr90 -vol 200 --events-per-job 1 --seed 7
-raser tct signal HPK-Si-PiN SPA_top_Si_IR -vol 200 --seed 7
-raser timeres HPK-Si-PiN decay/Sr90 -vol 200 --events-per-job 100 --seed 7
+raser new --from HPK-Si-PiN work/my-PiN
+raser signal my-PiN
 ```
 
-Signal processes one Geant4 event. TCT calculates the laser-generated carrier
-groups. Timeres processes 100 Geant4 events and writes the timing analysis.
+Results are stored in `work/my-PiN/signal/` (containing `points.json`, `nodes/`, `points/<point>/`, and `analysis/`), and the device field is stored in `work/my-PiN/field/`.
 
-## 🌳 Share environments with worktrees
+## 6. Changing Settings and Running Again
 
-Local SIF images and conda/venv directories are ignored runtime assets. Link a
-worktree to the shared assets in the main checkout:
+Change a single bias setting and run again; new nodes are written into `work/my-PiN/signal/nodes/`, and `work/my-PiN/signal/points.json` and the `work/my-PiN/signal/points/<point>/` views are updated:
 
 ```bash
-cd .worktrees/<name>
-ln -s ../../img img
-ln -s ../../.conda .conda
-ln -s ../../.venv .venv
+raser signal my-PiN --set field.voltage=100
 ```
 
-Run activation commands from the worktree root so paths resolve to that source
-tree while the large runtime assets remain shared.
+Scan multiple bias voltages, inspect each stage's results per point under `work/my-PiN/signal/points/voltage_100/` and `work/my-PiN/signal/points/voltage_200/`, and view trend plots under `work/my-PiN/signal/analysis/`:
 
-## 📌 Dependency policy
+```bash
+raser signal my-PiN --scan field.voltage=100,200
+```
 
-RASER omits `uv.lock` by policy. Direct Python dependencies stay readable in
-`pyproject.toml`; the compact, pinned `env/uv.txt` defines deployed Python
-packages and is consumed by native and SIF routes. Conda YAML and explicit spec
-files define compiled dependencies. Generating `uv.lock` requires an explicit
-policy change.
+![HPK-Si-PiN charge collection efficiency and time resolution vs. bias](../images/analysis/trend-HPK-Si-PiN.png)
+
+Print the parameter table of `work/my-PiN` (status and node ID of each experiment, scan point, and stage):
+
+```bash
+raser status work/my-PiN
+```
+
+Without running simulation, plot only the device's own geometry, electrodes, and doping:
+
+```bash
+raser device --draw HPK-Si-PiN
+```
+
+Add `--seed <integer>` to make results reproducible (for more options and scan usage, see [cli.md](cli.md) and [lifecycle/experiments.md](lifecycle/experiments.md)).

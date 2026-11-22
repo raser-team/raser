@@ -3,6 +3,7 @@ From: quay.io/almalinuxorg/almalinux:9
 
 %files
     env/uv.txt /opt/raser-uv.txt
+    env/uv-dev.txt /opt/raser-uv-dev.txt
 
 %setup
     ngspice_tarball=bootstrap/ingredients/ngspice-46.tar.gz
@@ -99,7 +100,7 @@ From: quay.io/almalinuxorg/almalinux:9
     rm -f /tmp/install-uv.sh
 
     uv venv --python /usr/bin/python3.11 $VIRTUAL_ENV
-    uv pip sync --python $VIRTUAL_ENV/bin/python /opt/raser-uv.txt
+    uv pip sync --python $VIRTUAL_ENV/bin/python /opt/raser-uv.txt /opt/raser-uv-dev.txt
     rm -rf $UV_CACHE_DIR
 
     $VIRTUAL_ENV/bin/python -m pytest --version

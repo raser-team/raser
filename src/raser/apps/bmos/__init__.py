@@ -1,2 +1,0 @@
-
-"""BMOS application package."""

@@ -1,0 +1,26 @@
+* BroadBandCividec: CIVIDEC C2 broadband current amplifier, by the figures of
+* its maker (data sheet "C2 Broadband Amplifier, 2 GHz, 40 dB"):
+*   analog bandwidth 1 MHz - 2 GHz, gain 40 dB, non-inverting
+*   input AC coupled, 1 nF with 1 MOhm DC bias; input impedance 50 Ohm
+*   output impedance 50 Ohm
+*   equivalent input current noise 0.4 uA rms
+* Ports: in, out. Ground is node 0.
+*
+* The 2 GHz are taken as one pole. Rp and Cp are no parts of the device: they
+* make the pole, 1 / (2 pi Rp Cp) = 2 GHz, with Rp small so that its thermal
+* noise does not count. The 50 Ohm at the input are Rn beside Rq: a resistor
+* of 50 Ohm alone would make 1.0 uA rms in the band of the pole, so only Rn
+* makes noise, the 0.4 uA rms of the maker, and Rq makes none.
+
+.subckt BroadBandCividec in out
+Rbias in 0 1MEG
+Cin in a 1n
+Rn a 0 325.4
+Rq a 0 59.08 noisy=0
+* twice 10^(40/20): the 50 Ohm output and the 50 Ohm load halve it
+E1 b 0 a 0 200
+Rp b c 1
+Cp c 0 79.58p
+E2 d 0 c 0 1
+Rout d out 50
+.ends BroadBandCividec

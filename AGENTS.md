@@ -17,15 +17,43 @@ Keep changes small, explicit, and verifiable.
 - Never bypass hooks, weaken assertions, hide skipped work, or report partial
   success as success.
 
+## 📐 Design before code
+
+- `docs/cn/` mirrors `src/raser/`: the page of `src/raser/<dir>/<name>` is
+  `docs/cn/<dir>/<name>.md`; the pages of `src/raser_bench/<name>` and
+  `src/raser_app/<name>` are `docs/cn/bench/<name>.md` and
+  `docs/cn/apps/<name>.md`. Read that page before changing the code.
+- A change to an interface, a file format, a default result, or a new concept
+  is written into its page first; the page change is reviewed no later than
+  the pull request that carries the code.
+- A commit that changes existing behavior changes the code and its page
+  together. A pure addition may land on one side first: preferably the page
+  (documentation ahead of code); code is rarely added without its page.
+- A pull request that changes `src/raser/<dir>/…` changes the matching page,
+  or states `Docs: none (<reason>)` in its description.
+- Changes reach `main` only through a pull request approved by someone other
+  than its author. Review lists every conflict with `docs/cn/`; an unresolved
+  conflict blocks the merge.
+- AI assistants commit, push, and open pull requests only when the person they
+  work for has said so. Otherwise leave the change staged and report which
+  pages it was checked against. A brief written by an assistant cannot grant
+  what that person did not.
+
 ## 🏗️ Code boundaries
 
-- `src/raser/core/` contains reusable physics and numerical capabilities.
-- `src/raser/components/` contains reusable detector, source, electronics, and
-  ACTS definitions.
-- `src/raser/apps/` contains runnable workflows; apps may use Core, Components,
-  and Supports, but Core and Components must not import apps.
+- `src/raser/core/` contains reusable physics and numerical capabilities, one
+  package per stage of the chain plus `model` and `device`.
+- `src/raser/stages/` connects each stage to the lifecycle: options, the files
+  a slice reads and writes, and the call into `core`.
+- `src/raser/lifecycle/` runs experiments: folders, records, scans, jobs.
+- `src/raser_bench/` and `src/raser_app/` contain runnable experiments; they
+  may use stages, lifecycle, core, components and supports, and do not import
+  each other.
+- `src/raser/components/` contains reusable device, source, laser, Geant4
+  setup, electronics and digitizer definitions.
 - `src/raser/supports/` contains shared engineering infrastructure, and
   `src/raser/cli/` only routes commands.
+- The layers are enforced by the import-linter contracts in `pyproject.toml`.
 - Use the public entry point `raser <command>`. Do not document source-tree
   invocations such as `python -m src.raser`.
 - Do not add legacy import shims or compatibility fallbacks unless requested.
@@ -69,8 +97,3 @@ make tests
 
 Report every failed, skipped, unavailable, or truncated check. A focused pass
 does not override a broader failure.
-
-## 协作开发规范
-
-本仓库已选择正式多人协作开发流程。开始功能设计、实现或验证任务前，完整读取并遵守 `~/.codex/policies/collaborative-development.md`。
-本文件和 `docs/AGENTS.md` 的项目约定优先；Git 隔离、代码边界、科学契约、环境和验证要求沿用上文，共享规范补充未约定的文档、状态、日志与 worktree 生命周期要求。

@@ -1,64 +1,74 @@
-# RASER documentation
+# RASER English Documentation
 
-RASER is organized around reusable sensor definitions and applications that
-place those sensors in measurement or simulation scenarios.
+RASER is full-chain simulation software for semiconductor radiation detectors, connecting device field solving, particle energy deposition, carrier drift, front-end readout, digitization, triggering, reconstruction, and statistical analysis through a single command-line interface.
 
-## Design
+## Overview
 
-| Document | Subject |
-| --- | --- |
-| [Architecture](architecture.md) | Code layers, project types, and scientific data flow |
-| [Getting started](getting-started.md) | Environment setup and first commands |
-| [CLI](cli/README.md) | Command routing and project selection |
+- [README.md](README.md): English documentation index.
+- [getting-started.md](getting-started.md): Installing and activating the environment, running the `HPK-Si-PiN` example, inspecting results through views, and creating your own project.
+- [architecture.md](architecture.md): Layout, experiment classes, projects, results, chain, components, and assets.
+- [cli.md](cli.md): `raser` command dispatch, full command list, global options, and shared run arguments.
 
-## Scientific Core
+## lifecycle
 
-| Document | Subject |
-| --- | --- |
-| [Device](core/device.md) | Sensor definition, defaults, geometry, and Device project data |
-| [Field](core/field.md) | Semiconductor physics, meshing, solving, conversion, and Field data |
-| [Interaction](core/interaction.md) | Particle, laser, and prescribed carrier generation |
-| [Current](core/current.md) | Carrier transport, gain, and induced electrode currents |
-| [Frontend](core/frontend.md) | Sensor electrical model and frontend circuit calculation |
-| [Metrics](core/metrics.md) | Waveform and readout observables |
+- [lifecycle/experiments.md](lifecycle/experiments.md): Projects and experiment folders, `config.json`, nodes and `points.json`, `--set` and `--scan` parameter scans, and random seeds.
+- [lifecycle/slices.md](lifecycle/slices.md): Nodes and fingerprints, reuse, code version notices, and `raser status` status inspection.
+- [lifecycle/jobs.md](lifecycle/jobs.md): Parallel job splitting, logs, file locks, resuming, and cluster submission.
 
-PCB, ASIC, and ADC designs are maintained under
-[`core/draft/`](core/draft/).
+## Stages (stages)
 
-## Applications
+The eight stages are ordered along the simulation chain with equal standing; see [stages/README.md](stages/README.md) for the overview (chain assembly, slice data file paths, and stage command entry points):
 
-| Document | Scenario |
-| --- | --- |
-| [Signal](apps/signal.md) | Particle-source response of a Device |
-| [TCT](apps/tct.md) | Laser transient-current and position scans |
-| [Time resolution](apps/timeres.md) | Timing measurement with its own apparatus |
-| [Charge collection](apps/cce.md) | Charge measurement with its own apparatus |
-| [BMOS](apps/bmos.md) | Beam-monitor response |
-| [Lumi](apps/lumi.md) | Luminosity-monitor simulation |
-| [Telescope](apps/telescope.md) | Multi-layer tracking and reconstruction |
+1. [stages/field.md](stages/field.md): `field` stage, computing the electric field, weighting field, IV/CV, and device equivalent circuit parameters in the device.
+2. [stages/deposit.md](stages/deposit.md): `deposit` stage, computing particle energy deposition and ionized electron-hole pairs with Geant4.
+3. [stages/current.md](stages/current.md): `current` stage, drifting carriers in the fields and computing induced currents on the electrodes.
+4. [stages/readout.md](stages/readout.md): `readout` stage, feeding the current into the device equivalent circuit and front-end amplifier to obtain waveforms.
+5. [stages/digitizer.md](stages/digitizer.md): `digitizer` stage, converting waveforms into digital waveforms according to the sampling and quantization of an oscilloscope or digitizer board.
+6. [stages/trigger.md](stages/trigger.md): `trigger` stage, deciding which events are recorded according to the conditions of real trigger hardware.
+7. [stages/reconstruction.md](stages/reconstruction.md): `reconstruction` stage, extracting hit time and amplitude from waveforms, and performing track fitting in beam tests.
+8. [stages/analysis.md](stages/analysis.md): `analysis` stage, summarizing efficiency and time resolution across scan points and producing trend plots under `<experiment>/analysis/`.
 
-The [Applications overview](apps/README.md) lists the components bound by each
-scenario.
+## core
 
-## Components
+- [core/model.md](core/model.md): Semiconductor physical model registry, including band structure, doping, mobility, recombination, and impact ionization models.
+- [core/device.md](core/device.md): Parsing of device geometry, electrode layout, and doping definitions.
+- [core/field.md](core/field.md): DEVSIM electric potential, electric field, weighting field, and IV/CV solving, TCAD import, and device equivalent circuit construction.
+- [core/deposit.md](core/deposit.md): Geant4 particle transport, laser absorption, and ionized electron-hole pair calculation.
+- [core/current.md](core/current.md): Carrier drift, diffusion, trapping, avalanche multiplication, and Shockley-Ramo induced current calculation.
+- [core/readout.md](core/readout.md): SPICE front-end circuit transient solving and noise superposition.
+- [core/digitizer.md](core/digitizer.md): Waveform sampling, quantization, and digital circuit simulation.
+- [core/trigger.md](core/trigger.md): Edge trigger, pattern trigger, and coincidence between slots.
+- [core/reconstruction.md](core/reconstruction.md): Baseline subtraction, timing quantities (`ToA`, `ToT`, `CoG`, `CFD`), pulse area, and cluster reconstruction algorithms.
+- [core/analysis.md](core/analysis.md): Charge collection efficiency statistics and truncated Gaussian fitting for time resolution.
 
-| Document | Selected object |
-| --- | --- |
-| [Device component](components/device.md) | Device project and application-selected sensor state |
-| [PCB component](components/pcb.md) | PCB project and application-selected board definition |
-| [ASIC component](components/asic.md) | ASIC project and application-selected chip definition |
-| [G4Setup component](components/g4setup.md) | Application Geant4 scene and object placements |
-| [AFE component](components/afe.md) | Analog front-end circuit selection |
-| [ADC component](components/adc.md) | Waveform digitization selection |
-| [Source components](components/source/README.md) | Beam and decay sources |
-| [Laser component](components/laser.md) | Optical injection |
+## components
 
-## Supports
+Components are reusable definitions stored under `raser/components/`, organized into folders by the stage that reads them:
 
-| Document | Subject |
-| --- | --- |
-| [Supports](supports/README.md) | Shared runtime services |
-| [Paths](supports/paths.md) | Project context and definition lookup |
-| [Runs](supports/runs.md) | Resolved run configuration and records |
-| [Jobs](supports/jobs.md) | Local and cluster execution |
-| [Output](supports/output.md) | Artifact paths and writers |
+- [components/device.md](components/device.md): Device geometry, electrodes, doping, and selected physical models.
+- [components/deposit.md](components/deposit.md): Sources of incident particles: Geant4 setups, radioactive sources and beams, and lasers.
+- [components/readout.md](components/readout.md): Front-end amplifiers and termination circuits.
+- [components/digitizer.md](components/digitizer.md): Sampling and quantization settings of oscilloscopes and digitizer boards.
+- [components/trigger.md](components/trigger.md): Trigger conditions.
+
+## Benchmarks (bench)
+
+Official benchmark classes all live in the `raser_bench` package; each benchmark is a Python class inheriting from the `raser` experiment base class, and its output is placed under `work/<device>/<bench>/`:
+
+- [bench/signal.md](bench/signal.md): `raser signal`, single-device full-chain signal benchmark giving charge collection efficiency.
+- [bench/timeres.md](bench/timeres.md): `raser timeres`, Time Resolution benchmark.
+- [bench/tct.md](bench/tct.md): `raser tct`, Transient Current Technique benchmark scanning the laser position relative to the device.
+- [bench/telescope.md](bench/telescope.md): `raser telescope`, beam telescope spatial resolution benchmark using 3 upstream and 3 downstream `TAICHU3` reference layers by default, with 2 devices under test in the middle.
+
+## Applications (apps)
+
+Official application classes all live in the `raser_app` package; each application is a Python class inheriting from the `raser` experiment base class, and its output is placed under `work/<app>/`:
+
+- [apps/bmos.md](apps/bmos.md): `raser bmos`, Beam Monitor Online System application.
+- [apps/cflm.md](apps/cflm.md): `raser cflm`, CEPC Fast Luminosity Monitor application.
+- [apps/hbf.md](apps/hbf.md): `raser hbf`, Hydrogen–Boron Fusion (p–¹¹B) application.
+- [apps/pimg.md](apps/pimg.md): `raser pimg`, Proton Imaging application.
+
+## supports
+
+- [supports/README.md](supports/README.md): Engineering infrastructure including path resolution, output boundary checks, missing dependency notices, and process cleanup.

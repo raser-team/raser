@@ -1,0 +1,6 @@
+{
+    "level_V": -0.002,
+    "slope": "falling",
+    "require": "all",
+    "coincidence_window_ns": null
+}

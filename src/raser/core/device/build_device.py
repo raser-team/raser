@@ -2,232 +2,174 @@
 # -*- encoding: utf-8 -*-
 
 """
-Description:  Define physical models for different materials
+Description:  The detector as its json describes it
 @Date       : 2025/11/11
 @Author     : Yuhang Tan, Tao Yang, Chenxi Fu
 @version    : 3.0
 """
 
-import math
+import copy
+import json
+from functools import cached_property
+from pathlib import Path
 
-import numpy as np
-
-from ..current.model import Material
-from .model import load_definition
+from ..model.material import Material
+from raser.supports.paths import component_file_path
+from raser.supports.paths import work_root
 
 EPSILON_0_F_PER_M = 8.8541878128e-12
+
+# The keys of the json that describe each layout of the readout electrodes.
+LAYOUT_KEYS = {
+    'pad': (),
+    'strip': ('read_ele_num', 'p_x'),
+    'pixel': ('x_ele_num', 'y_ele_num', 'p_x', 'p_y'),
+}
+
+
+def device_file(device_name):
+    """The json of a device: a file, a folder holding device.json, or a name
+    looked up in work/<name>/device.json and then in the device components."""
+    candidate = Path(device_name).expanduser()
+    if candidate.is_dir():
+        return candidate / "device.json"
+    if candidate.suffix or len(candidate.parts) > 1:
+        return candidate
+    project = work_root() / str(device_name) / "device.json"
+    if project.is_file():
+        return project
+    return component_file_path("device", str(device_name))
+
+
+def device_json(device_name):
+    """The content of the json of a device."""
+    with open(device_file(device_name)) as f:
+        return json.load(f)
 
 
 class Detector:
     """
     Description:
     ---------
-        Different types detectors parameters assignment.
+        A detector: every key of its json is an attribute, with a few more
+        that follow from them.
     Parameters:
     ---------
     device_name : string
-        name the device and define the device by device.json
-    dimension : int
-        the dimension of devsim mesh
+        name of the device, or the path of its json
+    device_dict : dict
+        the content of the json as a run recorded it; read from the file
+        when not given
     Modify:
     ---------
-        2023/12/03
-    """ 
-    def __init__(self, device_name):
-        definition = load_definition(device_name)
-        device_json = definition.source_path
-        self.definition_path = device_json
-        self.device_dict = dict(definition.raw)
-        self.det_name = definition.name
-        self.field_source = definition.field_defaults["source"]
-        self.device = self.det_name
-        self.region = self.det_name
-        self.dimension = self.device_dict.get(
-            'field_dimension', self.device_dict['default_dimension']
-        )
+        2026/11/13
+    """
+    def __init__(self, device_name, device_dict=None):
+        path = device_file(device_name)
+        # A run hands in the content it recorded; otherwise the file is read.
+        # The device keeps a copy of its own: what it was handed stays apart.
+        if device_dict is None:
+            device_dict = device_json(device_name)
+        self.device_dict = copy.deepcopy(device_dict)
+        self.definition_path = path.resolve()
 
-        self.l_x = self.device_dict['l_x'] 
-        self.l_y = self.device_dict["l_y"]  
-        self.l_z = self.device_dict["l_z"] 
-        self.bound = {'x':(0, self.l_x), 'y':(0, self.l_y), 'z':(0, self.l_z)}
-        
+        # Every key of the json is an attribute of the same name.
+        self.__dict__.update(self.device_dict)
+
+        # Values that sit deeper in the json and are in common use.
         self.voltage = float(self.device_dict['bias']['voltage'])
-        self.temperature = self.device_dict['temperature']
-        self.material = self.device_dict['material']
-
-        self.det_model = self.device_dict['det_model']
-        self.doping = self.device_dict['doping']
-        self.input_doping = self._net_doping_cm3(self.doping, self.device_dict)
-        self.read_out_contact = self.device_dict["read_out_contact"]
         if "irradiation" in self.device_dict:
             self.irradiation_model = self.device_dict['irradiation']['irradiation_model']
             self.irradiation_flux = self.device_dict['irradiation']['irradiation_flux']
         else:
             self.irradiation_model = None
             self.irradiation_flux = 0
+        self.mesher = self.device_dict.get('mesh', {}).get('mesher')
 
-        self.g4experiment = self.device_dict.get('g4experiment')
-        self.amplifier = self.device_dict.get('amplifier')
-        self.daq = self.device_dict.get('daq')
-
-        if "mesh" in self.device_dict:
-            try:
-                self.mesher = self.device_dict['mesh']['mesher']
-            except (TypeError, ValueError, KeyError):
-                self.mesher = None
-        else:
-            self.mesher = None
-        if "vector_delta_t" in self.device_dict:
-            try:
-                self.vector_delta_t = float(self.device_dict["vector_delta_t"])
-            except (TypeError, ValueError):
-                pass
-        if "vector_boundary_tolerance" in self.device_dict:
-            try:
-                self.vector_boundary_tolerance = float(self.device_dict["vector_boundary_tolerance"])
-            except (TypeError, ValueError):
-                pass
-        if "vector_field_resolution" in self.device_dict:
-            try:
-                self.vector_field_resolution = float(self.device_dict["vector_field_resolution"])
-            except (TypeError, ValueError):
-                pass
-        if "vector_field_fallback" in self.device_dict:
-            self.vector_field_fallback = self.device_dict["vector_field_fallback"]
-        if "vector_max_steps" in self.device_dict:
-            try:
-                self.vector_max_steps = int(self.device_dict["vector_max_steps"])
-            except (TypeError, ValueError):
-                pass
-        if "vector_min_field_strength" in self.device_dict:
-            try:
-                self.vector_min_field_strength = float(self.device_dict["vector_min_field_strength"])
-            except (TypeError, ValueError):
-                pass
-        if "current_smoothing_window" in self.device_dict:
-            try:
-                self.current_smoothing_window = int(self.device_dict["current_smoothing_window"])
-            except (TypeError, ValueError):
-                pass
-        if "current_savgol_window" in self.device_dict:
-            try:
-                self.current_savgol_window = int(self.device_dict["current_savgol_window"])
-            except (TypeError, ValueError):
-                pass
-        if "current_savgol_poly" in self.device_dict:
-            try:
-                self.current_savgol_poly = int(self.device_dict["current_savgol_poly"])
-            except (TypeError, ValueError):
-                pass
-        self.fano_sampling = bool(self.device_dict.get("fano_sampling", False))
-        self.fano_factor = float(self.device_dict.get("fano_factor", 0.0))
-        self.weighting_series_terms = int(
-            self.device_dict.get("weighting_series_terms", 100)
+        # What follows from several keys.
+        self.det_name = self.device_dict.get('det_name', path.stem)
+        self.device = self.det_name
+        self.region = self.det_name
+        self.dimension = self.device_dict.get(
+            'field_dimension', self.device_dict['default_dimension']
         )
-        for key in (
-            "column_radius_um",
-            "column_cell_x_um",
-            "column_cell_y_um",
-            "readout_column_x_um",
-            "readout_column_y_um",
-            "relative_permittivity",
-        ):
-            if key in self.device_dict:
-                setattr(self, key, float(self.device_dict[key]))
-        if "ground_columns_um" in self.device_dict:
-            self.ground_columns_um = tuple(
-                (float(position[0]), float(position[1]))
-                for position in self.device_dict["ground_columns_um"]
+        self.bound = {'x':(0, self.l_x), 'y':(0, self.l_y), 'z':(0, self.l_z)}
+
+        # How the readout electrodes are laid out: one pad unless the json says.
+        self.electrodes = self.device_dict.get('electrodes', 'pad')
+        if self.electrodes not in ('pad', 'strip', 'pixel'):
+            raise ValueError(
+                "`electrodes` must be pad, strip or pixel, not {!r}".format(self.electrodes)
+            )
+        # Each layout has its own keys in the json, and none of the others.
+        own = LAYOUT_KEYS[self.electrodes]
+        missing = [key for key in own if key not in self.device_dict]
+        foreign = [
+            key for key in ('read_ele_num', 'x_ele_num', 'y_ele_num', 'p_x', 'p_y')
+            if key in self.device_dict and key not in own
+        ]
+        if missing or foreign:
+            raise ValueError(
+                "{}: `electrodes` is {!r}, which takes the keys {}; missing {}, "
+                "keys of another layout {}".format(
+                    path, self.electrodes, list(own), missing, foreign
+                )
             )
 
-        if "strip" in self.det_model:
-            self.x_ele_num = self.device_dict['read_ele_num']
+        if self.is_strip:
+            self.x_ele_num = self.read_ele_num
             self.y_ele_num = 1
-            self.read_ele_num = self.device_dict['read_ele_num']
-            self.field_shift_x = self.device_dict['field_shift_x']
-        elif "pixel" in self.det_model:
-            self.x_ele_num = self.device_dict['x_ele_num']
-            self.y_ele_num = self.device_dict['y_ele_num']
-            self.read_ele_num = ( self.device_dict['x_ele_num']*self.device_dict['y_ele_num']
-            )
-            self.field_shift_x = self.device_dict['field_shift_x']
-            self.field_shift_y = self.device_dict['field_shift_y']
+        elif self.is_pixel:
+            self.read_ele_num = self.x_ele_num * self.y_ele_num
         else:
             self.x_ele_num = 1
             self.y_ele_num = 1
             self.read_ele_num = 1
 
-        self.gain_rate = 0.0
         self.avalanche_model = self.device_dict.get('avalanche_model')
-        self.avalanche_bond = self.device_dict.get('avalanche_bond')
-        enable_gain = bool(
-            self.device_dict.get(
-                'enable_gain',
-                "lgad" in self.det_model.lower() or 'gain_algorithm' in self.device_dict,
-            )
-        )
+        # The gain layer is on only when the json says so.
+        enable_gain = bool(self.device_dict.get('enable_gain', False))
         if enable_gain and self.avalanche_model is None:
             raise ValueError("gain is enabled but `avalanche_model` is missing in detector settings")
         self.has_avalanche = self.avalanche_model is not None and enable_gain
-        default_gain_algorithm = ( "local_path" if self.dimension == 3 else "planar_integral"
-        )
-        self.gain_algorithm = self.device_dict.get('gain_algorithm', default_gain_algorithm)
-        if self.gain_algorithm not in ("planar_integral", "local_path"):
-            raise ValueError("Unsupported gain_algorithm: {}".format(self.gain_algorithm))
-        self.gain_pair_threshold = float(self.device_dict.get('gain_pair_threshold', 0.05))
-        self.gain_max_carriers = int(self.device_dict.get('gain_max_carriers', 50000))
-        self.local_gain_emit_slices = max(1, int(self.device_dict.get('local_gain_emit_slices', 1)))
-        self.local_gain_integration_steps = max(1, int(self.device_dict.get('local_gain_integration_steps', 3)))
 
-        if "planar" in self.det_model or "lgad" == self.det_model:
+        if self.electrodes == 'pad':
             self.p_x = self.device_dict['l_x']
             self.p_y = self.device_dict['l_y']
 
-        if "strip" in self.det_model: 
+        if self.is_strip:
             self.p_x = self.device_dict['p_x']
             self.p_y = self.device_dict['l_y']
-            
-        if "pixel" in self.det_model:
+
+        if self.is_pixel:
             self.p_x = self.device_dict["p_x"]
             self.p_y = self.device_dict["p_y"]
 
-        if not hasattr(self, "p_x") and "p_x" in self.device_dict:
-            self.p_x = self.device_dict["p_x"]
-        if not hasattr(self, "p_y") and "p_y" in self.device_dict:
-            self.p_y = self.device_dict["p_y"]
+    @property
+    def is_strip(self):
+        return self.electrodes == 'strip'
 
-        self.depletion_depth = float(self.device_dict.get("depletion_depth", self.l_z))
-        self.capacitance = self._resolve_capacitance()
+    @property
+    def is_pixel(self):
+        return self.electrodes == 'pixel'
 
     def _readout_area_um2(self):
-        det_model = self.det_model.lower()
-        if "strip" in det_model:
-            return float(self.p_x) * float(self.p_y)
-        if "pixel" in det_model:
+        if self.is_strip or self.is_pixel:
             return float(self.p_x) * float(self.p_y)
         return float(self.l_x) * float(self.l_y)
 
-    @staticmethod
-    def _net_doping_cm3(doping, device_dict):
-        if "input_doping" in device_dict:
-            return float(device_dict["input_doping"])
-        try:
-            donors = float(doping.get("Donors", 0.0))
-            acceptors = float(doping.get("Acceptors", 0.0))
-        except (TypeError, ValueError):
-            return 1.0e12
-        return donors - acceptors
-
-    def _resolve_capacitance(self):
+    @cached_property
+    def capacitance(self):
+        """Detector capacitance in pF: capacitance_pF of the json, otherwise
+        the parallel-plate value of the readout area over the depletion depth."""
         if "capacitance_pF" in self.device_dict:
             return float(self.device_dict["capacitance_pF"])
-        if "capacitance" in self.device_dict:
-            return float(self.device_dict["capacitance"])
 
         if "3d" in self.det_model.lower():
             return None
 
-        if self.depletion_depth <= 0:
+        depletion_depth = float(self.device_dict.get("depletion_depth", self.l_z))
+        if depletion_depth <= 0:
             raise ValueError("depletion_depth must be positive")
 
         material = Material(self.material)
@@ -237,80 +179,20 @@ class Detector:
             * material.permittivity
             * area_um2
             * 1e-12
-            / (self.depletion_depth * 1e-6)
+            / (depletion_depth * 1e-6)
         )
         return capacitance_f * 1e12
 
+    def file(self, name):
+        """A file the device json names, beside the json unless its path is absolute."""
+        path = Path(name).expanduser()
+        if not path.is_absolute():
+            path = Path(self.definition_path).parent / path
+        path = path.resolve()
+        if not path.is_file():
+            raise FileNotFoundError(f"Cannot find {path}, named by {self.definition_path}")
+        return path
+
     def is_plugin(self):
-        if ( "plugin" in self.det_model or "3d" in self.det_model or "3D" in self.det_model
-        ):
-            return True
-        else:
-            return False
-
-    def gain_rate_cal(self, my_f):
-        # gain = exp[K(d_gain)] / {1-int[alpha_minor * K(x) dx]}
-        # K(x) = exp{int[(alpha_major - alpha_minor) dx]}
-
-        # TODO: support non-uniform field in gain layer
-        self.gain_rate = 0
-        if not self.has_avalanche:
-            self.gain_rate = 0
-            return
-        if self.gain_algorithm != "planar_integral":
-            return
-        if self.avalanche_bond is None:
-            raise ValueError("planar_integral gain algorithm requires `avalanche_bond` in detector settings")
-        
-        cal_coefficient = Material(self.material, avalanche_model=self.avalanche_model).cal_coefficient
-
-        n = 1001
-        if "ilgad" in self.det_model:
-            z_list = np.linspace(self.avalanche_bond * 1e-4, self.l_z, n) # in cm
-        else:
-            z_list = np.linspace(0, self.avalanche_bond * 1e-4, n) # in cm
-        alpha_n_list = np.zeros(n)
-        alpha_p_list = np.zeros(n)
-        for i in range(n):
-            Ex,Ey,Ez = my_f._get_e_field(0.5*self.l_x,0.5*self.l_y,z_list[i] * 1e4) # in V/cm, get original field to improve accuracy
-            E_field = math.sqrt(Ex * Ex + Ey * Ey + Ez * Ez)
-            alpha_n = cal_coefficient(E_field, -1, self.temperature)
-            alpha_p = cal_coefficient(E_field, +1, self.temperature)
-            alpha_n_list[i] = alpha_n
-            alpha_p_list[i] = alpha_p
-
-        if my_f._get_e_field(0, 0, self.avalanche_bond)[2] > 0:
-            alpha_major_list = alpha_n_list # multiplication contributed mainly by electrons in conventional Si LGAD
-            alpha_minor_list = alpha_p_list
-        else:
-            alpha_major_list = alpha_p_list # multiplication contributed mainly by holes in conventional SiC LGAD
-            alpha_minor_list = alpha_n_list
-
-        # the integral supports iLGAD as well
-        
-        diff_list = alpha_major_list - alpha_minor_list
-        int_alpha_list = np.zeros(n-1)
-
-        for i in range(1,n):
-            int_alpha = 0
-            for j in range(i):
-                int_alpha += (
-                    (diff_list[j] + diff_list[j+1]) * (z_list[j+1] - z_list[j]) /2
-                )
-            int_alpha_list[i-1] = int_alpha
-        exp_list = np.exp(int_alpha_list)
-
-        det = 0 # determinant of breakdown
-        for i in range(0,n-1):
-            average_alpha_minor = (alpha_minor_list[i] + alpha_minor_list[i+1])/2
-            det_derivative = average_alpha_minor * exp_list[i]
-            det += det_derivative*(z_list[i+1]-z_list[i])        
-        if det>1:
-            print("determinant=%s, larger than 1, detector break down", det)
-            raise(ValueError)
-        
-        self.gain_rate = exp_list[n-2]/(1-det) -1
-
-if __name__ == "__main__":
-    import sys
-    Detector(sys.argv[1])
+        """Whether the mesh lies in the lateral x-y plane, as the json's mesh block says."""
+        return bool(self.device_dict.get('mesh', {}).get('plugin', False))

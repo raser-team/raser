@@ -551,7 +551,7 @@ def strip_pixel_field_from_detector(detector):
             readout_column_x_um=getattr(detector, "readout_column_x_um", None),
             readout_column_y_um=getattr(detector, "readout_column_y_um", None),
             ground_columns_um=getattr(detector, "ground_columns_um", None),
-            series_terms=int(getattr(detector, "weighting_series_terms", 51)),
+            series_terms=int(getattr(detector, "weighting_series_terms", 100)),
             central_electrode=len(getattr(detector, "read_out_contact", [])) == 1,
         )
 

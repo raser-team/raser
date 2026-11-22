@@ -1,0 +1,133 @@
+from __future__ import annotations
+
+import json
+import shutil
+import sys
+from dataclasses import replace
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+import pytest
+
+from raser.lifecycle import status
+from raser.lifecycle import workflow
+from raser.lifecycle.slices import Shared
+from raser.lifecycle.workflow import Workflow
+from raser.lifecycle.workflow import execute
+from raser.stages import chain
+
+DEVICES = {"A": ("devA", ["a1", "a2"]), "B": ("devB", ["b1", "b2"])}
+
+
+@pytest.fixture
+def two(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    """Two devices, A and B, in two positions each; the slices only note that they ran."""
+    monkeypatch.setenv("RASER_PROJECT_PATH", str(tmp_path / "devA"))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(workflow, "_commit", lambda: "abc")
+    monkeypatch.setattr(workflow, "device_json", lambda name: {"det_name": name, "bias": {"voltage": 100.0}})
+    monkeypatch.setitem(sys.modules, "raser.core.seeding", SimpleNamespace(seed_generators=lambda seed: None))
+    monkeypatch.setattr(
+        workflow, "_own_process", lambda flow, kwargs, words: workflow._run_job(flow, {**kwargs, "job_dir": words[-1]})
+    )
+    ran: list[str] = []
+    ready = Shared(ready=lambda options, files: Path("field"), start=lambda kwargs, options, files: None)
+    pieces = tuple(
+        replace(piece, run=lambda options, name=piece.name: ran.append(name), shared=ready if piece.shared else None)
+        for piece in chain.expand(DEVICES)
+    )
+    toy = Workflow(
+        name="toy", keys=chain.keys_of(DEVICES), in_file=chain.in_file_of(DEVICES), slices=pieces, devices=DEVICES
+    )
+    return {"workflow": toy, "ran": ran, "root": tmp_path / "devA" / "toy"}
+
+
+def _kwargs(**given: Any) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {"det_name": "devA", "jobs": None, "batch": False, "mem": 1, "seed": 1}
+    kwargs.update(dry_run=False, set=[], scan=[], same_seeds=False, _entry_command_prefix=("toy",))
+    return {**kwargs, **given}
+
+
+def test_the_slices_of_two_devices_in_two_positions_each() -> None:
+    names = [piece.name for piece in chain.expand(DEVICES)]
+    assert names == [
+        "deposit",
+        "field.A", "current.a1", "readout.a1", "digitizer.a1", "trigger.a1", "reconstruction.a1", "current.a2", "readout.a2", "digitizer.a2", "trigger.a2", "reconstruction.a2",
+        "field.B", "current.b1", "readout.b1", "digitizer.b1", "trigger.b1", "reconstruction.b1", "current.b2", "readout.b2", "digitizer.b2", "trigger.b2", "reconstruction.b2",
+    ]
+    needs = {piece.name: piece.needs for piece in chain.expand(DEVICES)}
+    assert needs["current.b2"] == ("deposit", "field.B") and needs["readout.b2"] == ("current.b2", "field.B")
+
+
+def test_another_bias_of_one_device_runs_its_field_and_positions_alone_again(two: dict[str, Any]) -> None:
+    execute(two["workflow"], _kwargs())
+    two["ran"].clear()
+
+    execute(two["workflow"], _kwargs(set=["field.A.voltage=200.0"]))
+
+    assert two["ran"] == [
+        "field.A", "current.a1", "readout.a1", "digitizer.a1", "trigger.a1", "reconstruction.a1", "current.a2", "readout.a2", "digitizer.a2", "trigger.a2", "reconstruction.a2"
+    ]
+    record = json.loads((two["root"] / "seed_1" / "run.json").read_text())
+    assert record["files"]["A"]["device"]["bias"]["voltage"] == 200.0
+    assert record["files"]["B"]["device"]["bias"]["voltage"] == 100.0
+
+
+def test_a_scanned_bias_of_one_device_still_gives_every_point_its_own_deposits(two: dict[str, Any]) -> None:
+    execute(two["workflow"], _kwargs(scan=["field.A.voltage=200,300"]))
+
+    for point in ("A.voltage_200", "A.voltage_300"):
+        held_in = json.loads((two["root"] / point / "seed_1" / "run.json").read_text())["held_in"]
+        assert held_in["deposit"] == point
+
+
+def test_raser_status_lists_the_slices_of_every_position(two: dict[str, Any]) -> None:
+    execute(two["workflow"], _kwargs())
+    folder = two["root"] / "seed_1"
+
+    states = status.folder_states(two["workflow"], folder, json.loads((folder / "run.json").read_text()))
+
+    assert set(states) == {piece.name for piece in two["workflow"].slices}
+    assert all(by_state["done"] == [0] for by_state in states.values())
+
+
+def test_the_field_of_each_device_is_stamped_as_that_device_sees_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    from raser.stages import field
+
+    monkeypatch.setattr(field, "stamp", lambda options, files: f"{files['device']['det_name']} at {options.get('voltage')}")
+    pieces = {piece.name: piece for piece in chain.expand(DEVICES)}
+    files = {"A": {"device": {"det_name": "devA"}}, "B": {"device": {"det_name": "devB"}}}
+    options = {"A.voltage": 100.0, "B.voltage": 200.0}
+
+    assert pieces["field.A"].shared.stamp(options, files) == "devA at 100.0"
+    assert pieces["field.B"].shared.stamp(options, files) == "devB at 200.0"
+
+
+def test_the_energy_bound_of_a_slot_is_a_setting_of_the_deposits_of_several_devices() -> None:
+    assert "deposit.A.edep_min" in chain.keys_of(DEVICES) and "deposit.B.edep_max" in chain.keys_of(DEVICES)
+    assert "deposit.A.edep_min" in chain.expand(DEVICES)[0].keys
+    assert not any(key.startswith("deposit.A.") for key in chain.keys_of({"A": ("devA", ["a1"])}))
+
+
+def test_a_slot_the_experiment_does_not_have_is_told_with_its_key(two: dict[str, Any]) -> None:
+    with pytest.raises(ValueError, match=r"deposit\.C\.edep_min"):
+        execute(two["workflow"], _kwargs(set=["deposit.C.edep_min=0.03"]))
+
+
+def _deposit_node(two: dict[str, Any], *given: str) -> str:
+    """The node of the deposits of a fresh run with the settings `given`."""
+    shutil.rmtree(two["root"], ignore_errors=True)
+    execute(two["workflow"], _kwargs(set=list(given)))
+    record = json.loads((two["root"] / "seed_1" / "run.json").read_text())
+    return str(workflow.job_nodes(two["workflow"], record, 0)["deposit"][1])
+
+
+def test_the_logic_and_the_bound_of_a_slot_make_new_deposits(two: dict[str, Any]) -> None:
+    nodes = [
+        _deposit_node(two),
+        _deposit_node(two, "deposit.require=A"),
+        _deposit_node(two, "deposit.coincidence_window_ns=2.5"),
+        _deposit_node(two, "deposit.B.edep_min=0.03"),
+    ]
+    assert len(set(nodes)) == 4

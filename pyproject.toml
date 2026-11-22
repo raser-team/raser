@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "raser"
-version = "5.0"
+dynamic = ["version"]
 description = "RASER simulation framework"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
@@ -17,6 +17,7 @@ classifiers = [
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
   "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS",
   "License :: OSI Approved :: MIT License"
 ]
 
@@ -26,11 +27,7 @@ dependencies = [
   "pandas",
   "matplotlib",
   "h5py",
-  "PyYAML",
-  "tqdm",
-  "numba",
-  "joblib",
-  "gmsh",
+  "gmsh; sys_platform != 'linux' or platform_machine != 'aarch64'",
   "psutil",
   "devsim",
   "g4ppyy",
@@ -39,6 +36,7 @@ dependencies = [
 
 [dependency-groups]
 test = [
+  "import-linter>=2.16",
   "mypy>=2",
   "pytest>=7.4,<8",
   "ruff>=0.15",
@@ -51,20 +49,30 @@ Repository = "https://github.com/raser-team/raser"
 [project.scripts]
 raser = "raser.cli.raser:main"
 
+# The experiments: command -> the module that registers it. A package of its
+# own registers its experiments in the same group.
+[project.entry-points."raser.experiments"]
+signal = "raser_bench.signal:Signal"
+timeres = "raser_bench.timeres:Timeres"
+tct = "raser_bench.tct:Tct"
+telescope = "raser_bench.telescope"
+bmos = "raser_app.bmos:Bmos"
+cflm = "raser_app.cflm:Cflm"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 include-package-data = true
+
+[tool.setuptools.dynamic]
+version = {attr = "raser.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-raser = [
-  "components/**/*",
-  "apps/*/*.json",
-  "apps/*/components/**/*",
-  "apps/bmos/*.cir",
-]
+raser = ["components/**/*"]
+raser_bench = ["*/*.json", "*/components/**/*"]
+raser_app = ["*/*.json", "*/components/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -80,6 +88,74 @@ markers = [
   "ngspice: requires ngspice executable",
   "hardware: requires lab hardware",
   "slow: long-running simulation or scan",
+]
+
+[tool.importlinter]
+root_packages = ["raser", "raser_bench", "raser_app"]
+
+[[tool.importlinter.contracts]]
+name = "The library knows no bench and no app"
+type = "forbidden"
+source_modules = ["raser"]
+forbidden_modules = ["raser_bench", "raser_app"]
+
+[[tool.importlinter.contracts]]
+name = "The chain: a stage may use the stages before it, not those after it"
+type = "layers"
+layers = [
+  "raser.core.analysis",
+  "raser.core.reconstruction",
+  "raser.core.trigger",
+  "raser.core.digitizer",
+  "raser.core.readout",
+  "raser.core.current",
+  "raser.core.deposit",
+  "raser.core.field",
+  "raser.core.device",
+  "raser.core.model",
+]
+
+[[tool.importlinter.contracts]]
+name = "Below the stages nothing knows a stage"
+type = "forbidden"
+source_modules = [
+  "raser.core",
+  "raser.components",
+  "raser.supports",
+  "raser.lifecycle",
+]
+forbidden_modules = ["raser.stages"]
+
+[[tool.importlinter.contracts]]
+name = "Nothing below the command line imports it"
+type = "forbidden"
+source_modules = [
+  "raser.core",
+  "raser.components",
+  "raser.supports",
+  "raser.lifecycle",
+  "raser.stages",
+  "raser_bench",
+  "raser_app",
+]
+forbidden_modules = ["raser.cli"]
+
+[[tool.importlinter.contracts]]
+name = "The core does not know how it is run"
+type = "forbidden"
+source_modules = ["raser.core"]
+forbidden_modules = ["raser.lifecycle", "raser.cli"]
+
+[[tool.importlinter.contracts]]
+name = "No experiment imports another"
+type = "independence"
+modules = [
+  "raser_bench.signal",
+  "raser_bench.tct",
+  "raser_bench.telescope",
+  "raser_bench.timeres",
+  "raser_app.bmos",
+  "raser_app.cflm",
 ]
 
 [tool.mypy]
