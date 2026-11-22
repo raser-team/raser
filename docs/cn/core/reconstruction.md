@@ -216,6 +216,7 @@ $$\Delta x_{\text{clu}} = x_{\text{clu}} - \frac{x_{\text{true}}}{p_x} \tag{14}$
 
 - `event.py`：实现单电极脉冲基线扣除、阈值过零线性插值、恒比定时、时间重心计算以及单事例独立重建类。`net_pulse` 计算并扣除脉冲前 200 点基线、给出基线噪声；`get_amplitude`、`crossing`、`get_ToA`、`get_ToT`、`get_CFD50`、`get_CoG` 与 `get_charge` 提取单条正向波形的特征量；`InputWaveform` 配合 `get_conjoined_time`、`get_total_amp`、`get_gravity_center_and_cluster_size` 与 `remove_none` 汇总单事例多条形通道特征。
 - `event_table.py`：实现作业级多事例特征提取、跨电极成簇与 `reconstruction.h5` 文件读写。`lobe_area` 计算包含峰值的正向主瓣积分面积；`electrode_row` 汇总单电极的过阈判定与全部特征列；`cluster` 执行跨电极一维成簇并计算幅度加权中心；`chosen_edges` 解析并校验各电极触发边沿；`event_table` 将整个作业的 `Waveforms` 重建为 `EventTable`；`write_event_table` 与 `read_event_table` 负责 HDF5 事件表文件的一次性写出与读取。
+- `draw.py`：提供 `draw_features`，调用 `raser.supports.figures` 在数字波形的上升沿一段上标出基线、幅度、阈值线上的 `ToA` 与 `reconstruction.fractions` 各比例的 `CFD` 时刻，并存为 `.png` 与 `.pdf`。
 
 ### 核心数据结构
 
@@ -319,7 +320,18 @@ $$\Delta x_{\text{clu}} = x_{\text{clu}} - \frac{x_{\text{true}}}{p_x} \tag{14}$
 
 ### 绘图输出
 
-`InputWaveform.data` 汇总后由 [统计分析](analysis.md) 的 `WaveformStatistics.draw` 画图：时间分辨高斯拟合图、幅度与电荷朗道拟合图、团簇大小分布图、空间重心误差图及 $\eta$ 校准图。
+`event_table` 有两个必给参数 `plots`（`int`，每个作业最多绘制特征图的事例数，单位为个）和 `plot_path`（`str | Path`，输出图片目录路径，无单位；由[事件重建环节](../stages/reconstruction.md)传入 `reconstruction.plots` 与该节点下的 `plots/` 目录）。当 `plots <= 0` 时不画图，也不使用 `plot_path`；当 `plots > 0` 时，程序为每个作业的前 `plots` 个事例调用 `core/reconstruction/draw.py` 中的 `draw_features`，按该事例存了数字波形的电极逐个绘图，并经 `raser.supports.figures` 在 `plot_path` 下同时存为 `.png`（200 dpi）和 `.pdf` 两份文件：单个存波形电极时文件名为 `features_<事例号>`（`<事例号>` 为 `record.event`，无单位）；有多个存波形电极时每个电极画一张，文件名后接 `_electrode_<编号>`（`<编号>` 为该电极在 `waveforms.electrodes` 中从 `1` 起的序号，无量纲）。
+
+每张图以采样时刻 `Time [ns]` 为横轴（按式 (1) 由 $t_0$ [$\text{s}$] 与采样间隔 $\Delta t$ [$\text{s}$] 算出并换算为 $\text{ns}$），以电压 `Amplitude [mV]` 为纵轴（由 $\text{V}$ 换算为 $\text{mV}$）。图上只画脉冲的上升沿一段：从过阈时刻之前到峰值之后，画的是由 `digitizer` 量化码换回的电压，保持原来的极性，不翻正、不扣基线（黑色实线）。在这段波形上标出以下重建量（未算出而取 `NaN` 的量不画）：
+
+- **基线**：基线均值（式 (2) 的 `baseline`）画为灰色点线水平线，图例写 `baseline`；
+- **幅度**：峰值所在的电压（基线加上按原极性的 `amplitude`，式 (4)）画为灰色虚线水平线，图例写 `amplitude`；
+- **阈值与 `ToA`**：定时阈值 `threshold`（见[峰值幅度与固定阈值过零定时（ToA 与 ToT）](#峰值幅度与固定阈值过零定时toa-与-tot)）画为红色虚线水平线；前沿过阈时刻 $t_{\text{ToA}}$（式 (6) 的 `ToA`）在阈值线上画一个红色方块，图例写 `ToA`；
+- **恒比定时 `CFD`**：设置 `reconstruction.fractions` 里的每个比例 $f$ 各画一个点，位于上升沿上时刻 $t_{\text{CFD}}(f)$（式 (8)–(9) 的 `CFD`，见[恒比定时（CFD）](#恒比定时cfd)）、电压为基线加 $f$ 倍幅度处；点旁写比例（如 `30%`），不画竖线，图例写 `CFD` 和比例的范围。
+
+| 文件名 | 内容 | 单位 |
+| --- | --- | --- |
+| `features_<事例号>.png`, `.pdf`（或带 `_electrode_<编号>`） | 数字波形的上升沿一段（原极性），标出基线、幅度、阈值线上的 `ToA` 方块和 `reconstruction.fractions` 各比例的 `CFD` 点（`NaN` 不画）；多个存波形电极时每个电极一张，`<编号>` 从 `1` 起 | `Time [ns]`, `Amplitude [mV]` |
 
 ## 参考文献
 
