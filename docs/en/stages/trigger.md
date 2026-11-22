@@ -39,6 +39,11 @@ The two- and three-device setups of `timeres` use the standalone trigger device 
 
 The fingerprint of this stage's node is composed of the setting values used from the `trigger` section, the part of the trigger component used, and the node ID of the upstream `digitizer` node.
 
+## Software Implementation
+
+- `src/raser/stages/trigger.py`: Module for this stage. `triggered(kwargs, position=None)` uses the oscilloscope's own trigger, one slice per position in multi-position experiments: it reads the `digitizer.h5` of the position and takes the trigger conditions from `trigger` in the content of the `digitizer.device` component, raising an error when the component has no `trigger`; when upstream left no digital waveform file at the position, the slice writes no file and records 0 events. `coincident(kwargs, positions)` uses a standalone trigger device: one slice reads the `digitizer.<position>.h5` of every position and writes the `trigger.<position>.h5` of every position, with settings from the content of the `trigger.device` component, raising an error when there is no such component; a position that left no digital waveform file is a slot that hits in no event. Both functions return the number of recorded events.
+- `src/raser/core/trigger/`: Level crossing, edge, pattern, coincidence between slots, and writing; see [Trigger (`core/trigger`)](../core/trigger.md).
+
 ## Interface
 
 ### Settings
