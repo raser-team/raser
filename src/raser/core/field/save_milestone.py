@@ -32,6 +32,38 @@ def _electric_field_kv_per_cm(field):
     return np.asarray(field) * 1e2 / figures.UNIT["kV/cm"]
 
 
+def _region_elements(device, region, offset, dimension):
+    """The simplices (triangles, tetrahedra) of a region as (M, dimension + 1) node
+    indices into the nodes collected over the regions, `offset` of which precede it."""
+    elements = np.array(devsim.get_element_node_list(device=device, region=region), dtype=int)
+    if elements.ndim != 2 or elements.shape[1] != dimension + 1:
+        raise ValueError(
+            f"region {region} has elements of shape {elements.shape}, not simplices of dimension {dimension}")
+    return elements + offset
+
+
+def _electrode_points(device, contact_name, dimension, is_flip=False):
+    """The positions [cm] of the nodes of an electrode, in the order of the
+    collected coordinates, from whichever regions hold it."""
+    names = ("x", "y", "z")[:dimension]
+    points = []
+    for region in devsim.get_region_list(device=device, contact=contact_name):
+        nodes = np.unique(np.array(
+            devsim.get_element_node_list(device=device, region=region, contact=contact_name), dtype=int))
+        coordinates = np.column_stack([
+            np.array(devsim.get_node_model_values(device=device, region=region, name=name)) for name in names])
+        points.append(coordinates[nodes])
+    if not points or not sum(len(part) for part in points):
+        raise ValueError(f"electrode {contact_name} has no nodes")
+    points = np.concatenate(points)
+    return points[:, ::-1] if is_flip else points
+
+
+def _axes_required(axes):
+    if axes is None:
+        raise ValueError("axes is missing: the figures of a 2D or 3D field need the mesh_axes of the device")
+
+
 def conductive_of_region(device, region):
     """Which nodes of a solved region are conductive at its bias, 1.0 or 0.0 each,
     judged with the mobilities the solve used there."""
@@ -228,8 +260,6 @@ def milestone_save_wf_1D(device, v, path, contact_name, is_tcad):
 def milestone_save_2D(device, v, path, is_tcad, is_flip=False, axes=None):
     if is_tcad:
         U = "ElectrostaticPotential"
-        # TODO: replace E with (ElectricField_0**2 + ElectricField_1**2)**0.5
-        E = "ElectricField_0"
         Doping = "DopingConcentration"
         PNC = "SpaceCharge"
         e = "eDensity"
@@ -240,7 +270,6 @@ def milestone_save_2D(device, v, path, is_tcad, is_flip=False, axes=None):
         geometry_scale = 1e-4 # TCAD uses um
     else:
         U = "Potential"
-        E = "ElectricField"
         Doping = "NetDoping"
         PNC = "PotentialNodeCharge"
         e = "Electrons"
@@ -249,8 +278,10 @@ def milestone_save_2D(device, v, path, is_tcad, is_flip=False, axes=None):
         trap_p = "TrappingRate_p"  
         geometry_scale = 1 # Devsim uses cm
 
+    _axes_required(axes)
     x = []
     y = []
+    elements = []
     Potential = [] # get the potential dat
     NetDoping= []
     PotentialNodeCharge = []
@@ -267,6 +298,7 @@ def milestone_save_2D(device, v, path, is_tcad, is_flip=False, axes=None):
         if ( devsim.get_material(device=device, region=region) == "Aluminum" or devsim.get_material(device=device, region=region) == "air"
         ):
             continue
+        elements.append(_region_elements(device, region, len(x), 2))
         x.extend(devsim.get_node_model_values(device=device, region=region, name="x"))
         y.extend(devsim.get_node_model_values(device=device, region=region, name="y"))
         Potential.extend(devsim.get_node_model_values(device=device, region=region, name=U)) # get the potential dat
@@ -318,39 +350,21 @@ def milestone_save_2D(device, v, path, is_tcad, is_flip=False, axes=None):
     if is_flip:
         x, y = y, x
 
-    devsim_draw.draw2D(x,y,Potential,"Potential", v, path)
-    devsim_draw.draw2D(x,y,TrappingRate_n,"Electron Trapping Rate", v, path)
-    devsim_draw.draw2D(x,y,TrappingRate_p,"Hole Trapping Rate", v, path)
-
-    if is_tcad:
-        ElectricField = []
-        for region in devsim.get_region_list(device=device):
-            if ( devsim.get_material(device=device, region=region) == "Aluminum" or devsim.get_material(device=device, region=region) == "air"
-            ):
-                continue
-            ElectricField.extend(devsim.get_node_model_values(device=device, region=region, name=E))
-        ElectricField = np.array(ElectricField)
-        devsim_draw.draw2D(x,y,ElectricField,"Electric Field", v, path)
-    else:
-        x_mid = []
-        y_mid = []
-        ElectricField = []
-        for region in devsim.get_region_list(device=device):
-            if ( devsim.get_material(device=device, region=region) == "Aluminum" or devsim.get_material(device=device, region=region) == "air"
-            ):
-                continue 
-            devsim.element_from_edge_model(edge_model=E,   device=device, region=region)
-            devsim.edge_average_model(device=device, region=region, node_model="x", edge_model="xmid")
-            devsim.edge_average_model(device=device, region=region, node_model="y", edge_model="ymid")
-            x_mid.extend(devsim.get_edge_model_values(device=device, region=region, name="xmid")) 
-            y_mid.extend(devsim.get_edge_model_values(device=device, region=region, name="ymid")) 
-            ElectricField.extend(devsim.get_edge_model_values(device=device, region=region, name=E))
-        x_mid = np.array(x_mid) # get x-node values
-        y_mid = np.array(y_mid) # get y-node values
-        ElectricField = np.array(ElectricField) # get y-node values
-        if is_flip:
-            x_mid, y_mid = y_mid, x_mid
-        devsim_draw.draw2D(x_mid,y_mid,ElectricField,"Electric Field", v, path)
+    elements = np.concatenate(elements)
+    points = np.column_stack([x, y])
+    devsim_draw.draw_field_map(
+        points, elements, Potential, axes, figures.label("Potential", "V"), path, "potential", (v, "V"))
+    # the same for the DEVSIM and the TCAD field: the modulus of the gradient of the potential
+    strength = devsim_draw.field_strength_at_nodes(points, elements, Potential)
+    devsim_draw.draw_field_map(
+        points, elements, _electric_field_kv_per_cm(strength), axes,
+        figures.label("Electric field", "kV/cm"), path, "electric_field", (v, "V"))
+    if TrappingRate_n.any() or TrappingRate_p.any():
+        devsim_draw.draw_depth_profiles(
+            points, elements,
+            [(TrappingRate_n / figures.UNIT["s-1"], figures.ELECTRON, "electrons"),
+             (TrappingRate_p / figures.UNIT["s-1"], figures.HOLE, "holes")],
+            axes, figures.label("Trapping rate", "s-1"), path, "trapping_rate", (v, "V"), log=True)
 
     metadata = {}
     metadata['voltage'] = v
@@ -373,45 +387,47 @@ def milestone_save_2D(device, v, path, is_tcad, is_flip=False, axes=None):
             pickle.dump(data, file)
 
 
-def milestone_save_wf_2D(device, v, path, contact_name, is_tcad, is_flip=False, cells_either_side=None):
+def milestone_save_wf_2D(device, v, path, contact_name, is_tcad, is_flip=False, cells_either_side=None, axes=None):
+    _axes_required(axes)
     save_wf_path = os.path.join(path,contact_name)
     create_path(save_wf_path)
 
     x = []
     y = []
+    elements = []
     Potential = [] # get the potential dat
-    ElectricField = []
-    x_mid = []
-    y_mid = []
 
     for region in devsim.get_region_list(device=device):
         print(devsim.get_material(device=device, region=region))
         if ( devsim.get_material(device=device, region=region) == "Aluminum" or devsim.get_material(device=device, region=region) == "air"
         ):
             continue    
+        elements.append(_region_elements(device, region, len(x), 2))
         x.extend(devsim.get_node_model_values(device=device, region=region, name="x"))
         y.extend(devsim.get_node_model_values(device=device, region=region, name="y"))
         Potential.extend(devsim.get_node_model_values(device=device, region=region, name="Potential")) # get the potential data
-        devsim.element_from_edge_model(edge_model="ElectricField",   device=device, region=region)
-        devsim.edge_average_model(device=device, region=region, node_model="x", edge_model="xmid")
-        devsim.edge_average_model(device=device, region=region, node_model="y", edge_model="ymid")
-        ElectricField.extend(devsim.get_edge_model_values(device=device, region=region, name="ElectricField"))
-        x_mid.extend(devsim.get_edge_model_values(device=device, region=region, name="xmid")) 
-        y_mid.extend(devsim.get_edge_model_values(device=device, region=region, name="ymid"))
     
     x = np.array(x) # get x-node values
     y = np.array(y) # get y-node values
     Potential = np.array(Potential) # get the potential data
-    x_mid = np.array(x_mid) # get x-node values
-    y_mid = np.array(y_mid) # get y-node values
-    ElectricField = np.array(ElectricField) # get y-node values
 
     if is_flip:
         x, y = y, x
-        x_mid, y_mid = y_mid, x_mid
 
-    devsim_draw.draw2D(x,y,Potential,"Weighting Potential", v, save_wf_path)
-    devsim_draw.draw2D(x_mid,y_mid,ElectricField,"Weighting Field", v, save_wf_path)
+    elements = np.concatenate(elements)
+    points = np.column_stack([x, y])
+    electrode_points = _electrode_points(device, contact_name, 2, is_flip)
+    # `path` is the weightingfield folder of the field folder, which holds the plots
+    field_path = os.path.dirname(os.path.normpath(path))
+    electrode = re.sub(r"[^a-z0-9_]", "_", contact_name.lower())
+    devsim_draw.draw_field_map(
+        points, elements, Potential, axes, "Weighting potential", field_path,
+        "weighting_potential", electrode, (v, "V"), electrode=electrode_points)
+    strength = devsim_draw.field_strength_at_nodes(points, elements, Potential)
+    devsim_draw.draw_field_map(
+        points, elements, strength * 1e2 / figures.UNIT["cm-1"], axes,
+        figures.label("Weighting field", "cm-1"), field_path,
+        "weighting_field", electrode, (v, "V"), electrode=electrode_points)
 
     metadata = {}
     metadata['voltage'] = v
@@ -433,7 +449,6 @@ def milestone_save_wf_2D(device, v, path, contact_name, is_tcad, is_flip=False, 
 def milestone_save_3D(device, v, path, is_tcad, axes=None):
     if is_tcad:
         U = "ElectrostaticPotential"       
-        E = "ElectricField"           
         Doping = "DopingConcentration"   
         PNC = "SpaceCharge"               
         e = "eDensity"                     
@@ -443,7 +458,6 @@ def milestone_save_3D(device, v, path, is_tcad, axes=None):
         geometry_scale = 1e-4             
     else:
         U = "Potential"                    
-        E = "ElectricField"           
         Doping = "NetDoping"              
         PNC = "PotentialNodeCharge"        
         e = "Electrons"                   
@@ -452,15 +466,15 @@ def milestone_save_3D(device, v, path, is_tcad, axes=None):
         trap_p = "TrappingRate_p"          
         geometry_scale = 1               
 
-   
+    _axes_required(axes)
     x = []  
     y = []  
     z = []  
+    elements = []
     Potential = []          
     NetDoping = []          
     PotentialNodeCharge = []
     Electrons = []
-    ElectricField = []        
     Holes = []              
     TrappingRate_n = []     
     TrappingRate_p = []    
@@ -472,6 +486,7 @@ def milestone_save_3D(device, v, path, is_tcad, axes=None):
         if ( devsim.get_material(device=device, region=region) == "Aluminum" or devsim.get_material(device=device, region=region) == "air"
         ): 
             continue  
+        elements.append(_region_elements(device, region, len(x), 3))
         x.extend(devsim.get_node_model_values(device=device, region=region, name="x"))
         y.extend(devsim.get_node_model_values(device=device, region=region, name="y"))
         z.extend(devsim.get_node_model_values(device=device, region=region, name="z"))
@@ -523,45 +538,21 @@ def milestone_save_3D(device, v, path, is_tcad, axes=None):
     TrappingRate_n = np.array(TrappingRate_n)
     TrappingRate_p = np.array(TrappingRate_p)
 
-    devsim_draw.draw3D(x, y, z, Potential, "Potential Distribution ", v, path)
-    devsim_draw.draw3D(x, y, z, TrappingRate_n, "Electron Trapping Rate ", v, path)
-    devsim_draw.draw3D(x, y, z, TrappingRate_p, "Hole Trapping Rate ", v, path)
-
-   
-    if is_tcad:
-        for region in devsim.get_region_list(device=device):
-            if ( devsim.get_material(device=device, region=region) == "Aluminum" or devsim.get_material(device=device, region=region) == "air"
-            ):
-                continue 
-            # A TDR file holds the field of a 3D solution as its three components.
-            components = [
-                np.array(devsim.get_node_model_values(device=device, region=region, name=f"{E}_{axis}"))
-                for axis in range(3)
-            ]
-            ElectricField.extend(np.sqrt(sum(component**2 for component in components)))
-        ElectricField = np.array(ElectricField)     
-        devsim_draw.draw3D(x, y, z, ElectricField, "Electric Field", v, path)
-    else:    
-        x_mid = [] 
-        y_mid = []
-        z_mid = []
-        for region in devsim.get_region_list(device=device):
-            if ( devsim.get_material(device=device, region=region) == "Aluminum" or devsim.get_material(device=device, region=region) == "air"
-            ):
-                continue      
-            devsim.element_from_edge_model(edge_model=E, device=device, region=region)
-            devsim.edge_average_model(device=device, region=region, node_model="x", edge_model="xmid")
-            devsim.edge_average_model(device=device, region=region, node_model="y", edge_model="ymid")
-            devsim.edge_average_model(device=device, region=region, node_model="z", edge_model="zmid")
-            x_mid.extend(devsim.get_edge_model_values(device=device, region=region, name="xmid"))
-            y_mid.extend(devsim.get_edge_model_values(device=device, region=region, name="ymid"))
-            z_mid.extend(devsim.get_edge_model_values(device=device, region=region, name="zmid"))    
-            ElectricField.extend(devsim.get_edge_model_values(device=device, region=region, name=E))
-        x_mid = np.array(x_mid)
-        y_mid = np.array(y_mid)
-        z_mid = np.array(z_mid)
-        ElectricField = np.array(ElectricField)
-        devsim_draw.draw3D(x_mid, y_mid, z_mid, ElectricField, "Electric Field", v, path)
+    elements = np.concatenate(elements)
+    points = np.column_stack([x, y, z])
+    devsim_draw.draw_field_map(
+        points, elements, Potential, axes, figures.label("Potential", "V"), path, "potential", (v, "V"))
+    # the same for the DEVSIM and the TCAD field: the modulus of the gradient of the potential
+    strength = devsim_draw.field_strength_at_nodes(points, elements, Potential)
+    devsim_draw.draw_field_map(
+        points, elements, _electric_field_kv_per_cm(strength), axes,
+        figures.label("Electric field", "kV/cm"), path, "electric_field", (v, "V"))
+    if TrappingRate_n.any() or TrappingRate_p.any():
+        devsim_draw.draw_depth_profiles(
+            points, elements,
+            [(TrappingRate_n / figures.UNIT["s-1"], figures.ELECTRON, "electrons"),
+             (TrappingRate_p / figures.UNIT["s-1"], figures.HOLE, "holes")],
+            axes, figures.label("Trapping rate", "s-1"), path, "trapping_rate", (v, "V"), log=True)
 
     metadata = {
         "voltage": v,        
@@ -584,47 +575,46 @@ def milestone_save_3D(device, v, path, is_tcad, axes=None):
             }
             pickle.dump(data, file)
 
-def milestone_save_wf_3D(device, v, path, contact_name, is_tcad):
+def milestone_save_wf_3D(device, v, path, contact_name, is_tcad, axes=None):
+    _axes_required(axes)
     save_wf_path = os.path.join(path, contact_name)
     create_path(save_wf_path)
 
     x = []
     y = []
     z = []
+    elements = []
     Potential = []
-    ElectricField = []
-    x_mid = []
-    y_mid = []
-    z_mid = []
 
     for region in devsim.get_region_list(device=device):
         if ( devsim.get_material(device=device, region=region) == "Aluminum" or devsim.get_material(device=device, region=region) == "air"
         ):
             continue
+        elements.append(_region_elements(device, region, len(x), 3))
         x.extend(devsim.get_node_model_values(device=device, region=region, name="x"))
         y.extend(devsim.get_node_model_values(device=device, region=region, name="y"))
         z.extend(devsim.get_node_model_values(device=device, region=region, name="z"))
         Potential.extend(devsim.get_node_model_values(device=device, region=region, name="Potential"))
-        devsim.element_from_edge_model(edge_model="ElectricField", device=device, region=region)
-        devsim.edge_average_model(device=device, region=region, node_model="x", edge_model="xmid")
-        devsim.edge_average_model(device=device, region=region, node_model="y", edge_model="ymid")
-        devsim.edge_average_model(device=device, region=region, node_model="z", edge_model="zmid")
-        ElectricField.extend(devsim.get_edge_model_values(device=device, region=region, name="ElectricField"))
-        x_mid.extend(devsim.get_edge_model_values(device=device, region=region, name="xmid"))
-        y_mid.extend(devsim.get_edge_model_values(device=device, region=region, name="ymid"))
-        z_mid.extend(devsim.get_edge_model_values(device=device, region=region, name="zmid"))
 
     x = np.array(x)
     y = np.array(y)
     z = np.array(z)
     Potential = np.array(Potential)
-    x_mid = np.array(x_mid)
-    y_mid = np.array(y_mid)
-    z_mid = np.array(z_mid)
-    ElectricField = np.array(ElectricField)
 
-    devsim_draw.draw3D(x, y, z, Potential, "Weighting Potential", v, save_wf_path)
-    devsim_draw.draw3D(x_mid, y_mid, z_mid, ElectricField, "Weighting Field", v, save_wf_path)
+    elements = np.concatenate(elements)
+    points = np.column_stack([x, y, z])
+    electrode_points = _electrode_points(device, contact_name, 3)
+    # `path` is the weightingfield folder of the field folder, which holds the plots
+    field_path = os.path.dirname(os.path.normpath(path))
+    electrode = re.sub(r"[^a-z0-9_]", "_", contact_name.lower())
+    devsim_draw.draw_field_map(
+        points, elements, Potential, axes, "Weighting potential", field_path,
+        "weighting_potential", electrode, (v, "V"), electrode=electrode_points)
+    strength = devsim_draw.field_strength_at_nodes(points, elements, Potential)
+    devsim_draw.draw_field_map(
+        points, elements, strength * 1e2 / figures.UNIT["cm-1"], axes,
+        figures.label("Weighting field", "cm-1"), field_path,
+        "weighting_field", electrode, (v, "V"), electrode=electrode_points)
 
     metadata = {}
     metadata['voltage'] = v
@@ -675,14 +665,14 @@ def save_milestone(device, v, path, dimension, contact_name, is_wf, is_tcad = Fa
             print("==========RASER info ==========\nis_wf only has 2 values, True or False\n==========Error=========")
     if dimension == 2:
         if is_wf == True:
-            milestone_save_wf_2D(device, v, path, contact_name, is_tcad, is_flip, cells_either_side)
+            milestone_save_wf_2D(device, v, path, contact_name, is_tcad, is_flip, cells_either_side, axes=axes)
         elif is_wf == False:
             milestone_save_2D(device, v, path, is_tcad, is_flip, axes=axes)
         else:
             print("==========RASER info ==========\nis_wf only has 2 values, True or False\n==========Error=========")
     if dimension == 3:
         if is_wf == True:
-            milestone_save_wf_3D(device, v, path, contact_name, is_tcad)
+            milestone_save_wf_3D(device, v, path, contact_name, is_tcad, axes=axes)
         elif is_wf == False:
             milestone_save_3D(device, v, path, is_tcad, axes=axes)
         else:
