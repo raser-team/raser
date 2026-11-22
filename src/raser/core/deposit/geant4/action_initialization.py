@@ -5,7 +5,6 @@ Description:  action_initialization.py
 @version    : 2.0
 '''
 
-import numpy as np
 from raser.core.deposit.geant4.g4ppyy_runtime import g4b
 
 g4b.include("G4VUserActionInitialization.hh")
@@ -20,7 +19,7 @@ from .nuclide_source import axis_and_plane
 
 class GeneralActionInitialization(g4b.G4VUserActionInitialization):
     def __init__(self, par_in, par_out, par_randx, par_randy, par_type, par_energy,
-                 eventIDs, edep_devices, p_steps, energy_steps, time_steps, events_angles, edep_window, geant4_model, particles=None, nuclides=None, recorded_events=None, start_steps=None,):
+                 records, windows, tree, coincidence_window_ns, geant4_model, particles=None, nuclides=None, recorded_events=None,):
         super().__init__()
         self.particles = particles
         # nuclides: what NuclideGeneratorAction takes, for a source of nuclides
@@ -35,15 +34,12 @@ class GeneralActionInitialization(g4b.G4VUserActionInitialization):
         self.par_randx = par_randx
         self.par_randy = par_randy
 
-        self.eventIDs = eventIDs
-        self.edep_devices = edep_devices
-        self.p_steps = p_steps
-        # where each recorded step starts, event by event
-        self.start_steps = start_steps
-        self.energy_steps = energy_steps
-        self.time_steps = time_steps
-        self.events_angles = events_angles
-        self.edep_window = edep_window
+        # records: the RecordedSteps of the run; the recorded events are those
+        # the slots hit with windows, tree [logic expression] and window in time [ns]
+        self.records = records
+        self.windows = windows
+        self.tree = tree
+        self.coincidence_window_ns = coincidence_window_ns
 
         self.geant4_model=geant4_model
         self.actions = []
@@ -72,8 +68,8 @@ class GeneralActionInitialization(g4b.G4VUserActionInitialization):
         myRA_action = GeneralRunAction()
         self.actions.append(myRA_action)
         self.SetUserAction(myRA_action)
-        myEA = GeneralEventAction(myRA_action, self.par_in, self.par_out, 
-                                  self.eventIDs, self.edep_devices, self.p_steps, self.energy_steps, self.time_steps, self.events_angles, self.edep_window, self.recorded_events, self.start_steps,)
+        myEA = GeneralEventAction(myRA_action, self.records, self.windows, self.tree,
+                                  self.coincidence_window_ns, self.recorded_events,)
         self.actions.append(myEA)
         self.event_action = myEA
         self.SetUserAction(myEA)

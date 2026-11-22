@@ -15,7 +15,7 @@
 | `raser hbf` | 跑氢硼聚变（Hydrogen–Boron Fusion，p–¹¹B） | [apps/hbf.md](apps/hbf.md) |
 | `raser pimg` | 跑质子成像（Proton Imaging） | [apps/pimg.md](apps/pimg.md) |
 | `raser field [路径]`（短命令 `fld`） | 不给路径就是当前文件夹，给了就是相对或绝对路径；算器件里的电场、权重场、IV/CV | [stages/field.md](stages/field.md) |
-| `raser deposit [路径]`（短命令 `dep`） | 在当前文件夹或给定路径的实验上跑到 `deposit`（用 Geant4 算粒子沉积的能量），缺的上游自动补上 | [stages/deposit.md](stages/deposit.md) |
+| `raser deposit [路径] [<source>]`（短命令 `dep`） | 在当前文件夹或给定路径的实验上跑到 `deposit`（用 Geant4 算粒子沉积的能量），缺的上游自动补上；`<source>` 是 `--set deposit.g4setup.source=<source>` 的简写 | [stages/deposit.md](stages/deposit.md) |
 | `raser current [路径]`（短命令 `cur`） | 在当前文件夹或给定路径的实验上跑到 `current`（让载流子在场中漂移，算电极上的感应电流），缺的上游自动补上 | [stages/current.md](stages/current.md) |
 | `raser readout [路径]`（短命令 `rdo`） | 在当前文件夹或给定路径的实验上跑到 `readout`（把电流送进器件等效电路和前端放大器，得到波形），缺的上游自动补上 | [stages/readout.md](stages/readout.md) |
 | `raser digitizer [路径]`（短命令 `digi`） | 在当前文件夹或给定路径的实验上跑到 `digitizer`（按示波器或数字化板的采样和量化把波形变成数字波形），缺的上游自动补上 | [stages/digitizer.md](stages/digitizer.md) |

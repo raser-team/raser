@@ -13,7 +13,10 @@ def test_geant4_generates_until_enough_events_are_recorded() -> None:
 
     source = json.loads(component_path("source", "decay", "Sr90.json").read_text())
     # about one Sr-90 decay in thirty leaves energy in the device alone
-    deposits = simulate_deposits(Detector("HPK-Si-PiN"), source, None, 5, 3, generated_limit=5000)
+    deposits = simulate_deposits(
+        {"Device": Detector("HPK-Si-PiN")}, source, None, 5, 3, {"Device": (None, None)}, "all",
+        None, generated_limit=5000,
+    )
 
     assert len(deposits.events) == 5
     assert 5 < deposits.generated_events < 5000

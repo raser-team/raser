@@ -31,7 +31,7 @@ Eq. (2) is implemented by [`stages/analysis`](../stages/analysis.md) calling `co
 
 ### `time_resolution` Setup Geometry
 
-By default, `timeres` loads the Geant4 setup `time_resolution` (`src/raser_bench/timeres/components/deposit/time_resolution.py`, see [energy deposition components (`components/deposit`)](../components/deposit.md)). The world material is vacuum `"G4_Galactic"`, centered at the midpoint of the `along_beam` line with half-side at least `WORLD_HALF_SIDE = 25000` $\mu\text{m}$. The world coordinate origin $(0, 0, 0)$ is on the source with the $z$ axis pointing downstream along the beam; the default $\beta$ source `decay/Sr90` disk is centered at the origin, with disk radius `par_radius = 2500` $\mu\text{m}$ and emission half-cone angle `par_cone = 15` $\text{degree}$, emitting along $+z$ with incidence angle `angle = 0` $\text{degree}$.
+By default, `timeres` loads the Geant4 setup `time_resolution` (`src/raser_bench/timeres/components/deposit/time_resolution.py`, see [energy deposition components (`components/deposit`)](../components/deposit.md)). The world material is vacuum `"G4_Galactic"`, centered at the midpoint of the `along_beam` line with half-side at least `WORLD_HALF_SIDE = 25000` $\mu\text{m}$. The setup's `source` block is `{"name": "decay/Sr90", "angle": 0}`, and this $\beta$ source carries a copper collimator (`par_radius = 0`; see [`../components/deposit.md`](../components/deposit.md)), so the world coordinate origin $(0, 0, 0)$ lies at the center of the collimator exit plane, the $z$ axis points downstream along the collimator bore axis, the collimator body lies on the $z < 0$ side, and the incidence angle is `angle = 0` $\text{degree}$.
 
 The setup uses `along_beam` to arrange, starting from the source along $+z$, an aluminum foil `Al`, the reference device (slot `ref`), an upper PCB `pcb1` with a centered circular hole, the DUT (slot `dut`), and a lower PCB `pcb2` with a centered circular hole:
 
@@ -50,14 +50,14 @@ Following the placement rules along the beam (see [`core/deposit`](../core/depos
 
 Geant4 fully simulates energy deposition, multiple scattering, and secondary particle production as $\beta$ electrons traverse the aluminum foil, reference device (including substrate), upper PCB, DUT (including substrate), and lower PCB, recording energy deposition steps inside the active layers of both the reference device and the DUT simultaneously. The dimensions, thicknesses, and gaps to the preceding item along $+z$ are listed below:
 
-| Item (in Order Along Beam) | Type | Material and Density | Gap to Preceding Item `gap` ($\mu\text{m}$) | Transverse Size `side_x × side_y` ($\mu\text{m}$) | Thickness `side_z` or $l_z + t$ ($\mu\text{m}$) | Centered Hole `tub_radius`, `tub_depth` ($\mu\text{m}$) |
+| Item (in Order Along Beam) | Type | Material and Density | Gap to Preceding Item `gap` ($\mu\text{m}$) | Transverse Size `size[0] × size[1]` ($\mu\text{m}$) | Thickness `size[2]` or $l_z + t$ ($\mu\text{m}$) | Centered Hole `hole` ($\mu\text{m}$) |
 | --- | --- | --- | --- | --- | --- | --- |
-| `"source"` (`decay/Sr90`) | Source | — | — | Disk radius `2500` | `0` | None |
-| `Al` | Surrounding volume (`elemental`) | `"G4_Al"` | `1995` | $5000 \times 5000$ | `10` | None |
+| `"source"` (`decay/Sr90`) | Source | — | — | Collimator exit plane (`par_radius = 0` in source) | `0` | None |
+| `Al` | Surrounding object (`box`) | `"G4_Al"` | `1995` (measured from collimator exit) | $5000 \times 5000$ | `10` | None |
 | Reference device (slot `ref`, default `HPK-Si-LGAD`) | Device (active layer and other layers) | From device file | `4978.5` | From device file ($l_{x,\text{ref}} \times l_{y,\text{ref}}$) | From device file (active layer $l_{z,\text{ref}}$ plus other layers $t_{\text{ref}}$) | None |
-| `pcb1` | Surrounding volume (`binary_compounds`) | `"SiO2"` (Si/O atomic ratio `33.4:66.6`, `2.2 g/cm^3`) | `0` (flush) | $20000 \times 20000$ | `1500` | `500`, `1500` |
+| `pcb1` | Surrounding object (`box`) | `"SiO2"` (`Si:O = 1:2`, `2.2 g/cm^3`) | `0` (flush) | $20000 \times 20000$ | `1500` | `500` |
 | DUT (slot `dut`, given on CLI) | Device (active layer and other layers) | From device file | `8183.5` | From device file ($l_x \times l_y$) | From device file (active layer $l_z$ plus other layers $t$) | None |
-| `pcb2` | Surrounding volume (`binary_compounds`) | `"SiO2"` (Si/O atomic ratio `33.4:66.6`, `2.2 g/cm^3`) | `0` (flush) | $20000 \times 20000$ | `1500` | `500`, `1500` |
+| `pcb2` | Surrounding object (`box`) | `"SiO2"` (`Si:O = 1:2`, `2.2 g/cm^3`) | `0` (flush) | $20000 \times 20000$ | `1500` | `500` |
 
 ### Three Devices
 
@@ -121,7 +121,7 @@ The built-in constants in `timeres` are listed below:
 ### Components
 
 - [Detector components (`components/device`)](../components/device.md): provides geometry, material, doping, bias voltage, temperature, irradiation, and avalanche multiplication parameters for the DUT and reference device. The reference device defaults to `HPK-Si-LGAD` (`HPK-Si-LGAD.json`), and the DUT is given on the command line (such as `HPK-Si-PiN`, `NJU-PiN`, `SICAR-1`).
-- [Energy deposition components (`components/deposit`)](../components/deposit.md): provides the default Geant4 setup `time_resolution` (`src/raser_bench/timeres/components/deposit/time_resolution.py`) and the default $\beta$ radioactive source `decay/Sr90` (`raser/components/deposit/decay/Sr90.json`).
+- [Energy deposition components (`components/deposit`)](../components/deposit.md): provides the default Geant4 setup `time_resolution` (`src/raser_bench/timeres/components/deposit/time_resolution.py`) and the $\beta$ radioactive source `decay/Sr90` named by the setup (`raser/components/deposit/decay/Sr90.json`).
 - [Front-end readout circuit components (`components/readout`)](../components/readout.md): provides SPICE amplifier stages and termination load subcircuits cascaded with `+` (default `SantaCruz+Gali52+Termination50`).
 - [Digitizer components (`components/digitizer`)](../components/digitizer.md): provides sampling and quantization settings of an oscilloscope or digitizer board (such as `MXR608A`).
 - [Trigger components (`components/trigger`)](../components/trigger.md): trigger condition definitions; `timeres` requires both (or all three) devices to exceed the amplitude threshold in the same event.
@@ -142,8 +142,8 @@ The experiment directory `<project>/timeres/config.json` stores settings section
 | --- | --- | --- | --- |
 | `field.voltage` | `200.0` (uses bias from the DUT device file if set to `null`) | $\text{V}$ | DUT bias voltage |
 | `field.irradiation_flux` | `null` (uses irradiation fluence from the device file, or `0` if the device file has no irradiation block) | $\text{cm}^{-2}$ | DUT irradiation fluence ($1\ \text{MeV}$ neutron-equivalent fluence) |
-| `deposit.source` | `"decay/Sr90"` | None | Radioactive source or beam component name or path |
-| `deposit.g4setup` | `"time_resolution"` | None | Geant4 setup component name or path |
+| `deposit.g4setup` | `"time_resolution"` | None | Geant4 setup component name or path; the setup's `source` block names the source it uses |
+| `deposit.g4setup.source` | not written (`"decay/Sr90"` from `time_resolution`) | None | Replaces the whole source: radioactive source or beam component name or path; the setup's `angle` is kept |
 | `deposit.events_per_job` | `10000` | events | Number of valid deposited events to record per job (mutually exclusive with `deposit.generated_per_job`) |
 | `deposit.generated_per_job` | `null` (unused) | events | Total number of events generated from the source per job (mutually exclusive with `deposit.events_per_job`) |
 | `deposit.generated_limit` | `10000000` | events | Maximum number of generated source events allowed to reach `events_per_job` |

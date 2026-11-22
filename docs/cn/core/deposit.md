@@ -44,7 +44,7 @@ $$E_k = \texttt{GetTotalEnergyDeposit}, \qquad \mathbf{r}_k = \tfrac{1}{2}\bigl(
 - $\mathbf{r}_k$：沉积步位置，取步中点，$\mu\text{m}$（代码注释说明：步的两端在器件表面上，舍入误差可能把端点落到器件外）；
 - $\ell_k$：步长，$\mu\text{m}$；$s_{\max}$：装置的 `maxstep`，$\mu\text{m}$。
 
-器件材料在 Geant4 里按 `material` 建：`"Si"` 用 NIST 的 `G4_Si`；`"Diamond"` 用密度改为 $3.52\ \text{g/cm}^3$ 的 `G4_C`（代码注释：NIST 的 `G4_C` 是 $2.0\ \text{g/cm}^3$ 的石墨）；`"SiC"` 是 Si、C 原子数各占一半、密度 $3.21\ \text{g/cm}^3$ 的化合物。金刚石密度取自 PDG 的原子与核性质表 [8]，4H-SiC 密度取自文献 [13]。
+器件材料在 Geant4 里按 `material` 建：`"Si"` 用 NIST 的 `G4_Si`；`"Diamond"` 用密度改为 $3.52\ \text{g/cm}^3$ 的 `G4_C`（代码注释：NIST 的 `G4_C` 是 $2.0\ \text{g/cm}^3$ 的石墨）；`"SiC"` 是 Si、C 原子数各占一半、密度 $3.21\ \text{g/cm}^3$ 的化合物。金刚石密度取自 PDG 的原子与核性质表 [8]，4H-SiC 密度取自文献 [13]。器件的 `material` 只取 `"Si"`、`"SiC"`、`"Diamond"`（有电离能和 Fano 因子的三种）；`G4SETUP["materials"]` 里定义的名字和以 `"G4_"` 开头的 Geant4 NIST 材料名只用于 `objects` 的 `material`。
 
 ### toy MIP 径迹
 
@@ -140,28 +140,47 @@ $$P(t) = \frac{2\sqrt{2\ln 2}}{\sqrt{2\pi}\,\tau}\exp\!\left(-\frac{4\ln 2\; t^2
 
 ### 放射源
 
-放射源每个事例是一个静止核素的一次衰变。核素在 `nuclides` 中等概率抽取，位置在垂直于发射轴的圆盘上均匀分布。衰变产物的起始时刻置零，衰变留下的子核在此截断，一个事例是一次衰变。给了 `par_cone` 时，衰变产物的方向在绕发射轴的圆锥内各向同性重抽：
+放射源连同它的封装和准直孔是一个组件，对外发出的就是从准直孔出口出来的粒子；这份出射分布只取决于核素、封装和准直孔，不取决于下游摆什么器件或采用什么符合条件，源组件里不设针对某个实验调节的发射角。每个事例是一个静止核素的一次衰变：核素在 `nuclides` 中等概率抽取，位置在垂直于发射轴（孔轴）的圆盘上均匀分布（半径为 `par_radius`；$R = 0$ 时为轴上点源）。衰变产物的起始时刻置零，衰变留下的子核在此截断，一个事例对应一次衰变。若给了 `activity`（单位 $\text{Bq}$），它给出每种核素每秒的衰变数；$^{90}\text{Sr}$ 与 $^{90}\text{Y}$ 处于长期平衡，两种核素各按 `activity` 衰变。
 
-$$\hat{\mathbf{a}} = \frac{\mathbf{r}_{\text{out}} - \mathbf{r}_{\text{in}}}{|\mathbf{r}_{\text{out}} - \mathbf{r}_{\text{in}}|}, \qquad |\mathbf{r}_0 - \mathbf{r}_{\text{in}}| \le R, \quad (\mathbf{r}_0 - \mathbf{r}_{\text{in}}) \perp \hat{\mathbf{a}} \tag{14}$$
+没有 `collimator` 的放射源朝全空间 $4\pi$ 各向同性发射。带 `collimator`（含 `material`、`length`、`radius`、`outer_side`）时，核素圆盘位于准直孔入口面（$z = -L$）上，圆心在孔轴上；准直孔出口面中心在世界坐标原点 $(0, 0, 0)$，$z$ 轴沿孔轴指向下游，准直孔本体位于 $z \in [-L, 0]$（即 $z < 0$ 一侧）。装置中不把准直孔当作物体摆。
 
-$$\cos\theta = 1 - u_1\,(1 - \cos\theta_c), \qquad \varphi = 2\pi u_2, \qquad \hat{\mathbf{d}} = \cos\theta\,\hat{\mathbf{a}} + \sin\theta\,(\cos\varphi\,\hat{\mathbf{e}}_1 + \sin\varphi\,\hat{\mathbf{e}}_2) \tag{15}$$
+对圆盘上的发射点 $\mathbf{r}_0$ 和发射方向 $\hat{\mathbf{d}}$，记这条直线从发射点到出口面 $z = 0$ 之间在准直孔材料里走过的长度为 $\ell(\mathbf{r}_0, \hat{\mathbf{d}})$（直线全程在孔内时 $\ell = 0$；朝后半球的方向 $\hat{\mathbf{d}}\cdot\hat{\mathbf{z}} \le 0$ 不发）。程序只发满足 $\ell(\mathbf{r}_0, \hat{\mathbf{d}}) \le R_{\text{CSDA}}(E_{\max})$ 的方向，其中 $E_{\max}$ 取该源各核素 $\beta$ 谱端点能量中最大的一个，$R_{\text{CSDA}}(E_{\max})$ 是动能为 $E_{\max}$ 的电子在准直孔材料里的连续慢化近似射程，由 Geant4 的 `G4EmCalculator` 给出。被发射的方向占全空间的比例 $f$ 由程序对发射点和方向数值积分得到，写作 `generated_fraction`：
 
-$$f = \frac{1 - \cos\theta_c}{2} \tag{16}$$
+$$f = \frac{1}{\pi R^2}\int_{|\mathbf{r}_0 - \mathbf{r}_c| \le R} d^2\mathbf{r}_0 \cdot \frac{1}{4\pi}\int_{\hat{\mathbf{d}}\cdot\hat{\mathbf{z}} > 0} \mathbb{I}\bigl[\ell(\mathbf{r}_0, \hat{\mathbf{d}}) \le R_{\text{CSDA}}(E_{\max})\bigr]\,d\Omega \tag{21}$$
+
+点源在轴上（$R = 0$）、孔半径为 $r$、孔长为 $L$ 时，直线全程在孔内的那部分占全空间的比例为：
+
+$$f_{\text{hole}} = \frac{1 - \cos\theta_c}{2}, \qquad \theta_c = \arctan\frac{r}{L} \tag{22}$$
+
+以库中 `decay/Sr90`（$r = 500\ \mu\text{m}$、$L = 3000\ \mu\text{m}$）为例，$\theta_c = 9.46^\circ$，直线全程在孔内的部分占 $0.68\%$。程序不只取几何张角 $\theta_c$ 发射，是因为较大角度射入孔壁的电子经散射后仍可能从孔内穿出：在 $12^\circ$ 锥内发射的对照里，被下游器件选中的事例有约 $7\%$ 来自几何张角之外，是孔壁散射出来的电子。
+
+电子在准直孔材料里时实行射程截断：若它当前能量的 $R_{\text{CSDA}}(E)$ 小于它到最近的孔壁表面或出口面的距离 $d_{\min}(\mathbf{r})$，就终止这条径迹，能量就地沉积：
+
+$$R_{\text{CSDA}}(E) < d_{\min}(\mathbf{r}) \tag{23}$$
+
+它产生的轫致辐射光子不受影响，照常输运。
+
+在出口面（$z = 0$，横贯整个世界）上记录穿过它的粒子（种类、位置、方向、动能、时间；中微子不记）后终止。出射分布每块实际送进 Geant4 的衰变数（落在被发射方向内的那些）固定为 `EMISSION_BLOCK_DECAYS = 1_000_000`，它对应的全空间衰变数为 `decays = EMISSION_BLOCK_DECAYS / generated_fraction`，穿过出口面的衰变数记为 `emitted`，则单块出射概率 $\varepsilon$（一个作业用到多块时，`emission_probability` 取所用各块的 `sum(emitted) / sum(decays)`）与给出 `activity` 时的出射率 $\dot{N}_{\text{emit}}$ 为：
+
+$$\varepsilon = \frac{\texttt{emitted}}{\texttt{decays}}, \qquad \dot{N}_{\text{emit}} = n_{\text{nuclides}} \cdot \texttt{activity} \cdot \varepsilon \tag{24}$$
 
 其中：
 
-- $\mathbf{r}_{\text{in}}, \mathbf{r}_{\text{out}}$：源位置与沿发射轴的瞄准点（世界坐标原点在源上，未转动时 $\mathbf{r}_{\text{in}} = (0, 0, 0)$，发射轴 $\hat{\mathbf{a}}$ 沿 $+z$ 指向下游），$\mu\text{m}$；$\hat{\mathbf{a}}$：发射轴单位矢量；
-- $\mathbf{r}_0$：核素位置，$\mu\text{m}$；$R$：圆盘半径 `par_radius`，$\mu\text{m}$（$R = 0$ 时为点源）；
-- $\hat{\mathbf{e}}_1, \hat{\mathbf{e}}_2$：与 $\hat{\mathbf{a}}$ 正交的单位矢量；
-- $\theta_c$：半锥角 `par_cone`，度；$u_1, u_2$：$[0, 1)$ 上的均匀随机数；
-- $\hat{\mathbf{d}}$：衰变产物的出射方向；
-- $f$：圆锥占全部方向的比例，写作文件属性 `generated_fraction`。
+- $\mathbf{r}_0$：核素在入口面 $z = -L$ 上的发射点，$\mu\text{m}$；$\mathbf{r}_c = (0, 0, -L)$：准直孔入口面中心，$\mu\text{m}$；$R$：圆盘半径 `par_radius`，$\mu\text{m}$（$R = 0$ 时为轴上点源，式 (21) 仅对立体角积分）；
+- $\hat{\mathbf{d}}$：衰变产物发射方向单位矢量；$\hat{\mathbf{z}}$：沿孔轴指向下游的单位矢量；$\ell(\mathbf{r}_0, \hat{\mathbf{d}})$：直线从 $\mathbf{r}_0$ 到 $z = 0$ 之间穿过准直孔材料的长度，$\mu\text{m}$；
+- $R_{\text{CSDA}}(E)$：动能为 $E$（$\text{MeV}$）的电子在准直孔材料里的连续慢化近似射程，$\mu\text{m}$；$E_{\max}$：源中各核素 $\beta$ 谱端点能量中最大的一个，$\text{MeV}$；
+- $f$：被发射方向占全空间 $4\pi$ 的比例，写作 `emission.h5` 的属性 `generated_fraction`；
+- $r, L$：准直孔孔半径 `radius` 与长 `length`，$\mu\text{m}$；$\theta_c$：轴上点源对出口面孔口的半张角；$f_{\text{hole}}$：直线全程在孔内部分占全空间的比例；
+- $d_{\min}(\mathbf{r})$：电子当前位置 $\mathbf{r}$ 到最近的孔壁表面或出口面的距离，$\mu\text{m}$；
+- `emitted`：穿过出口面的衰变数，次；`decays`：本块对应的全空间衰变数（`EMISSION_BLOCK_DECAYS / generated_fraction`），次；
+- $\varepsilon$：出射概率，写作 `deposit.h5` 的属性 `emission_probability`（用到多块时取所用各块的 `sum(emitted) / sum(decays)`）；
+- $n_{\text{nuclides}}$：`nuclides` 中的核素种数；`activity`：每种核素的活度，$\text{Bq}$；$\dot{N}_{\text{emit}}$：准直孔出口面的出射率，$\text{s}^{-1}$。
 
-核素由 `NuclideGeneratorAction`（`G4GeneralParticleSource`，动能 $0$）产生，时间置零、子核截断和圆锥方向由 `DecayStackingAction` 完成，判据是轨迹的产生过程子类型为 `RADIOACTIVE_DECAY = 210`。代码注释说明：Geant4 自带的 `/process/had/rdm/decayHalfAngle` 只能绕 $z$ 轴，所以自己实现。Geant4 放射性衰变见文献 [5]。
+核素由 `NuclideGeneratorAction`（`G4GeneralParticleSource`，动能 $0$）产生，起始时刻置零与子核截断由 `DecayStackingAction` 完成，判据是轨迹的产生过程子类型为 `RADIOACTIVE_DECAY = 210`。生成第 `0` 块出射分布时，另以源自身跑一次将方向限制放宽到整个前半球（射程截断照常）的对照，把两次的出射概率之比及其统计误差与出射电子动能谱的比较结果写进 `node.json` 的 `emission_check` 键。Geant4 放射性衰变见文献 [5]。
 
 ### 沿束流的一列
 
-装置用 `along_beam` 描述沿束流方向的一列几何：第一项必须是 `"source"`，世界坐标原点 $(0, 0, 0)$ 在源上，$z$ 轴沿束流指向下游。列中其余项依次为间隔 `{"gap": d}`（$d \ge 0$，$\mu\text{m}$）、`object` 中的物体（`"<物体名>"` 或 `{"object": "<物体名>", "offset": [o_x, o_y]}`，沿 $z$ 占 `side_z`）、器件槽位 `{"slot": "<槽位名>", ...}`（沿 $z$ 占器件几何全部层的总厚度 $l_z + t$，见 [探测器组件](../components/device.md)，没有灵敏层以外各层时 $t = 0$），或前端面对齐在同一个 $z$、靠各自 `offset` 横向错开的并排列表 `[项, 项, ...]`（沿 $z$ 占其中最厚一项的厚度）。相邻两项之间不写 `gap` 就是贴在一起；源的厚度为 $0$，第 $i$ 项的前端面 $z_i$ 等于它前面所有项的厚度与间隔之和，槽位前表面中心 $\mathbf{P} = (P_x, P_y, P_z)$ 与器件坐标 $(x, y, z)$（原点在器件前表面一角，有源层占据 $[0, l_x] \times [0, l_y] \times [0, l_z]$）到 Geant4 世界坐标 $\mathbf{r}_{\text{G4}}$ 的变换为：
+装置用 `along_beam` 描述沿束流方向的一列几何：第一项必须是 `"source"`；不带准直孔时世界坐标原点 $(0, 0, 0)$ 在源上，带准直孔时世界坐标原点在准直孔出口面的中心、准直孔本体在 $z < 0$ 一侧（装置里不把准直孔当物体摆），装置里各 `gap` 从准直孔出口面算起，$z$ 轴沿束流（孔轴）指向下游。列中其余项依次为间隔 `{"gap": d}`（$d \ge 0$，$\mu\text{m}$）、`objects` 中的物体（`"<物体名>"` 或 `{"object": "<物体名>", "offset": [o_x, o_y]}`，沿 $z$ 占物体的厚度：`box` 取 `size[2]`，`tube` 取 `length`）、器件槽位 `{"slot": "<槽位名>", ...}`（沿 $z$ 占器件几何全部层的总厚度 $l_z + t$，见 [探测器组件](../components/device.md)，没有灵敏层以外各层时 $t = 0$），或前端面对齐在同一个 $z$、靠各自 `offset` 横向错开的并排列表 `[项, 项, ...]`（沿 $z$ 占其中最厚一项的厚度）。相邻两项之间不写 `gap` 就是贴在一起；源的厚度为 $0$，第 $i$ 项的前端面 $z_i$ 等于它前面所有项的厚度与间隔之和，槽位前表面中心 $\mathbf{P} = (P_x, P_y, P_z)$ 与器件坐标 $(x, y, z)$（原点在器件前表面一角，有源层占据 $[0, l_x] \times [0, l_y] \times [0, l_z]$）到 Geant4 世界坐标 $\mathbf{r}_{\text{G4}}$ 的变换为：
 
 $$z_i = \sum_{j < i} d_j, \qquad \mathbf{P} = \begin{cases} \bigl(o_x,\ o_y,\ z_i\bigr), & \texttt{facing} = \texttt{"upstream"} \\ \bigl(o_x,\ o_y,\ z_i + l_z + t\bigr), & \texttt{facing} = \texttt{"downstream"} \end{cases} \tag{17}$$
 
@@ -169,7 +188,7 @@ $$\mathbf{r}_{\text{G4}} = \begin{cases} \mathbf{P} + \begin{pmatrix} \cos\phi &
 
 其中：
 
-- $d_j$：第 $j$ 项沿 $z$ 轴占据的厚度或间隔（`"source"` 取 $0$，`{"gap": d}` 取 $d$，物体取 `side_z`，槽位取 $l_z + t$，并排列表取其中各项厚度的最大值），$\mu\text{m}$；$z_i$：第 $i$ 项前端面的世界 $z$ 坐标，$\mu\text{m}$；
+- $d_j$：第 $j$ 项沿 $z$ 轴占据的厚度或间隔（`"source"` 取 $0$，`{"gap": d}` 取 $d$，物体取其厚度，即 `"box"` 的 `size[2]` 或 `"tube"` 的 `length`，槽位取 $l_z + t$，并排列表取其中各项厚度的最大值），$\mu\text{m}$；$z_i$：第 $i$ 项前端面的世界 $z$ 坐标，$\mu\text{m}$；
 - $o_x, o_y$：槽位的 `offset`（缺省 `[0, 0]`），$\mu\text{m}$；
 - $l_z$：该槽位器件的有源层厚度，$\mu\text{m}$；$t$：灵敏层以外各层的总厚度，$\mu\text{m}$（没有这些层时 $t = 0$）；
 - $\mathbf{P} = (P_x, P_y, P_z)$：器件前表面（器件坐标 $z = 0$ 的面）中心的世界坐标，$\mu\text{m}$；
@@ -216,6 +235,7 @@ $$h_s(t_0) = h_s \cdot \mathbb{I}\bigl(t_0 \le t_s \le t_0 + W\bigr), \qquad \ex
 | `PAIRS_PER_UM` | Si `80.0`，SiC `55.0` | $\mu\text{m}^{-1}$ | `mip_track.py`，式 (4) 的 $n_{\text{MIP}}$ | 无 |
 | `LANDAU_WIDTH_MEV_PER_UM` | Si `1.78e-5`，SiC `2.46e-5` | $\text{MeV}/\mu\text{m}$ | `mip_track.py`，式 (5) 的 $w$ | 无 |
 | `GENERATED_LIMIT` | `10_000_000` | 事例 | `generation.py`，按记录数运行时最多生成的事例数 | 无（环节设置 `deposit.generated_limit`） |
+| `EMISSION_BLOCK_DECAYS` | `1_000_000` | 衰变 | 源出射分布每块实际送进 Geant4 的衰变数（落在被发射方向内） | 无 |
 | `DEVICE_ALONE` | 见下文“装置” | — | `simulate_deposits.py`，未给装置时的装置 | 由 `deposit.g4setup` 整体替换 |
 | `WORLD_HALF_SIDE` | `25000` | $\mu\text{m}$ | `simulate_deposits.py`，世界立方体的缺省半边长 | `gdml_import` 下的 `world_half_size_um` |
 | 物理表 | `FTFP_BERT` + `G4StepLimiterPhysics` | — | `geant4/interaction.py` | 无 |
@@ -230,31 +250,49 @@ $$h_s(t_0) = h_s \cdot \mathbb{I}\bigl(t_0 \le t_s \le t_0 + W\bigr), \qquad \ex
 
 ### `simulate_deposits` 的分支
 
-`simulate_deposits(devices, source, g4setup, events, g4_seed, windows, require, coincidence_window_ns, fano, generated, generated_limit, picture, drawn)` 按以下顺序执行。`devices` 是槽位名到器件的有序字典；`windows` 是槽位名到 `(下限, 上限)`（$\text{MeV}$，`None` 表示该侧不检查）的映射；`require` 是槽位逻辑式字符串；`coincidence_window_ns` 是符合时间窗（$\text{ns}$，`None` 表示不卡时间）。未给装置时取 `DEVICE_ALONE`，等同于 `"along_beam": ["source", {"gap": 17000}, {"slot": "Device"}]`；只有一块器件的装置槽位名写 `"Device"`、传 `{"Device": my_d}`。装置的槽位名与 `devices` 参数的槽位名必须一一对上，多了、少了都抛 `ValueError`（`the g4setup places <装置的槽位>, the devices are <给的槽位>`）；各槽位在输出中的顺序以 `devices` 参数为准。
+`simulate_deposits(devices, source, g4setup, events, g4_seed, windows, require, coincidence_window_ns, fano, generated, generated_limit, picture, drawn, observers=None, primaries=None)` 按以下顺序执行。`devices` 是槽位名到器件的有序字典；`windows` 是槽位名到 `(下限, 上限)`（$\text{MeV}$，`None` 表示该侧不检查）的映射；`require` 是槽位逻辑式字符串；`coincidence_window_ns` 是符合时间窗（$\text{ns}$，`None` 表示不卡时间）；`observers` 与 `primaries` 是实验脚本的入口（见“接口 → 实验脚本的入口”）。`source` 是装置 `source` 块指的源组件连同覆盖的键（由环节读出并套好）。未给装置时取 `DEVICE_ALONE`，它只给几何，等同于 `"along_beam": ["source", {"gap": 17000}, {"slot": "Device"}]`，此时源就是传入的 `source` 参数；只有一块器件的装置槽位名写 `"Device"`、传 `{"Device": my_d}`。装置的槽位名与 `devices` 参数的槽位名必须一一对上，多了、少了都抛 `ValueError`（`the g4setup places <装置的槽位>, the devices are <给的槽位>`）；各槽位在输出中的顺序以 `devices` 参数为准。
 
-1. **检查源的类型**：`source["kind"]` 不是 `"toy_mip"`、`"beam"`、`"decay_source"` 之一时抛 `ValueError`（`no simulation of deposits for a source of kind ...`）。
+1. **检查源的类型**：`source["kind"]` 不是 `"toy_mip"`、`"beam"`、`"decay_source"`、`"primaries"` 之一时抛 `ValueError`（`no simulation of deposits for a source of kind ...`）；`source["kind"] == "primaries"` 而未给 `primaries` 时同样抛 `ValueError`。
 2. **检查事例数与记录条件**：
    - `asked(events, generated, generated_limit)` 要求 `events`（要记录的事例数）与 `generated`（要生成的事例数）恰好给一个，否则抛 `ValueError`；给出的数和 `generated_limit` 小于 `1` 时抛 `ValueError`（`the <name> asked for are <number>: at least 1`）。
    - 校验记录条件参数，任一不合法即抛 `ValueError`：`windows` 的槽位名与 `devices` 不一致（`the energy windows are for <windows 的槽位>, the devices are <给的槽位>`）；某槽位下限大于上限（`slot '<槽位>' has edep_min (<lo> MeV) > edep_max (<hi> MeV)`）；`require` 语法错误、出现不是槽位名的操作数，或有槽位没用到（`invalid require expression '<require>'`、`require '<require>' names unknown slot '<操作数>'` 或 `require '<require>' does not use the slot '<槽位>'`）；`coincidence_window_ns` 非 `None` 且不大于 `0`（`coincidence_window_ns must be positive, got <值> ns`）。
 3. **toy MIP 分支**（`kind == "toy_mip"`）：取 `g4setup["maxstep"]`（`g4setup` 为 `None` 时取 `DEVICE_ALONE["maxstep"] = 2`），调用 `mip_deposits(devices, source, g4setup, ...)`，见下节。这一支由 Python 完成，随机数取自流 `stream("toy_mip")`。
-4. **Geant4 分支**（`kind` 为 `"beam"` 或 `"decay_source"`）：
+4. **Geant4 分支**（`kind` 为 `"beam"`、`"decay_source"` 或 `"primaries"`）：
    1. 导入 `geant4.interaction`。缺 `g4ppyy` 时抛 `MissingDependency`（`Geant4's Python bindings, g4ppyy, are not installed in this Python`）。
-   2. `g4_configuration` 合成运行配置：源或其 `particles` 中出现 `par_in`、`par_out`、`par_angle` 时抛 `ValueError`（源的位置属于装置）；取 `g4setup`（`None` 时取 `DEVICE_ALONE`）的深拷贝，取出可选的 `"source"` 块（缺省 `{}`）；用源的键覆盖装置的同名键，删去 `name`、`kind`、`description`；源在世界坐标原点且沿 $+z$ 指向下游，令 `par_in = [0, 0, 0]`、`par_out` 为第一个槽位前表面所在的 $z$ 处、轴上的点 `[0, 0, z_i]`、`par_angle = source.get("angle", 0)`。有 `particles` 时，每项先取配置里的 `par_randx`、`par_randy`、`par_type`、`par_energy`，再用自己的键覆盖，发射点与瞄准点各加 `offset`（缺省 `[0, 0, 0]` $\mu\text{m}$）。最后写入 `recorded_events = events`、`total_events = generated`（按记录数运行时为 `generated_limit`）、`windows`、`require`、`coincidence_window_ns`。
-   3. `tilted` 按入射角转动源：`par_angle` 为 `0` 时不变。多槽位装置而 `par_angle` 不为 `0` 时抛 `ValueError`（`a multi-slot g4setup tilts no source`）。否则只用于单槽位装置：记 $\mathbf{r}_{\text{in}} = (x_0, y_0, z_0)$、$\mathbf{r}_{\text{out}} = (x_1, y_1, z_1)$；若 $z_f \le z_0 \le z_f + l_z + t$ 或 $z_1 = z_0$，抛 `ValueError`（源连线不从器件表面进入）。取转轴在单槽位器件前表面中心 $(x_p, P_y, z_f) = (P_x, P_y, P_z)$ 且平行于 $y$ 轴，对配置及各 `particles` 的 `par_in`、`par_out` 作
+   2. `g4_configuration` 合成运行配置：源或其 `particles` 中出现 `par_in`、`par_out`、`par_angle` 时抛 `ValueError`（源的位置属于装置）；取 `g4setup`（`None` 时取 `DEVICE_ALONE`）的深拷贝，取出 `"source"` 块里的 `angle`（缺省 `0`）；配置取传入的源的键，删去 `name`、`kind`、`description`；源在世界坐标原点且沿 $+z$ 指向下游，令 `par_in = [0, 0, 0]`、`par_out` 为第一个槽位前表面所在的 $z$ 处、轴上的点 `[0, 0, z_i]`、`par_angle = source.get("angle", 0)`。有 `particles` 时，每项先取配置里的 `par_randx`、`par_randy`、`par_type`、`par_energy`，再用自己的键覆盖，发射点与瞄准点各加 `offset`（缺省 `[0, 0, 0]` $\mu\text{m}$）。最后写入 `recorded_events = events`、`total_events = generated`（按记录数运行时为 `generated_limit`）、`windows`、`require`、`coincidence_window_ns`。
+   3. `tilted` 按入射角转动源：`par_angle` 为 `0` 时不变。给了 `primaries` 而装置带非零 `par_angle` 时抛 `ValueError`（`a setup with source.angle takes no primaries function`）；多槽位装置而 `par_angle` 不为 `0` 时抛 `ValueError`（`a multi-slot g4setup tilts no source`）。否则只用于单槽位装置：记 $\mathbf{r}_{\text{in}} = (x_0, y_0, z_0)$、$\mathbf{r}_{\text{out}} = (x_1, y_1, z_1)$；若 $z_f \le z_0 \le z_f + l_z + t$ 或 $z_1 = z_0$，抛 `ValueError`（源连线不从器件表面进入）。取转轴在单槽位器件前表面中心 $(x_p, P_y, z_f) = (P_x, P_y, P_z)$ 且平行于 $y$ 轴，对配置及各 `particles` 的 `par_in`、`par_out` 作
       $$x' = (x - x_p)\cos\vartheta + (z - z_f)\sin\vartheta + x_p, \qquad z' = -(x - x_p)\sin\vartheta + (z - z_f)\cos\vartheta + z_f$$
-      其中 $\vartheta$ 为 `par_angle`（度）。$\vartheta > 0$ 时，上游的源转到 $-x$ 一侧，粒子带 $+x$ 分量射向器件前表面中心。$y$、`par_randx`、`par_randy` 不变，装置里的槽位与物体不动。
-   4. 构建几何（`GeneralDetectorConstruction`；`geant4_model == "gdml_import"` 时用 `GDMLDetectorConstruction`，几何由 GDML 给出，不用 `along_beam`）。先校验 `along_beam` 与 `object`（不合法均抛 `ValueError`）：第一项不是 `"source"`（`the first item of along_beam must be 'source'`）；`gap` 为负（`gap must be non-negative`）；物体名不在 `object` 里（`object '<物体>' is not in object`）；同一物体或槽位出现两次（`duplicate '<名称>' in along_beam`）；`facing` 取值不是 `"upstream"` 或 `"downstream"`（`slot '<槽位>' has facing <值>: expected 'upstream' or 'downstream'`）；`rotation_z` 不是 `0`、`90`、`180`、`270`；并排的几项横向重叠（`side-by-side items overlap`）；槽位名与 `devices` 参数对不上（`the g4setup places <装置的槽位>, the devices are <给的槽位>`）。世界是 `world` 材料的立方体，中心在 `along_beam` 一列的中点 $(0, 0, L_{\text{col}}/2)$，半边长由 `world_half_side` 给出：令 $\rho = \max\bigl(L_{\text{col}}/2,\ \max_{\text{项}}(|o_x| + w_x/2,\ |o_y| + w_y/2),\ R\bigr)$，其中 $L_{\text{col}} = \sum_j d_j$ 为这一列的总长度，$w_x, w_y$ 为各项（物体或槽位旋转后的）横向全尺寸，$o_x, o_y$ 为 `offset`，$R$ 为 `par_radius`；$\rho \le 25000\ \mu\text{m}$ 时取 `25000`，否则取 $2\rho$。从 `"source"`（$z = 0$）起按式 (17) 算出各项前端面位置 $z_i$：每个槽位建一个以槽位名命名、材料按该槽位器件 `material` 取的有源层长方体逻辑体（$l_x \times l_y \times l_z$），按式 (17)–(18) 放置；器件的各层厚度和材料是器件的固有性质，写在器件文件里，Geant4 用同一份几何（见 [架构总纲](../architecture.md#组件)），参考器件的衬底在射线路径上，它引起的多次散射决定有多少粒子能到达下游器件。器件几何按深度分层，灵敏层以外的各层（衬底等）见 [探测器组件](../components/device.md)；Geant4 按器件几何建出全部层，灵敏层以外的各层各建一个逻辑体，其中的沉积不记录，只记录灵敏层里的沉积。随后按 `along_beam` 放置引用的 `object` 物体（中心横向在 `offset`，中心 $z$ 在 $z_i + \texttt{side\_z}/2$）。同一 `compound_name` 的二元化合物组分或密度不一致时抛 `ValueError`（`Conflicting Geant4 material definition for ...`）。二元化合物按原子数份额换算质量份额 $m_i = n_i A_i / (n_1 A_1 + n_2 A_2)$。
-   5. 设置随机引擎、物理表与用户动作。源含 `nuclides` 时用 `NuclideGeneratorAction` 与 `DecayStackingAction`，否则用 `GeneralPrimaryGeneratorAction`。后者每事例对每个粒子从流 `stream("source")` 抽 $\delta_x \sim U(-\texttt{par\_randx}, \texttt{par\_randx})$、$\delta_y \sim U(-\texttt{par\_randy}, \texttt{par\_randy})$，方向取 $\mathbf{d} = \mathbf{r}_{\text{out}} - \mathbf{r}_{\text{in}} + (\delta_x, \delta_y, 0)$，从 $\mathbf{r}_{\text{in}}$ 发射；`par_type` 为列表时再抽一个等概率的下标。`par_type` 与 `par_energy` 列表长度不等时抛 `ValueError`。
+      其中 $\vartheta$ 为 `par_angle`（度）。$\vartheta > 0$ 时，上游的源转到 $-x$ 一侧，粒子带 $+x$ 分量射向器件前表面中心。$y$、`par_randx`、`par_randy` 不变，装置里的槽位与物体不动。带准直孔的源，`source.angle` 的含义不变：源连同准直孔绕第一个槽位（唯一槽位）前表面中心 $(x_p, P_y, z_f)$ 整体转动，出射粒子的位置（出口面 $(x, y, 0)$）和方向（$(dx, dy, dz)$）随之按同一旋转变换转动。
+   4. 构建几何（`GeneralDetectorConstruction`；`geant4_model == "gdml_import"` 时用 `GDMLDetectorConstruction`，几何由 GDML 给出，不用 `along_beam`）。先校验 `along_beam`、`materials` 与 `objects`（不合法均抛 `ValueError`）：第一项不是 `"source"`（`the first item of along_beam must be 'source'`）；`gap` 为负（`gap must be non-negative`）；物体名不在 `objects` 里（`object '<物体>' is not in objects`）；同一物体或槽位出现两次（`duplicate '<名称>' in along_beam`）；`facing` 取值不是 `"upstream"` 或 `"downstream"`（`slot '<槽位>' has facing <值>: expected 'upstream' or 'downstream'`）；`rotation_z` 不是 `0`、`90`、`180`、`270`；并排的几项横向重叠（`side-by-side items overlap`）；槽位名与 `devices` 参数对不上（`the g4setup places <装置的槽位>, the devices are <给的槽位>`）；`materials` 与 NIST 材料名冲突、元素符号 Geant4 不认识或密度/份额不是正数；`objects` 中 `shape` 不是 `"box"`/`"tube"`、缺尺寸键、尺寸不是正数、`hole` 不小于盒子横向半尺寸、`inner_radius` 不小于 `outer_radius` 或 `material` 既不在 `materials` 里也不是 NIST 名。世界是 `world` 材料的立方体，中心在 `along_beam` 一列的中点 $(0, 0, L_{\text{col}}/2)$，半边长由 `world_half_side` 给出：令 $\rho = \max\bigl(L_{\text{col}}/2,\ \max_{\text{项}}(|o_x| + w_x/2,\ |o_y| + w_y/2),\ R\bigr)$，其中 $L_{\text{col}} = \sum_j d_j$ 为这一列的总长度，$w_x, w_y$ 为各项（物体或槽位旋转后的）横向全尺寸（`"box"` 取 `size[0]`, `size[1]`，`"tube"` 取 $2 \cdot \texttt{outer\_radius}$），$o_x, o_y$ 为 `offset`，$R$ 为 `par_radius`；$\rho \le 25000\ \mu\text{m}$ 时取 `25000`，否则取 $2\rho$。从 `"source"`（$z = 0$；源带 `collimator` 时为出口面中心，准直孔本体不在 `along_beam` 中当作物体摆放，各 `gap` 从出口面算起）起按式 (17) 算出各项前端面位置 $z_i$：每个槽位建一个以槽位名命名、材料按该槽位器件 `material`（只取 `"Si"`、`"SiC"`、`"Diamond"`）取的有源层长方体逻辑体（$l_x \times l_y \times l_z$），按式 (17)–(18) 放置；器件的各层厚度和材料是器件的固有性质，写在器件文件里，Geant4 用同一份几何（见 [架构总纲](../architecture.md#组件)），参考器件的衬底在射线路径上，它引起的多次散射决定有多少粒子能到达下游器件。器件几何按深度分层，灵敏层以外的各层（衬底等）见 [探测器组件](../components/device.md)；Geant4 按器件几何建出全部层，灵敏层以外的各层各建一个逻辑体，其中的沉积不记录，只记录灵敏层里的沉积。`materials` 中的每种自定义材料按式 (25) 将各元素原子数份额换成质量份额建出 `G4Material`；随后按 `along_beam` 放置引用的 `objects` 物体（中心横向在 `offset`，中心 $z$ 在 $z_i + d_i/2$，其中 $d_i$ 对 `"box"` 为 `size[2]`、对 `"tube"` 为 `length`）。
+   5. 设置随机引擎、物理表与用户动作。给了 `observers` 时，先校验每个带 `step` 方法的观察者其 `watched` 中的名字均属于装置中的物体名或槽位名（否则抛 `ValueError`）。给了 `primaries`（`kind == "primaries"`）时，每个事例以随机数流 `stream(f"primaries/{event}")` 作 `generator` 调用 `primaries(event, generator)` 获取初级粒子列表，返回的粒子按原样发射，`source.angle` 不作用于它们（返回空列表以外的非法值时抛 `ValueError`）；否则按源类型发射：源含 `nuclides` 且带 `collimator` 时，按本页“从出射分布接着发”一节读取或按需生成源的出射分布，用户主粒子动作在每个事例从出口面 $z = 0$ 一次发出该次衰变的全部出射粒子；源含 `nuclides` 但不带 `collimator` 时，用 `NuclideGeneratorAction` 与 `DecayStackingAction` 在全空间各向同性模拟每次衰变；其余（`beam` 或不含 `nuclides` 的 `decay_source`）用 `GeneralPrimaryGeneratorAction`，每事例对每个粒子从流 `stream("source")` 抽 $\delta_x \sim U(-\texttt{par\_randx}, \texttt{par\_randx})$、$\delta_y \sim U(-\texttt{par\_randy}, \texttt{par\_randy})$，方向取 $\mathbf{d} = \mathbf{r}_{\text{out}} - \mathbf{r}_{\text{in}} + (\delta_x, \delta_y, 0)$，从 $\mathbf{r}_{\text{in}}$ 发射；`par_type` 为列表时再抽一个等概率的下标。`par_type` 与 `par_energy` 列表长度不等时抛 `ValueError`。在将初级粒子送入 Geant4 输运前，按 `observers` 里的顺序依次调用实现 `primary(event, particles)` 的观察者，后一个收到的是前一个留下的粒子列表（只能减、不能加也不能改，否则抛 `ValueError`），并把全部观察者一共减掉的粒子数累加入 `dropped_primaries`。在输运每一步中，前点落在某观察者 `watched` 所列物体或槽位内时调用该观察者的 `step(event, volume, e, x, y, z, t)`。
    6. 执行 `/run/initialize`；给了 `picture` 且 `drawn > 0` 时打开离屏绘图（见“图”）；`BeamOn(total_events)`。
-   7. 事例记录：事例结束时，按式 (19) 对每个槽位 $s$ 计算有源层内总沉积 $E_s$：若 $E_s > 0$ 且满足 `windows[s]`（`None` 一侧不检查），记该槽位命中（$h_s = 1$）并取该槽位最早一个沉积步的全局时间为 $t_s$；否则未命中（$h_s = 0$）。不卡时间窗（`coincidence_window_ns` 为 `None`）时直接用 $\{h_s\}$ 对 `require` 求值；否则依次以各命中槽位的 $t_s$ 作左端点 $t_0$，按式 (20) 将命中时刻落在 $[t_0, t_0 + W]$ 内的槽位算作命中并对 `require` 求值，存在令 `require` 为真的 $t_0$ 时记下该事例。被记录的事例保留所有槽位的沉积步。按记录数运行时，记录数达到 `recorded_events` 即 `AbortRun`；生成事例数 `generated_events` 取已结束的事例数。按生成数运行时 `generated_events = total_events`。
+   7. 事例记录：事例结束时，按式 (19) 对每个槽位 $s$ 计算有源层内总沉积 $E_s$：若 $E_s > 0$ 且满足 `windows[s]`（`None` 一侧不检查），记该槽位命中（$h_s = 1$）并取该槽位最早一个沉积步的全局时间为 $t_s$；否则未命中（$h_s = 0$）。不卡时间窗（`coincidence_window_ns` 为 `None`）时直接用 $\{h_s\}$ 对 `require` 求值；否则依次以各命中槽位的 $t_s$ 作左端点 $t_0$，按式 (20) 将命中时刻落在 $[t_0, t_0 + W]$ 内的槽位算作命中并对 `require` 求值，存在令 `require` 为真的 $t_0$ 时判定满足记录条件。随后若 `observers` 中有实现 `event(event, energies, first_times)` 的观察者则调用之；若返回 `False`，则否决该事例（不记录并使 `vetoed_events` 加 `1`）。被记录的事例保留所有槽位的沉积步。按记录数运行时，记录数达到 `recorded_events` 即 `AbortRun`；生成事例数 `generated_events` 取已结束的全部生成事例数（对带准直孔的源，即从出射分布发出的衰变数）。按生成数运行时 `generated_events = total_events`。
    8. `deposits()`：按记录数运行而记录数仍少于 `recorded_events` 时抛 `RuntimeError`（`... events asked for were recorded when the limit of ... generated events was reached ...`）。否则把各步位置由 Geant4 世界坐标按所在槽位式 (18) 的逆变换换到该槽位器件的器件坐标；对每块器件用 `deposits_of_steps(<槽位名>, ...)` 去掉 $E_k \le 0$ 的步，一个事例的各器件沉积步按 `devices` 的顺序首尾相接，去掉没有剩余步的事例。事例号是 Geant4 的 `eventID`。
    9. 无论是否出错，最后调用 `close()` 释放 Geant4 对象。
-5. **写入源发射比例**：`generated_fraction(source)`：源含 `nuclides` 且 `par_cone` 非 `None` 时为式 (16)，否则为 `1.0`。
+5. **写入出射概率与观察者记账**：源含 `nuclides` 且带 `collimator` 时取所用出射分布的出射概率 $\varepsilon$（单块为式 (24)；一个作业用到多块时取所用各块的 `sum(emitted) / sum(decays)`）写入 `emission_probability`，否则为 `1.0`；将 `dropped_primaries` 与 `vetoed_events` 写入 `Deposits`（无观察者时均为 `0`）。
 6. **电离**：对每个事例调用 `ionized_pairs(event, material, fano)`，每一步的 `material` 取它所在槽位器件的 `material`。材料不在 `PAIR_ENERGY_EV` 中时抛 `ValueError`；`fano=True` 而材料不在 `FANO_FACTOR` 中时抛 `ValueError`。每个事例从自己的流 `stream(f"ionization/{event.event}")` 抽样，所以一个事例的对数与其前记录了哪些事例无关。
 
-`write_simulated_deposits` 与 `simulate_deposits` 接收同样的 `devices`、`source`、`g4setup`、`events`、`g4_seed`、`windows`、`require`、`coincidence_window_ns` 等参数，调用 `simulate_deposits` 后用 `write_deposits` 写文件，返回记录事例数。
+`write_simulated_deposits` 与 `simulate_deposits` 接收同样的 `devices`、`source`、`g4setup`、`events`、`g4_seed`、`windows`、`require`、`coincidence_window_ns`、`observers`、`primaries` 等参数，调用 `simulate_deposits` 后用 `write_deposits` 写文件，返回记录事例数。
 
 GDML 导入模式按 `material` 为 `"Si"`（`G4_Si`）和 `"SiC"`（Si、C 原子数各半，$3.21\ \text{g/cm}^3$）建器件逻辑体 `"Device"`。
+
+### 出射分布的生成
+
+带 `collimator` 的核素衰变源按块生成并缓存出射分布资产，不带 `collimator` 的源与 `beam` 源不生成出射分布：
+
+1. **节点身份与存放位置**：出射分布存放在 `work/<源名>/emission/<节点号>/emission.h5` 与 `node.json`。节点号由源组件的全部键、世界材料 `world`、随机种子 `seed` 与块号 `block`（`0, 1, ...`）共同计算；世界材料不同（例如真空与空气）会落到不同节点。
+2. **准直孔几何与发射限制**：在 Geant4 中将准直孔建在 $z \in [-L, 0]$（外截面边长 `outer_side`、材料 `material`、中心圆柱孔半径 `radius`），出口面中心位于 $(0, 0, 0)$。对发射点在入口圆盘（$z = -L$，半径 `par_radius`）与方向上的可行集 $\{\ell(\mathbf{r}_0, \hat{\mathbf{d}}) \le R_{\text{CSDA}}(E_{\max})\}$（$E_{\max}$ 取源中各核素 $\beta$ 谱端点能量中最大的一个）数值积分得 `generated_fraction`（式 (21)），核素仅在该可行方向集合内发射。
+3. **射程截断与出口记录**：电子在准直孔材料中满足式 (23) 时立即终止径迹并将能量就地沉积，产生的轫致辐射光子不受影响、照常输运。所有穿过出口面 $z = 0$（横贯整个世界）的非中微子粒子记录其种类（PDG 编码）、$(x, y)$、$(dx, dy, dz)$、动能 `ekin` 与全局时间 `t` 后终止。每块实际送进 Geant4 的衰变数（落在被发射方向内的那些）固定为 `EMISSION_BLOCK_DECAYS = 1_000_000`，对应的全空间衰变数 `decays = EMISSION_BLOCK_DECAYS / generated_fraction` 记为属性 `decays`，穿过出口面的衰变数记为属性 `emitted`。
+4. **第 0 块的源自身检验**：生成 `block = 0` 时另以该源自身跑一次对照模拟，把发射方向限制放宽到整个前半球（$\hat{\mathbf{d}}\cdot\hat{\mathbf{z}} > 0$，射程截断照常），比较两次的出射概率与出射电子动能谱，并将两边的衰变数、出射数、出射概率之比及其统计误差写入该块 `node.json` 的 `emission_check` 键。该对照仅使用源自身，不涉及任何实验。
+
+### 从出射分布接着发
+
+下游实验的 `deposit` 运行使用带 `collimator` 的放射源时，不重新模拟准直孔内的衰变与散射，而是按块依次取用 `emission.h5`：
+
+1. **逐衰变重放**：`emission.h5` 中每一条记录是穿过出口面的一次衰变，下游运行时每个 Geant4 事例对应该次衰变，从出口面 $(x, y, 0)$ 沿 $(dx, dy, dz)$ 以动能 `ekin` 和起始时刻 `t` 同时发射该次衰变记录的全部 `count` 个粒子；一块用完后取下一块（`block = 0, 1, ...`）。
+2. **计数与出射概率**：沉积文件 `deposit.h5` 的 `generated_events` 按从出射分布发出的衰变数计，属性 `emission_probability` 记入出射概率 $\varepsilon = \texttt{emitted} / \texttt{decays}$（式 (24)；一个作业用到多块时取所用各块的 `sum(emitted) / sum(decays)`），使 `recorded_events / generated_events * emission_probability` 等于每次衰变的记录事例数。`generated_fraction` 属性只属于出射分布文件 `emission.h5`。
+3. **跨实验与跨扫描点的相关性**：不同实验、不同扫描点在源和种子相同时共用同一批出射粒子。比较这些实验或扫描点时，上游准直孔出射分布的统计涨落彼此相消，因此这些结果在统计上彼此不独立。
+4. **无准直孔源与束流源**：没有 `collimator` 的放射源、`beam` 源与 `primaries` 源不生成出射分布，每个事例直接发射，对应 `deposit.h5` 的 `emission_probability` 为 `1.0`。
 
 ### 能损线切成沉积步
 
@@ -314,7 +352,7 @@ GDML 导入模式按 `material` 为 `"Si"`（`G4_Si`）和 `"SiC"`（Si、C 原�
 
 ### 各文件的分工
 
-- `simulate_deposits.py`：环节入口 `simulate_deposits`、`write_simulated_deposits`，缺省装置 `DEVICE_ALONE`，配置合成 `g4_configuration`，入射角 `tilted`，世界大小 `world_half_side`，发射比例 `generated_fraction`。
+- `simulate_deposits.py`：环节入口 `simulate_deposits`、`write_simulated_deposits`，缺省装置 `DEVICE_ALONE`，配置合成 `g4_configuration`，入射角 `tilted`，世界大小 `world_half_side`，出射概率 `emission_probability`（及出射分布资产的按块生成与读取），以及实验脚本入口的内置观察者 `WatchedEnergy`、`PrimaryStart`。
 - `generation.py`：事例数检查 `asked`、生成循环 `generation`、`GENERATED_LIMIT` 与生成不足时的错误 `too_few`。
 - `mip_track.py`：toy MIP 的径迹与分段 `mip_deposits`。
 - `ionization.py`：`PAIR_ENERGY_EV`、`FANO_FACTOR` 与 `ionized_pairs`。
@@ -330,7 +368,7 @@ GDML 导入模式按 `material` 为 `"Si"`（`G4_Si`）和 `"SiC"`（Si、C 原�
 ### 核心数据结构
 
 - `EventDeposits`：一个事例的沉积。`event`（事例号）；每步一项的列表 `detector`（探测器名）、`x`、`y`、`z`（器件坐标中的步中点，$\mu\text{m}$）、`t`（$\text{s}$）、`e`（$\text{MeV}$）；`pairs`（对，电离抽样前为 `None`）；`x_start`、`y_start`、`z_start`（步起点，$\mu\text{m}$，未知时为 `None`）；`t_fwhm`（产生时刻围绕 `t` 的高斯展宽 FWHM，$\text{s}$，`None` 表示都在 `t` 产生）。
-- `Deposits`：一个作业的沉积。`generated_events`（源生成的事例数）、`windows`（槽位名到 `(edep_min, edep_max)` 的字典，$\text{MeV}$，各侧可为 `None`）、`require`（槽位逻辑式字符串）、`coincidence_window_ns`（时间窗，$\text{ns}$，可为 `None`）、`events`（`EventDeposits` 列表）、`generated_fraction`（缺省 `1.0`）。
+- `Deposits`：一个作业的沉积。`generated_events`（源或出射分布发出的全部生成事例数）、`windows`（槽位名到 `(edep_min, edep_max)` 的字典，$\text{MeV}$，各侧可为 `None`）、`require`（槽位逻辑式字符串）、`coincidence_window_ns`（时间窗，$\text{ns}$，可为 `None`）、`events`（`EventDeposits` 列表）、`emission_probability`（缺省 `1.0`）、`dropped_primaries`（全部观察者 `primary` 方法一共减掉的初级粒子数，无观察者时为 `0`）、`vetoed_events`（被观察者 `event` 方法否决的事例数，无观察者时为 `0`）。
 - `LaserInjection`：`track_position`（每群 `[x, y, z, t]`，$\mu\text{m}$、$\text{s}$）、`ionized_pairs`（每群对数）、`time_FWHM`（每群时间展宽，$\text{s}$），以及 `temporal_FWHM`、`timePulse` 等供电流卷积使用的属性。
 
 ## 接口
@@ -342,7 +380,7 @@ GDML 导入模式按 `material` 为 `"Si"`（`G4_Si`）和 `"SiC"`（Si、C 原�
 | 键 | 默认值 | 单位 | 含义 |
 | --- | --- | --- | --- |
 | `l_x`, `l_y`, `l_z` | 无（必选） | $\mu\text{m}$ | 器件有源层尺寸，见 [器件模型](device.md) |
-| `material` | 无（必选） | 无 | `"Si"`、`"SiC"` 或 `"Diamond"`；决定 Geant4 材料、电离能与 Fano 因子；toy MIP 只支持 `"Si"`、`"SiC"` |
+| `material` | 无（必选） | 无 | 只取 `"Si"`、`"SiC"`、`"Diamond"`（有电离能和 Fano 因子的三种）；决定 Geant4 材料、电离能与 Fano 因子；toy MIP 只支持 `"Si"`、`"SiC"` |
 | `temperature` | 无（`"SiC"` 器件的激光未给 `alpha` 时必选） | $\text{K}$ | 式 (7b) 的 $T$ |
 
 器件几何按深度分层，灵敏层以外的各层（衬底等）见 [探测器组件](../components/device.md)；Geant4 按器件几何建出全部层，只记录灵敏层里的沉积。
@@ -359,16 +397,16 @@ GDML 导入模式按 `material` 为 `"Si"`（`G4_Si`）和 `"SiC"`（Si、C 原�
 | `geant4_model` | `"device"` | 无 | Geant4 源必填；取 `"gdml_import"` 时导入外部 GDML，其他取值只作标识 |
 | `world` | `"G4_Galactic"` | 无 | Geant4 源必填；世界体的 NIST 材料名 |
 | `maxstep` | `2` | $\mu\text{m}$ | 必填；器件内 Geant4 的最大步长，也是 toy MIP 未给 `packets` 时的分段长度上限 |
-| `source` | `{"angle": 0}` | 度 | 可选；只留 `angle`（入射角，缺省 `0`），只用于单槽位装置：绕器件前表面中心按“`simulate_deposits` 的分支”第 4.3 步转动源；束流源发射方向为 $+z$ |
-| `object` | `{}` | 无 | Geant4 源必填；周边物体，可含 `"elemental"` 和 `"binary_compounds"` 两类，各物体只定义材料、尺寸、孔与颜色，在 `along_beam` 中放置 |
-| `par_type`, `par_energy`, `par_randx`, `par_randy` | 无 | 见源 | 可选；装置可给这些束流键，源里的同名键覆盖它们 |
+| `source` | `{"name": "decay/Sr90", "angle": 0}` | 无；度 | 装置用的源：`name` 是源组件名（见 [能量沉积组件](../components/deposit.md)）；`angle` 是入射角（缺省 `0`），只用于单槽位装置：绕器件前表面中心按“`simulate_deposits` 的分支”第 4.3 步转动源（带准直孔时源连同准直孔整体转动，出射粒子的位置和方向随之转动）；束流源发射方向为 $+z$；`name`、`angle` 以外的键覆盖源组件的同名键 |
+| `materials` | `{}` | 密度为 $\text{g/cm}^3$ | 可选；自定义材料字典，材料名映射为 `{"density": <g/cm3>, "elements": {<元素符号>: <原子数份额>, ...}}`；与以 `"G4_"` 开头的 Geant4 NIST 材料名一样只用于 `objects` 的 `material` |
+| `objects` | `{}` | $\mu\text{m}$ | Geant4 源必填；周边物体字典，按物体名给出形状（`"box"` 或 `"tube"`）、尺寸、材料与可选 `colour`，不写位置，在 `along_beam` 中放置 |
 | `along_beam` | `["source", {"gap": 17000}, {"slot": "Device"}]` | 无 | 必填（`gdml_import` 除外）；从 `"source"` 开始沿 $+z$ 指向下游的一列，按式 (17)–(18) 放置器件槽位与周边物体，见下表 |
 
-Geant4 世界坐标原点 $(0, 0, 0)$ 在源上，$+z$ 沿束流指向下游；各槽位前表面中心 $\mathbf{P}$ 与有源层、灵敏层以外各层（见 [探测器组件](../components/device.md)）所占的 $z$ 区间由它在 `along_beam` 中的位置与 `facing` 按式 (17)–(18) 定出。
+Geant4 世界坐标原点 $(0, 0, 0)$ 在源上（带准直孔时在准直孔出口面的中心，准直孔本体在 $z < 0$ 一侧，装置里各 `gap` 从准直孔出口面算起），$+z$ 沿束流指向下游；各槽位前表面中心 $\mathbf{P}$ 与有源层、灵敏层以外各层（见 [探测器组件](../components/device.md)）所占的 $z$ 区间由它在 `along_beam` 中的位置与 `facing` 按式 (17)–(18) 定出。
 
 #### `along_beam` 的各项
 
-`along_beam` 是从 `"source"` 出发、沿 $+z$ 依次排列的列表，各项的种类与键如下表。槽位名同时是有源层 Geant4 逻辑体名（灵敏层以外的各层各建一个逻辑体，其中的沉积不记录）和沉积文件的探测器名，只用 `[A-Za-z0-9_-]` 中的字符，不能与 `object` 里的名字或 [能量沉积环节](../stages/deposit.md) 的配置键重名（槽位名会出现在 `deposit.<槽位>.<键>` 这样的地址里）；只有一块器件的装置，槽位名写 `"Device"`。每个槽位放哪块器件不由装置给，由调用方的 `devices` 参数给，装置的槽位名与 `devices` 一一对上（见“`simulate_deposits` 的分支”）。
+`along_beam` 是从 `"source"` 出发、沿 $+z$ 依次排列的列表，各项的种类与键如下表。槽位名同时是有源层 Geant4 逻辑体名（灵敏层以外的各层各建一个逻辑体，其中的沉积不记录）和沉积文件的探测器名，只用 `[A-Za-z0-9_-]` 中的字符，不能与 `objects` 里的名字或 [能量沉积环节](../stages/deposit.md) 的配置键重名（槽位名会出现在 `deposit.<槽位>.<键>` 这样的地址里）；只有一块器件的装置，槽位名写 `"Device"`。每个槽位放哪块器件不由装置给，由调用方的 `devices` 参数给，装置的槽位名与 `devices` 一一对上（见“`simulate_deposits` 的分支”）。
 
 ```python
 "along_beam": [
@@ -383,48 +421,69 @@ Geant4 世界坐标原点 $(0, 0, 0)$ 在源上，$+z$ 沿束流指向下游；�
 
 | 项的种类 | 键 | 缺省 | 单位 | 含义 |
 | --- | --- | --- | --- | --- |
-| `"source"` | 无（字符串） | 无（首项必填） | 无 | 源，必须位于 `along_beam` 第一项，厚度为 `0`，世界坐标原点在其上 |
+| `"source"` | 无（字符串） | 无（首项必填） | 无 | 源，必须位于 `along_beam` 第一项，厚度为 `0`，世界坐标原点在其上（带准直孔时在准直孔出口面中心，装置里各 `gap` 从准直孔出口面算起） |
 | `{"gap": d}` | `gap` | 无 | $\mu\text{m}$ | 间隔，沿 $z$ 占长度 $d \ge 0$；相邻两项之间不写 `gap` 即紧贴在一起 |
-| `"<物体名>"` 或 `{"object": "<物体名>", ...}` | `object`、`offset` | `offset` 缺省 `[0, 0]` | `offset` 为 $\mu\text{m}$ | `object` 中的一个物体，沿 $z$ 占其厚度 `side_z`，横向中心位于 `offset`；简写为 `"<物体名>"` 时等同于 `offset = [0, 0]` |
+| `"<物体名>"` 或 `{"object": "<物体名>", ...}` | `object`、`offset` | `offset` 缺省 `[0, 0]` | `offset` 为 $\mu\text{m}$ | `objects` 中的一个物体，沿 $z$ 占其厚度（`"box"` 取 `size[2]`，`"tube"` 取 `length`），横向中心位于 `offset`；简写为 `"<物体名>"` 时等同于 `offset = [0, 0]` |
 | `{"slot": "<槽位名>", ...}` | `slot`、`facing`、`offset`、`rotation_z`、`colour` | `facing` 缺省 `"upstream"`，`offset` 缺省 `[0, 0]`，`rotation_z` 缺省 `0`，`colour` 缺省 `[1, 0.1, 0.8]` | `offset` 为 $\mu\text{m}$，`rotation_z` 为度 | 一块器件，沿 $z$ 占其几何全部层总厚 $l_z + t$；`facing` 取 `"upstream"`（前表面朝源）或 `"downstream"`（绕 $y$ 轴翻转 $180^\circ$，前表面朝下游），`rotation_z` 只取 `0`、`90`、`180`、`270`，按式 (17)–(18) 放置；`colour` 为可视化 RGB 颜色（`0` 至 `1`） |
 | `[项, 项, ...]` | 列表中各项 | 无 | 无 | 并排放置的几项（只能是物体或槽位），前端面对齐在同一个 $z$，沿 $z$ 占其中最厚一项的厚度，靠各自的 `offset` 横向错开 |
 
-`along_beam` 第一项不是 `"source"`、`gap` 为负、物体名不在 `object` 里、同一物体或槽位出现两次、`facing` 不是 `"upstream"`/`"downstream"`、`rotation_z` 取值不在 `{0, 90, 180, 270}`、并排的几项横向重叠，以及槽位名与器件表对不上时，均抛 `ValueError`。
+`along_beam` 第一项不是 `"source"`、`gap` 为负、物体名不在 `objects` 里、同一物体或槽位出现两次、`facing` 不是 `"upstream"`/`"downstream"`、`rotation_z` 取值不在 `{0, 90, 180, 270}`、并排的几项横向重叠，以及槽位名与器件表对不上时，均抛 `ValueError`。
 
-#### `object` 两类几何体键
+#### `materials` 与 `objects` 键
 
-`object["elemental"]` 和 `object["binary_compounds"]` 都是以几何体名为键的字典，每一项是一个长方体：前者用 Geant4 NIST 材料，后者由两种元素组成。例如放在源与器件之间的一层铝：
+下面给出一个同时包含自定义材料 `SiO2`、长方体铝片 `Al`、带贯穿圆孔的板 `pcb1` 与圆管 `pipe` 的 `G4SETUP` 示例：
 
 ```python
-"object": {
-    "elemental": {
-        "Al": {
-            "name": "Al",
-            "material": "G4_Al",
-            "side_x": 5000,
-            "side_y": 5000,
-            "side_z": 0.08,
-            "colour": [1, 0.1, 0.8],
-        },
+G4SETUP = {
+    "world": "G4_Galactic",
+    "maxstep": 2,
+    "materials": {
+        "SiO2": {"density": 2.2, "elements": {"Si": 1, "O": 2}},
     },
-},
+    "objects": {
+        "Al":   {"shape": "box", "size": [5000, 5000, 10], "material": "G4_Al"},
+        "pcb1": {"shape": "box", "size": [20000, 20000, 1500], "hole": 500, "material": "SiO2"},
+        "pipe": {"shape": "tube", "inner_radius": 10000, "outer_radius": 10500, "length": 200000, "material": "G4_Al"},
+    },
+    "along_beam": [...],
+}
 ```
 
-这是一块 $5\ \text{mm} \times 5\ \text{mm} \times 0.08\ \mu\text{m}$ 的铝片；要让它的下表面离器件前表面距离 $d$，在 `along_beam` 里把 `"Al"` 写在槽位前面并隔开 `{"gap": d}`。
+`materials` 将材料名映射到 `{"density": <g/cm3>, "elements": {<元素符号>: <原子数份额>, ...}}`（元素个数不限），按原子数份额与各元素原子量换算为质量份额：
 
-下表各键对其适用的分类都必填，只有 `elemental` 的 `tub` 可以省去。
+$$m_i = \frac{n_i A_i}{\sum_j n_j A_j} \tag{25}$$
 
-| 键 | 适用分类 | 单位 | 含义 |
-| --- | --- | --- | --- |
-| `name` | 两者 | 无 | 几何体名称 |
-| `material` | `elemental` | 无 | Geant4 NIST 材料名，如 `"G4_Al"`、`"G4_Ni"`、`"G4_Ti"`、`"G4_Si"`、`"G4_BRASS"` |
-| `material_1`, `material_2` | `binary_compounds` | 无 | 两种元素的符号，如 `"Si"`、`"C"`、`"N"`、`"O"` |
-| `compound_name` | `binary_compounds` | 无 | 化合物材料名；同名化合物的组分与密度须一致 |
-| `density` | `binary_compounds` | $\text{g/cm}^3$ | 化合物密度 |
-| `natoms_1`, `natoms_2` | `binary_compounds` | 无 | 两种元素的原子数份额，按原子量换成质量份额 |
-| `side_x`, `side_y`, `side_z` | 两者 | $\mu\text{m}$ | 长方体沿 $x$、$y$、$z$ 的全尺寸（`side_z` 为厚度） |
-| `colour` | 两者 | 无 | 可视化 RGB 颜色 `[r, g, b]` |
-| `tub` | `elemental` 可选，`binary_compounds` 必填（无孔填 `{}`） | $\mu\text{m}$ | 从长方体中心沿 $z$ 轴减去的圆柱孔，含半径 `"tub_radius"` 和半长 `"tub_depth"` |
+其中：
+
+- $n_i$：第 $i$ 种元素的原子数份额（无量纲，`elements` 字典的值）；
+- $A_i$：第 $i$ 种元素的原子量（由 Geant4 按元素符号给出）；
+- $m_i$：第 $i$ 种元素的质量份额（无量纲）。
+
+`objects` 里的 `material` 可以写 `materials` 中定义的名字，也可以直接写 Geant4 NIST 材料名（以 `"G4_"` 开头）；这两类名字只用于 `objects`，器件的 `material` 只取 `"Si"`、`"SiC"`、`"Diamond"`。`objects` 将物体名映射到形状、尺寸、材料与可选 `colour`；物体不写位置，位置由 `along_beam` 给出。`"box"` 沿 $z$ 占的厚度为 `size[2]`，`"tube"` 沿 $z$ 占的厚度为 `length`。
+
+| 键 | 所属字典 / 适用形状 | 缺省 | 单位 | 含义 |
+| --- | --- | --- | --- | --- |
+| `density` | `materials.<材料名>` | 无（必填） | $\text{g/cm}^3$ | 材料密度（须为正数） |
+| `elements` | `materials.<材料名>` | 无（必填） | 无 | 元素符号到原子数份额的字典 `{<元素符号>: <份额>, ...}`（元素个数不限，份额须为正数） |
+| `shape` | `objects.<物体名>` | 无（必填） | 无 | `"box"`（长方体）或 `"tube"`（轴沿 $z$ 的圆柱） |
+| `material` | `objects.<物体名>` | 无（必填） | 无 | 材料名，取 `materials` 中定义的名字或以 `"G4_"` 开头的 Geant4 NIST 材料名 |
+| `size` | `objects.<物体名>`（`"box"`） | 无（`"box"` 必填） | $\mu\text{m}$ | 长方体沿 $x$、$y$、$z$ 的全尺寸 `[x, y, z]`（沿 $z$ 厚度为 `size[2]`） |
+| `hole` | `objects.<物体名>`（`"box"`） | 无（可选） | $\mu\text{m}$ | 沿 $z$ 贯穿整个厚度、在中心的圆孔半径（须大于 `0` 且小于盒子横向半尺寸 $\min(\texttt{size[0]}, \texttt{size[1]})/2$） |
+| `outer_radius` | `objects.<物体名>`（`"tube"`） | 无（`"tube"` 必填） | $\mu\text{m}$ | 圆柱外半径（须为正数） |
+| `length` | `objects.<物体名>`（`"tube"`） | 无（`"tube"` 必填） | $\mu\text{m}$ | 圆柱沿 $z$ 的长度（沿 $z$ 厚度为 `length`，须为正数） |
+| `inner_radius` | `objects.<物体名>`（`"tube"`） | `0`（可选） | $\mu\text{m}$ | 圆柱内半径（缺省 `0` 为实心圆柱；大于 `0` 时为管子或圆环，须满足 $0 \le \texttt{inner\_radius} < \texttt{outer\_radius}$） |
+| `colour` | `objects.<物体名>` | 无（可选） | 无 | 可视化 RGB 颜色 `[r, g, b]` |
+
+材料与物体校验不合法时均抛 `ValueError`：
+
+- `materials` 同名材料与 NIST 材料名冲突（`material '<名称>' conflicts with a NIST material name`）；
+- 元素符号 Geant4 不认识（`unknown Geant4 element '<符号>' in material '<名称>'`）；
+- 密度或元素份额不是正数（`density of material '<名称>' must be positive`、`element share of '<符号>' in material '<名称>' must be positive`）；
+- `shape` 不是 `"box"` 或 `"tube"`（`object '<名称>' has unknown shape '<形状>': expected 'box' or 'tube'`）；
+- 缺少尺寸键或尺寸不是正数（`object '<名称>' is missing required key '<键>'`、`dimensions of object '<名称>' must be positive`）；
+- `hole` 不小于盒子横向半尺寸（`hole radius (<hole> um) of object '<名称>' must be less than half of x and y sizes`）；
+- `inner_radius` 不小于 `outer_radius`（`inner_radius (<r_in> um) of object '<名称>' must be less than outer_radius (<r_out> um)`）；
+- `material` 既不在 `materials` 里也不是 NIST 材料名（`unknown material '<材料>' for object '<名称>'`）。
 
 #### `"gdml_import"` 附加键
 
@@ -447,7 +506,6 @@ GDML 文件中含字符串 `RASER_GDML_WRAPPER_WORLD` 时，GDML 的世界体直
 | 组件 | 位置 | 说明 |
 | --- | --- | --- |
 | `device_alone` | `raser/components/deposit/` | 器件单独放在真空里，源到器件前表面 $17\ \text{mm}$ |
-| `Sr90_collimator` | `src/raser_bench/signal/components/deposit/` | 空气中源与器件之间的黄铜准直器（见 [信号](../bench/signal.md)） |
 | `pcb_readout_gdml` | `src/raser_bench/signal/components/deposit/` | 导入 `pcb_readout.gdml` 的 PCB 读出板（见 [信号](../bench/signal.md)） |
 | `time_resolution` | `src/raser_bench/timeres/components/deposit/` | 沿束流排布铝片、参考硅器件与两块开孔 PCB 板（见 [时间分辨](../bench/timeres.md)） |
 | `telescope` | `src/raser_bench/telescope/components/deposit/` | 真空中沿束流排布的 8 个槽位，默认 3 + 2 + 3（见 [束流望远镜](../bench/telescope.md)） |
@@ -459,7 +517,7 @@ GDML 文件中含字符串 `RASER_GDML_WRAPPER_WORLD` 时，GDML 的世界体直
 | 键 | 默认值 | 单位 | 含义 |
 | --- | --- | --- | --- |
 | `name` | 无（可选） | 无 | 源名称 |
-| `kind` | 无（必填） | 无 | `"beam"`、`"decay_source"` 或 `"toy_mip"` |
+| `kind` | 无（必填） | 无 | `"beam"`、`"decay_source"`、`"toy_mip"` 或 `"primaries"`（使用 `primaries` 回调取代源发射时只需 `{"kind": "primaries"}`） |
 | `description` | 无（可选） | 无 | 文字说明 |
 
 源里不能有 `par_in`、`par_out`、`par_angle`：源在世界原点沿 $+z$ 发射，入射角由装置的 `source.angle` 给出。
@@ -475,8 +533,9 @@ GDML 文件中含字符串 `RASER_GDML_WRAPPER_WORLD` 时，GDML 的世界体直
 | `par_randx`, `par_randy` | `0`, `0` | $\mu\text{m}$ | 发射方向向量（$\mathbf{r}_{\text{out}} - \mathbf{r}_{\text{in}}$）的 $x$、$y$ 分量上均匀随机偏移的半宽 |
 | `particles` | 无（可选） | 无 | 每事例同时发射的粒子列表；每项可覆盖 `par_type`、`par_energy`、`par_randx`、`par_randy`，并用 `offset`（缺省 `[0, 0, 0]`，$\mu\text{m}$）平移发射点与瞄准点 |
 | `nuclides` | 无（可选） | 无 | 静止核素 `[[Z, A], ...]`；给出时每事例等概率取一种衰变一次，发射的粒子由衰变给出 |
-| `par_radius` | `0` | $\mu\text{m}$ | 核素所在圆盘的半径，圆盘垂直于发射轴 |
-| `par_cone` | `None` | 度 | 衰变产物绕发射轴各向同性出射的半锥角，只在有 `nuclides` 时起作用 |
+| `par_radius` | `0` | $\mu\text{m}$ | 核素所在圆盘的半径，圆盘垂直于发射轴；带 `collimator` 时位于准直孔入口面上、圆心在孔轴上 |
+| `collimator` | 无（可选） | `length`、`radius`、`outer_side` 为 $\mu\text{m}$ | 准直孔字典 `{"material": <Geant4 NIST 材料名>, "length": <µm>, "radius": <孔半径 µm>, "outer_side": <外边长 µm>}`；出口面中心在世界原点 $z = 0$，准直孔本体在 $z < 0$ 一侧；未给时源朝全空间各向同性发射 |
+| `activity` | 无（可选） | $\text{Bq}$ | 每种核素每秒的衰变数；$^{90}\text{Sr}$ 与 $^{90}\text{Y}$ 处于长期平衡，两种核素各按该活度衰变 |
 
 #### `toy_mip` 键
 
@@ -497,7 +556,7 @@ GDML 文件中含字符串 `RASER_GDML_WRAPPER_WORLD` 时，GDML 的世界体直
 | --- | --- | --- |
 | `beam/electron`、`beam/muon`、`beam/pion`、`beam/proton` | `beam` | `e-`、`mu-`、`pi-`、`proton`，$1000\ \text{MeV}$ |
 | `beam/proton_3GeV_spread` | `beam` | $3000\ \text{MeV}$ 质子，`par_randx = par_randy = 728.6` $\mu\text{m}$ |
-| `decay/Sr90` | `decay_source` | 核素 Sr-90 与 Y-90 等概率，`par_radius = 2500` $\mu\text{m}$，`par_cone = 15` 度 |
+| `decay/Sr90` | `decay_source` | 核素 Sr-90 与 Y-90 等概率，`par_radius = 0` $\mu\text{m}$，铜准直孔 `collimator = {"material": "G4_Cu", "length": 3000, "radius": 500, "outer_side": 8000}`（常用的铜准直孔尺寸，实际使用的源以实物为准） |
 | `decay/Am241` | `decay_source` | 由 `par_type`、`par_energy` 发射 $5.54\ \text{MeV}$ 的 `alpha` |
 | `toy/MIP` | `toy_mip` | 缺省径迹，`landau_sampling = true` |
 | `toy/MIP_pixel_edge`、`toy/MIP_pixel_edge_fast` | `toy_mip` | 从 $(600, 450, 0)$ 到 $(600, 450, 300)$ $\mu\text{m}$，`packets` 为 `50` 与 `5`，后者不做 Landau 抽样 |
@@ -537,20 +596,48 @@ GDML 文件中含字符串 `RASER_GDML_WRAPPER_WORLD` 时，GDML 的世界体直
 | `PIL037_top_SiC`、`PIL037_edge_SiC` | `"SPA"` | $375\ \text{nm}$，碳化硅，按式 (7a) 计算 $\alpha$（$300\ \text{K}$ 时 $9.05\ \text{cm}^{-1}$） |
 | `TPA1550_top_Si`、`TPA1550_edge_Si` | `"TPA"` | $1550\ \text{nm}$，硅，长于表的上限，$\alpha = 0$，只有 TPA 群 |
 
+### `emission.h5` 文件格式
+
+存放在 `work/<源名>/emission/<节点号>/emission.h5`（同目录的 `node.json` 另在第 `0` 块记录 `emission_check`：对照模拟与筛选模拟两边的衰变数、出射数、出射概率之比及其统计误差）。
+
+#### 文件属性
+
+| 属性 | 类型 | 单位 | 含义 |
+| --- | --- | --- | --- |
+| `decays` | `float` | 次 | 本块对应的全空间衰变数（`EMISSION_BLOCK_DECAYS / generated_fraction`） |
+| `generated_fraction` | `float` | 无 | 式 (21) 计算的发射方向占全空间比例 $f$ |
+| `emitted` | `int` | 次 | 至少有一个非中微子粒子穿过出口面 $z = 0$ 的衰变数 |
+| `block` | `int` | 无 | 出射分布块号（`0, 1, ...`） |
+| `seed` | `int` | 无 | 生成本块出射分布使用的随机种子 |
+
+#### 数据集
+
+| 数据集 | 形状与类型 | 单位 | 含义 |
+| --- | --- | --- | --- |
+| `event` | `(emitted,)`, `int` | 无 | 穿过出口面的衰变事例号 |
+| `count` | `(emitted,)`, `int` | 粒子 | 该次衰变穿过出口面 $z = 0$ 的非中微子粒子数 |
+| `particle` | `(sum(count),)`, `int` | 无 | 粒子 PDG 编码 |
+| `x`, `y` | `(sum(count),)`, `float` | $\mu\text{m}$ | 粒子穿过出口面 $z = 0$ 时的横向位置 |
+| `dx`, `dy`, `dz` | `(sum(count),)`, `float` | 无 | 粒子在出口面处的单位方向余弦 |
+| `ekin` | `(sum(count),)`, `float` | $\text{MeV}$ | 粒子穿过出口面时的动能 |
+| `t` | `(sum(count),)`, `float` | $\text{s}$ | 粒子到达出口面时的全局时间 |
+
 ### `deposit.h5` 文件格式
 
 #### 文件属性
 
 | 属性 | 类型 | 单位 | 含义 |
 | --- | --- | --- | --- |
-| `generated_events` | `int` | 事例 | 源生成的事例数 |
+| `generated_events` | `int` | 事例 | 源或出射分布发出的事例数（带准直孔时按出射的衰变数计） |
 | `recorded_events` | `int` | 事例 | 文件里的事例数 |
-| `generated_fraction` | `float` | 无 | 源发射中被生成的部分；带 `par_cone` 的核素源为式 (16)，其余为 `1.0` |
+| `emission_probability` | `float` | 无 | 源的出射概率 $\varepsilon$（式 (24)；用到多块时取所用各块的 `sum(emitted) / sum(decays)`）；没有出射分布的源为 `1.0` |
+| `dropped_primaries` | `int` | 粒子 | 全部观察者 `primary` 方法一共减掉的初级粒子数（无观察者时为 `0`） |
+| `vetoed_events` | `int` | 事例 | 被观察者 `event` 方法否决的事例数（无观察者时为 `0`） |
 | `edep_min.<槽位>`, `edep_max.<槽位>` | `float` | $\text{MeV}$ | 该槽位有源层内总沉积能量窗的下限、上限（单器件槽位名为 `"Device"`），给了才写 |
 | `require` | `str` | 无 | 槽位逻辑式 |
 | `coincidence_window_ns` | `float` | $\text{ns}$ | 时间窗，给了才写 |
 
-生成事例中被记录的比例是 `recorded_events / generated_events`；每次源发射记录的事例数是 `recorded_events / generated_events * generated_fraction`。
+生成事例中被记录的比例是 `recorded_events / generated_events`；每次源衰变记录的事例数是 `recorded_events / generated_events * emission_probability`（`generated_fraction` 只属于出射分布文件 `emission.h5`）。
 
 #### 数据集
 
@@ -575,6 +662,46 @@ GDML 文件中含字符串 `RASER_GDML_WRAPPER_WORLD` 时，GDML 的世界体直
 | `<output>` 矢量图 | `view_geometry`（OGL 驱动） | 同上，`2000 × 2000`，白底 | Geant4 坐标 |
 | `pair_density_3d.png`, `.pdf`, `.root` | `LaserInjection.draw_nocarrier3D` | 电子-空穴对的体密度（对每 $\mu\text{m}^3$）的 `TH3D`，$50^3$ 箱，每箱取箱中心处由式 (10)、(11) 的 $dN/ds$ 乘横向分布 $\frac{k}{\pi w^2}\exp(-k r^2/w^2)$ 算出的值，低于最大值 $10\%$ 的箱留空，只画出光束；沿光路和横向的范围同 `nocarrier2D`，两个横向各画到光轴两侧 $2 w_{\max}$；轴标题 `x [μm]`、`y [μm]`、`z [μm]`；画布与格式按[出图](../supports/figures.md) | $\mu\text{m}$ |
 | `pair_density.png`, `.pdf`, `.root` | `LaserInjection.draw_nocarrier2D` | $y = f_y l_y$ 的 $x$-$z$ 面上（三种入射方向下这个面都过光轴）电子-空穴对的体密度，`TH2D`（`COLZ`），由式 (10)、(11) 的 $dN/ds$ 乘横向分布 $\frac{k}{\pi w^2}\exp(-k r^2/w^2)$ 在 $200 \times 200$ 的网格上直接算出，颜色为对每 $\mu\text{m}^3$（`Pair density [μm⁻³]`），轴标题 `x [μm]`、`z [μm]`；画布与格式按[出图](../supports/figures.md)；沿光路从入射面画到累积对数 $M(s)$ 达到 $0.99\,N_{\text{tot}}$ 处，横向画到光轴两侧 $2 w_{\max}$（$w_{\max}$ 为这段光路上光斑半径的最大值，超出器件处截掉） | $\mu\text{m}$ |
+
+### 实验脚本的入口
+
+实验脚本只接触 RASER 自己的数据（事例号、粒子种类、位置、方向、能量、时间、槽位名或物体名、沉积能量），接触不到输运程序的对象，也不能调它的命令；物理过程、截断、步长、随机数不在入口里。换一个输运程序，实验脚本不用改。
+
+`simulate_deposits` 提供可选的关键字参数 `observers=None` 与 `primaries=None`（`write_simulated_deposits` 接收同样的关键字参数并转发）：
+
+#### `observers`（观察者）
+
+`observers` 是一组对象，每个对象可以有下面三个方法中的任意几个（没有的方法不调用）：
+
+- **`primary(event, particles)`**：每个事例的初级粒子产生后调用一次；`event` 为事例号，`particles` 是一个列表，每项是 `(particle, x, y, z, dx, dy, dz, ekin, t)`（依次为 PDG 编码；世界坐标 $x, y, z$，单位 $\mu\text{m}$；单位方向余弦 $dx, dy, dz$；动能 `ekin`，单位 $\text{MeV}$；全局时间 `t`，单位 $\text{s}$）。`primary` 只能减，不能加、不能改：返回 `None` 表示照发；返回一个列表时（可以是空列表），列表里每一项都必须是传入 `particles` 中的某一项（否则抛 `ValueError`），表示只发留下的这些粒子。有多个观察者时按 `observers` 里的顺序依次调用，后一个收到的是前一个留下的粒子列表。
+- **`step(event, volume, e, x, y, z, t)`**：在类属性 `watched` 给出的物体或槽位里每走一步调用一次；`volume` 为物体名或槽位名，`e` 为这一步沉积的能量（$\text{MeV}$），$(x, y, z)$ 为步位置的世界坐标（$\mu\text{m}$），`t` 为这一步前点的全局时间（$\text{s}$），不返回任何值。观察者通过类属性 `watched = ("pcb1", "ref", ...)` 给出要看的名字。
+- **`event(event, energies, first_times)`**：事例结束时调用一次；`energies`、`first_times` 分别为槽位名到该槽位有源层总沉积能量（$\text{MeV}$）与最早沉积时刻（$\text{s}$）的字典。返回 `False` 表示不记录这个事例（即使它满足记录条件），返回 `None` 或 `True` 不改变结果。
+
+观察者自己记下的数据留在观察者对象本身，供实验脚本在模拟结束后取用。库中自带两个现成的观察者：
+
+| 类名 | 用法与记录内容 |
+| --- | --- |
+| `WatchedEnergy(names)` | 记录每个被记录事例在 `names` 所列物体或槽位中的总沉积能量（$\text{MeV}$）与最早沉积时刻（$\text{s}$） |
+| `PrimaryStart()` | 记录每个被记录事例的初级粒子出发状态 `(particle, x, y, z, dx, dy, dz, ekin, t)` |
+
+全部观察者 `primary` 一共减掉的粒子数与被 `event` 否决的事例数记入 `Deposits` 与 `deposit.h5` 的属性 `dropped_primaries`、`vetoed_events`（没有观察者时均为 `0`）；`generated_events` 仍计全部生成的事例。
+
+#### `primaries`（自定义初级粒子生成）
+
+`primaries` 是一个函数 `primaries(event, generator) -> 列表`（列表项格式与 `primary` 方法的 `particles` 相同），取代源组件的发射；`generator` 是随机数流 `stream(f"primaries/{event}")`。返回的粒子按原样发射，装置的 `source.angle` 不作用于它们；装置带非零 `angle` 而又给了 `primaries` 时抛 `ValueError`。给出 `primaries` 时，`source` 只需 `{"kind": "primaries"}`。常见用途包括：
+
+- 从样本文件读入并发射一束丢失电子；
+- 按给定的能谱抽样并发射 $\alpha$ 粒子；
+- 在一个事例中同时发射多个质子。
+
+#### 参数校验与报错
+
+以下情形均抛 `ValueError`：
+
+- 观察者 `primary` 返回的列表里有不是传入 `particles` 中的项（`observer returned a primary that it was not given`）；
+- `primaries` 返回空列表以外的非法值（`primaries must return a sequence of 9-tuples`）；
+- 装置带非零 `source.angle` 而又给了 `primaries`（`a setup with source.angle takes no primaries function`）；
+- 观察者 `watched` 里的名字不在装置的物体或槽位中（`watched volume '<名称>' is not in setup`）。
 
 ## 参考文献
 

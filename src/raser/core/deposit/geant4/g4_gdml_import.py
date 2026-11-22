@@ -10,13 +10,36 @@ import xml.etree.ElementTree as ET
 
 from raser.core.deposit.geant4.g4ppyy_runtime import g4b
 
-from ..simulate_deposits import world_half_side
+from ..simulate_deposits import WORLD_HALF_SIDE
 from .detector_construction import GeneralDetectorConstruction
 from raser.supports.paths import component_candidates
 
 WRAPPER_WORLD_NAME = 'RASER_GDML_WRAPPER_WORLD'
 WRAPPER_BOX_NAME = 'RASER_GDML_WRAPPER_BOX'
 WRAPPER_IMPORTED_PV_NAME = 'RASER_GDML_IMPORTED_ASSEMBLY_PV'
+
+
+def gdml_world_half_side(my_d, configuration):
+    """Half the side [um] of the cube of the Geant4 world, centred where
+    the device's face z = 0 has its middle.
+
+    It is WORLD_HALF_SIDE, unless the device, an object of the
+    configuration or a point the source starts from (par_in, of every
+    particle, widened by par_radius) reaches farther along x, y or z: then
+    it is twice that reach, so that the world holds them with room around.
+    """
+    reach = max(my_d.l_x / 2, my_d.l_y / 2, my_d.l_z)
+    for objects in (configuration.get("object") or {}).values():
+        for one in objects.values():
+            reach = max(
+                reach,
+                *(abs(one["position_" + axis]) + one["side_" + axis] / 2 for axis in "xyz"),
+            )
+    radius = configuration.get("par_radius", 0)
+    for one in (configuration, *configuration.get("particles", ())):
+        if "par_in" in one:
+            reach = max(reach, *(abs(c) + radius for c in one["par_in"]))
+    return WORLD_HALF_SIDE if reach <= WORLD_HALF_SIDE else 2 * reach
 
 
 def _as_bool(value, default=False):
@@ -178,7 +201,7 @@ class GDMLDetectorConstruction(GeneralDetectorConstruction):
         if _gdml_has_wrapper_world(self.gdml_path):
             self._use_imported_world_as_world()
         else:
-            self.create_world(g4_dic['world'], world_half_side(my_d, g4_dic))
+            self.create_world(g4_dic['world'], gdml_world_half_side(my_d, g4_dic))
             if 'world_half_size_um' in g4_dic:
                 half_size = float(g4_dic['world_half_size_um']) * g4b.um
                 self.solid['world'].SetXHalfLength(half_size)

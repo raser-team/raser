@@ -62,7 +62,7 @@ def point_efficiency(jobs):
 
 def _empty_job(folder, index, events):
     folder.mkdir(parents=True, exist_ok=True)
-    write_deposits(str(_slice(folder, index, "deposit")), Deposits(50, None, None, events))
+    write_deposits(str(_slice(folder, index, "deposit")), Deposits(50, {}, "any", None, events))
 
 
 def test_point_takes_the_events_of_all_its_jobs(tmp_path) -> None:

@@ -22,7 +22,7 @@ def test_slice_file_is_in_the_node_of_its_slice_in_the_experiment_folder(tmp_pat
 def test_job_without_events_is_known_from_its_deposits(tmp_path) -> None:
     deposits = slice_file(tmp_path, NODES, "deposit")
     deposits.parent.mkdir(parents=True)
-    write_deposits(str(deposits), Deposits(50, None, None, []))
+    write_deposits(str(deposits), Deposits(50, {}, "any", None, []))
 
     assert job_file(tmp_path, NODES, "readout") is None
 
@@ -31,7 +31,7 @@ def test_job_with_events_but_without_a_file_is_an_error(tmp_path) -> None:
     deposits = slice_file(tmp_path, NODES, "deposit")
     deposits.parent.mkdir(parents=True)
     event = EventDeposits(4, ["Device"], [0.0], [0.0], [1.0], [0.0], [0.1], [1000.0])
-    write_deposits(str(deposits), Deposits(50, None, None, [event]))
+    write_deposits(str(deposits), Deposits(50, {}, "any", None, [event]))
 
     with pytest.raises(FileNotFoundError, match="the job recorded 1 events but left no readout file"):
         job_file(tmp_path, NODES, "readout")

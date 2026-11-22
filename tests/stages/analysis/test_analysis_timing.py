@@ -82,7 +82,7 @@ def _job(folder, index, events, electrodes=("top",), truths=None):
             EventWaveforms(1000 * index + number, t0 - BEFORE * DT, voltage),
             pulse_edge=["falling"] * len(electrodes),
         )
-    write_deposits(str(_slice(folder, index, "deposit")), Deposits(50, None, None, deposits))
+    write_deposits(str(_slice(folder, index, "deposit")), Deposits(50, {}, "any", None, deposits))
 
 
 def test_point_takes_the_quantities_of_the_events_above_the_amplitude_threshold(tmp_path) -> None:
@@ -91,7 +91,7 @@ def test_point_takes_the_quantities_of_the_events_above_the_amplitude_threshold(
     _job(first, 1, [(2.0e-10, 0.4)])  # 4 mV, below the amplitude threshold
     _job(second, 0, [(-1.0e-10, 2.0)])  # 20 mV: crosses 3 mV three quarters of a bin earlier
     _job(second, 2, [(5.0e-9, 1.0)])  # not among the finished jobs
-    write_deposits(str(_slice(second, 1, "deposit")), Deposits(50, None, None, []))
+    write_deposits(str(_slice(second, 1, "deposit")), Deposits(50, {}, "any", None, []))
 
     count, polarity, times = event_times(point_tables(_reconstructed([_of(first, 0), _of(first, 1), _of(second, 0), _of(second, 1)])))
 

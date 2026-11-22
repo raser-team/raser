@@ -128,8 +128,8 @@ raser readout examples/HPK-Si-PiN/signal
 | --- | --- | --- | --- |
 | `field.voltage` | `200.0`（写 `null` 时取器件文件里的偏压） | $\text{V}$ | 器件偏置电压，决定所用的场 |
 | `field.irradiation_flux` | `null`（取器件文件里的辐照注量，器件文件没有辐照块时为 `0`） | $\text{cm}^{-2}$ | 器件辐照注量（$1\ \text{MeV}$ 中子等效注量），决定所用的场 |
-| `deposit.source` | `"decay/Sr90"`（`bmos` 示例为 `"bunch"`） | 无 | 放射源、束流或直线 MIP 组件名 |
-| `deposit.g4setup` | `"device_alone"`（`timeres` 示例为 `"time_resolution"`） | 无 | Geant4 几何环境脚本组件名 |
+| `deposit.g4setup` | `"device_alone"`（`timeres` 示例为 `"time_resolution"`） | 无 | Geant4 装置组件名；装置的 `source` 块写明它用的源 |
+| `deposit.g4setup.source` | `"decay/Sr90"`（`bmos` 示例为 `"bunch"`） | 无 | 整套换源：放射源、束流或直线 MIP 组件名；装置里的 `angle` 沿用 |
 | `deposit.events_per_job` | `200`（`timeres` 示例为 `10000`，`telescope` 示例为 `1000`） | 事例/作业 | 每个作业要记录的有效沉积事例数 |
 | `deposit.generated_per_job` | `null`（不用） | 事例/作业 | 每个作业固定生成的初级事例数，代替按记录事例数生成 |
 | `deposit.generated_limit` | `10000000` | 事例/作业 | 按记录事例数生成时，单作业最多生成的初级事例数 |
@@ -154,7 +154,7 @@ raser readout examples/HPK-Si-PiN/signal
 - **`<实验>/nodes/<环节>/<节点号>/`**：一个环节节点，内有这一环节写出的文件和 `node.json`。
 - **`<实验>/points/<点名>/<环节>/<作业号>`**：指向这个作业在这一环节的节点的软链接；`points/<点名>/field`、`points/<点名>/analysis` 各是一个软链接。点名按扫描轴的取值起，例如 `voltage_100`。
 - **`work/<器件>/field/<节点号>/`**：器件的场节点，格式见[场求解与加载（`core/field`）](../core/field.md)。
-- **`deposit` 节点的沉积文件 `deposit.h5`**：能量沉积步与电子-空穴对；记录事例数为 `0` 时仍写出，并抛出 `Ended` 结束作业。属性有 `generated_events`、`recorded_events`、`generated_fraction`，以及可选的 `edep_min`、`edep_max`（$\text{MeV}$）；数据集按事例存 `event`、`count`，按沉积步存 `detector`、`x`/`y`/`z`（$\mu\text{m}$，可选起点 `x_start`/`y_start`/`z_start`）、`t`（$\text{s}$，可选 `t_fwhm`）、`e`（$\text{MeV}$）、`pairs`（对）。形状、类型和单位见[能量沉积与电离（`core/deposit`）](../core/deposit.md)。
+- **`deposit` 节点的沉积文件 `deposit.h5`**：能量沉积步与电子-空穴对；记录事例数为 `0` 时仍写出，并抛出 `Ended` 结束作业。属性有 `generated_events`、`recorded_events`、`emission_probability`（没有出射分布的源为 `1.0`），以及可选的 `edep_min`、`edep_max`（$\text{MeV}$）；数据集按事例存 `event`、`count`，按沉积步存 `detector`、`x`/`y`/`z`（$\mu\text{m}$，可选起点 `x_start`/`y_start`/`z_start`）、`t`（$\text{s}$，可选 `t_fwhm`）、`e`（$\text{MeV}$）、`pairs`（对）。形状、类型和单位见[能量沉积与电离（`core/deposit`）](../core/deposit.md)。
 - **`current` 节点的电流文件 `current.h5`**：各读出电极的时域感应电流与净感应电荷；多位置实验里每个位置一个文件 `current.<位置>.h5`，放在同一个作业的节点里，某位置有沉积时才写。属性有 `electrodes`、`dt`（$\text{s}$）；数据集按事例存 `event`、`t0`（$\text{s}$）、`count`、`pairs`（对）、场漂移时另存 `sensitive_pairs`（对）与 `carriers_without_field`（个）、`charge`（$\text{C}$）、`stored`，按存储电极存 `index`，按时间箱展平存非零电流电极的 `current`（$\text{A}$）。见[载流子漂移与感应电流（`core/current`）](../core/current.md)。
 - **`readout` 节点的波形文件 `readout.h5`**：经器件等效电路和前端放大器链求解后的输出电压波形；多位置实验里是 `readout.<位置>.h5`，有对应电流文件时才写。属性有 `electrodes`、`dt`（$\text{s}$）、`pulse_edge`（各电极 `"rising"` 或 `"falling"`）、`device_circuit`（JSON 字符串）；数据集按事例存 `event`、`t0`（$\text{s}$）、`count`、`stored`，按存储电极存 `index`，按采样点展平存 `voltage`（$\text{V}$）。见[电子学读出（`core/readout`）](../core/readout.md)。
 - **`digitizer`、`trigger` 节点**：数字波形与被记录的事例，见[数字化环节（`stages/digitizer`）](digitizer.md)和[触发环节（`stages/trigger`）](trigger.md)。

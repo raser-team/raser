@@ -46,7 +46,7 @@ def _job(folder, index, events, dt=DT):
         deposits.append(
             EventDeposits(number, ["Device"] * count, [0.0] * count, [0.0] * count, [1.0] * count, [t0] * count, list(energies), [1.0] * count)
         )
-    write_deposits(str(_slice(folder, index, "deposit")), Deposits(50, None, None, deposits))
+    write_deposits(str(_slice(folder, index, "deposit")), Deposits(50, {}, "any", None, deposits))
     return (folder, _nodes(folder, index) if events else {"deposit": _nodes(folder, index)["deposit"]})
 
 

@@ -5,11 +5,14 @@ Description:  interaction.py
 @version    : 1.0
 """
 
+from typing import Any
+
 from raser.core.deposit.geant4.g4ppyy_runtime import g4b
 from raser.supports.paths import component_path
 
-from ..deposits import deposits_of_steps
+from ..deposits import Deposits, deposits_of_steps, joined
 from ..generation import too_few
+from ..recording import RecordedSteps, parse_require
 from .detector_construction import GeneralDetectorConstruction
 from .action_initialization import GeneralActionInitialization
 from .drivers import register_driver
@@ -37,7 +40,8 @@ def _release_cppyy_ownership(value):
 class GeneralG4Interaction:
     def __init__(
         self,
-        my_d,
+        devices,
+        layout,
         g4_dic,
         g4_seed,
         g4_vis=False,
@@ -49,18 +53,18 @@ class GeneralG4Interaction:
         """
         Description:
             General Geant4 main process
-            Simulate s_num particles through device
-            Record the energy depositon in the device
+            Simulate s_num particles through the devices
+            Record the energy depositon in the devices
         Parameters:
+            devices : dict
+                the device of each slot, by the name of the slot
+            layout : Layout
+                where the slots and objects lie in the Geant4 world
+                (raser.core.deposit.along_beam)
             g4_dic : dict
                 Geant4 configuration: source, surroundings, total_events,
-                edep_min and edep_max [MeV]
-            energy_steps : list
-                Energy deposition of each step in simulation
-            edep_devices : list
-                Total energy deposition in device
-        @Modify:
-            2025/05/15
+                windows [MeV], require and coincidence_window_ns, which
+                decide the events that are recorded
         """
         # picture: the path, without its extension, of a png of the geometry
         # and the first `drawn` recorded events, drawn off screen during the
@@ -75,8 +79,10 @@ class GeneralG4Interaction:
                 "raser.core.deposit.view_geometry.view_geometry"
             )
 
+        self.my_g4d: Any
+        self.devices = devices
+        self.layout = layout
         self.geant4_model = g4_dic["geant4_model"]
-        detector_material = my_d.device_dict["material"]
 
         if (
             self.geant4_model == "gdml_import"
@@ -84,11 +90,12 @@ class GeneralG4Interaction:
         ):
             from .g4_gdml_import import GDMLDetectorConstruction
 
-            MyDetectorConstruction = GDMLDetectorConstruction
-
-        self.my_g4d = MyDetectorConstruction(
-            my_d, g4_dic, detector_material, g4_dic["maxstep"]
-        )
+            my_d = devices["Device"]
+            self.my_g4d = GDMLDetectorConstruction(
+                my_d, g4_dic, my_d.material, g4_dic["maxstep"]
+            )
+        else:
+            self.my_g4d = MyDetectorConstruction(devices, layout, g4_dic, g4_dic["maxstep"])
 
         self.g4RunManager = g4b.G4RunManager.GetRunManager() or g4b.G4RunManager()
         self.rand_engine = g4b.cppyy.gbl.CLHEP.RanecuEngine()
@@ -111,23 +118,17 @@ class GeneralG4Interaction:
             )
         self.g4RunManager.SetUserInitialization(self.physics_list)
 
-        (
-            self.eventIDs,
-            self.edep_devices,
-            self.p_steps,
-            self.energy_steps,
-            self.time_steps,
-            self.events_angles,
-        ) = [], [], [], [], [], []
-        # where each recorded step starts [um], in the coordinates of Geant4
-        self.start_steps = []
+        # the steps of the recorded events, in the coordinates of Geant4
+        self.records = RecordedSteps(devices)
 
         # recorded_events: the run stops when this many events are recorded,
         # and total_events is the most it generates for them; None: the run
         # generates total_events.
         self.recorded_events = g4_dic.get("recorded_events")
         self.total_events = int(g4_dic["total_events"])
-        self.edep_window = (g4_dic.get("edep_min"), g4_dic.get("edep_max"))
+        self.windows = g4_dic["windows"]
+        self.require = g4_dic["require"]
+        self.coincidence_window_ns = g4_dic["coincidence_window_ns"]
 
         # define action
         self.action_initialization = MyActionInitialization(
@@ -137,13 +138,10 @@ class GeneralG4Interaction:
             g4_dic.get("par_randy", 0),
             g4_dic.get("par_type"),
             g4_dic.get("par_energy"),
-            self.eventIDs,
-            self.edep_devices,
-            self.p_steps,
-            self.energy_steps,
-            self.time_steps,
-            self.events_angles,
-            self.edep_window,
+            self.records,
+            self.windows,
+            parse_require(self.require, list(devices)),
+            self.coincidence_window_ns,
             self.geant4_model,
             **({"particles": g4_dic["particles"]} if "particles" in g4_dic else {}),
             **(
@@ -151,7 +149,6 @@ class GeneralG4Interaction:
                 if self.recorded_events is not None
                 else {}
             ),
-            start_steps=self.start_steps,
             **(
                 {
                     "nuclides": {
@@ -169,27 +166,6 @@ class GeneralG4Interaction:
         self.g4RunManager.SetUserInitialization(self.action_initialization)
 
         self.beam_on()
-
-        self.init_tz_device = 0
-        self.p_steps_current = [
-            [
-                [
-                    single_step[0] + my_d.l_x / 2,
-                    single_step[1] + my_d.l_y / 2,
-                    single_step[2] - self.init_tz_device,
-                ]
-                for single_step in p_step
-            ]
-            for p_step in self.p_steps
-        ]
-        self.start_steps_current = [
-            [
-                [step[0] + my_d.l_x / 2, step[1] + my_d.l_y / 2, step[2] - self.init_tz_device]
-                for step in start_step
-            ]
-            for start_step in self.start_steps
-        ]
-        # change the coordinate system from Geant4 to device
 
         self._closed = False
 
@@ -235,20 +211,32 @@ class GeneralG4Interaction:
         ui.ApplyCommand("/vis/disable")
 
     def deposits(self):
-        """The recorded events as Deposits in the coordinates of the device.
-        Fewer recorded events than asked for is an error, raised here and not
-        in the run, so that the caller can still close this interaction."""
+        """The recorded events as Deposits, each step in the coordinates of
+        the device of its slot. Fewer recorded events than asked for is an
+        error, raised here and not in the run, so that the caller can still
+        close this interaction."""
         if self.recorded_events is not None and self.recorded < self.recorded_events:
             raise too_few(self.recorded_events, self.recorded, self.generated_events)
-        return deposits_of_steps(
-            "Device",
-            self.eventIDs,
-            self.p_steps_current,
-            self.energy_steps,
-            self.time_steps,
+        records = self.records
+        per_detector = []
+        for slot in self.devices:
+            placed = self.layout.slot(slot)
+            per_detector.append(
+                deposits_of_steps(
+                    slot,
+                    records.events,
+                    [[placed.to_device(*point) for point in event] for event in records.positions[slot]],
+                    records.energies[slot],
+                    records.times[slot],
+                    [[placed.to_device(*point) for point in event] for event in records.starts[slot]],
+                )
+            )
+        return Deposits(
             self.generated_events,
-            *self.edep_window,
-            self.start_steps_current,
+            self.windows,
+            self.require,
+            self.coincidence_window_ns,
+            joined(per_detector),
         )
 
     def close(self):

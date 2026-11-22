@@ -44,7 +44,7 @@ where:
 - $\mathbf{r}_k$: position of the deposition step, taken at the step midpoint, $\mu\text{m}$ (code comment notes: when the step endpoints lie on the device surface, rounding error may place an endpoint outside the device);
 - $\ell_k$: step length, $\mu\text{m}$; $s_{\max}$: the setup's `maxstep`, $\mu\text{m}$.
 
-The device material in Geant4 is built according to `material`: `"Si"` uses NIST `G4_Si`; `"Diamond"` uses `G4_C` with the density changed to $3.52\ \text{g/cm}^3$ (code comment: NIST `G4_C` is graphite at $2.0\ \text{g/cm}^3$); `"SiC"` is a compound of equal atomic fractions of Si and C with density $3.21\ \text{g/cm}^3$. The diamond density is taken from the PDG table of atomic and nuclear properties [8], and the 4H-SiC density is taken from Ref. [13].
+The device material in Geant4 is built according to `material`: `"Si"` uses NIST `G4_Si`; `"Diamond"` uses `G4_C` with the density changed to $3.52\ \text{g/cm}^3$ (code comment: NIST `G4_C` is graphite at $2.0\ \text{g/cm}^3$); `"SiC"` is a compound of equal atomic fractions of Si and C with density $3.21\ \text{g/cm}^3$. The diamond density is taken from the PDG table of atomic and nuclear properties [8], and the 4H-SiC density is taken from Ref. [13]. The device's `material` takes only `"Si"`, `"SiC"`, or `"Diamond"` (the three materials with ionization energy and Fano factor); names defined in `G4SETUP["materials"]` and Geant4 NIST material names starting with `"G4_"` are used only for `material` in `objects`.
 
 ### Toy MIP Track
 
@@ -140,28 +140,47 @@ Limitations: only the parameter set for $E \perp c$ is used, which applies to to
 
 ### Radioactive Decay Sources
 
-Each event of a radioactive source is a single decay of a nuclide at rest. A nuclide is drawn with equal probability from `nuclides`, and its position is uniformly distributed on a disk perpendicular to the emission axis. The initial time of decay products is reset to zero and the daughter nucleus left by the decay is killed there, so one event corresponds to one decay. When `par_cone` is given, the directions of decay products are resampled isotropically inside a cone around the emission axis:
+A radioactive source together with its encapsulation and collimator forms a single component whose external output consists of the particles emerging from the collimator exit; this emission distribution depends solely on the nuclides, encapsulation, and collimator, independent of which downstream devices are placed or what coincidence condition is applied, and the source component contains no emission angle tuned for a particular experiment. Each event is a single decay of a nuclide at rest: a nuclide is drawn with equal probability from `nuclides`, and its position is uniformly distributed on a disk perpendicular to the emission (bore) axis (radius `par_radius`; point source on axis when $R = 0$). The initial time of decay products is reset to zero and the daughter nucleus left by the decay is killed there, so one event corresponds to one decay. When `activity` (in $\text{Bq}$) is given, it specifies the decays per second of each nuclide; $^{90}\text{Sr}$ and $^{90}\text{Y}$ are in secular equilibrium, so each nuclide decays at `activity`.
 
-$$\hat{\mathbf{a}} = \frac{\mathbf{r}_{\text{out}} - \mathbf{r}_{\text{in}}}{|\mathbf{r}_{\text{out}} - \mathbf{r}_{\text{in}}|}, \qquad |\mathbf{r}_0 - \mathbf{r}_{\text{in}}| \le R, \quad (\mathbf{r}_0 - \mathbf{r}_{\text{in}}) \perp \hat{\mathbf{a}} \tag{14}$$
+A radioactive source without `collimator` emits isotropically over full $4\pi$ space. When `collimator` (containing `material`, `length`, `radius`, `outer_side`) is given, the nuclide disk lies on the collimator entrance face ($z = -L$) centered on the bore axis; the center of the collimator exit plane lies at the world origin $(0, 0, 0)$, the $z$ axis points downstream along the bore axis, and the collimator body lies on $z \in [-L, 0]$ (the $z < 0$ side). The setup does not place the collimator as an object.
 
-$$\cos\theta = 1 - u_1\,(1 - \cos\theta_c), \qquad \varphi = 2\pi u_2, \qquad \hat{\mathbf{d}} = \cos\theta\,\hat{\mathbf{a}} + \sin\theta\,(\cos\varphi\,\hat{\mathbf{e}}_1 + \sin\varphi\,\hat{\mathbf{e}}_2) \tag{15}$$
+For an emission point $\mathbf{r}_0$ on the disk and an emission direction $\hat{\mathbf{d}}$, let $\ell(\mathbf{r}_0, \hat{\mathbf{d}})$ denote the straight-line path length traveled through the collimator material between the emission point and the exit plane $z = 0$ ($\ell = 0$ when the ray stays entirely inside the bore; backward-hemisphere directions $\hat{\mathbf{d}}\cdot\hat{\mathbf{z}} \le 0$ are not emitted). Only directions satisfying $\ell(\mathbf{r}_0, \hat{\mathbf{d}}) \le R_{\text{CSDA}}(E_{\max})$ are emitted, where $E_{\max}$ is the largest $\beta$-spectrum endpoint energy among the nuclides in the source and $R_{\text{CSDA}}(E_{\max})$ is the continuous-slowing-down approximation (CSDA) range in the collimator material for electrons at kinetic energy $E_{\max}$, obtained from Geant4's `G4EmCalculator`. The fraction $f$ of full $4\pi$ space covered by the emitted directions is computed numerically over emission points and directions and written as `generated_fraction`:
 
-$$f = \frac{1 - \cos\theta_c}{2} \tag{16}$$
+$$f = \frac{1}{\pi R^2}\int_{|\mathbf{r}_0 - \mathbf{r}_c| \le R} d^2\mathbf{r}_0 \cdot \frac{1}{4\pi}\int_{\hat{\mathbf{d}}\cdot\hat{\mathbf{z}} > 0} \mathbb{I}\bigl[\ell(\mathbf{r}_0, \hat{\mathbf{d}}) \le R_{\text{CSDA}}(E_{\max})\bigr]\,d\Omega \tag{21}$$
+
+For a point source on the axis ($R = 0$) with bore radius $r$ and length $L$, the fraction whose straight line stays entirely inside the bore is:
+
+$$f_{\text{hole}} = \frac{1 - \cos\theta_c}{2}, \qquad \theta_c = \arctan\frac{r}{L} \tag{22}$$
+
+Taking `decay/Sr90` from the library ($r = 500\ \mu\text{m}$, $L = 3000\ \mu\text{m}$) as an example, $\theta_c = 9.46^\circ$, and this straight-through bore fraction is $0.68\%$. Emission is not restricted solely to the geometric opening angle $\theta_c$ because electrons entering the bore wall at larger angles can scatter out through the bore: in a control simulation emitting within a $12^\circ$ cone, about $7\%$ of the events selected by the downstream device come from outside the geometric opening angle as electrons scattered off the collimator wall.
+
+Electrons inside the collimator material undergo range rejection: if $R_{\text{CSDA}}(E)$ at an electron's current kinetic energy is smaller than its distance $d_{\min}(\mathbf{r})$ to the nearest bore wall surface or exit plane, the track is terminated and its energy is deposited locally:
+
+$$R_{\text{CSDA}}(E) < d_{\min}(\mathbf{r}) \tag{23}$$
+
+Bremsstrahlung photons produced by the electron are unaffected and continue to be transported normally.
+
+Particles crossing the exit plane ($z = 0$, spanning the entire world) are recorded (species, position, direction, kinetic energy, time; neutrinos omitted) and terminated there. For each block of the emission distribution, the number of decays actually sent into Geant4 (those falling within the emitted directions) is fixed at `EMISSION_BLOCK_DECAYS = 1_000_000`, corresponding to the full-space decay count `decays = EMISSION_BLOCK_DECAYS / generated_fraction`, and with exit-plane crossing decay count `emitted`, the single-block emission probability $\varepsilon$ (when a job uses multiple blocks, `emission_probability` takes `sum(emitted) / sum(decays)` across the blocks used) and the emission rate $\dot{N}_{\text{emit}}$ when `activity` is given are:
+
+$$\varepsilon = \frac{\texttt{emitted}}{\texttt{decays}}, \qquad \dot{N}_{\text{emit}} = n_{\text{nuclides}} \cdot \texttt{activity} \cdot \varepsilon \tag{24}$$
 
 where:
 
-- $\mathbf{r}_{\text{in}}, \mathbf{r}_{\text{out}}$: source position and aiming point along the emission axis (the world coordinate origin is on the source; when unrotated, $\mathbf{r}_{\text{in}} = (0, 0, 0)$ and the emission axis $\hat{\mathbf{a}}$ points downstream along $+z$), $\mu\text{m}$; $\hat{\mathbf{a}}$: unit vector along the emission axis;
-- $\mathbf{r}_0$: nuclide position, $\mu\text{m}$; $R$: disk radius `par_radius`, $\mu\text{m}$ (point source when $R = 0$);
-- $\hat{\mathbf{e}}_1, \hat{\mathbf{e}}_2$: unit vectors orthogonal to $\hat{\mathbf{a}}$;
-- $\theta_c$: half-cone angle `par_cone`, degrees; $u_1, u_2$: uniform random numbers on $[0, 1)$;
-- $\hat{\mathbf{d}}$: emission direction of the decay product;
-- $f$: fraction of the full solid angle covered by the cone, written to the file attribute `generated_fraction`.
+- $\mathbf{r}_0$: nuclide emission point on the entrance face $z = -L$, $\mu\text{m}$; $\mathbf{r}_c = (0, 0, -L)$: center of the collimator entrance face, $\mu\text{m}$; $R$: disk radius `par_radius`, $\mu\text{m}$ (reduces to a point on axis $\mathbf{r}_c$ when $R = 0$, with Eq. (21) averaging only over solid angle);
+- $\hat{\mathbf{d}}$: unit vector of decay-product emission direction; $\hat{\mathbf{z}}$: unit vector pointing downstream along the bore axis; $\ell(\mathbf{r}_0, \hat{\mathbf{d}})$: straight-line path length in collimator material from $\mathbf{r}_0$ to $z = 0$, $\mu\text{m}$;
+- $R_{\text{CSDA}}(E)$: CSDA range of an electron with kinetic energy $E$ ($\text{MeV}$) in the collimator material, $\mu\text{m}$; $E_{\max}$: largest $\beta$-spectrum endpoint energy among the nuclides in the source, $\text{MeV}$;
+- $f$: fraction of full $4\pi$ solid angle covered by emitted directions, written to attribute `generated_fraction` of `emission.h5`;
+- $r, L$: collimator bore `radius` and `length`, $\mu\text{m}$; $\theta_c$: geometric half-opening angle from an on-axis point source to the exit aperture; $f_{\text{hole}}$: fraction of $4\pi$ whose straight rays stay inside the bore;
+- $d_{\min}(\mathbf{r})$: distance from the electron's current position $\mathbf{r}$ to the nearest bore wall surface or exit plane, $\mu\text{m}$;
+- `emitted`: number of decays crossing the exit plane, decays; `decays`: corresponding full-space decay count of the block (`EMISSION_BLOCK_DECAYS / generated_fraction`), decays;
+- $\varepsilon$: emission probability, written to attribute `emission_probability` of `deposit.h5` (when multiple blocks are used, `sum(emitted) / sum(decays)` across the blocks used);
+- $n_{\text{nuclides}}$: number of nuclides in `nuclides`; `activity`: activity of each nuclide, $\text{Bq}$; $\dot{N}_{\text{emit}}$: emission rate at the collimator exit plane, $\text{s}^{-1}$.
 
-Nuclides are generated by `NuclideGeneratorAction` (`G4GeneralParticleSource`, kinetic energy $0$), while time zeroing, daughter killing, and cone direction resampling are performed by `DecayStackingAction`, identifying decay tracks by the creator process subtype `RADIOACTIVE_DECAY = 210`. A code comment notes that Geant4's built-in `/process/had/rdm/decayHalfAngle` only works around the $z$ axis, so this is implemented directly. For radioactive decay in Geant4, see Ref. [5].
+Nuclides are generated by `NuclideGeneratorAction` (`G4GeneralParticleSource`, kinetic energy $0$), while time zeroing and daughter killing are performed by `DecayStackingAction`, identifying decay tracks by the creator process subtype `RADIOACTIVE_DECAY = 210`. When generating block `0` of an emission distribution, a control run using only the source itself relaxes the direction restriction to the entire forward hemisphere (with range rejection active as usual) and writes the ratio of the two emission probabilities with its statistical error and the comparison of emitted electron kinetic-energy spectra to `emission_check` in `node.json`. For radioactive decay in Geant4, see Ref. [5].
 
 ### Line Along the Beam
 
-The setup uses `along_beam` to describe a line of geometry along the beam direction: the first item must be `"source"`, with the world coordinate origin $(0, 0, 0)$ on the source and the $z$ axis pointing downstream along the beam. Subsequent items in the line are gaps `{"gap": d}` ($d \ge 0$, $\mu\text{m}$), objects from `object` (`"<object name>"` or `{"object": "<object name>", "offset": [o_x, o_y]}`, occupying `side_z` along $z$), device slots `{"slot": "<slot name>", ...}` (occupying the total thickness $l_z + t$ of all layers of the device geometry along $z$; see [Detector Components](../components/device.md), with $t = 0$ when there are no layers outside the active layer), or a side-by-side list `[item, item, ...]` whose front faces align at the same $z$ and whose items are staggered laterally by their `offset` (occupying the thickness of the thickest item along $z$). Adjacent items with no `gap` between them are flush against each other; the source has thickness $0$, the front-face position $z_i$ of item $i$ equals the sum of thicknesses and gaps of all preceding items, and the slot front-surface center $\mathbf{P} = (P_x, P_y, P_z)$ and transformation from device coordinates $(x, y, z)$ (origin at a corner of the device front surface, with the active layer spanning $[0, l_x] \times [0, l_y] \times [0, l_z]$) to Geant4 world coordinates $\mathbf{r}_{\text{G4}}$ are:
+The setup uses `along_beam` to describe a line of geometry along the beam direction: the first item must be `"source"`; without a collimator the world coordinate origin $(0, 0, 0)$ lies on the source, and with a collimator it lies at the center of the collimator exit plane with the collimator body on the $z < 0$ side (the setup does not place the collimator as an object), all `gap`s in the setup are measured from the collimator exit plane, and the $z$ axis points downstream along the beam (bore axis). Subsequent items in the line are gaps `{"gap": d}` ($d \ge 0$, $\mu\text{m}$), objects from `objects` (`"<object name>"` or `{"object": "<object name>", "offset": [o_x, o_y]}`, occupying the object's thickness along $z$: `size[2]` for `"box"`, `length` for `"tube"`), device slots `{"slot": "<slot name>", ...}` (occupying the total thickness $l_z + t$ of all layers of the device geometry along $z$; see [Detector Components](../components/device.md), with $t = 0$ when there are no layers outside the active layer), or a side-by-side list `[item, item, ...]` whose front faces align at the same $z$ and whose items are staggered laterally by their `offset` (occupying the thickness of the thickest item along $z$). Adjacent items with no `gap` between them are flush against each other; the source has thickness $0$, the front-face position $z_i$ of item $i$ equals the sum of thicknesses and gaps of all preceding items, and the slot front-surface center $\mathbf{P} = (P_x, P_y, P_z)$ and transformation from device coordinates $(x, y, z)$ (origin at a corner of the device front surface, with the active layer spanning $[0, l_x] \times [0, l_y] \times [0, l_z]$) to Geant4 world coordinates $\mathbf{r}_{\text{G4}}$ are:
 
 $$z_i = \sum_{j < i} d_j, \qquad \mathbf{P} = \begin{cases} \bigl(o_x,\ o_y,\ z_i\bigr), & \texttt{facing} = \texttt{"upstream"} \\ \bigl(o_x,\ o_y,\ z_i + l_z + t\bigr), & \texttt{facing} = \texttt{"downstream"} \end{cases} \tag{17}$$
 
@@ -169,7 +188,7 @@ $$\mathbf{r}_{\text{G4}} = \begin{cases} \mathbf{P} + \begin{pmatrix} \cos\phi &
 
 where:
 
-- $d_j$: thickness or gap occupied by item $j$ along the $z$ axis ($0$ for `"source"`, $d$ for `{"gap": d}`, `side_z` for an object, $l_z + t$ for a slot, and the maximum thickness among items in a side-by-side list), $\mu\text{m}$; $z_i$: world $z$ coordinate of the front face of item $i$, $\mu\text{m}$;
+- $d_j$: thickness or gap occupied by item $j$ along the $z$ axis ($0$ for `"source"`, $d$ for `{"gap": d}`, object thickness—`size[2]` for `"box"` or `length` for `"tube"`—for an object, $l_z + t$ for a slot, and the maximum thickness among items in a side-by-side list), $\mu\text{m}$; $z_i$: world $z$ coordinate of the front face of item $i$, $\mu\text{m}$;
 - $o_x, o_y$: the slot's `offset` (default `[0, 0]`), $\mu\text{m}$;
 - $l_z$: active-layer thickness of the device in that slot, $\mu\text{m}$; $t$: total thickness of layers outside the active layer, $\mu\text{m}$ ($t = 0$ when there are no such layers);
 - $\mathbf{P} = (P_x, P_y, P_z)$: world coordinates of the center of the device front surface (the $z = 0$ plane in device coordinates), $\mu\text{m}$;
@@ -216,6 +235,7 @@ For a single slot, the condition reduces to total deposited energy in the device
 | `PAIRS_PER_UM` | Si `80.0`, SiC `55.0` | $\mu\text{m}^{-1}$ | `mip_track.py`, $n_{\text{MIP}}$ in Eq. (4) | none |
 | `LANDAU_WIDTH_MEV_PER_UM` | Si `1.78e-5`, SiC `2.46e-5` | $\text{MeV}/\mu\text{m}$ | `mip_track.py`, $w$ in Eq. (5) | none |
 | `GENERATED_LIMIT` | `10_000_000` | events | `generation.py`, maximum number of generated events when running by recorded count | none (stage setting `deposit.generated_limit`) |
+| `EMISSION_BLOCK_DECAYS` | `1_000_000` | decays | number of decays per block actually sent into Geant4 (those falling within emitted directions) for source emission distributions | none |
 | `DEVICE_ALONE` | see "Setup" below | — | `simulate_deposits.py`, setup used when none is given | replaced as a whole by `deposit.g4setup` |
 | `WORLD_HALF_SIDE` | `25000` | $\mu\text{m}$ | `simulate_deposits.py`, default half-side length of the world cube | `world_half_size_um` under `gdml_import` |
 | Physics list | `FTFP_BERT` + `G4StepLimiterPhysics` | — | `geant4/interaction.py` | none |
@@ -230,31 +250,49 @@ For a single slot, the condition reduces to total deposited energy in the device
 
 ### Branches of `simulate_deposits`
 
-`simulate_deposits(devices, source, g4setup, events, g4_seed, windows, require, coincidence_window_ns, fano, generated, generated_limit, picture, drawn)` executes in the following order. `devices` is an ordered dictionary mapping slot names to devices; `windows` maps each slot name to `(lower, upper)` ($\text{MeV}$, with `None` disabling checking on that side); `require` is the slot logical expression string; `coincidence_window_ns` is the timing window ($\text{ns}$, `None` for no timing cut). When no setup is provided, `DEVICE_ALONE` is used, equivalent to `"along_beam": ["source", {"gap": 17000}, {"slot": "Device"}]`; a setup with only one device names its slot `"Device"` and passes `{"Device": my_d}`. The slot names in the setup and in the `devices` argument must match one-to-one, and any extra or missing slot raises `ValueError` (`the g4setup places <setup slots>, the devices are <given slots>`); the order of slots in the output follows the `devices` argument.
+`simulate_deposits(devices, source, g4setup, events, g4_seed, windows, require, coincidence_window_ns, fano, generated, generated_limit, picture, drawn, observers=None, primaries=None)` executes in the following order. `devices` is an ordered dictionary mapping slot names to devices; `windows` maps each slot name to `(lower, upper)` ($\text{MeV}$, with `None` disabling checking on that side); `require` is the slot logical expression string; `coincidence_window_ns` is the timing window ($\text{ns}$, `None` for no timing cut); `observers` and `primaries` are entry points for experiment scripts (see "Interface → Entry Points for Experiment Scripts"). `source` is the source component named by the setup's `source` block, together with the overriding keys (read and merged by the stage). When no setup is provided, `DEVICE_ALONE` is used; it supplies geometry only, equivalent to `"along_beam": ["source", {"gap": 17000}, {"slot": "Device"}]`, and the source is then the `source` argument as passed; a setup with only one device names its slot `"Device"` and passes `{"Device": my_d}`. The slot names in the setup and in the `devices` argument must match one-to-one, and any extra or missing slot raises `ValueError` (`the g4setup places <setup slots>, the devices are <given slots>`); the order of slots in the output follows the `devices` argument.
 
-1. **Check source kind**: If `source["kind"]` is not one of `"toy_mip"`, `"beam"`, or `"decay_source"`, raise `ValueError` (`no simulation of deposits for a source of kind ...`).
+1. **Check source kind**: If `source["kind"]` is not one of `"toy_mip"`, `"beam"`, `"decay_source"`, or `"primaries"`, raise `ValueError` (`no simulation of deposits for a source of kind ...`); likewise raise `ValueError` if `source["kind"] == "primaries"` without providing `primaries`.
 2. **Check event counts and recording conditions**:
    - `asked(events, generated, generated_limit)` requires that exactly one of `events` (number of events to record) and `generated` (number of events to generate) be given, raising `ValueError` otherwise; if the given number or `generated_limit` is less than `1`, raise `ValueError` (`the <name> asked for are <number>: at least 1`).
    - Validate the recording-condition parameters, raising `ValueError` on any invalid setting: slot names in `windows` do not match `devices` (`the energy windows are for <windows slots>, the devices are <given slots>`); a slot's lower bound exceeds its upper bound (`slot '<slot>' has edep_min (<lo> MeV) > edep_max (<hi> MeV)`); `require` has a syntax error, names an operand that is not a slot name, or leaves a slot unused (`invalid require expression '<require>'`, `require '<require>' names unknown slot '<operand>'`, or `require '<require>' does not use the slot '<slot>'`); `coincidence_window_ns` is not `None` and not greater than `0` (`coincidence_window_ns must be positive, got <value> ns`).
 3. **Toy MIP branch** (`kind == "toy_mip"`): Read `g4setup["maxstep"]` (or `DEVICE_ALONE["maxstep"] = 2` when `g4setup` is `None`) and call `mip_deposits(devices, source, g4setup, ...)`; see the next section. This branch runs in Python, drawing random numbers from the stream `stream("toy_mip")`.
-4. **Geant4 branch** (`kind` is `"beam"` or `"decay_source"`):
+4. **Geant4 branch** (`kind` is `"beam"`, `"decay_source"`, or `"primaries"`):
    1. Import `geant4.interaction`. If `g4ppyy` is missing, raise `MissingDependency` (`Geant4's Python bindings, g4ppyy, are not installed in this Python`).
-   2. `g4_configuration` builds the run configuration: if `par_in`, `par_out`, or `par_angle` appears in the source or in its `particles`, raise `ValueError` (source placement belongs to the setup); take a deep copy of `g4setup` (or `DEVICE_ALONE` if `None`) and extract the optional `"source"` block (default `{}`); overwrite same-named setup keys with keys from the source and remove `name`, `kind`, and `description`; with the source at the world origin pointing downstream along $+z$, set `par_in = [0, 0, 0]`, `par_out` to the point on the axis at the $z$ of the front face of the first slot, `[0, 0, z_i]`, and `par_angle = source.get("angle", 0)`. When `particles` is present, each item inherits `par_randx`, `par_randy`, `par_type`, and `par_energy` from the configuration, overrides them with its own keys, and adds `offset` (default `[0, 0, 0]` $\mu\text{m}$) to both the emission point and the aiming point. Finally write `recorded_events = events`, `total_events = generated` (or `generated_limit` when running by recorded count), `windows`, `require`, and `coincidence_window_ns`.
-   3. `tilted` rotates the source by the incidence angle: unchanged when `par_angle` is `0`. If a multi-slot setup has nonzero `par_angle`, raise `ValueError` (`a multi-slot g4setup tilts no source`). Otherwise this applies only to single-slot setups: write $\mathbf{r}_{\text{in}} = (x_0, y_0, z_0)$ and $\mathbf{r}_{\text{out}} = (x_1, y_1, z_1)$; if $z_f \le z_0 \le z_f + l_z + t$ or $z_1 = z_0$, raise `ValueError` (the source line does not enter the device through a face). Take the rotation axis parallel to the $y$ axis passing through the single-slot device front-surface center $(x_p, P_y, z_f) = (P_x, P_y, P_z)$, and transform `par_in` and `par_out` in both the top-level configuration and each entry of `particles` by
+   2. `g4_configuration` builds the run configuration: if `par_in`, `par_out`, or `par_angle` appears in the source or in its `particles`, raise `ValueError` (source placement belongs to the setup); take a deep copy of `g4setup` (or `DEVICE_ALONE` if `None`) and extract `angle` from its `"source"` block (default `0`); the configuration takes the keys of the source as passed, with `name`, `kind`, and `description` removed; with the source at the world origin pointing downstream along $+z$, set `par_in = [0, 0, 0]`, `par_out` to the point on the axis at the $z$ of the front face of the first slot, `[0, 0, z_i]`, and `par_angle = source.get("angle", 0)`. When `particles` is present, each item inherits `par_randx`, `par_randy`, `par_type`, and `par_energy` from the configuration, overrides them with its own keys, and adds `offset` (default `[0, 0, 0]` $\mu\text{m}$) to both the emission point and the aiming point. Finally write `recorded_events = events`, `total_events = generated` (or `generated_limit` when running by recorded count), `windows`, `require`, and `coincidence_window_ns`.
+   3. `tilted` rotates the source by the incidence angle: unchanged when `par_angle` is `0`. If `primaries` is given while the setup has nonzero `par_angle`, raise `ValueError` (`a setup with source.angle takes no primaries function`); if a multi-slot setup has nonzero `par_angle`, raise `ValueError` (`a multi-slot g4setup tilts no source`). Otherwise this applies only to single-slot setups: write $\mathbf{r}_{\text{in}} = (x_0, y_0, z_0)$ and $\mathbf{r}_{\text{out}} = (x_1, y_1, z_1)$; if $z_f \le z_0 \le z_f + l_z + t$ or $z_1 = z_0$, raise `ValueError` (the source line does not enter the device through a face). Take the rotation axis parallel to the $y$ axis passing through the single-slot device front-surface center $(x_p, P_y, z_f) = (P_x, P_y, P_z)$, and transform `par_in` and `par_out` in both the top-level configuration and each entry of `particles` by
       $$x' = (x - x_p)\cos\vartheta + (z - z_f)\sin\vartheta + x_p, \qquad z' = -(x - x_p)\sin\vartheta + (z - z_f)\cos\vartheta + z_f$$
-      where $\vartheta$ is `par_angle` (degrees). For $\vartheta > 0$, the upstream source rotates toward the $-x$ side so particles travel with a $+x$ component toward the device front-surface center. $y$, `par_randx`, and `par_randy` are unchanged, and slots and objects in the setup do not move.
-   4. Build the geometry (`GeneralDetectorConstruction`; or `GDMLDetectorConstruction` when `geant4_model == "gdml_import"`, where the geometry is given by GDML rather than `along_beam`). First validate `along_beam` and `object` (raising `ValueError` on any error): the first item is not `"source"` (`the first item of along_beam must be 'source'`); a `gap` is negative (`gap must be non-negative`); an object name is not in `object` (`object '<object>' is not in object`); the same object or slot appears twice (`duplicate '<name>' in along_beam`); `facing` is neither `"upstream"` nor `"downstream"` (`slot '<slot>' has facing <value>: expected 'upstream' or 'downstream'`); `rotation_z` is not `0`, `90`, `180`, or `270`; side-by-side items overlap transversely (`side-by-side items overlap`); or the slot names do not match `devices` (`the g4setup places <setup slots>, the devices are <given slots>`). The world is a cube of material `world` centered at the midpoint $(0, 0, L_{\text{col}}/2)$ of the `along_beam` line, with half-side length given by `world_half_side`: let $\rho = \max\bigl(L_{\text{col}}/2,\ \max_{\text{item}}(|o_x| + w_x/2,\ |o_y| + w_y/2),\ R\bigr)$, where $L_{\text{col}} = \sum_j d_j$ is the total length of the line, $w_x, w_y$ are the full transverse dimensions of each item (after rotation for a slot), $o_x, o_y$ are its `offset`, and $R$ is `par_radius`; take `25000` when $\rho \le 25000\ \mu\text{m}$, and $2\rho$ otherwise. Starting from `"source"` ($z = 0$), compute the front-face position $z_i$ of each item via Eq. (17): for each slot, build an active-layer box logical volume ($l_x \times l_y \times l_z$) named after the slot with material taken from that slot device's `material`, and place it according to Eqs. (17)–(18). The thicknesses and materials of a device's layers are intrinsic properties written in the device file, and Geant4 uses that same geometry (see [Architecture Overview](../architecture.md#components)); the reference device's substrate lies in the beam path, and multiple scattering in it determines how many particles reach downstream devices. The device geometry is layered along depth, with layers outside the active layer (substrate, etc.) described in [Detector Components](../components/device.md); Geant4 builds all layers according to the device geometry, creating a separate logical volume for each layer outside the active layer whose energy deposition is not recorded, recording deposition only in the active layer. Surrounding objects referenced in `along_beam` are then placed (laterally centered at `offset`, centered in $z$ at $z_i + \texttt{side\_z}/2$). If two binary compounds share the same `compound_name` with conflicting composition or density, raise `ValueError` (`Conflicting Geant4 material definition for ...`). Binary compounds convert atomic fractions to mass fractions via $m_i = n_i A_i / (n_1 A_1 + n_2 A_2)$.
-   5. Configure the random engine, physics list, and user actions. If the source contains `nuclides`, use `NuclideGeneratorAction` and `DecayStackingAction`; otherwise use `GeneralPrimaryGeneratorAction`. For each event and each particle, the latter draws $\delta_x \sim U(-\texttt{par\_randx}, \texttt{par\_randx})$ and $\delta_y \sim U(-\texttt{par\_randy}, \texttt{par\_randy})$ from `stream("source")` and emits from $\mathbf{r}_{\text{in}}$ in direction $\mathbf{d} = \mathbf{r}_{\text{out}} - \mathbf{r}_{\text{in}} + (\delta_x, \delta_y, 0)$; when `par_type` is a list, it also draws an index with equal probability. If `par_type` and `par_energy` are lists of different lengths, raise `ValueError`.
+      where $\vartheta$ is `par_angle` (degrees). For $\vartheta > 0$, the upstream source rotates toward the $-x$ side so particles travel with a $+x$ component toward the device front-surface center. $y$, `par_randx`, and `par_randy` are unchanged, and slots and objects in the setup do not move. For collimated sources, `source.angle` keeps the same meaning: the source together with its collimator rotates as a whole about the single slot's front-surface center $(x_p, P_y, z_f)$, and emitted particle positions (on the exit plane $(x, y, 0)$) and directions ($(dx, dy, dz)$) rotate by the same transformation.
+   4. Build the geometry (`GeneralDetectorConstruction`; or `GDMLDetectorConstruction` when `geant4_model == "gdml_import"`, where the geometry is given by GDML rather than `along_beam`). First validate `along_beam`, `materials`, and `objects` (raising `ValueError` on any error): the first item is not `"source"` (`the first item of along_beam must be 'source'`); a `gap` is negative (`gap must be non-negative`); an object name is not in `objects` (`object '<object>' is not in objects`); the same object or slot appears twice (`duplicate '<name>' in along_beam`); `facing` is neither `"upstream"` nor `"downstream"` (`slot '<slot>' has facing <value>: expected 'upstream' or 'downstream'`); `rotation_z` is not `0`, `90`, `180`, or `270`; side-by-side items overlap transversely (`side-by-side items overlap`); the slot names do not match `devices` (`the g4setup places <setup slots>, the devices are <given slots>`); a `materials` entry conflicts with a NIST material name, names an element unrecognized by Geant4, or has non-positive density or share; or an `objects` entry has `shape` other than `"box"` or `"tube"`, misses a required dimension key, has a non-positive dimension, has `hole` not less than the box transverse half-sizes, has `inner_radius` not less than `outer_radius`, or names a `material` that is neither in `materials` nor a NIST material. The world is a cube of material `world` centered at the midpoint $(0, 0, L_{\text{col}}/2)$ of the `along_beam` line, with half-side length given by `world_half_side`: let $\rho = \max\bigl(L_{\text{col}}/2,\ \max_{\text{item}}(|o_x| + w_x/2,\ |o_y| + w_y/2),\ R\bigr)$, where $L_{\text{col}} = \sum_j d_j$ is the total length of the line, $w_x, w_y$ are the full transverse dimensions of each item (`size[0]`, `size[1]` for `"box"`, $2 \cdot \texttt{outer\_radius}$ for `"tube"`, or after rotation for a slot), $o_x, o_y$ are its `offset`, and $R$ is `par_radius`; take `25000` when $\rho \le 25000\ \mu\text{m}$, and $2\rho$ otherwise. Starting from `"source"` ($z = 0$; at the exit plane center when the source carries a `collimator`, without placing the collimator as an object in `along_beam` and measuring all `gap`s from the exit plane), compute the front-face position $z_i$ of each item via Eq. (17): for each slot, build an active-layer box logical volume ($l_x \times l_y \times l_z$) named after the slot with material taken from that slot device's `material` (only `"Si"`, `"SiC"`, or `"Diamond"`), and place it according to Eqs. (17)–(18). The thicknesses and materials of a device's layers are intrinsic properties written in the device file, and Geant4 uses that same geometry (see [Architecture Overview](../architecture.md#components)); the reference device's substrate lies in the beam path, and multiple scattering in it determines how many particles reach downstream devices. The device geometry is layered along depth, with layers outside the active layer (substrate, etc.) described in [Detector Components](../components/device.md); Geant4 builds all layers according to the device geometry, creating a separate logical volume for each layer outside the active layer whose energy deposition is not recorded, recording deposition only in the active layer. Each custom material in `materials` is built as a `G4Material` by converting atomic-count shares to mass fractions via Eq. (25); surrounding objects referenced in `along_beam` are then placed (laterally centered at `offset`, centered in $z$ at $z_i + d_i/2$, where $d_i$ is `size[2]` for `"box"` or `length` for `"tube"`).
+   5. Configure the random engine, physics list, and user actions. When `observers` is provided, verify that every name in `watched` on observers with a `step` method belongs to an object or slot in the setup (raising `ValueError` otherwise). When `primaries` is provided (`kind == "primaries"`), each event calls `primaries(event, generator)` with random stream `stream(f"primaries/{event}")` as `generator` to obtain the primary particle list, and the returned particles are launched as-is without applying `source.angle` (raising `ValueError` on any invalid return value other than an empty list); otherwise emission follows the source kind: when the source contains `nuclides` and `collimator`, load or generate on demand the source's emission distribution as described in "Launching from Emission Distributions" below, and use a primary generator action that launches all emitted particles of each decay from the exit plane $z = 0$ per event; when the source contains `nuclides` without `collimator`, use `NuclideGeneratorAction` and `DecayStackingAction` to simulate each decay isotropically into full $4\pi$ space; otherwise (`beam` or `decay_source` without `nuclides`) use `GeneralPrimaryGeneratorAction`. For each event and each particle, the latter draws $\delta_x \sim U(-\texttt{par\_randx}, \texttt{par\_randx})$ and $\delta_y \sim U(-\texttt{par\_randy}, \texttt{par\_randy})$ from `stream("source")` and emits from $\mathbf{r}_{\text{in}}$ in direction $\mathbf{d} = \mathbf{r}_{\text{out}} - \mathbf{r}_{\text{in}} + (\delta_x, \delta_y, 0)$; when `par_type` is a list, it also draws an index with equal probability. If `par_type` and `par_energy` are lists of different lengths, raise `ValueError`. Before launching primary particles into Geant4 transport, observers implementing `primary(event, particles)` are called sequentially in the order of `observers`, each receiving the particle list left by the previous one (only dropping is allowed, with no additions or modifications, otherwise raising `ValueError`), and the total number of particles dropped across all observers is accumulated into `dropped_primaries`. During transport, every step whose pre-step point lies inside an object or slot listed in an observer's `watched` attribute triggers `step(event, volume, e, x, y, z, t)`.
    6. Execute `/run/initialize`; if `picture` is given and `drawn > 0`, enable off-screen visualization (see "Plots"); run `BeamOn(total_events)`.
-   7. Event recording: at the end of an event, compute total deposited energy $E_s$ in the active layer for each slot $s$ according to Eq. (19): if $E_s > 0$ and `windows[s]` is satisfied (unprovided bounds are not checked), mark the slot as hit ($h_s = 1$) and take the global time of the earliest deposit step in that slot as $t_s$; otherwise mark it as not hit ($h_s = 0$). When no timing window is set (`coincidence_window_ns` is `None`), evaluate `require` directly on $\{h_s\}$; otherwise, try each hit slot's $t_s$ as the left endpoint $t_0$ in turn, count slots whose hit time falls within $[t_0, t_0 + W]$ as hit per Eq. (20), and evaluate `require`, recording the event if any $t_0$ makes `require` true. A recorded event keeps the deposit steps of all slots. When running by recorded count, call `AbortRun` once the recorded count reaches `recorded_events`, and set `generated_events` to the number of completed events. When running by generated count, `generated_events = total_events`.
+   7. Event recording: at the end of an event, compute total deposited energy $E_s$ in the active layer for each slot $s$ according to Eq. (19): if $E_s > 0$ and `windows[s]` is satisfied (unprovided bounds are not checked), mark the slot as hit ($h_s = 1$) and take the global time of the earliest deposit step in that slot as $t_s$; otherwise mark it as not hit ($h_s = 0$). When no timing window is set (`coincidence_window_ns` is `None`), evaluate `require` directly on $\{h_s\}$; otherwise, try each hit slot's $t_s$ as the left endpoint $t_0$ in turn, count slots whose hit time falls within $[t_0, t_0 + W]$ as hit per Eq. (20), and evaluate `require` to check whether the recording condition holds for some $t_0$. Any observer implementing `event(event, energies, first_times)` is then called; if any returns `False`, the event is vetoed (not recorded, incrementing `vetoed_events`). A recorded event keeps the deposit steps of all slots. When running by recorded count, call `AbortRun` once the recorded count reaches `recorded_events`, and set `generated_events` to the total number of completed generated events (for collimated sources, the number of decays launched from the emission distribution). When running by generated count, `generated_events = total_events`.
    8. `deposits()`: if running by recorded count and fewer than `recorded_events` events were recorded, raise `RuntimeError` (`... events asked for were recorded when the limit of ... generated events was reached ...`). Otherwise convert step positions from Geant4 world coordinates to the device coordinates of their respective devices via the inverse of Eq. (18) for each slot; call `deposits_of_steps(<slot name>, ...)` for each device to drop steps with $E_k \le 0$, concatenate the deposit steps across devices in the order of `devices` for each event, and drop events with no remaining steps. Event IDs are Geant4's `eventID`.
    9. Regardless of whether an error occurred, call `close()` at the end to release Geant4 objects.
-5. **Write source emission fraction**: `generated_fraction(source)` evaluates to Eq. (16) when the source contains `nuclides` and `par_cone` is not `None`, and `1.0` otherwise.
+5. **Write emission probability and observer bookkeeping**: when the source contains `nuclides` and `collimator`, write the emission probability $\varepsilon$ (Eq. (24) for a single block; `sum(emitted) / sum(decays)` across the blocks used when a job spans multiple blocks) to `emission_probability`, and `1.0` otherwise; write `dropped_primaries` and `vetoed_events` to `Deposits` (both `0` when no observers are given).
 6. **Ionization**: Call `ionized_pairs(event, material, fano)` for each event, taking each step's `material` from the `material` of its slot's device. Raise `ValueError` if the material is not in `PAIR_ENERGY_EV`, or if `fano=True` and the material is not in `FANO_FACTOR`. Each event draws from its own stream `stream(f"ionization/{event.event}")`, so an event's pair counts are independent of which events were recorded before it.
 
-`write_simulated_deposits` takes the same parameters as `simulate_deposits` (`devices`, `source`, `g4setup`, `events`, `g4_seed`, `windows`, `require`, `coincidence_window_ns`, etc.), calls `simulate_deposits`, writes the file via `write_deposits`, and returns the number of recorded events.
+`write_simulated_deposits` takes the same parameters as `simulate_deposits` (`devices`, `source`, `g4setup`, `events`, `g4_seed`, `windows`, `require`, `coincidence_window_ns`, `observers`, `primaries`, etc.), calls `simulate_deposits`, writes the file via `write_deposits`, and returns the number of recorded events.
 
 In GDML import mode, the device logical volume `"Device"` is built according to `material` for `"Si"` (`G4_Si`) and `"SiC"` (equal atomic fractions of Si and C, $3.21\ \text{g/cm}^3$).
+
+### Generation of Emission Distributions
+
+Nuclide decay sources carrying `collimator` generate and cache emission distribution assets block by block; sources without `collimator` and `beam` sources do not generate emission distributions:
+
+1. **Node identity and storage path**: emission distributions are stored at `work/<source_name>/emission/<node_id>/emission.h5` and `node.json`. The node ID is computed from all keys of the source component, the world material `world`, the random seed `seed`, and the block index `block` (`0, 1, ...`); different world materials (such as vacuum vs. air) map to different nodes.
+2. **Collimator geometry and emission restriction**: Geant4 builds the collimator over $z \in [-L, 0]$ (outer cross-section side `outer_side`, material `material`, centered cylindrical bore of radius `radius`) with the exit plane center at $(0, 0, 0)$. Numerical integration over the entrance disk ($z = -L$, radius `par_radius`) and directions yields `generated_fraction` (Eq. (21)) for the allowed set $\{\ell(\mathbf{r}_0, \hat{\mathbf{d}}) \le R_{\text{CSDA}}(E_{\max})\}$ (where $E_{\max}$ is the largest $\beta$-spectrum endpoint energy among the nuclides in the source), and decays emit only within that allowed set.
+3. **Range rejection and exit-plane scoring**: electrons inside the collimator material satisfying Eq. (23) are immediately terminated and deposit their energy locally, while produced bremsstrahlung photons are unaffected and transported normally. Every non-neutrino particle crossing the exit plane $z = 0$ (spanning the entire world) has its species (PDG code), $(x, y)$, $(dx, dy, dz)$, kinetic energy `ekin`, and global time `t` recorded and is then terminated. The number of decays actually sent into Geant4 per block (those falling within emitted directions) is fixed at `EMISSION_BLOCK_DECAYS = 1_000_000`, recording the corresponding full-space decay count `decays = EMISSION_BLOCK_DECAYS / generated_fraction` as attribute `decays` and decays crossing the exit plane as attribute `emitted`.
+4. **Source self-validation on block 0**: when generating `block = 0`, a separate control simulation using only the source itself relaxes the emission direction restriction to the entire forward hemisphere ($\hat{\mathbf{d}}\cdot\hat{\mathbf{z}} > 0$, with range rejection active as usual), compares the two emission probabilities and the emitted electron kinetic-energy spectra, and writes the decay counts on both sides, emitted counts on both sides, and the emission-probability ratio with its statistical error to `emission_check` in `node.json`. This check uses only the source itself and involves no experiment.
+
+### Launching from Emission Distributions
+
+When a downstream experiment's `deposit` run uses a radioactive source with `collimator`, it does not re-simulate decays and scattering inside the collimator, but reads `emission.h5` block by block:
+
+1. **Decay-by-decay replay**: each entry in `emission.h5` is one decay that crossed the exit plane; each Geant4 event in the downstream run corresponds to one such decay and launches all `count` recorded particles simultaneously from $(x, y, 0)$ along $(dx, dy, dz)$ with kinetic energy `ekin` and start time `t`; once a block is exhausted, the next block (`block = 0, 1, ...`) is used.
+2. **Event counts and emission probability**: `generated_events` in `deposit.h5` counts the decays launched from the emission distribution, and attribute `emission_probability` stores $\varepsilon = \texttt{emitted} / \texttt{decays}$ (Eq. (24); when a job uses multiple blocks, `sum(emitted) / sum(decays)` across the blocks used), so `recorded_events / generated_events * emission_probability` gives the number of recorded events per decay. The `generated_fraction` attribute belongs solely to `emission.h5`.
+3. **Correlation across experiments and scan points**: different experiments and different scan points with the same source and seed share the exact same batch of emitted particles. When comparing them, statistical fluctuations from the upstream collimator emission cancel out, so those results are not independent.
+4. **Sources without collimators and beam sources**: radioactive sources without `collimator`, `beam` sources, and `primaries` sources do not produce emission distributions; every event emits directly, and `emission_probability` in `deposit.h5` is `1.0`.
 
 ### Slicing Energy-Loss Tracks into Deposition Steps
 
@@ -314,7 +352,7 @@ For a multi-slot setup, the track traverses all slots in Geant4 world coordinate
 
 ### Role of Each File
 
-- `simulate_deposits.py`: stage entry points `simulate_deposits` and `write_simulated_deposits`, default setup `DEVICE_ALONE`, configuration builder `g4_configuration`, incidence-angle rotation `tilted`, world sizing `world_half_side`, and emission fraction `generated_fraction`.
+- `simulate_deposits.py`: stage entry points `simulate_deposits` and `write_simulated_deposits`, default setup `DEVICE_ALONE`, configuration builder `g4_configuration`, incidence-angle rotation `tilted`, world sizing `world_half_side`, emission probability `emission_probability` (plus block-by-block generation and reading of emission distribution assets), and the built-in observers `WatchedEnergy` and `PrimaryStart` for experiment scripts.
 - `generation.py`: event-count validation `asked`, generation loop `generation`, `GENERATED_LIMIT`, and insufficient-event error `too_few`.
 - `mip_track.py`: toy MIP tracks and segmentation `mip_deposits`.
 - `ionization.py`: `PAIR_ENERGY_EV`, `FANO_FACTOR`, and `ionized_pairs`.
@@ -330,7 +368,7 @@ For a multi-slot setup, the track traverses all slots in Geant4 world coordinate
 ### Core Data Structures
 
 - `EventDeposits`: deposits for a single event. `event` (event ID); per-step lists `detector` (detector name), `x`, `y`, `z` (step midpoint in device coordinates, $\mu\text{m}$), `t` ($\text{s}$), `e` ($\text{MeV}$); `pairs` (pairs, `None` prior to ionization sampling); `x_start`, `y_start`, `z_start` (step start point, $\mu\text{m}$, `None` when unknown); `t_fwhm` (Gaussian FWHM broadening of generation time around `t`, $\text{s}$, with `None` meaning all generated at `t`).
-- `Deposits`: deposits for a job. `generated_events` (number of events generated by the source), `windows` (dictionary mapping slot names to `(edep_min, edep_max)`, $\text{MeV}$, either bound may be `None`), `require` (slot logical expression string), `coincidence_window_ns` (timing window, $\text{ns}$, may be `None`), `events` (list of `EventDeposits`), `generated_fraction` (default `1.0`).
+- `Deposits`: deposits for a job. `generated_events` (total number of generated events launched by the source or emission distribution), `windows` (dictionary mapping slot names to `(edep_min, edep_max)`, $\text{MeV}$, either bound may be `None`), `require` (slot logical expression string), `coincidence_window_ns` (timing window, $\text{ns}$, may be `None`), `events` (list of `EventDeposits`), `emission_probability` (default `1.0`), `dropped_primaries` (total number of primary particles dropped across all observers' `primary` methods, `0` without observers), `vetoed_events` (number of events vetoed by observers' `event` method, `0` without observers).
 - `LaserInjection`: `track_position` (`[x, y, z, t]` per group, $\mu\text{m}$ and $\text{s}$), `ionized_pairs` (pairs per group), `time_FWHM` (temporal broadening per group, $\text{s}$), as well as `temporal_FWHM`, `timePulse`, and other attributes used for current convolution.
 
 ## Interface
@@ -342,7 +380,7 @@ Users can configure the keys in device files, setup scripts, radioactive source 
 | Key | Default | Unit | Meaning |
 | --- | --- | --- | --- |
 | `l_x`, `l_y`, `l_z` | none (required) | $\mu\text{m}$ | Active-layer dimensions of the device; see [device model](device.md) |
-| `material` | none (required) | none | `"Si"`, `"SiC"`, or `"Diamond"`; determines Geant4 material, ionization energy, and Fano factor; toy MIP supports only `"Si"` and `"SiC"` |
+| `material` | none (required) | none | Only `"Si"`, `"SiC"`, or `"Diamond"` (the three materials with ionization energy and Fano factor); determines Geant4 material, ionization energy, and Fano factor; toy MIP supports only `"Si"` and `"SiC"` |
 | `temperature` | none (required when a laser for a `"SiC"` device omits `alpha`) | $\text{K}$ | $T$ in Eq. (7b) |
 
 The device geometry is layered along depth, with layers outside the active layer (substrate, etc.) described in [Detector Components](../components/device.md); Geant4 builds all layers according to the device geometry and records energy deposition only in the active layer.
@@ -359,16 +397,16 @@ A setup is the dictionary `G4SETUP` inside a `<name>.py` script under `component
 | `geant4_model` | `"device"` | none | Required for Geant4 sources; `"gdml_import"` imports an external GDML file, while other values serve only as labels |
 | `world` | `"G4_Galactic"` | none | Required for Geant4 sources; NIST material name of the world volume |
 | `maxstep` | `2` | $\mu\text{m}$ | Required; maximum Geant4 step length inside the device, and also the segment-length upper bound for toy MIP when `packets` is not given |
-| `source` | `{"angle": 0}` | degrees | Optional; keeps only `angle` (incidence angle, default `0`), used only for single-slot setups to rotate the source around the device front-surface center per step 4.3 of "Branches of `simulate_deposits`"; beam emission direction is $+z$ |
-| `object` | `{}` | none | Required for Geant4 sources; surrounding objects, which may contain `"elemental"` and `"binary_compounds"` categories, each defining only material, dimensions, hole, and color, placed in `along_beam` |
-| `par_type`, `par_energy`, `par_randx`, `par_randy` | none | see sources | Optional; the setup may provide these beam keys, and same-named keys in the source override them |
+| `source` | `{"name": "decay/Sr90", "angle": 0}` | none; degrees | The source the setup uses: `name` is the source component name (see [Energy-deposition components](../components/deposit.md)); `angle` is the incidence angle (default `0`), used only for single-slot setups to rotate the source around the device front-surface center per step 4.3 of "Branches of `simulate_deposits`" (for collimated sources, the source together with its collimator rotates as a whole, and emitted particle positions and directions rotate accordingly); beam emission direction is $+z$; keys other than `name` and `angle` override same-named keys of the source component |
+| `materials` | `{}` | $\text{g/cm}^3$ for density | Optional; custom materials dictionary mapping material name to `{"density": <g/cm3>, "elements": {<element symbol>: <atomic share>, ...}}`; used only for `material` in `objects`, as are Geant4 NIST material names starting with `"G4_"` |
+| `objects` | `{}` | $\mu\text{m}$ | Required for Geant4 sources; surrounding objects dictionary mapping object name to shape (`"box"` or `"tube"`), dimensions, material, and optional `colour` without position, placed in `along_beam` |
 | `along_beam` | `["source", {"gap": 17000}, {"slot": "Device"}]` | none | Required (except for `gdml_import`); a line starting from `"source"` and pointing downstream along $+z$, placing device slots and surrounding objects per Eqs. (17)–(18), see the table below |
 
-In Geant4 world coordinates, the origin $(0, 0, 0)$ sits on the source and $+z$ points downstream along the beam; the front-surface center $\mathbf{P}$ and the $z$-intervals occupied by the active layer and layers outside the active layer (see [Detector Components](../components/device.md)) of each slot are determined by its position in `along_beam` and its `facing` via Eqs. (17)–(18).
+In Geant4 world coordinates, the origin $(0, 0, 0)$ sits on the source (at the center of the collimator exit plane when carrying a collimator, with the collimator body on the $z < 0$ side and all `gap`s in the setup measured from the collimator exit plane) and $+z$ points downstream along the beam; the front-surface center $\mathbf{P}$ and the $z$-intervals occupied by the active layer and layers outside the active layer (see [Detector Components](../components/device.md)) of each slot are determined by its position in `along_beam` and its `facing` via Eqs. (17)–(18).
 
 #### Items of `along_beam`
 
-`along_beam` is a list starting from `"source"` and ordered along $+z$, with item kinds and keys listed below. The slot name serves as both the active-layer Geant4 logical volume name (each layer outside the active layer is built as a separate logical volume whose deposition is not recorded) and the detector name in the deposit file; it may use only characters in `[A-Za-z0-9_-]` and must not collide with any name in `object` or any configuration key of the [energy deposition stage](../stages/deposit.md) (slot names appear in addresses such as `deposit.<slot>.<key>`); for a setup with only one device, the slot name is `"Device"`. Which device goes into each slot is not specified by the setup, but passed via the caller's `devices` argument, whose slot names must match the setup's slots one-to-one (see "Branches of `simulate_deposits`").
+`along_beam` is a list starting from `"source"` and ordered along $+z$, with item kinds and keys listed below. The slot name serves as both the active-layer Geant4 logical volume name (each layer outside the active layer is built as a separate logical volume whose deposition is not recorded) and the detector name in the deposit file; it may use only characters in `[A-Za-z0-9_-]` and must not collide with any name in `objects` or any configuration key of the [energy deposition stage](../stages/deposit.md) (slot names appear in addresses such as `deposit.<slot>.<key>`); for a setup with only one device, the slot name is `"Device"`. Which device goes into each slot is not specified by the setup, but passed via the caller's `devices` argument, whose slot names must match the setup's slots one-to-one (see "Branches of `simulate_deposits`").
 
 ```python
 "along_beam": [
@@ -383,48 +421,69 @@ In Geant4 world coordinates, the origin $(0, 0, 0)$ sits on the source and $+z$ 
 
 | Item Kind | Keys | Default | Unit | Meaning |
 | --- | --- | --- | --- | --- |
-| `"source"` | none (string) | none (required first item) | none | Source; must be the first item of `along_beam`, has thickness `0`, and carries the world coordinate origin |
+| `"source"` | none (string) | none (required first item) | none | Source; must be the first item of `along_beam`, has thickness `0`, and carries the world coordinate origin (at the center of the collimator exit plane when carrying a collimator, from which all `gap`s in the setup are measured) |
 | `{"gap": d}` | `gap` | none | $\mu\text{m}$ | Gap of length $d \ge 0$ along $z$; adjacent items without a `gap` between them are flush |
-| `"<object name>"` or `{"object": "<object name>", ...}` | `object`, `offset` | `offset` defaults to `[0, 0]` | $\mu\text{m}$ for `offset` | An object from `object`, occupying its thickness `side_z` along $z$ and laterally centered at `offset`; shorthand `"<object name>"` equals `offset = [0, 0]` |
+| `"<object name>"` or `{"object": "<object name>", ...}` | `object`, `offset` | `offset` defaults to `[0, 0]` | $\mu\text{m}$ for `offset` | An object from `objects`, occupying its thickness along $z$ (`size[2]` for `"box"`, `length` for `"tube"`) and laterally centered at `offset`; shorthand `"<object name>"` equals `offset = [0, 0]` |
 | `{"slot": "<slot name>", ...}` | `slot`, `facing`, `offset`, `rotation_z`, `colour` | `facing` defaults to `"upstream"`, `offset` to `[0, 0]`, `rotation_z` to `0`, `colour` to `[1, 0.1, 0.8]` | $\mu\text{m}$ for `offset`, degrees for `rotation_z` | A device occupying total thickness $l_z + t$ of all layers in its geometry along $z$; `facing` is `"upstream"` (front surface facing the source) or `"downstream"` (flipped $180^\circ$ about the $y$ axis, front surface facing downstream), and `rotation_z` is restricted to `0`, `90`, `180`, `270`, placed per Eqs. (17)–(18); `colour` is the visualization RGB color (`0` to `1`) |
 | `[item, item, ...]` | items in list | none | none | Side-by-side items (objects or slots only) whose front faces align at the same $z$, occupying the thickness of the thickest item along $z$ and staggered laterally via each item's `offset` |
 
-If the first item of `along_beam` is not `"source"`, if a `gap` is negative, if an object name is absent from `object`, if the same object or slot appears twice, if `facing` is neither `"upstream"` nor `"downstream"`, if `rotation_z` is not in `{0, 90, 180, 270}`, if side-by-side items overlap transversely, or if the slot names do not match the device table, `ValueError` is raised.
+If the first item of `along_beam` is not `"source"`, if a `gap` is negative, if an object name is absent from `objects`, if the same object or slot appears twice, if `facing` is neither `"upstream"` nor `"downstream"`, if `rotation_z` is not in `{0, 90, 180, 270}`, if side-by-side items overlap transversely, or if the slot names do not match the device table, `ValueError` is raised.
 
-#### Geometry Keys for the Two Categories of `object`
+#### Keys for `materials` and `objects`
 
-Both `object["elemental"]` and `object["binary_compounds"]` are dictionaries keyed by volume name, where each entry is a box: the former uses a Geant4 NIST material and the latter is a compound of two elements. For example, an aluminum layer between the source and the device:
+Below is a `G4SETUP` example containing a custom material `SiO2`, a box aluminum foil `Al`, a board `pcb1` with a circular through-hole, and a tube `pipe`:
 
 ```python
-"object": {
-    "elemental": {
-        "Al": {
-            "name": "Al",
-            "material": "G4_Al",
-            "side_x": 5000,
-            "side_y": 5000,
-            "side_z": 0.08,
-            "colour": [1, 0.1, 0.8],
-        },
+G4SETUP = {
+    "world": "G4_Galactic",
+    "maxstep": 2,
+    "materials": {
+        "SiO2": {"density": 2.2, "elements": {"Si": 1, "O": 2}},
     },
-},
+    "objects": {
+        "Al":   {"shape": "box", "size": [5000, 5000, 10], "material": "G4_Al"},
+        "pcb1": {"shape": "box", "size": [20000, 20000, 1500], "hole": 500, "material": "SiO2"},
+        "pipe": {"shape": "tube", "inner_radius": 10000, "outer_radius": 10500, "length": 200000, "material": "G4_Al"},
+    },
+    "along_beam": [...],
+}
 ```
 
-This is a $5\ \text{mm} \times 5\ \text{mm} \times 0.08\ \mu\text{m}$ aluminum foil; to place its bottom face at distance $d$ from the device front surface, write `"Al"` before the slot in `along_beam` separated by `{"gap": d}`.
+`materials` maps material names to `{"density": <g/cm3>, "elements": {<element symbol>: <atomic share>, ...}}` (unlimited number of elements), converting atomic-count shares to mass fractions using atomic weights:
 
-Every key in the table below is required for its applicable category, except `tub` under `elemental`, which may be omitted.
+$$m_i = \frac{n_i A_i}{\sum_j n_j A_j} \tag{25}$$
 
-| Key | Applicable Category | Unit | Meaning |
-| --- | --- | --- | --- |
-| `name` | both | none | Volume name |
-| `material` | `elemental` | none | Geant4 NIST material name, such as `"G4_Al"`, `"G4_Ni"`, `"G4_Ti"`, `"G4_Si"`, `"G4_BRASS"` |
-| `material_1`, `material_2` | `binary_compounds` | none | Symbols of the two elements, such as `"Si"`, `"C"`, `"N"`, `"O"` |
-| `compound_name` | `binary_compounds` | none | Compound material name; compounds with the same name must have identical composition and density |
-| `density` | `binary_compounds` | $\text{g/cm}^3$ | Compound density |
-| `natoms_1`, `natoms_2` | `binary_compounds` | none | Atomic-number shares of the two elements, converted to mass fractions using atomic weights |
-| `side_x`, `side_y`, `side_z` | both | $\mu\text{m}$ | Full dimensions of the box along $x$, $y$, and $z$ (`side_z` is thickness) |
-| `colour` | both | none | Visualization RGB color `[r, g, b]` |
-| `tub` | optional for `elemental`, required for `binary_compounds` (use `{}` if no hole) | $\mu\text{m}$ | Cylindrical hole subtracted along the $z$ axis through the box center, containing radius `"tub_radius"` and half-length `"tub_depth"` |
+where:
+
+- $n_i$: atomic-count share of element $i$ (dimensionless, value in the `elements` dictionary);
+- $A_i$: atomic weight of element $i$ (supplied by Geant4 from the element symbol);
+- $m_i$: mass fraction of element $i$ (dimensionless).
+
+`material` in `objects` can use a name defined in `materials` or directly a Geant4 NIST material name (starting with `"G4_"`); these two kinds of names are used only for `objects`, while device `material` takes only `"Si"`, `"SiC"`, or `"Diamond"`. `objects` maps object names to shape, dimensions, material, and optional `colour`; objects do not specify position, which is given by `along_beam`. Along $z$, `"box"` occupies thickness `size[2]` and `"tube"` occupies thickness `length`.
+
+| Key | Parent Dictionary / Applicable Shape | Default | Unit | Meaning |
+| --- | --- | --- | --- | --- |
+| `density` | `materials.<material name>` | none (required) | $\text{g/cm}^3$ | Material density (must be positive) |
+| `elements` | `materials.<material name>` | none (required) | none | Dictionary mapping element symbols to atomic-count shares `{<symbol>: <share>, ...}` (unlimited elements; shares must be positive) |
+| `shape` | `objects.<object name>` | none (required) | none | `"box"` (rectangular box) or `"tube"` (cylinder along the $z$ axis) |
+| `material` | `objects.<object name>` | none (required) | none | Material name, taken from `materials` or a Geant4 NIST material name starting with `"G4_"` |
+| `size` | `objects.<object name>` (`"box"`) | none (required for `"box"`) | $\mu\text{m}$ | Full box dimensions `[x, y, z]` along $x$, $y$, and $z$ (thickness along $z$ is `size[2]`) |
+| `hole` | `objects.<object name>` (`"box"`) | none (optional) | $\mu\text{m}$ | Radius of a centered circular through-hole along $z$ (must be $> 0$ and less than the box transverse half-sizes $\min(\texttt{size[0]}, \texttt{size[1]})/2$) |
+| `outer_radius` | `objects.<object name>` (`"tube"`) | none (required for `"tube"`) | $\mu\text{m}$ | Outer radius of the cylinder (must be positive) |
+| `length` | `objects.<object name>` (`"tube"`) | none (required for `"tube"`) | $\mu\text{m}$ | Length of the cylinder along $z$ (thickness along $z$ is `length`; must be positive) |
+| `inner_radius` | `objects.<object name>` (`"tube"`) | `0` (optional) | $\mu\text{m}$ | Inner radius of the cylinder (default `0` for a solid cylinder; $> 0$ for a tube or ring; must satisfy $0 \le \texttt{inner\_radius} < \texttt{outer\_radius}$) |
+| `colour` | `objects.<object name>` | none (optional) | none | Visualization RGB color `[r, g, b]` |
+
+`ValueError` is raised on invalid material or object definitions:
+
+- a name in `materials` conflicts with a NIST material name (`material '<name>' conflicts with a NIST material name`);
+- an element symbol is not recognized by Geant4 (`unknown Geant4 element '<symbol>' in material '<name>'`);
+- density or an element share is not positive (`density of material '<name>' must be positive`, `element share of '<symbol>' in material '<name>' must be positive`);
+- `shape` is neither `"box"` nor `"tube"` (`object '<name>' has unknown shape '<shape>': expected 'box' or 'tube'`);
+- a required dimension key is missing or a dimension is not positive (`object '<name>' is missing required key '<key>'`, `dimensions of object '<name>' must be positive`);
+- `hole` is not less than the box transverse half-sizes (`hole radius (<hole> um) of object '<name>' must be less than half of x and y sizes`);
+- `inner_radius` is not less than `outer_radius` (`inner_radius (<r_in> um) of object '<name>' must be less than outer_radius (<r_out> um)`);
+- `material` is neither in `materials` nor a NIST material name (`unknown material '<material>' for object '<name>'`).
 
 #### Additional Keys for `"gdml_import"`
 
@@ -447,7 +506,6 @@ When the GDML file contains the string `RASER_GDML_WRAPPER_WORLD`, the GDML worl
 | Component | Location | Description |
 | --- | --- | --- |
 | `device_alone` | `raser/components/deposit/` | Device placed alone in vacuum, `17 mm` from the source to the device front surface |
-| `Sr90_collimator` | `src/raser_bench/signal/components/deposit/` | Brass collimator between the source and device in air (see [signal](../bench/signal.md)) |
 | `pcb_readout_gdml` | `src/raser_bench/signal/components/deposit/` | PCB readout board imported from `pcb_readout.gdml` (see [signal](../bench/signal.md)) |
 | `time_resolution` | `src/raser_bench/timeres/components/deposit/` | Aluminum foil, reference silicon device, and two apertured PCB boards arranged along the beam (see [time resolution](../bench/timeres.md)) |
 | `telescope` | `src/raser_bench/telescope/components/deposit/` | 8 slots arranged along the beam in vacuum, defaulting to 3 + 2 + 3 (see [beam telescope](../bench/telescope.md)) |
@@ -459,7 +517,7 @@ When the GDML file contains the string `RASER_GDML_WRAPPER_WORLD`, the GDML worl
 | Key | Default | Unit | Meaning |
 | --- | --- | --- | --- |
 | `name` | none (optional) | none | Source name |
-| `kind` | none (required) | none | `"beam"`, `"decay_source"`, or `"toy_mip"` |
+| `kind` | none (required) | none | `"beam"`, `"decay_source"`, `"toy_mip"`, or `"primaries"` (`{"kind": "primaries"}` is sufficient when a `primaries` callback replaces source emission) |
 | `description` | none (optional) | none | Text description |
 
 A source must not contain `par_in`, `par_out`, or `par_angle`: the source emits along $+z$ from the world origin, and the incidence angle is given by the setup's `source.angle`.
@@ -475,8 +533,9 @@ A source must not contain `par_in`, `par_out`, or `par_angle`: the source emits 
 | `par_randx`, `par_randy` | `0`, `0` | $\mu\text{m}$ | Half-width of uniform random offsets added to the $x$ and $y$ components of the emission direction vector ($\mathbf{r}_{\text{out}} - \mathbf{r}_{\text{in}}$) |
 | `particles` | none (optional) | none | List of particles emitted simultaneously per event; each item may override `par_type`, `par_energy`, `par_randx`, `par_randy`, and shift both the emission point and aiming point by `offset` (default `[0, 0, 0]`, $\mu\text{m}$) |
 | `nuclides` | none (optional) | none | Nuclides at rest `[[Z, A], ...]`; when given, one species is chosen with equal probability per event for a single decay, and emitted particles come from the decay |
-| `par_radius` | `0` | $\mu\text{m}$ | Radius of the disk containing the nuclides, perpendicular to the emission axis |
-| `par_cone` | `None` | degrees | Half-cone angle for isotropic emission of decay products around the emission axis; effective only when `nuclides` is present |
+| `par_radius` | `0` | $\mu\text{m}$ | Radius of the disk containing the nuclides, perpendicular to the emission axis; with `collimator`, the disk lies on the collimator entrance face centered on the bore axis |
+| `collimator` | none (optional) | $\mu\text{m}$ for `length`, `radius`, `outer_side` | Collimator dictionary `{"material": <Geant4 NIST material name>, "length": <µm>, "radius": <bore radius µm>, "outer_side": <outer side length µm>}`; exit plane center at world origin $z = 0$, collimator body on $z < 0$ side; when omitted, the source emits isotropically into full $4\pi$ space |
+| `activity` | none (optional) | $\text{Bq}$ | Decays per second of each nuclide; $^{90}\text{Sr}$ and $^{90}\text{Y}$ are in secular equilibrium, so each nuclide decays at this activity |
 
 #### Keys for `toy_mip`
 
@@ -497,7 +556,7 @@ A `toy_mip` source may contain only the keys in the table below and the common k
 | --- | --- | --- |
 | `beam/electron`, `beam/muon`, `beam/pion`, `beam/proton` | `beam` | `e-`, `mu-`, `pi-`, `proton`, $1000\ \text{MeV}$ |
 | `beam/proton_3GeV_spread` | `beam` | $3000\ \text{MeV}$ protons, `par_randx = par_randy = 728.6` $\mu\text{m}$ |
-| `decay/Sr90` | `decay_source` | Nuclides Sr-90 and Y-90 with equal probability, `par_radius = 2500` $\mu\text{m}$, `par_cone = 15` degrees |
+| `decay/Sr90` | `decay_source` | Nuclides Sr-90 and Y-90 with equal probability, `par_radius = 0` $\mu\text{m}$, copper collimator `collimator = {"material": "G4_Cu", "length": 3000, "radius": 500, "outer_side": 8000}` (typical copper collimator dimensions; the actual source used should match the physical object) |
 | `decay/Am241` | `decay_source` | Emits $5.54\ \text{MeV}$ `alpha` via `par_type` and `par_energy` |
 | `toy/MIP` | `toy_mip` | Default track, `landau_sampling = true` |
 | `toy/MIP_pixel_edge`, `toy/MIP_pixel_edge_fast` | `toy_mip` | From $(600, 450, 0)$ to $(600, 450, 300)$ $\mu\text{m}$, `packets` equal to `50` and `5`, the latter without Landau sampling |
@@ -537,20 +596,48 @@ A whitespace-separated two-column text file with `#` comment lines: the first co
 | `PIL037_top_SiC`, `PIL037_edge_SiC` | `"SPA"` | $375\ \text{nm}$, silicon carbide, $\alpha$ calculated via Eq. (7a) ($9.05\ \text{cm}^{-1}$ at $300\ \text{K}$) |
 | `TPA1550_top_Si`, `TPA1550_edge_Si` | `"TPA"` | $1550\ \text{nm}$, silicon, longer than the table upper limit, $\alpha = 0$, TPA groups only |
 
+### `emission.h5` File Format
+
+Stored at `work/<source_name>/emission/<node_id>/emission.h5` (`node.json` in the same directory additionally records `emission_check` for block `0`: decay counts on both sides, emitted counts on both sides, and the emission-probability ratio with its statistical error between the control and filtered runs).
+
+#### File Attributes
+
+| Attribute | Type | Unit | Meaning |
+| --- | --- | --- | --- |
+| `decays` | `float` | decays | Corresponding full-space decay count of this block (`EMISSION_BLOCK_DECAYS / generated_fraction`) |
+| `generated_fraction` | `float` | none | Fraction $f$ of full $4\pi$ space covered by emitted directions computed via Eq. (21) |
+| `emitted` | `int` | decays | Number of decays with at least one non-neutrino particle crossing the exit plane $z = 0$ |
+| `block` | `int` | none | Block index of the emission distribution (`0, 1, ...`) |
+| `seed` | `int` | none | Random seed used to generate this emission block |
+
+#### Datasets
+
+| Dataset | Shape and Type | Unit | Meaning |
+| --- | --- | --- | --- |
+| `event` | `(emitted,)`, `int` | none | Event ID of each decay crossing the exit plane |
+| `count` | `(emitted,)`, `int` | particles | Number of non-neutrino particles crossing the exit plane $z = 0$ in that decay |
+| `particle` | `(sum(count),)`, `int` | none | Particle PDG code |
+| `x`, `y` | `(sum(count),)`, `float` | $\mu\text{m}$ | Transverse position where the particle crosses the exit plane $z = 0$ |
+| `dx`, `dy`, `dz` | `(sum(count),)`, `float` | none | Unit direction cosines at the exit plane |
+| `ekin` | `(sum(count),)`, `float` | $\text{MeV}$ | Kinetic energy of the particle at the exit plane |
+| `t` | `(sum(count),)`, `float` | $\text{s}$ | Global time when the particle reaches the exit plane |
+
 ### `deposit.h5` File Format
 
 #### File Attributes
 
 | Attribute | Type | Unit | Meaning |
 | --- | --- | --- | --- |
-| `generated_events` | `int` | events | Number of events generated by the source |
+| `generated_events` | `int` | events | Number of events launched from the source or emission distribution (counted by emitted decays for collimated sources) |
 | `recorded_events` | `int` | events | Number of events stored in the file |
-| `generated_fraction` | `float` | none | Fraction of source emissions generated; Eq. (16) for nuclide sources with `par_cone`, `1.0` otherwise |
+| `emission_probability` | `float` | none | Emission probability $\varepsilon$ of the source (Eq. (24); `sum(emitted) / sum(decays)` across the blocks used when a job spans multiple blocks); `1.0` for sources without an emission distribution |
+| `dropped_primaries` | `int` | particles | Total number of primary particles dropped across all observers' `primary` methods (`0` without observers) |
+| `vetoed_events` | `int` | events | Number of events vetoed by observers' `event` method (`0` without observers) |
 | `edep_min.<slot>`, `edep_max.<slot>` | `float` | $\text{MeV}$ | Lower and upper bounds of the total deposited energy window in that slot's active layer (slot name `"Device"` for a single device); written only when given |
 | `require` | `str` | none | Slot logical expression |
 | `coincidence_window_ns` | `float` | $\text{ns}$ | Timing window; written only when given |
 
-The fraction of generated events that are recorded is `recorded_events / generated_events`; the number of recorded events per source emission is `recorded_events / generated_events * generated_fraction`.
+The fraction of generated events that are recorded is `recorded_events / generated_events`; the number of recorded events per source decay is `recorded_events / generated_events * emission_probability` (`generated_fraction` belongs solely to the emission distribution file `emission.h5`).
 
 #### Datasets
 
@@ -575,6 +662,46 @@ The fraction of generated events that are recorded is `recorded_events / generat
 | `<output>` vector image | `view_geometry` (OGL drivers) | Same as above, `2000 × 2000`, white background | Geant4 coordinates |
 | `pair_density_3d.png`, `.pdf`, `.root` | `LaserInjection.draw_nocarrier3D` | `TH3D` of the volume density of electron-hole pairs (pairs per $\mu\text{m}^3$), $50^3$ bins, each holding the value at its centre obtained by multiplying $dN/ds$ from Eqs. (10) and (11) by the transverse profile $\frac{k}{\pi w^2}\exp(-k r^2/w^2)$, bins under $10\%$ of the highest value left empty so that only the beam is drawn; the ranges along the beam path and across it are those of `nocarrier2D`, both transverse directions reaching $2 w_{\max}$ on each side of the optical axis; axis titles `x [μm]`, `y [μm]`, `z [μm]`; canvas and format as in [Figures](../supports/figures.md) | $\mu\text{m}$ |
 | `pair_density.png`, `.pdf`, `.root` | `LaserInjection.draw_nocarrier2D` | Volume density of electron-hole pairs on the $y = f_y l_y$ $x$-$z$ plane (which passes through the optical axis for all three incidence directions), `TH2D` (`COLZ`), evaluated directly on a $200 \times 200$ grid by multiplying $dN/ds$ from Eqs. (10) and (11) by the transverse profile $\frac{k}{\pi w^2}\exp(-k r^2/w^2)$, with color representing pairs per $\mu\text{m}^3$ (`Pair density [μm⁻³]`), axis titles `x [μm]`, `z [μm]`; canvas and format as in [Figures](../supports/figures.md); plotted along the beam path from the entrance face to where the cumulative pair count $M(s)$ reaches $0.99\,N_{\text{tot}}$, and transversely out to $2 w_{\max}$ on both sides of the optical axis ($w_{\max}$ is the maximum beam radius along this path segment, clipped at the device boundaries) | $\mu\text{m}$ |
+
+### Entry Points for Experiment Scripts
+
+Experiment scripts interact only with RASER's own data (event ID, particle species, position, direction, energy, time, slot or object name, and deposited energy), without access to transport-engine objects or the ability to invoke transport-engine commands; physics lists, production cuts, step limits, and random numbers are not exposed in these entry points. Switching to a different transport engine requires no changes to experiment scripts.
+
+`simulate_deposits` provides optional keyword parameters `observers=None` and `primaries=None` (`write_simulated_deposits` accepts the same keyword parameters and forwards them):
+
+#### `observers`
+
+`observers` is a collection of objects, each of which may implement any subset of the following three methods (unimplemented methods are not called):
+
+- **`primary(event, particles)`**: Called once per event after the event's primary particles are generated; `event` is the event ID and `particles` is a list of `(particle, x, y, z, dx, dy, dz, ekin, t)` tuples (respectively PDG code; world coordinates $x, y, z$ in $\mu\text{m}$; unit direction cosines $dx, dy, dz$; kinetic energy `ekin` in $\text{MeV}$; global time `t` in $\text{s}$). `primary` may only drop particles, never add or modify them: returning `None` launches the particles as generated; returning a list (which may be empty) launches only the remaining particles, and every item in the returned list must be one of the items passed into `particles` (otherwise `ValueError` is raised). When there are multiple observers, they are called sequentially in the order of `observers`, with each receiving the particle list left by the previous one.
+- **`step(event, volume, e, x, y, z, t)`**: Called on every step taken inside an object or slot listed in the class attribute `watched`; `volume` is the object or slot name, `e` is the energy deposited in this step ($\text{MeV}$), $(x, y, z)$ is the step position in world coordinates ($\mu\text{m}$), and `t` is the global time of the pre-step point ($\text{s}$); returns nothing. An observer specifies the names to watch via the class attribute `watched = ("pcb1", "ref", ...)`.
+- **`event(event, energies, first_times)`**: Called once at the end of each event; `energies` and `first_times` are dictionaries mapping slot names to total active-layer deposited energy ($\text{MeV}$) and earliest deposit time ($\text{s}$). Returning `False` vetoes recording the event (even if it satisfies the recording conditions), while returning `None` or `True` leaves the outcome unchanged.
+
+Whatever an observer records remains on the observer instance itself for the experiment script to retrieve after simulation. Two built-in observers are provided in the library:
+
+| Class Name | Usage and Recorded Data |
+| --- | --- |
+| `WatchedEnergy(names)` | Records for each recorded event the total deposited energy ($\text{MeV}$) and earliest deposition time ($\text{s}$) in each object or slot listed in `names` |
+| `PrimaryStart()` | Records for each recorded event the initial primary-particle launch state `(particle, x, y, z, dx, dy, dz, ekin, t)` |
+
+The total number of particles dropped across all observers' `primary` methods and the number of events vetoed by `event` are recorded in `Deposits` and in the `deposit.h5` attributes `dropped_primaries` and `vetoed_events` (both `0` when no observers are provided); `generated_events` still counts all generated events.
+
+#### `primaries`
+
+`primaries` is a callable `primaries(event, generator) -> list` (with list items in the same format as `particles` in `primary`) that replaces emission from the source component; `generator` is the random stream `stream(f"primaries/{event}")`. The returned particles are launched as-is, and the setup's `source.angle` does not act on them; if a setup has a nonzero `angle` while `primaries` is given, `ValueError` is raised. When `primaries` is given, `source` only needs `{"kind": "primaries"}`. Common use cases include:
+
+- Launching a bunch of lost electrons read from a sample file;
+- Launching $\alpha$ particles sampled from a given energy spectrum;
+- Launching multiple protons simultaneously in a single event.
+
+#### Validation and Errors
+
+`ValueError` is raised in each of the following cases:
+
+- The list returned by an observer's `primary` method contains an item that was not passed in `particles` (`observer returned a primary that it was not given`);
+- `primaries` returns an invalid value other than an empty list (`primaries must return a sequence of 9-tuples`);
+- A setup with nonzero `source.angle` is used together with `primaries` (`a setup with source.angle takes no primaries function`);
+- A name in an observer's `watched` attribute is not an object or slot in the setup (`watched volume '<name>' is not in setup`).
 
 ## References
 
