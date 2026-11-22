@@ -17,14 +17,13 @@ Omitting the path uses the current folder; providing a path accepts either a rel
 
 ### Switching Devices and Changing Panel Settings
 
-`device` in the `digitizer` section selects an instrument whose settings live in its component file. To change a panel-adjusted quantity—for example, expanding the full scale of `MXR608A` from `0.04 V` to `0.08 V`, or scanning two full-scale ranges:
+`device` in the `digitizer` section selects an instrument whose settings live in its component file. To change a panel-adjusted quantity—for example, expanding the full scale of `MXR608A` from `0.04 V` to `0.08 V`:
 
 ```bash
 raser digi --set digitizer.device.full_scale_V=0.08
-raser digi --scan digitizer.device.full_scale_V=0.04,0.08
 ```
 
-Because this modifies a setting used by `digitizer`, a new `digitizer` node is produced, while `readout` and earlier nodes keep unchanged fingerprints and are reused as usual.
+Because this modifies a setting used by `digitizer`, a new `digitizer` node is produced, while `readout` and earlier nodes keep unchanged fingerprints and are reused as usual. The `digitizer` section holds analysis parameters and is not scanned: `--scan` on it raises an error; to use another value, change it with `--set` and run again, which reuses the events already measured and redoes only `digitizer` and the stages after it (see [Experiments, Scan Points, and Seeds](../lifecycle/experiments.md)).
 
 ### Full-Waveform Digitization per Event
 
@@ -43,7 +42,7 @@ Channels not in the trigger condition whose deposited energy is below the user-s
 3. **Bandwidth and sampling**: Limit bandwidth according to the component's `response` (`"brickwall"` or `"none"`), and evaluate the voltage ($\text{V}$) via band-limited interpolation at sampling instants $t_k = t_0 + \varphi + k\,T_s + \delta_k$: $t_0$ is the event's `t0` in `readout.h5` ($\text{s}$), $T_s = 10^{-9}/$`sampling_rate_GSps` ($\text{s}$), $\varphi$ is uniformly distributed on $[0, T_s)$, and $\delta_k$ is Gaussian aperture jitter with RMS `aperture_jitter_ps` ($\text{ps}$). Take $\lfloor n_{\text{bin}}\,\Delta t / T_s \rfloor$ samples per electrode ($n_{\text{bin}}$ and $\Delta t$ are the bin count and bin width of the event's `readout` waveform). See [Digitizer (`core/digitizer`)](../core/digitizer.md) for the equations.
 4. **Quantization**: $\text{LSB} = $`full_scale_V`$/2^N$ ($\text{V}$), where $N$ is the component's `bits`; code $= \lfloor(V - $`offset_V`$)/\text{LSB}\rfloor + 2^{N-1}$, clipped to $[0,\ 2^N - 1]$. The number of clipped points is recorded individually for each electrode.
 5. **Noise-only channels**: Channels listed as noise-only for that event draw noise at the sampling points from their noise spectrum assets and then quantize it; the sample count and clock phase are the same as for the other channels in the event.
-6. **Write outputs**: Write the digital waveform file `digitizer.h5` and this stage's plots into the `digitizer` node. Two plot types are produced: an overlay of the bandwidth-filtered analog waveform and sampled points for the first few events, and a histogram of codes.
+6. **Write outputs**: Write the digital waveform file `digitizer.h5` and this stage's plots into the `digitizer` node. Two plot types are produced: one `samples_<event>` for each of the first `digitizer.plots` events that store waveforms (the bandwidth-filtered analog waveform overlaid with the digitized samples), and one `codes` per node (a histogram of codes); neither is drawn when `digitizer.plots` is `0`.
 
 ### Seed
 
@@ -62,13 +61,14 @@ The fingerprint of this stage's node is composed of the setting values in the `d
 
 ### Settings
 
-The `digitizer` section of `config.json` has only one key, the slot `device`. "Value in example" shows the value written in `examples/HPK-Si-PiN/signal/config.json`; if `config.json` is missing this key, an error is raised naming the missing `section.key`.
+The `digitizer` section of `config.json` has two keys: the slot `device` and `plots`. "Value in example" shows the value written in `examples/HPK-Si-PiN/signal/config.json`; if `config.json` is missing either key, an error is raised naming the missing `section.key`.
 
 | Section.Key | Value in example | Unit | Meaning |
 | --- | --- | --- | --- |
 | `digitizer.device` | `"MXR608A"` | None | Selected digitizer component name, corresponding to `components/digitizer/<component_name>.json`; may also be written as an object with `name`, where the remaining keys override the same-named keys in the component file |
+| `digitizer.plots` | `100` (`0` in the `timeres`, `bmos`, and `cflm` examples) | Events | Upper limit on the number of events per job for which `samples_<event>` is drawn |
 
-Instrument settings are defined in the component file and addressed as `"section.slot.key"`: use `--set digitizer.device.<key>=<value>` to modify one, or `--scan digitizer.device.<key>=<value1>,<value2>` to scan it, for example `--set digitizer.device.sampling_rate_GSps=8`. Fixed hardware keys of the instrument (such as `bits` and `response`) can also be overridden this way, effectively substituting a hypothetical instrument. `name` cannot be modified with `--set` or `--scan`: to switch instruments write `--set digitizer.device=<component_name>`, and to scan instruments write `--scan digitizer.device=<component_name1>,<component_name2>`, which replaces the entire slot with that component file and drops any previously overridden keys. See [Digitizer Components](../components/digitizer.md#key-meanings) for the name, unit, and meaning of each key. When a single instrument handles both sampling and triggering (such as an oscilloscope), its trigger conditions live in the same component file and are read by `trigger`, and its trigger keys also live under `digitizer.device`, for example `digitizer.device.trigger.level_V`. Common run parameters are documented in [Command-Line Interface (`raser`)](../cli.md), and configuration sections and scanning in [Experiments, Scan Points, and Seeds](../lifecycle/experiments.md).
+Instrument settings are defined in the component file and addressed as `"section.slot.key"`: use `--set digitizer.device.<key>=<value>` to modify one, for example `--set digitizer.device.sampling_rate_GSps=8`. Fixed hardware keys of the instrument (such as `bits` and `response`) can also be overridden this way, effectively substituting a hypothetical instrument. `name` cannot be modified with `--set`: to switch instruments write `--set digitizer.device=<component_name>`, which replaces the entire slot with that component file and drops any previously overridden keys. See [Digitizer Components](../components/digitizer.md#key-meanings) for the name, unit, and meaning of each key. When a single instrument handles both sampling and triggering (such as an oscilloscope), its trigger conditions live in the same component file and are read by `trigger`, and its trigger keys also live under `digitizer.device`, for example `digitizer.device.trigger.level_V`. Common run parameters are documented in [Command-Line Interface (`raser`)](../cli.md), and configuration sections and scanning in [Experiments, Scan Points, and Seeds](../lifecycle/experiments.md).
 
 ### Files Read and Written
 
@@ -96,6 +96,6 @@ Instrument settings are defined in the component file and addressed as `"section
   | Dataset (`datasets`) | `code` | `(sum(stored * count),)`, `int16` | None | Codes flattened across events and stored electrodes, with `count` points per stored electrode of an event |
 
   Converting codes back to voltage: $V = (\texttt{code} - 2^{N-1} + 0.5)\cdot\texttt{lsb\_V} + \texttt{offset\_V}$ (in $\text{V}$), where $N$ is the attribute `bits`; for each electrode with a stored waveform, the nominal time of the $k$-th sample (0-based) is that electrode's `t0` $+ k\cdot$`sampling_period` (in $\text{s}$). For the $i$-th event (0-based), its codes start at the sum of `stored * count` over the preceding $i$ events in `code`, containing `count` points for each electrode listed in that event's `index` slice.
-- **Write: plots of this stage**: Overlays of bandwidth-filtered analog waveforms with sampled points for the first few events, and histograms of codes, stored in this stage's node.
+- **Write: plots of this stage**: `samples_<event>` and `codes`, stored in `plots/` of this stage's node; see [Figures](../supports/figures.md) for style.
 - **Write: `nodes/digitizer/<node_id>/node.json`**: Records the inputs of this stage, code version, runtime environment, and run status. A partially written node carries the `.part` suffix and is renamed to its final name only after writing finishes.
 - **Write: `points.json` and `points/<point>/digitizer/<job>`**: The parameter table records the `digitizer` node ID used by each point; the view symlink points to `../../../nodes/digitizer/<node_id>`.

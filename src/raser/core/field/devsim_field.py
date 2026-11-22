@@ -41,8 +41,10 @@ resolution_default_3d = {'z': 0.5, 'x': 1, 'y': 1}
 class DevsimField:
     def __init__(self, device_name, voltage, read_out_contact, irradiation_flux=0,
                  bounds=None, resolution=None, field_set="default", field_directory=None,
-                 interpolation_bins=None):
+                 interpolation_bins=None, pitch=None):
         self.name = device_name
+        # the pitch of the read-out electrodes along x and y [um], as {"x": p_x, "y": p_y}
+        self.pitch = pitch or {}
         self.voltage = voltage
         self.irradiation_flux = irradiation_flux
         self.read_out_contact = read_out_contact
@@ -136,6 +138,7 @@ class DevsimField:
         self.set_trap_n(TrappingRate_nFile) # self.TrappingRate_n
         self.set_w_p(WeightingPotentialFiles) #self.weighting_potential[]
         self.set_conductive(ConductiveFile) # self.conductive_nodes, self.conductive_values
+        self._check_mesh_against_pitch()
         
         logger.info(f"DevsimField initialization complete, resolution: {self.resolution} um")
 
@@ -272,27 +275,74 @@ class DevsimField:
         position = {"x": x, "y": y, "z": z}
         return [position[axis] for axis in self.axes]
 
+    def _folded_axes(self):
+        """The axes along which the device is wider than the mesh of its
+        electric field, each with the edges of that mesh [cm], the edge of
+        the device the cells are counted from [cm] and the pitch [cm].
+
+        Only a device that lists one read-out electrode for a row of equal
+        ones has such axes: its field repeats from one pitch to the next.
+        """
+        if len(self.read_out_contact) != 1:
+            return []
+        folded = []
+        for axis, (low, high) in zip(self.axes, self.potential_ranges):
+            if axis == "z" or axis not in self.bounds:
+                continue
+            start, end = (edge * 1e-4 for edge in self.bounds[axis])
+            if end - start > (high - low) * (1 + 1e-6):
+                if axis not in self.pitch:
+                    raise ValueError(
+                        "the field of {} at {} V spans {:g} um along {}, less than the device, {:g} um: "
+                        "a position is taken back by the pitch along {}, which is not given".format(
+                            self.name, self.voltage, (high - low) * 1e4, axis, (end - start) * 1e4, axis
+                        )
+                    )
+                folded.append((axis, low, high, start, float(self.pitch[axis]) * 1e-4))
+        return folded
+
+    def _check_mesh_against_pitch(self):
+        """The mesh of the electric field against the pitch of the read-out
+        electrodes, when the field is loaded.
+
+        Along x and y the mesh spans at least one pitch. Where the device is
+        wider than the mesh, which then is of some cells of a row, the mesh
+        spans a whole number of pitches. Otherwise a ValueError names the
+        device, the axis, the span of the mesh and the pitch.
+        """
+        for axis, (low, high) in zip(self.axes, self.potential_ranges):
+            if axis == "z" or axis not in self.pitch:
+                continue
+            pitch = float(self.pitch[axis]) * 1e-4
+            if high - low < pitch * (1 - 1e-6):
+                raise ValueError(
+                    "the mesh of the field of {} at {} V spans {:g} um along {}, less than the pitch, {:g} um: "
+                    "the mesh has to hold a whole cell, the half electrodes at its edges with it".format(
+                        self.name, self.voltage, (high - low) * 1e4, axis, pitch * 1e4
+                    )
+                )
+        for axis, low, high, _, pitch in self._folded_axes():
+            cells = (high - low) / pitch
+            if abs(cells - round(cells)) > 1e-6 * cells:
+                raise ValueError(
+                    "the mesh of the field of {} at {} V spans {:g} um along {}, which is {:g} pitches of {:g} um: "
+                    "a mesh narrower than the device has to span a whole number of pitches".format(
+                        self.name, self.voltage, (high - low) * 1e4, axis, cells, pitch * 1e4
+                    )
+                )
+
     def _in_the_cell(self, x, y, z):
         """A position in cm, as the coordinates of the solved electric field.
 
         The electric field of a row of equal electrodes repeats from one to
         the next. Where the device is wider than the mesh the field was
         solved on, a position is taken back into one cell of that mesh, the
-        middle one if it holds several. A cell is as wide as the weighting
-        potential of the one listed electrode divided by the cells it is on.
+        middle one if it holds several. A cell is one pitch wide.
         """
         position = {"x": x, "y": y, "z": z}
-        if len(self.read_out_contact) != 1:
-            return [position[axis] for axis in self.axes]
-        for axis, (low, high), (first, last) in zip(self.axes, self.potential_ranges, self.weighting_ranges):
-            if axis == "z" or axis not in self.bounds:
-                continue
-            start, end = (edge * 1e-4 for edge in self.bounds[axis])
-            if end - start > (high - low) * (1 + 1e-6):
-                span = self.cells_either_side if axis == "x" else self.read_out_contact[0].get("y_span", 0)
-                cell = (last - first) / (2 * span + 1)
-                middle = round((high - low) / cell) // 2
-                position[axis] = low + middle * cell + (position[axis] - start) % cell
+        for axis, low, high, start, pitch in self._folded_axes():
+            middle = round((high - low) / pitch) // 2
+            position[axis] = low + middle * pitch + (position[axis] - start) % pitch
         return [position[axis] for axis in self.axes]
 
     def get_doping(self, x, y, z):

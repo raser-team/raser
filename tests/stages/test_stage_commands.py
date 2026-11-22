@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,7 @@ import pytest
 from raser_app.cflm import PADS
 from raser.cli.raser import main
 from raser.lifecycle import jobs
+from raser.supports.paths import app_component_root
 
 
 @pytest.fixture
@@ -156,8 +158,35 @@ def test_reco_runs_the_chain_up_to_the_reconstruction_of_the_waveforms(
     assert main(["reco", "HPK-Si-PiN", "--seed", "1", "--edge", "rising", "--dry-run"]) == 0
 
     assert _slices(capsys.readouterr().out) == ["deposit", "field", "current", "readout", "reconstruction"]
-    with pytest.raises(SystemExit):
-        main(["ana", str(work_root / "HPK-Si-PiN" / "signal"), "-threshold", "30"])  # set on the reconstruction now
+
+
+def test_ana_is_the_last_stage_of_the_chain_and_the_whole_chain_ends_in_it(
+    work_root: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from raser.stages import analysis
+
+    analysed: list[tuple[Path, str]] = []
+    monkeypatch.setattr(analysis, "collect", lambda root: analysed.append((root, os.environ["RASER_COMPONENT_PATH"])))
+    monkeypatch.setattr(jobs, "run_indexed_jobs", lambda *a, **k: None)
+    experiment = work_root / "HPK-Si-PiN" / "signal"
+
+    assert main(["ana", "HPK-Si-PiN", "--seed", "1", "-s", "2"]) == 0  # every slice before it, then the analysis
+    assert _slices(capsys.readouterr().out) == ["deposit", "field", "current", "readout", "reconstruction"]
+    assert main(["signal", "HPK-Si-PiN", "--seed", "1", "-s", "2"]) == 0  # the command of the experiment too
+    assert main(["rdo", str(experiment), "--seed", "1", "-s", "2"]) == 0  # a stage before it stops there
+
+    assert [root for root, _ in analysed] == [experiment, experiment]
+    # the components are found as the command of the experiment finds them
+    assert analysed[0][1].split(os.pathsep)[0] == str(app_component_root("raser_bench/signal"))
+
+
+def test_ana_on_an_experiment_whose_chain_has_no_analysis_says_so(work_root: Path) -> None:
+    experiment = work_root / "cflm"
+    experiment.mkdir(parents=True)
+    (experiment / "config.json").write_text(json.dumps({"workflow": "cflm", "device": "HPK-Si-PiN"}))
+
+    with pytest.raises(SystemExit, match="has no analysis slice"):
+        main(["ana", str(experiment)])
 
 
 def test_gen_takes_the_place_of_the_events_a_job_records_and_both_at_once_are_refused(

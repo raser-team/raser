@@ -85,7 +85,7 @@ $$S_d^2(f) = \sum_{m=-\infty}^{\infty} S_V^2\!\left(|f + m f_s|\right)\,\bigl|H(
 5. **纯噪声道**：该事例列为纯噪声的各道，按式 (6) 由它的噪声谱资产得 $S_d$，抽 $K$ 个电压再量化；$K$、$\varphi$ 与同一事例的其他道相同。同一条谱的 $S_d$ 只算一次。
 6. **写出**：码、被截点数和各电极第一个采样点的时刻 $t_0 + \varphi$ 交给数字化环节写进数字波形文件。
 
-$\varphi$、$\delta_k$ 和纯噪声由 `digitizer` 自己的种子抽取。这个种子由作业的种子派生（见[实验、扫描点与种子](../lifecycle/experiments.md#种子)），进 `digitizer` 节点的指纹，和 `readout` 的种子各自独立。每台设备的 $\varphi$ 由种子、事例号和设备号决定；每个电极的 $\delta_k$ 和纯噪声由种子、事例号和该电极在 `electrodes` 里的下标决定。
+$\varphi$、$\delta_k$ 和纯噪声由 `digitizer` 自己的种子抽取。这个种子由作业的种子派生（见[实验、扫描点与种子](../lifecycle/experiments.md#种子)），进 `digitizer` 节点的指纹，和 `readout` 的种子各自独立。每台设备的 $\varphi$ 由种子、事例号和设备号决定；每个电极的 $\delta_k$ 和纯噪声由种子、事例号和该电极在 `electrodes` 里的下标决定。多位置实验里每个位置各用一个种子，由作业的种子、环节名和位置名派生，各位置的 $\varphi$、$\delta_k$ 和纯噪声互不相同。一个事例的采样点数 $K < 2$ 时报错。
 
 ## 软件实现
 
@@ -114,7 +114,7 @@ $\varphi$、$\delta_k$ 和纯噪声由 `digitizer` 自己的种子抽取。这�
 
 纯噪声道另需：
 
-- **噪声谱资产**：一种器件、偏压和放大器链唯一确定各输出的噪声谱 $S_V(f)$，由 `readout` 算出，实验通用；本模块只读。
+- **噪声谱资产**：一种器件、偏压和放大器链唯一确定各输出的噪声谱 $S_V(f)$，由 `readout` 算出，实验通用；本模块只读。每个输出一条谱（频率、幅度谱密度），频段从 $10^3\ \text{Hz}$ 到 `readout` 时间步的奈奎斯特频率 $1/(2\Delta t)$，和走 `readout` 的道所含的噪声成分相同。
 - **纯噪声道列表**：每个事例列为纯噪声的电极下标，由上游给出。
 - **`noise_only_channels(deposited_keV, trigger_places, cut_keV)`**：`deposited_keV` 为该事例每个电极对应区域里的沉积能量（$\text{keV}$，按电极下标），`trigger_places` 为触发用到的电极下标，`cut_keV` 为使用者给的能量 cut；返回沉积能量低于 cut、且不在 `trigger_places` 里的电极下标。
 

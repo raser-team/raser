@@ -21,7 +21,7 @@ Figures drawn with ROOT save an extra `.root` copy containing the canvas itself,
 
 ## Axes and Units
 
-Axis titles are written in English as `Quantity [unit]`: the quantity name starts with a capital letter and uses full words; dimensionless quantities omit the brackets, such as `Charge collection efficiency`. The vertical axis of a histogram is labeled `Events`.
+Axis titles are written in English as `Quantity [unit]`: the quantity name starts with a capital letter and uses full words; dimensionless quantities omit the brackets, such as `Charge collection efficiency`. The vertical axis of a histogram or other count is labeled `Events`, with integer ticks only, set by `events(axis)`. A count axis chooses linear or log from its data: a log axis when the tallest bin is more than 30 times the lowest non-empty bin, so that a sparse tail shows; a linear axis otherwise. An axis of a quantity that takes integers only, such as the number of an electrode, has integer ticks only, set by `integers(axis)`. The time axis of a single-event waveform (an induced current, an amplifier output) covers only where the signal is: from the first to the last time at which the magnitude exceeds 1% of the peak, with 20% of that length added on each side; a waveform that is zero throughout is drawn in full.
 
 Convert data to the units in the table below when plotting: first convert data to SI units (field solvers output length in cm, electric field in V/cm, and doping in cm⁻³, which must first be converted to m, V/m, and m⁻³), then divide by `UNIT[<unit>]`. Common multipliers such as `×10⁻⁹` must not appear on tick labels; quantities spanning several orders of magnitude (leakage current, doping concentration, trapping rate) use logarithmic axes.
 
@@ -145,6 +145,9 @@ figures.save_canvas(canvas, folder, "drift_path", 17)   # drift_path_17.png, .pd
 | `save_canvas(canvas, folder, name, *suffixes)` | Saves `.png`, `.pdf`, and `.root` copies and returns the `.png` path |
 | `file_name(name, *suffixes)` | Builds the filename without extension according to the rules above. Suffixes may be numbers, lowercase words, or `(value, unit)` pairs: `file_name("electric_field", (200.0, "V"))` yields `electric_field_200V`, and `file_name("current", 17, "electrode", 2)` yields `current_17_electrode_2` |
 | `label(quantity, unit=None, root=False)` | Builds an axis title: `label("Depth", "um")` yields `Depth [μm]`; omits the unit brackets when no unit is given |
+| `events(axis, which="y", counts=None)` | Sets the title of a count axis to `Events` and its ticks to integers only; given the counts of the bins `counts`, chooses linear or log by the rule above |
+| `integers(axis, which="x")` | Gives the axis integer ticks only |
+| `signal_window(time, values)` | Returns the range `(start, end)` of the time axis of a single-event waveform by the rule above, in the unit of `time` |
 | `UNIT` | Conversion factors from units to SI, e.g., `UNIT["ns"] == 1e-9`; divide SI data by this factor when plotting. Keys cover all units in the unit table above, written in ASCII: `ns`, `ps`, `uA`, `A`, `V`, `mV`, `um`, `mm`, `kV/cm`, `cm-1`, `cm-3`, `s-1`, `pF`, `fC`, `keV` |
 | `ELECTRON`, `HOLE`, `GAIN_ELECTRON`, `GAIN_HOLE`, `TOTAL`, `DEPOSIT`, `HISTOGRAM` | Colors from the color table above |
 | `series(count, ordered)` | Colors for several curves of the same kind in one figure: equidistantly sampled from viridis when `ordered=True`, otherwise sequentially from Okabe–Ito |
