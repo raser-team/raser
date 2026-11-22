@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from raser.core.field.devsim_draw import boundaries_on_line
 from raser.core.field.devsim_draw import field_strength_at_nodes
 from raser.core.field.devsim_draw import interpolate_on_elements
 from raser.core.field.devsim_draw import profile_positions
@@ -172,3 +173,34 @@ def test_a_field_constant_up_to_noise_gets_limits_around_it_and_a_varying_one_no
     # the noise is judged against the size of the field, not in absolute terms
     assert value_limits(1e9 + np.array([0.0, 100.0])) is not None
     assert value_limits(1e-9 * np.array([1.0, 1.001])) is None
+
+
+def _implanted_cell():
+    """Nodes (depth, x) [cm] of one cell 80 um wide and 50 um deep, with an
+    implant 1 um deep under 30 < x < 50 um on a bulk of 1e12."""
+    zz, xx = np.meshgrid(
+        np.linspace(0, 50e-4, 101), np.linspace(0, 80e-4, 33), indexing="ij"
+    )
+    points = np.column_stack([zz.ravel(), xx.ravel()])
+    under = (points[:, 0] < 1e-4) & (points[:, 1] > 30e-4) & (points[:, 1] < 50e-4)
+    return points, np.where(under, 1e19, 1e12)
+
+
+def test_a_boundary_is_found_where_the_doping_steps_along_the_depth():
+    points, doping = _implanted_cell()
+    start, end = np.array([0.0, 40e-4]), np.array([50e-4, 40e-4])
+    (depth,) = boundaries_on_line(points, doping, ("z", "x"), start, end, "z")
+    assert depth == pytest.approx(1.0, abs=0.5)
+    start, end = np.array([0.0, 10e-4]), np.array([50e-4, 10e-4])
+    assert boundaries_on_line(points, doping, ("z", "x"), start, end, "z") == []
+
+
+def test_a_line_in_a_row_of_cells_takes_the_doping_of_its_place_in_the_cell():
+    # 47 cells further along x the line is again under the implant of a cell
+    points, doping = _implanted_cell()
+    start, end = (
+        np.array([0.0, 40e-4 + 47 * 80e-4]),
+        np.array([50e-4, 40e-4 + 47 * 80e-4]),
+    )
+    (depth,) = boundaries_on_line(points, doping, ("z", "x"), start, end, "z")
+    assert depth == pytest.approx(1.0, abs=0.5)

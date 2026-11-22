@@ -393,6 +393,34 @@ def _axis_label(along):
     return figures.label("Depth" if along == "z" else along, "um")
 
 
+def boundaries_on_line(points, doping, axes, start, end, along):
+    """Depths [um] of the boundaries inside the device along a depth profile.
+
+    points (N, d) [cm] are nodes carrying the net doping `doping` (N,), in the
+    order of `axes`; they may be the nodes of one cell of a row of cells, into
+    which the line is then folded. The line from start to end along `along`
+    is sampled at PROFILE_POINTS positions, each taking the
+    doping of its nearest node, so that steps stay steps, and the result is
+    that of doping_boundaries.
+    """
+    points = np.asarray(points, dtype=float)
+    doping = np.asarray(doping, dtype=float)
+    parameter = np.linspace(0.0, 1.0, PROFILE_POINTS)
+    line = start[None, :] + parameter[:, None] * (end - start)[None, :]
+    low, high = points.min(axis=0), points.max(axis=0)
+    for index in range(len(axes)):
+        width = high[index] - low[index]
+        if width > 0:
+            line[:, index] = low[index] + np.mod(line[:, index] - low[index], width * (1 + 1e-12))
+    nearest = np.empty(len(line), dtype=int)
+    step = max(1, PAIRS_PER_CHUNK // len(points))
+    for begin in range(0, len(line), step):
+        part = line[begin:begin + step]
+        distance = ((part[:, None, :] - points[None, :, :]) ** 2).sum(axis=2)
+        nearest[begin:begin + len(part)] = distance.argmin(axis=1)
+    return doping_boundaries(_um(line[:, axes.index(along)]), doping[nearest])
+
+
 def _along_line(points, elements, values, axes, start, end, along):
     """The coordinate along the line [um] and the values on it."""
     parameter = np.linspace(0.0, 1.0, PROFILE_POINTS)
@@ -400,7 +428,7 @@ def _along_line(points, elements, values, axes, start, end, along):
     return _um(line[:, axes.index(along)]), interpolate_on_elements(points, elements, values, line)
 
 
-def draw_field_map(points, elements, values, axes, label, path, name, *suffixes, electrode=None):
+def draw_field_map(points, elements, values, axes, label, path, name, *suffixes, electrode=None, boundaries=()):
     """Draw a field of a 2D or 3D device into `<path>/plots`: the slice, the
     profile along the depth and the profile across it.
 
@@ -408,7 +436,9 @@ def draw_field_map(points, elements, values, axes, label, path, name, *suffixes,
     field at its nodes in the unit of `label` (an axis title such as
     "Electric field [kV/cm]"), axes the mesh_axes of the points. The slice is
     the whole mesh in 2D and, in 3D, the x-depth plane through the middle of y.
-    electrode (n, d) places the depth profile under that electrode.
+    electrode (n, d) places the depth profile under that electrode;
+    boundaries are the depths [um] drawn on the depth profile as thin dashed
+    vertical lines.
     """
     points = np.asarray(points, dtype=float)
     values = np.asarray(values, dtype=float)
@@ -445,6 +475,9 @@ def draw_field_map(points, elements, values, axes, label, path, name, *suffixes,
     for axis, (_, start, end, along) in zip(
         (first, second), profile_positions(axes, points, electrode)
     ):
+        if along == "z":
+            for depth in boundaries:
+                axis.axvline(depth, color="0.5", linestyle="--", linewidth=0.8)
         position, line_values = _along_line(points, elements, values, axes, start, end, along)
         axis.plot(position, line_values, color=figures.TOTAL)
         if limits[0] is not None:
@@ -454,7 +487,7 @@ def draw_field_map(points, elements, values, axes, label, path, name, *suffixes,
     figures.save(figure, os.path.join(path, "plots"), name, *suffixes)
 
 
-def draw_depth_profiles(points, elements, curves, axes, ylabel, path, name, *suffixes, log=False):
+def draw_depth_profiles(points, elements, curves, axes, ylabel, path, name, *suffixes, log=False, boundaries=()):
     """Draw curves of node values along the first profile line of the mesh
     (the depth; along x in a cross section) into `<path>/plots`.
 
@@ -466,6 +499,9 @@ def draw_depth_profiles(points, elements, curves, axes, ylabel, path, name, *suf
     axes = tuple(axes)
     _, start, end, along = profile_positions(axes, points)[0]
     figure, axis = figures.new()
+    if along == "z":
+        for depth in boundaries:
+            axis.axvline(depth, color="0.5", linestyle="--", linewidth=0.8)
     for values, color, text in curves:
         position, line_values = _along_line(points, elements, values, axes, start, end, along)
         axis.plot(position, line_values, color=color, label=text)

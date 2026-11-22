@@ -59,6 +59,24 @@ def _electrode_points(device, contact_name, dimension, is_flip=False):
     return points[:, ::-1] if is_flip else points
 
 
+def _depth_boundaries(axes, points, doping_points, doping, electrode=None):
+    """Depths [um] of the boundaries inside the device on the depth profile of
+    a mesh `points` (cm), found in the net doping `doping` at `doping_points`;
+    none for a mesh without a depth."""
+    if "z" not in axes:
+        return []
+    _, start, end, along = devsim_draw.profile_positions(axes, points, electrode)[0]
+    return devsim_draw.boundaries_on_line(doping_points, doping, axes, start, end, along)
+
+
+def _stored_doping_boundaries(field_path, axes, points, electrode):
+    """The boundaries of a weighting field, solved with a constant doping:
+    from the net doping stored at 0 V in the field folder."""
+    with open(field_pickle_path(field_path, "NetDoping", 0), "rb") as file:
+        doping = pickle.load(file)
+    return _depth_boundaries(axes, points, np.asarray(doping["points"]), doping["values"], electrode)
+
+
 def _axes_required(axes):
     if axes is None:
         raise ValueError("axes is missing: the figures of a 2D or 3D field need the mesh_axes of the device")
@@ -363,19 +381,22 @@ def milestone_save_2D(device, v, path, is_tcad, is_flip=False, axes=None):
 
     elements = np.concatenate(elements)
     points = np.column_stack([x, y])
+    boundaries = _depth_boundaries(axes, points, points, NetDoping)
     devsim_draw.draw_field_map(
-        points, elements, Potential, axes, figures.label("Potential", "V"), path, "potential", (v, "V"))
+        points, elements, Potential, axes, figures.label("Potential", "V"), path, "potential", (v, "V"),
+        boundaries=boundaries)
     # the same for the DEVSIM and the TCAD field: the modulus of the gradient of the potential
     strength = devsim_draw.field_strength_at_nodes(points, elements, Potential)
     devsim_draw.draw_field_map(
         points, elements, _electric_field_kv_per_cm(strength), axes,
-        figures.label("Electric field", "kV/cm"), path, "electric_field", (v, "V"))
+        figures.label("Electric field", "kV/cm"), path, "electric_field", (v, "V"), boundaries=boundaries)
     if TrappingRate_n.any() or TrappingRate_p.any():
         devsim_draw.draw_depth_profiles(
             points, elements,
             [(TrappingRate_n / figures.UNIT["s-1"], figures.ELECTRON, "electrons"),
              (TrappingRate_p / figures.UNIT["s-1"], figures.HOLE, "holes")],
-            axes, figures.label("Trapping rate", "s-1"), path, "trapping_rate", (v, "V"), log=True)
+            axes, figures.label("Trapping rate", "s-1"), path, "trapping_rate", (v, "V"), log=True,
+            boundaries=boundaries)
 
     metadata = {}
     metadata['voltage'] = v
@@ -431,14 +452,15 @@ def milestone_save_wf_2D(device, v, path, contact_name, is_tcad, is_flip=False, 
     # `path` is the weightingfield folder of the field folder, which holds the plots
     field_path = os.path.dirname(os.path.normpath(path))
     electrode = re.sub(r"[^a-z0-9_]", "_", contact_name.lower())
+    boundaries = _stored_doping_boundaries(field_path, axes, points, electrode_points)
     devsim_draw.draw_field_map(
         points, elements, Potential, axes, "Weighting potential", field_path,
-        "weighting_potential", electrode, (v, "V"), electrode=electrode_points)
+        "weighting_potential", electrode, (v, "V"), electrode=electrode_points, boundaries=boundaries)
     strength = devsim_draw.field_strength_at_nodes(points, elements, Potential)
     devsim_draw.draw_field_map(
         points, elements, strength * 1e2 / figures.UNIT["cm-1"], axes,
         figures.label("Weighting field", "cm-1"), field_path,
-        "weighting_field", electrode, (v, "V"), electrode=electrode_points)
+        "weighting_field", electrode, (v, "V"), electrode=electrode_points, boundaries=boundaries)
 
     metadata = {}
     metadata['voltage'] = v
@@ -551,19 +573,22 @@ def milestone_save_3D(device, v, path, is_tcad, axes=None):
 
     elements = np.concatenate(elements)
     points = np.column_stack([x, y, z])
+    boundaries = _depth_boundaries(axes, points, points, NetDoping)
     devsim_draw.draw_field_map(
-        points, elements, Potential, axes, figures.label("Potential", "V"), path, "potential", (v, "V"))
+        points, elements, Potential, axes, figures.label("Potential", "V"), path, "potential", (v, "V"),
+        boundaries=boundaries)
     # the same for the DEVSIM and the TCAD field: the modulus of the gradient of the potential
     strength = devsim_draw.field_strength_at_nodes(points, elements, Potential)
     devsim_draw.draw_field_map(
         points, elements, _electric_field_kv_per_cm(strength), axes,
-        figures.label("Electric field", "kV/cm"), path, "electric_field", (v, "V"))
+        figures.label("Electric field", "kV/cm"), path, "electric_field", (v, "V"), boundaries=boundaries)
     if TrappingRate_n.any() or TrappingRate_p.any():
         devsim_draw.draw_depth_profiles(
             points, elements,
             [(TrappingRate_n / figures.UNIT["s-1"], figures.ELECTRON, "electrons"),
              (TrappingRate_p / figures.UNIT["s-1"], figures.HOLE, "holes")],
-            axes, figures.label("Trapping rate", "s-1"), path, "trapping_rate", (v, "V"), log=True)
+            axes, figures.label("Trapping rate", "s-1"), path, "trapping_rate", (v, "V"), log=True,
+            boundaries=boundaries)
 
     metadata = {
         "voltage": v,        
@@ -618,14 +643,15 @@ def milestone_save_wf_3D(device, v, path, contact_name, is_tcad, axes=None):
     # `path` is the weightingfield folder of the field folder, which holds the plots
     field_path = os.path.dirname(os.path.normpath(path))
     electrode = re.sub(r"[^a-z0-9_]", "_", contact_name.lower())
+    boundaries = _stored_doping_boundaries(field_path, axes, points, electrode_points)
     devsim_draw.draw_field_map(
         points, elements, Potential, axes, "Weighting potential", field_path,
-        "weighting_potential", electrode, (v, "V"), electrode=electrode_points)
+        "weighting_potential", electrode, (v, "V"), electrode=electrode_points, boundaries=boundaries)
     strength = devsim_draw.field_strength_at_nodes(points, elements, Potential)
     devsim_draw.draw_field_map(
         points, elements, strength * 1e2 / figures.UNIT["cm-1"], axes,
         figures.label("Weighting field", "cm-1"), field_path,
-        "weighting_field", electrode, (v, "V"), electrode=electrode_points)
+        "weighting_field", electrode, (v, "V"), electrode=electrode_points, boundaries=boundaries)
 
     metadata = {}
     metadata['voltage'] = v
