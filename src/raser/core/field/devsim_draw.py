@@ -191,13 +191,42 @@ def draw1D(x,y,title,xtitle,ytitle,v,path):
     canvas.Draw()
     canvas.SaveAs(os.path.join(path, title+"{}_1d.png".format(v)))
 
-def draw_profile(x, curves, ylabel, path, name, *suffixes, log=False):
+def doping_boundaries(depth, doping):
+    """Depths [um] of the boundaries inside the device, ascending.
+
+    depth is the ascending depth [um]; doping is the net doping at the same
+    points, in any unit. A boundary lies midway between two neighbouring points
+    whose |doping| differs by more than a factor of ten (one of them may be 0).
+    Boundaries closer than 0.5 um to each other are merged into their mean.
+    """
+    magnitude = np.abs(np.asarray(doping, dtype=float))
+    depth = np.asarray(depth, dtype=float)
+    low = np.minimum(magnitude[:-1], magnitude[1:])
+    high = np.maximum(magnitude[:-1], magnitude[1:])
+    middles = 0.5 * (depth[:-1] + depth[1:])[(high > 10 * low) & (high > 0)]
+    merged = []
+    group = []
+    for position in middles:
+        if group and position - group[-1] >= 0.5:
+            merged.append(float(np.mean(group)))
+            group = []
+        group.append(float(position))
+    if group:
+        merged.append(float(np.mean(group)))
+    return merged
+
+
+def draw_profile(x, curves, ylabel, path, name, *suffixes, log=False, boundaries=()):
     """Draw curves against the depth into `<path>/plots` as `<name>_<suffixes>`.
 
     x is the depth [um]; curves is a list of (y, color, legend text or None),
-    y in the unit of ylabel; log makes the vertical axis logarithmic.
+    y in the unit of ylabel; log makes the vertical axis logarithmic;
+    boundaries are the depths [um] of the boundaries inside the device, each
+    drawn as a thin dashed vertical line.
     """
     figure, axis = figures.new()
+    for depth in boundaries:
+        axis.axvline(depth, color="0.5", linestyle="--", linewidth=0.8)
     for y, color, text in curves:
         axis.plot(x, y, color=color, label=text)
     if log:

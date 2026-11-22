@@ -14,6 +14,7 @@ from ..device.build_device import Detector
 from raser.supports import figures
 from raser.supports.output import create_path
 from raser.supports.output import output
+from . import devsim_draw
 from . import model_create
 
 
@@ -253,9 +254,13 @@ class DevsimMesh:
             depth = x * 1e-2 / figures.UNIT["um"]  # cm to um
             figure, axis = figures.new()
             colors = figures.series(2, False)
+            values = {}
             for field, text, color in zip(("Donors", "Acceptors"), ("donors", "acceptors"), colors):
                 y = devsim.get_node_model_values(device=self.device, region=self.region, name=field)
-                axis.plot(depth, np.array(y) * 1e6 / figures.UNIT["cm-3"], color=color, label=text)
+                values[field] = np.array(y)
+                axis.plot(depth, values[field] * 1e6 / figures.UNIT["cm-3"], color=color, label=text)
+            for boundary in devsim_draw.doping_boundaries(depth, values["Donors"] - values["Acceptors"]):
+                axis.axvline(boundary, color="0.5", linestyle="--", linewidth=0.8)
             axis.set_yscale("log")
             axis.set_xlabel(figures.label("Depth", "um"))
             axis.set_ylabel(figures.label("Doping", "cm-3"))

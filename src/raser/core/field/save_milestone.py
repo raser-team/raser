@@ -124,15 +124,17 @@ def milestone_save_1D(device, v, path, is_tcad):
     TrappingRate_n = np.array(TrappingRate_n)
     TrappingRate_p = np.array(TrappingRate_p)
 
+    boundaries = devsim_draw.doping_boundaries(_depth_um(x), NetDoping)
     devsim_draw.draw_profile(
         _depth_um(x), [(Potential, figures.TOTAL, None)],
-        figures.label("Potential", "V"), path, "potential", (v, "V"))
+        figures.label("Potential", "V"), path, "potential", (v, "V"), boundaries=boundaries)
     if TrappingRate_n.any() or TrappingRate_p.any():
         devsim_draw.draw_profile(
             _depth_um(x),
             [(TrappingRate_n / figures.UNIT["s-1"], figures.ELECTRON, "electrons"),
              (TrappingRate_p / figures.UNIT["s-1"], figures.HOLE, "holes")],
-            figures.label("Trapping rate", "s-1"), path, "trapping_rate", (v, "V"), log=True)
+            figures.label("Trapping rate", "s-1"), path, "trapping_rate", (v, "V"), log=True,
+            boundaries=boundaries)
 
     if is_tcad:
         ElectricField = []
@@ -144,7 +146,8 @@ def milestone_save_1D(device, v, path, is_tcad):
         ElectricField = np.array(ElectricField)
         devsim_draw.draw_profile(
             _depth_um(x), [(_electric_field_kv_per_cm(ElectricField), figures.TOTAL, None)],
-            figures.label("Electric field", "kV/cm"), path, "electric_field", (v, "V"))
+            figures.label("Electric field", "kV/cm"), path, "electric_field", (v, "V"),
+            boundaries=boundaries)
     else:
         x_mid = []
         ElectricField = []
@@ -159,7 +162,8 @@ def milestone_save_1D(device, v, path, is_tcad):
         ElectricField = np.array(ElectricField) # get y-node values
         devsim_draw.draw_profile(
             _depth_um(x_mid), [(_electric_field_kv_per_cm(ElectricField), figures.TOTAL, None)],
-            figures.label("Electric field", "kV/cm"), path, "electric_field", (v, "V"))
+            figures.label("Electric field", "kV/cm"), path, "electric_field", (v, "V"),
+            boundaries=boundaries)
 
     metadata = {}
     metadata['voltage'] = v
@@ -206,12 +210,19 @@ def milestone_save_wf_1D(device, v, path, contact_name, is_tcad):
     # `path` is the weightingfield folder of the field folder, which holds the plots
     field_path = os.path.dirname(os.path.normpath(path))
     electrode = re.sub(r"[^a-z0-9_]", "_", contact_name.lower())
+    # the weighting field is solved with a constant doping: the boundaries
+    # come from the doping of the field, which the field folder holds
+    with open(field_pickle_path(field_path, "NetDoping", 0), "rb") as file:
+        doping = pickle.load(file)
+    boundaries = devsim_draw.doping_boundaries(_depth_um(np.asarray(doping["points"])), doping["values"])
     devsim_draw.draw_profile(
         _depth_um(x), [(Potential, figures.TOTAL, None)],
-        "Weighting potential", field_path, "weighting_potential", electrode, (v, "V"))
+        "Weighting potential", field_path, "weighting_potential", electrode, (v, "V"),
+        boundaries=boundaries)
     devsim_draw.draw_profile(
         _depth_um(x_mid), [(ElectricField * 1e2 / figures.UNIT["cm-1"], figures.TOTAL, None)],
-        figures.label("Weighting field", "cm-1"), field_path, "weighting_field", electrode, (v, "V"))
+        figures.label("Weighting field", "cm-1"), field_path, "weighting_field", electrode, (v, "V"),
+        boundaries=boundaries)
 
     metadata = {}
     metadata['voltage'] = v
