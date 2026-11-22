@@ -11,11 +11,14 @@ class GeneralSteppingAction(g4b.G4UserSteppingAction):
     def UserSteppingAction(self, step):
         edep = step.GetTotalEnergyDeposit()
         point_pre  = step.GetPreStepPoint()
-        point_post = step.GetPostStepPoint() 
+        point_post = step.GetPostStepPoint()
         point_in   = point_pre.GetPosition()
         point_out  = point_post.GetPosition()
-        volume = step.GetPreStepPoint().GetTouchable().GetVolume().GetLogicalVolume()
-        self.volume_name = volume.GetName()
+        volume = point_pre.GetTouchable().GetVolume().GetLogicalVolume()
+        self.volume_name = str(volume.GetName())
 
-        if self.volume_name == "Device": # important, no if => no signal
-            self.fEventAction.RecordDevice(edep,point_in,point_out,point_pre.GetGlobalTime())
+        # a step belongs to the slot its front point lies in
+        if self.volume_name in self.fEventAction.slots: # important, no if => no signal
+            self.fEventAction.RecordDevice(
+                self.volume_name, edep, point_in, point_out, point_pre.GetGlobalTime()
+            )

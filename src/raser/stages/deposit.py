@@ -40,7 +40,7 @@ def deposits(kwargs):
         if driver.upper() in ("TSG", "TSG_FILE", "TSG_OFFSCREEN"):
             picture = os.path.join(kwargs["_run_path"], "g4_geometry")
         view_geometry(
-            my_d,
+            {"Device": my_d},
             files["source"],
             files.get("g4setup"),
             int(events if generated is None else generated),
@@ -51,13 +51,14 @@ def deposits(kwargs):
         raise SystemExit
     recorded = write_simulated_deposits(
         output(kwargs, "deposit"),
-        my_d,
+        {"Device": my_d},
         files["source"],
         files.get("g4setup"),
         None if events is None else int(events),
         kwargs["seed"],
-        kwargs.get("edep_min"),
-        kwargs.get("edep_max"),
+        {"Device": (kwargs.get("edep_min"), kwargs.get("edep_max"))},
+        "any",
+        None,
         kwargs["fano"],
         None if generated is None else int(generated),
         GENERATED_LIMIT if limit is None else int(limit),

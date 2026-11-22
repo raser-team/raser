@@ -39,7 +39,7 @@ def test_the_pictures_of_an_event_drawn_again_are_those_of_this_run_only(tmp_pat
     deposits = tmp_path / "deposit.h5"
     write_deposits(
         str(deposits),
-        Deposits(1, None, None, [EventDeposits(4, ["d"], [50.0], [50.0], [25.0], [0.0], [0.01], pairs=[100.0])]),
+        Deposits(1, {}, "any", None, [EventDeposits(4, ["d"], [50.0], [50.0], [25.0], [0.0], [0.01], pairs=[100.0])]),
     )
     stale = tmp_path / "plots" / "event_4" / "No_7electrode_basic_infor.pdf"
     stale.parent.mkdir(parents=True)
@@ -57,7 +57,7 @@ def test_a_job_warns_of_the_carriers_that_found_no_field_with_where(tmp_path, ca
     deposits = tmp_path / "deposit.h5"
     write_deposits(
         str(deposits),
-        Deposits(1, None, None, [EventDeposits(4, ["d"], [50.0], [50.0], [25.0], [0.0], [0.01], pairs=[100.0])]),
+        Deposits(1, {}, "any", None, [EventDeposits(4, ["d"], [50.0], [50.0], [25.0], [0.0], [0.01], pairs=[100.0])]),
     )
     device = SimpleNamespace(**{**vars(_lgad()), "has_avalanche": False, "is_strip": False, "is_pixel": False})
 

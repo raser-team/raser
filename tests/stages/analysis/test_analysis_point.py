@@ -56,7 +56,7 @@ def _job(folder, index, scale, count, seed, amplitude_threshold=5, jitter=3.0e-1
             EventWaveforms(number, starts[number] - BEFORE * DT, np.array([samples])),
             pulse_edge=["falling"],
         )
-    write_deposits(str(batch / f"deposit_{index}.h5"), Deposits(50, None, None, deposits))
+    write_deposits(str(batch / f"deposit_{index}.h5"), Deposits(50, {}, "any", None, deposits))
     if count:
         reconstruct(
             batch / f"readout_{index}.h5", batch / f"reconstruction_{index}.h5", 3, amplitude_threshold, (0.2, 0.5, 0.8), "falling"

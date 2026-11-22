@@ -8,6 +8,7 @@ from raser.supports.paths import component_path
 
 from .geant4.drivers import register_driver
 from .simulate_deposits import g4_configuration
+from .simulate_deposits import layout_of
 from .simulate_deposits import tilted
 
 # Drivers that write a file and open no window.
@@ -24,7 +25,7 @@ _DRIVERS_WITHOUT_SESSION = {
 _TSG_DRIVERS = {"TSG", "TSG_FILE", "TSG_OFFSCREEN"}
 
 def view_geometry(
-    my_d,
+    devices,
     source: dict,
     g4setup: dict | None,
     events: int,
@@ -32,7 +33,8 @@ def view_geometry(
     driver: str,
     output: str | None = None,
 ) -> None:
-    """Draw the device, the objects of the g4setup and `events` events.
+    """Draw the devices of the slots (name -> device), the objects of the
+    g4setup and `events` events.
 
     driver is a Geant4 visualization driver (OGL, TSG_OFFSCREEN, ...); one
     that Geant4 cannot open is an error. A driver with a window opens a
@@ -98,11 +100,12 @@ def view_geometry(
     session = None
     if driver.upper() not in _DRIVERS_WITHOUT_SESSION:
         session = g4b.G4UIExecutive(1, [os.getcwd()])
-    my_g4 = ViewedG4Interaction(
-        my_d,
-        tilted(g4_configuration(source, g4setup, None, None, None, generated=events), my_d.l_z),
-        g4_seed,
+    layout = layout_of(devices, g4setup)
+    windows = {slot: (None, None) for slot in devices}
+    configuration = g4_configuration(
+        source, g4setup, layout, None, windows, "any", None, generated=events
     )
+    my_g4 = ViewedG4Interaction(devices, layout, tilted(configuration, layout), g4_seed)
     try:
         if session is not None:
             session.SessionStart()

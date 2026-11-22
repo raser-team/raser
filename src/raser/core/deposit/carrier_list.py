@@ -46,7 +46,6 @@ class CarrierListFromG4P:
 
         if batch == -1 and (
             my_g4.geant4_model == "time_resolution"
-            or my_g4.geant4_model == "charge_collection"
             or my_g4.geant4_model == "bmos"
             or my_g4.geant4_model == "beta_source"
         ):

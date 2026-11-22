@@ -50,7 +50,7 @@ def _empty_job(folder, index, events):
     _alone(folder)
     batch = folder / "batch"
     batch.mkdir(parents=True, exist_ok=True)
-    write_deposits(str(batch / f"deposit_{index}.h5"), Deposits(50, None, None, events))
+    write_deposits(str(batch / f"deposit_{index}.h5"), Deposits(50, {}, "any", None, events))
 
 
 def test_point_takes_the_events_of_all_its_jobs(tmp_path) -> None:

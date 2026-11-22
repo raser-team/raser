@@ -29,6 +29,6 @@ def test_job_without_events_is_known_from_the_deposits_of_the_point_that_holds_t
     held = {"deposit": "", "current": "", "readout": "amplifier=B"}
     (folder / "run.json").write_text(json.dumps({"point": "amplifier=B", "held_in": held}))
     (tmp_path / "seed_7" / "batch").mkdir(parents=True)
-    write_deposits(str(tmp_path / "seed_7" / "batch" / "deposit_3.h5"), Deposits(50, None, None, []))
+    write_deposits(str(tmp_path / "seed_7" / "batch" / "deposit_3.h5"), Deposits(50, {}, "any", None, []))
 
     assert job_file(folder, 3, "readout") is None
