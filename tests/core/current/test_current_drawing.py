@@ -98,3 +98,46 @@ def test_pixel_map_puts_each_charge_at_its_x_and_y_position() -> None:
             assert histogram.GetBinContent(ix + 1, jy + 1) == pytest.approx(ix * 3 + jy + 1, rel=1e-9)
     # electrode 5 sits at x = 30, y = 45 (ix = 1, jy = 1)
     assert histogram.GetBinContent(histogram.FindBin(30, 45)) == pytest.approx(5, rel=1e-9)
+
+
+def test_the_legend_goes_where_the_curve_is_not_and_stays_in_the_plot_frame() -> None:
+    import ROOT
+
+    from raser.core.current.draw import _place_legend
+
+    canvas = ROOT.TCanvas("legend_canvas", "legend_canvas", 600, 400)
+    canvas.SetMargin(0.15, 0.1, 0.15, 0.05)
+    hist = ROOT.TH1D("legend_hist", "", 20, 0.0, 20.0)
+    for i in range(1, 11):  # the left half, near the top
+        hist.SetBinContent(i, 9.0)
+    hist.SetMinimum(0.0)
+    hist.SetMaximum(10.0)
+    hist.Draw("HIST")
+    canvas.Update()
+
+    legend = _place_legend(canvas, [hist], 0.22, 0.2)
+
+    left, right = legend.GetX1(), legend.GetX2()
+    bottom, top = legend.GetY1(), legend.GetY2()
+    assert left > 0.5
+    assert 0.15 <= left and right <= 0.9 and 0.15 <= bottom and top <= 0.95
+
+
+def test_the_legend_leaves_the_top_to_a_curve_that_runs_along_it() -> None:
+    import ROOT
+
+    from raser.core.current.draw import _place_legend
+
+    canvas = ROOT.TCanvas("legend_canvas_top", "legend_canvas_top", 600, 400)
+    canvas.SetMargin(0.15, 0.1, 0.15, 0.05)
+    hist = ROOT.TH1D("legend_hist_top", "", 20, 0.0, 20.0)
+    for i in range(1, 21):
+        hist.SetBinContent(i, 9.0)
+    hist.SetMinimum(0.0)
+    hist.SetMaximum(10.0)
+    hist.Draw("HIST")
+    canvas.Update()
+
+    legend = _place_legend(canvas, [hist], 0.22, 0.2)
+
+    assert legend.GetY2() < 0.5

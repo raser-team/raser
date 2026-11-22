@@ -89,8 +89,12 @@ def draw_currents(path, event, t0, dt, current, hole_current, electron_current,
             gain_positive_cu.Draw("SAME HIST")
             gain_negative_cu.Draw("SAME HIST")
 
-        legend = ROOT.TLegend(0.68, 0.2, 0.88, 0.45)
-        legend.SetFillStyle(0)
+        canvas.Update()
+        entries = 5 if gain_hole_current is not None else 3
+        drawn = [negative_cu, positive_cu, sum_cu]
+        if gain_hole_current is not None:
+            drawn += [gain_positive_cu, gain_negative_cu]
+        legend = _place_legend(canvas, drawn, 0.22, 0.06 * entries)
         legend.AddEntry(negative_cu, "electrons", "l")
         legend.AddEntry(positive_cu, "holes", "l")
         if gain_hole_current is not None:
@@ -105,6 +109,69 @@ def draw_currents(path, event, t0, dt, current, hole_current, electron_current,
         else:
             figures.save_canvas(canvas, path, "current", event, "electrode", electrode + 1)
         del canvas
+
+
+def _curve_points(curve):
+    """The (x, y_low, y_high) points of a drawn curve, in user coordinates.
+
+    A histogram gives each bin centre with the span from the previous bin's
+    content to its own, so a vertical jump counts; a graph gives its points.
+    """
+    if isinstance(curve, ROOT.TMultiGraph):
+        for graph in curve.GetListOfGraphs():
+            yield from _curve_points(graph)
+    elif isinstance(curve, ROOT.TH1):
+        previous = None
+        for i in range(1, curve.GetNbinsX() + 1):
+            content = curve.GetBinContent(i)
+            yield (curve.GetBinCenter(i), min(content, content if previous is None else previous),
+                   max(content, content if previous is None else previous))
+            previous = content
+    else:
+        for x, y in zip(curve.GetX(), curve.GetY()):
+            yield (x, y, y)
+
+
+def _place_legend(pad, curves, width, height):
+    """A legend of `width` x `height` (NDC) inside the plot frame of `pad`,
+    at the corner or edge middle where the fewest points of `curves` lie."""
+    pad.Update()
+    frame_left = pad.GetLeftMargin() + 0.02
+    frame_right = 1 - pad.GetRightMargin() - 0.02
+    frame_bottom = pad.GetBottomMargin() + 0.02
+    frame_top = 1 - pad.GetTopMargin() - 0.02
+    middle_x = (frame_left + frame_right - width) / 2
+    candidates = [
+        (frame_right - width, frame_top - height),
+        (frame_left, frame_top - height),
+        (frame_right - width, frame_bottom),
+        (frame_left, frame_bottom),
+        (middle_x, frame_top - height),
+        (middle_x, frame_bottom),
+    ]
+    x_min, x_max = pad.GetUxmin(), pad.GetUxmax()
+    y_min, y_max = pad.GetUymin(), pad.GetUymax()
+    points = [point for curve in curves for point in _curve_points(curve)]
+
+    def user_x(ndc):
+        return x_min + (ndc - pad.GetLeftMargin()) / (1 - pad.GetLeftMargin() - pad.GetRightMargin()) * (x_max - x_min)
+
+    def user_y(ndc):
+        return y_min + (ndc - pad.GetBottomMargin()) / (1 - pad.GetBottomMargin() - pad.GetTopMargin()) * (y_max - y_min)
+
+    def inside(x1, y1):
+        low_x, high_x = user_x(x1), user_x(x1 + width)
+        low_y, high_y = user_y(y1), user_y(y1 + height)
+        return sum(
+            low_x <= x <= high_x and y_low <= high_y and y_high >= low_y
+            for x, y_low, y_high in points
+        )
+
+    x1, y1 = min(candidates, key=lambda corner: inside(*corner))
+    legend = ROOT.TLegend(x1, y1, x1 + width, y1 + height)
+    legend.SetFillColor(0)
+    legend.SetBorderSize(0)
+    return legend
 
 
 def electrode_edges(length, number, pitch):
