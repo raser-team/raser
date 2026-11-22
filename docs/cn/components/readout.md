@@ -191,13 +191,13 @@ wrdata out.raw v(out1)
 当器件存在未耗尽体区（例如未耗尽层电阻 `1000 Ohm`、电容 `2 pF`）时，网表中器件电路与电流源四行变为：
 
 ```spice
-Ctop_depleted top_pad top_inner 3.4416228e-12
-Rtop_undepleted top_inner 0 1000
-Ctop_undepleted top_inner 0 2e-12
-I1 top_inner top_pad PWL(2.5e-12 0 7.5e-12 0 1.25e-11 0 1.75e-11 0)
+Ctop_depleted top_pad undepleted 3.4416228e-12
+R_undepleted undepleted 0 1000
+C_undepleted undepleted 0 2e-12
+I1 undepleted top_pad PWL(2.5e-12 0 7.5e-12 0 1.25e-11 0 1.75e-11 0)
 ```
 
-耗尽层结电容 `Ctop_depleted` 改接在读出电极 `top_pad` 与内部节点 `top_inner` 之间；`top_inner` 与地 `0` 之间接入并联的未耗尽层电阻 `Rtop_undepleted`（`Ohm`）和电容 `Ctop_undepleted`（`F`）；感应电流源 `I1` 接在 `top_inner` 与 `top_pad` 之间，仅跨过耗尽层。这相当于在耗尽层和背电极之间串联了一级并联 RC 阻抗，对信号产生分压与 RC 时间常数展宽，并由 `Rtop_undepleted` 在频域噪声分析中引入热噪声。
+耗尽层结电容 `Ctop_depleted` 改接在读出电极 `top_pad` 与节点 `undepleted` 之间；`undepleted` 与地 `0` 之间接入并联的未耗尽层电阻 `R_undepleted`（`Ohm`）和电容 `C_undepleted`（`F`）；感应电流源 `I1` 接在 `undepleted` 与 `top_pad` 之间，仅跨过耗尽层。器件有多个读出电极时，各电极的耗尽层电容都接到这一个 `undepleted` 节点。这相当于在耗尽层和背电极之间串联了一级并联 RC 阻抗，对信号产生分压与 RC 时间常数展宽，并由 `R_undepleted` 在频域噪声分析中引入热噪声。
 
 ### 频域噪声分析与时域合成（`spice.py`、`job.py`、`spectral_noise.py`）
 

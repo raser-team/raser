@@ -26,4 +26,4 @@ def register(subparsers):
     parser = subparsers.add_parser("timeres", help="time-resolution experiment")
     chain.add_arguments(parser)
     WORKFLOW.attach(parser)
-    parser.set_defaults(_project="det_name", _components=("bench/timeres", "bench/signal"))
+    parser.set_defaults(_project="det_name", _components=("raser_bench/timeres", "raser_bench/signal"))

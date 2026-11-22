@@ -66,7 +66,7 @@ def bunch_deposits(my_d, g4_dic, seed):
 
 def deposits(kwargs):
     my_d = bdv.Detector(kwargs["det_name"], kwargs["_files"]["device"])
-    with open(app_file_path("apps/cflm", "cflm_p1.json")) as file:
+    with open(app_file_path("raser_app/cflm", "cflm_p1.json")) as file:
         g4_dic = json.load(file)
     found = bunch_deposits(my_d, g4_dic, kwargs["seed"])
     write_deposits(output(kwargs, "deposit"), found)

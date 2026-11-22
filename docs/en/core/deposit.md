@@ -83,9 +83,15 @@ with $\beta = 1$, where $K/2 = 0.1535\ \text{MeV cm}^2/\text{g}$, $\rho$ is the 
 
 A laser pulse generates carriers in the device via optical absorption. In single-photon absorption (SPA), each absorbed photon produces one electron-hole pair, and the intensity attenuates along the beam path according to the Beer–Lambert law as $e^{-\alpha s}$. In two-photon absorption (TPA), following $dI/dz = -\alpha I - \beta_2 I^2$ [15], the generation rate is proportional to the square of the intensity and is concentrated near the focus. The beam is Gaussian, with a transverse radius that expands with distance from the focus.
 
-When `alpha` is not given in the laser file, the absorption coefficient $\alpha$ is looked up by `absorption_coefficient`:
+When `alpha` is not given in the laser file, the absorption coefficient $\alpha$ is provided by `absorption_coefficient` according to the device material. Silicon uses table lookup:
 
 $$\alpha(\lambda) = 100\,\exp\Bigl[\operatorname{interp}\bigl(10^{3}\lambda;\ \lambda_i,\ \ln \alpha_i\bigr)\Bigr] \tag{7}$$
+
+4H-SiC has an indirect band gap, so absorption near the band edge requires phonon participation. It is computed from a semi-empirical model of phonon-assisted indirect transitions [16], taking the device temperature $T$:
+
+$$\alpha(\lambda, T) = 100 \sum_{p=1}^{7} \sum_{\pm} \Bigl(n_p + \tfrac{1}{2} \pm \tfrac{1}{2}\Bigr) \Bigl\{ A_p \bigl[\hbar\omega - (E_{GX} \pm \hbar\Omega_p)\bigr]_+^{1/2} + B A_p \bigl[\hbar\omega - (E_{GX} \pm \hbar\Omega_p + E_{\text{ex}})\bigr]_+^{2} \Bigr\} \tag{7a}$$
+
+$$\hbar\omega = \frac{h c}{e\,\lambda \times 10^{-6}}, \qquad n_p = \frac{1}{\exp(\hbar\Omega_p / k_B T) - 1}, \qquad E_{GX}(T) = E_{GX}(0) - \frac{\varepsilon\,\Theta}{2}\left[\bigl(1 + (2T/\Theta)^{q}\bigr)^{1/q} - 1\right] \tag{7b}$$
 
 The photon energy, photon count, and Gaussian beam radius are:
 
@@ -110,6 +116,11 @@ where:
 - $\lambda$: wavelength, $\mu\text{m}$ (`wavelength` in the laser file is given in $\text{nm}$ and multiplied by $10^{-3}$);
 - $\lambda_i, \alpha_i$: wavelengths ($\text{nm}$) and absorption coefficients ($\text{cm}^{-1}$) in the absorption-coefficient table, with `interp` denoting linear interpolation between adjacent rows and $100$ converting $\text{cm}^{-1}$ to $\text{m}^{-1}$;
 - $\alpha$: absorption coefficient, $\text{m}^{-1}$;
+- $\hbar\omega$: photon energy, $\text{eV}$ ($e$ is the elementary charge); $T$: `temperature` from the device file, $\text{K}$; $k_B = 8.617\times10^{-5}\ \text{eV/K}$;
+- $\hbar\Omega_p$, $A_p$: energy ($\text{eV}$) and transition coefficient ($\text{eV}^{-1/2}\,\text{cm}^{-1}$) of the $p$-th phonon, taken from Ref. [16], Table I ($E \perp c$, where $E$ is the optical electric field): $\hbar\Omega_p$ = 32.4, 45.7, 50.8, 67.8, 76.3, 95.8, 106.2 meV, $A_p$ = 0.5, 4, 7, 3.5, 23, 23, 40.5;
+- $\pm$: upper sign for phonon emission, lower sign for phonon absorption; $n_p$: Bose occupation number of the phonon; $[x]_+ = \max(x, 0)$;
+- $B = 60\ \text{eV}^{-3/2}$: ratio of continuum to exciton ground-state transition coefficients; $E_{\text{ex}} = 20\ \text{meV}$: exciton binding energy;
+- $E_{GX}(T)$: exciton band gap, $\text{eV}$; $E_{GX}(0) = 3.267\ \text{eV}$, $\varepsilon = 3\times10^{-4}\ \text{eV/K}$, $\Theta = 450\ \text{K}$, $q = 2.9$ (Ref. [16], Eq. (5)), giving $E_{GX} = 3.233\ \text{eV}$ at $300\ \text{K}$;
 - $h = 6.626\times10^{-34}\ \text{J}\cdot\text{s}$, $c = 2.998\times10^{8}\ \text{m/s}$; $h\nu$: photon energy, $\text{J}$;
 - $E_p$: pulse energy `pulse_energy`, $\text{J}$; $N_\gamma$: number of photons in the pulse;
 - $\text{FWHM}_s$: spatial full width at half maximum of the beam spot at the focus `spacial_FWHM`, $\mu\text{m}$; $w_0$: beam waist radius, $\mu\text{m}$;
@@ -122,6 +133,10 @@ where:
 - $P(t)$: normalized temporal distribution at offset $t$ ($\text{s}$) from the pulse center, $\text{s}^{-1}$ (`timePulse`).
 
 The second factor in Eq. (11) is the integral of the squared Gaussian temporal pulse distribution. Beam intensity along the path attenuates only according to $\alpha$. When $\alpha \ne 0$, SPA carrier groups are added according to Eq. (10); when `tech` is `"TPA"`, TPA carrier groups are additionally added according to Eq. (11); for a two-photon laser, $\alpha$ represents defect absorption of sub-bandgap photons (code comment). The generation time of each group is broadened around `central_time` with FWHM $\tau$ for SPA groups and $\tau/\sqrt{2}$ for TPA groups, because $P^2(t)$ is a Gaussian narrower by a factor of $\sqrt{2}$. This is implemented by `LaserInjection`. The absorption-coefficient table `Si.txt` is taken from Ref. [7].
+
+Eq. (7a) differs from Eq. (3) of Ref. [16] by one factor: the original paper divides by $\hbar\omega$ outside the sum, which with the original parameters yields an absorption lower than Fig. 4 ($75\ \text{K}$) of that paper by $\hbar\omega \approx 3.3$; removing this divisor agrees with Fig. 4, and compared with the $300\ \text{K}$ measurements in Ref. [17], agrees within $10\%$ across $353$–$364\ \text{nm}$ ($225$ vs. $210\ \text{cm}^{-1}$ at $355\ \text{nm}$), is $21\%$ higher at $336\ \text{nm}$, and $26\%$ lower at $369\ \text{nm}$; at longer wavelengths, Ref. [17] stops at its measurement floor of about $13\ \text{cm}^{-1}$, whereas Ref. [16] measures down to $0.02\ \text{cm}^{-1}$. The original parameters are fitted only up to $\hbar\omega = 3.8\ \text{eV}$, so for wavelengths shorter than $326\ \text{nm}$, `absorption_coefficient` raises an error and requires `alpha` to be given in the laser file. At $300\ \text{K}$ and $375\ \text{nm}$, $\alpha = 9.05\ \text{cm}^{-1}$; the lowest threshold is $E_{GX} - \hbar\Omega_7 = 3.126\ \text{eV}$ (about $397\ \text{nm}$), beyond which there is no interband absorption and $\alpha = 0$, so defect absorption must be specified via `alpha` in the laser file.
+
+Limitations: only the parameter set for $E \perp c$ is used, which applies to top or bottom incidence on $c$-plane wafers; for edge incidence, polarization may be parallel to the $c$-axis, and the parameter set in Ref. [16], Table II is not wired in. Doping effects on the band edge are neglected; Ref. [16] measured nominally undoped epitaxial layers.
 
 ### Radioactive Decay Sources
 
@@ -177,6 +192,7 @@ When $\mathbf{P} = 0$ and $\phi = 0$, this reduces to the placement of a single 
 | Device density | Diamond `3.52`, SiC `3.21` (Si:C atomic ratio `50:50`) | $\text{g/cm}^3$ | `geant4/detector_construction.py` | none |
 | `RADIOACTIVE_DECAY` | `210` | — | `geant4/nuclide_source.py`, process subtype for radioactive decay | none |
 | $h$, $c$ | `6.626e-34`, `2.998e8` | $\text{J}\cdot\text{s}$, $\text{m/s}$ | `laser.py`, Eq. (8) | none |
+| 4H-SiC absorption model parameters | see variable definitions of Eqs. (7a) and (7b) | — | `laser.py`, Ref. [16], Table I and Eq. (5) | none |
 | Number of rings, number of sectors | `4`, `8` | count | `laser.py`, division of the laser cross section | none |
 | Beam-path sampling density | `50` points per finest scale | — | `laser.py`, see "Laser Carrier Groups" | none |
 
@@ -229,7 +245,7 @@ When the setup has `devices`, the track traverses all slots in Geant4 coordinate
 
 ### Laser Carrier Groups
 
-`LaserInjection(my_d, laser_dic)` reads the laser keys (see "Interface"). If `alpha` is not given, it looks up the table using Eq. (7): raise `ValueError` if `deposit/absorption/<material>.txt` does not exist in the components or if $10^3\lambda$ is shorter than the shortest wavelength in the table; set $\alpha = 0$ if it is longer than the longest wavelength. It then adds SPA groups with $k = 2$ and broadening $\tau$ when $\alpha \ne 0$, and subsequently adds TPA groups with $k = 4$ and broadening $\tau/\sqrt{2}$ when `tech == "TPA"`. If `tech` is neither `"SPA"` nor `"TPA"`, `NameError(tech)` is raised after adding any SPA groups. Each call to `_add_groups` proceeds as follows:
+`LaserInjection(my_d, laser_dic)` reads the laser keys (see "Interface"). If `alpha` is not given: when the device material is `"SiC"`, it computes $\alpha$ from Eqs. (7a) and (7b) using the device's `temperature`, raising `ValueError` if $\hbar\omega > 3.8\ \text{eV}$; for other materials, it looks up the table using Eq. (7), raising `ValueError` if `deposit/absorption/<material>.txt` does not exist in the components or if $10^3\lambda$ is shorter than the shortest wavelength in the table, and setting $\alpha = 0$ if it is longer than the longest wavelength. It then adds SPA groups with $k = 2$ and broadening $\tau$ when $\alpha \ne 0$, and subsequently adds TPA groups with $k = 4$ and broadening $\tau/\sqrt{2}$ when `tech == "TPA"`. If `tech` is neither `"SPA"` nor `"TPA"`, `NameError(tech)` is raised after adding any SPA groups. Each call to `_add_groups` proceeds as follows:
 
 1. **Beam-path coordinates** (`_beam_frame`): `"top"` enters from $z = 0$ along $+z$, path length $l_z$, focus $s_f = f_z l_z$, transverse coordinates $(u, v) = (x, y)$, center $(f_x l_x, f_y l_y)$; `"bottom"` enters from $z = l_z$ along $-z$, path length $l_z$, $s_f = l_z - f_z l_z$, $z = l_z - s$; `"edge"` enters from $x = 0$ along $+x$, path length $l_x$, $s_f = f_x l_x$, $(u, v) = (y, z)$, center $(f_y l_y, f_z l_z)$. Here $f_x, f_y, f_z$ are `fx_rel`, `fy_rel`, `fz_rel`. Any other `direction` raises `NameError(direction)`.
 2. **Beam-path sampling**: Let the finest length scale be $d = \min\bigl(L_{\text{beam}},\ z_R,\ 10^{6}/\alpha\bigr)$ (taking the third term as $L_{\text{beam}}$ when $\alpha = 0$). Place $\lceil 50 L_{\text{beam}}/d \rceil + 1$ equidistant points on $[0, L_{\text{beam}}]$, compute $dN/ds$ via Eq. (10) or (11), and accumulate via the trapezoidal rule (multiplied by $10^{-6}$ to convert to per $\mu\text{m}$) to obtain $M(s)$, with total pairs $N_{\text{tot}} = M(L_{\text{beam}})$.
@@ -293,6 +309,7 @@ Users can configure the keys in device files, setup scripts, radioactive source 
 | --- | --- | --- | --- |
 | `l_x`, `l_y`, `l_z` | none (required) | $\mu\text{m}$ | Device dimensions; see [device model](device.md) |
 | `material` | none (required) | none | `"Si"`, `"SiC"`, or `"Diamond"`; determines Geant4 material, ionization energy, and Fano factor; toy MIP supports only `"Si"` and `"SiC"` |
+| `temperature` | none (required when a laser for a `"SiC"` device omits `alpha`) | $\text{K}$ | $T$ in Eq. (7b) |
 
 ### Setup
 
@@ -451,7 +468,7 @@ A `toy_mip` source may contain only the keys in the table below and the common k
 | `direction` | none (required) | none | `"top"` (from $z = 0$ along $+z$), `"bottom"` (from $z = l_z$ along $-z$), or `"edge"` (from $x = 0$ along $+x$) |
 | `refractionIndex` | none (required) | none | Refractive index $n$ of the device material at this wavelength |
 | `wavelength` | none (required) | $\text{nm}$ | Laser wavelength |
-| `alpha` | looked up via Eq. (7) | $\text{m}^{-1}$ | Absorption coefficient; setting `0` disables single-photon absorption, leaving only TPA groups for a `"TPA"` laser |
+| `alpha` | looked up via Eq. (7) for silicon, calculated via Eq. (7a) for silicon carbide | $\text{m}^{-1}$ | Absorption coefficient; setting `0` disables single-photon absorption, leaving only TPA groups for a `"TPA"` laser |
 | `beta_2` | none (required for `"TPA"`) | $\text{m/W}$ | Two-photon absorption coefficient |
 | `temporal_FWHM` | none (required) | $\text{s}$ | Temporal full width at half maximum $\tau$ of the pulse |
 | `pulse_energy` | none (required) | $\text{J}$ | Pulse energy $E_p$ |
@@ -472,7 +489,7 @@ A whitespace-separated two-column text file with `#` comment lines: the first co
 | --- | --- | --- |
 | `LA01IR_top_Si`, `LA01IR_edge_Si` | `"SPA"` | $1064\ \text{nm}$, silicon, $\alpha$ looked up from table |
 | `LA01R_top_Si`, `LA01R_bottom_Si` | `"SPA"` | $660\ \text{nm}$, silicon, $\alpha$ looked up from table |
-| `PIL037_top_SiC`, `PIL037_edge_SiC` | `"SPA"` | $375\ \text{nm}$, silicon carbide, `alpha` equal to `1000` and `21000` $\text{m}^{-1}$ respectively |
+| `PIL037_top_SiC`, `PIL037_edge_SiC` | `"SPA"` | $375\ \text{nm}$, silicon carbide, $\alpha$ calculated via Eq. (7a) ($9.05\ \text{cm}^{-1}$ at $300\ \text{K}$) |
 | `TPA1550_top_Si`, `TPA1550_edge_Si` | `"TPA"` | $1550\ \text{nm}$, silicon, longer than the table upper limit, $\alpha = 0$, TPA groups only |
 
 ### `deposit.h5` File Format
@@ -510,7 +527,7 @@ The fraction of generated events that are recorded is `recorded_events / generat
 | `<output>.png` | `view_geometry` (TSG drivers) | Geometry and tracks of generated events | Geant4 coordinates |
 | `<output>` vector image | `view_geometry` (OGL drivers) | Same as above, `2000 × 2000`, white background | Geant4 coordinates |
 | `nocarrier_<fx>_<fy>_<fz>.pdf` | `LaserInjection.draw_nocarrier3D` | `TH3D` of carrier groups weighted by pair count, $50^3$ bins spanning the bounding box of the groups; axis titles `Depth`, `Width`, `Thick` (i.e., $x$, $y$, $z$); relative coordinates in the filename formatted to 5 decimal places | $\mu\text{m}$ |
-| `nocarrier2D_<fx>_<fy>_<fz>.pdf` | `LaserInjection.draw_nocarrier2D` | `TH2D` (`COLZ`) in the $x$-$z$ plane, $50 \times 50$ bins, color representing pair count (`Carriers`) | $\mu\text{m}$ |
+| `nocarrier2D_<fx>_<fy>_<fz>.pdf` | `LaserInjection.draw_nocarrier2D` | Volume density of electron-hole pairs on the $y = f_y l_y$ $x$-$z$ plane (which passes through the optical axis for all three incidence directions), `TH2D` (`COLZ`), evaluated directly on a $200 \times 200$ grid by multiplying $dN/ds$ from Eqs. (10) and (11) by the transverse profile $\frac{k}{\pi w^2}\exp(-k r^2/w^2)$, with color representing pairs per $\mu\text{m}^3$ (`Pairs [μm⁻³]`); plotted along the beam path from the entrance face to where the cumulative pair count $M(s)$ reaches $0.99\,N_{\text{tot}}$, and transversely out to $2 w_{\max}$ on both sides of the optical axis ($w_{\max}$ is the maximum beam radius along this path segment, clipped at the device boundaries) | $\mu\text{m}$ |
 
 ## References
 
@@ -529,3 +546,5 @@ The fraction of generated events that are recorded is `recorded_events / generat
 - [13] M. E. Levinshtein, S. L. Rumyantsev, M. S. Shur (eds.), *Properties of Advanced Semiconductor Materials*, Wiley (2001)
 - [14] H. Bichsel, “Straggling in thin silicon detectors”, Rev. Mod. Phys. 60 (1988) 663, doi:10.1103/RevModPhys.60.663
 - [15] R. W. Boyd, *Nonlinear Optics*, 3rd ed., Academic Press (2008)
+- [16] P. Grivickas, V. Grivickas, J. Linnros, A. Galeckas, “Fundamental band edge absorption in nominally undoped and doped 4H-SiC”, J. Appl. Phys. 101 (2007) 123521, doi:10.1063/1.2749335
+- [17] S. G. Sridhara, R. P. Devaty, W. J. Choyke, “Absorption coefficient of 4H silicon carbide from 3900 to 3250 Å”, J. Appl. Phys. 84 (1998) 2963, doi:10.1063/1.368403

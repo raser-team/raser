@@ -63,7 +63,7 @@ def register(subparsers):
             device=False,
             command=command,
         ).attach(setup_parser)
-    parser.set_defaults(_run=run, _components=("bench/telescope",))
+    parser.set_defaults(_run=run, _components=("raser_bench/telescope",))
 
 
 def _variant(kwargs):

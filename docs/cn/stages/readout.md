@@ -59,6 +59,8 @@ raser rdo examples/HPK-Si-PiN/signal --scan field.voltage=100,200 --scan readout
 
 `raser readout --draw <对象>` 画本环节的对象：前端电路的原理图和冲击响应。前端电路图和冲击响应只取决于电路和它的参数，是资产，放在 `work/<电路名>/` 下，被各实验的 `readout` 引用。
 
+阻性层器件（器件文件有 `resistive_layer`）另有一个对象 `network`：`raser readout --draw network [路径]` 只解器件电路与 `readout.amplifier` 的放大器链，不读 `deposit` 和 `current` 的结果。冲击的位置是器件上的一个点，用几何坐标 $(x, y)$ 给出，单位 $\mu\text{m}$，坐标系与 `current` 相同（$0 \le x \le l_x$，$0 \le y \le l_y$）；条形器件只用 $x$。$1\ \text{fC}$ 的电荷在第一个时间箱里以矩形电流脉冲注入这一点，按它到相邻晶胞中心的距离线性分给这些晶胞的节点；时间箱宽 $10\ \text{ps}$、共 $2000$ 箱；方阻取 `readout.sheet_resistance`，没有时取器件文件。给出 `--at <x>,<y>` 时冲击这一点，`network_waveforms.png` 画每个读出电极（条或焊盘）的输出波形；不给时沿 $x$ 以晶胞宽度为步长扫过器件中线（$y = l_y/2$），另画 `network_sharing.png`：各读出电极的波形幅度和波形积分随冲击点 $x$ 的曲线。
+
 ## 规则
 
 ### 内置常数
@@ -127,10 +129,10 @@ FileNotFoundError: no field of <det_name> ready for this run: solve it with `ras
 
           这个文件随 DEVSIM 解的权重场写出；在 `field` 段打开权重场求解（用 `--set field.<键>=<值>` 改场的设置），由 DEVSIM 解权重场。
         - `row is None` 时：该偏压解过电容，就从 `<float(voltage)>V.cv.json` 取 `specific_capacitance_pF * area_factor * 1e-12`（$\text{F}$）作 `solved_f`；否则 `solved_f = None`。
-        - `int(my_d.dimension) == 1` 时：`solved_undepleted(Path(folder), my_d.voltage)` 读 `<float(voltage)>V.undepleted.json`。该偏压没存未耗尽层时抛出
+        - `solved_undepleted(Path(folder), my_d.voltage, undepleted_area_cm2(my_d))` 读 `<float(voltage)>V.undepleted.json`。该偏压没存未耗尽层时抛出
 
           ```text
-          FileNotFoundError: the field in <folder> has no undepleted bulk at <voltage> V (solved at: <solved>): it is stored for a field in one dimension; solve it with `raser field <det_name> --set field.voltage=<voltage>`
+          FileNotFoundError: the field in <folder> has no undepleted bulk at <voltage> V (solved at: <solved>): solve it with `raser field <det_name> --set field.voltage=<voltage>`
           ```
 
      4. **组装电路（`circuit, values = device_circuit(my_d, electrodes, solved_f, row=row, solved_undepleted=undepleted)`）**：
@@ -191,7 +193,7 @@ FileNotFoundError: no field of <det_name> ready for this run: solve it with `ras
 | `"between_electrodes"` | 常规器件：`{"farad": list[float], "from": "field"} \| None` | $\text{F}$ | 条形行与第 $1, \dots, N$ 近邻单侧条间的耦合电容（非条形行为 `null`） |
 | `"bias_resistance"` | 常规器件：`{"ohm": float} \| None` | $\Omega$ | 单电极偏置电阻（未配置为 `null`） |
 | `"coupling_capacitance"` | 常规器件：`{"farad": float} \| None` | $\text{F}$ | 单电极交流耦合电容（未配置为 `null`） |
-| `"undepleted_layer"` | 常规器件：`{"ohm": float, "farad": float, "from": str} \| None` | $\Omega$, $\text{F}$ | 一维未耗尽层并联电阻、电容及来源（已全耗尽或多维器件为 `null`） |
+| `"undepleted_layer"` | 常规器件：`{"ohm": float, "farad": float, "from": str} \| None` | $\Omega$, $\text{F}$ | 未耗尽层并联电阻、电容及来源（已全耗尽为 `null`） |
 | `"cell_capacitance"` | 阻性层器件：`{"farad": float, "from": str}` | $\text{F}$ | 阻性层单个网格单元对背面的电容及来源 |
 | `"sheet_resistance"` | 阻性层器件：`{"ohm": float, "from": str}` | $\Omega$ | 阻性层方阻及来源（`"chosen"`、`"device file"` 或 `"implanted layer"`） |
 | `"coupling_per_area_f_m2"` | 阻性层器件：`float \| None` | $\text{F/m}^2$ | 读出条或焊盘下方介质层的单位面积耦合电容（直连时为 `null`） |
@@ -213,12 +215,12 @@ FileNotFoundError: no field of <det_name> ready for this run: solve it with `ras
 | 器件文件键 `capacitance_pF` | 无（可选） | $\text{pF}$ | 直接给出的单电极耗尽层结电容（或阻性层单元电容），优先于场电容与平板估算 |
 | 器件文件键 `bias_resistance_ohm` | 不写（可选） | $\Omega$ | 常规器件单电极偏置电阻；给了 `coupling_capacitance_pF` 时必须给 |
 | 器件文件键 `coupling_capacitance_pF` | 不写（可选） | $\text{pF}$ | 常规器件单电极交流耦合电容 |
-| 器件文件键 `undepleted_resistance_ohm`、`undepleted_capacitance_pF` | 不写（可选） | $\Omega$, $\text{pF}$ | 常规器件未耗尽层并联电阻与电容，必须成对给出；不给时一维器件从场里读 |
+| 器件文件键 `undepleted_resistance_ohm`、`undepleted_capacitance_pF` | 不写（可选） | $\Omega$, $\text{pF}$ | 常规器件未耗尽层并联电阻与电容，必须成对给出；不给时从场里读 |
 | 器件文件键 `resistive_layer` | 无（可选） | $\Omega$, $\text{cm}^{-2}$, $\mu\text{m}$, $^\circ\text{C}$ | 阻性层配置块，含方阻 `sheet_resistance`（或铝注入参数 `implanted`、`thickness`、`anneal`）、读出条 `strips` 或焊盘 `pads`、接地接触 `grounded` 及可选介质层 `coupling`（`thickness`、`permittivity`） |
 
 ### 读写的文件
 
-- **读：`<器件 project>/field/<节点号>/` 场节点里的电路文件**（`<V>V.cv.json`、`<V>V.undepleted.json`、`weightingfield/<electrode>/Capacitance_<bias>V.json`）。常规器件从中取结电容、一维未耗尽层的 RC 参数和条形行的条间互容；格式见[场求解与加载（`core/field`）](../core/field.md)。
+- **读：`<器件 project>/field/<节点号>/` 场节点里的电路文件**（`<V>V.cv.json`、`<V>V.undepleted.json`、`weightingfield/<electrode>/Capacitance_<bias>V.json`）。常规器件从中取结电容、未耗尽层的 RC 参数和条形行的条间互容；格式见[场求解与加载（`core/field`）](../core/field.md)。
 - **读：`current` 节点里的 `current.h5`**（多位置实验里每个位置一个 `current.<位置>.h5`）。取 `electrodes`、`dt`（$\text{s}$）和逐事例感应电流；格式见[载流子漂移与感应电流（`core/current`）](../core/current.md)。
 - **写：`nodes/readout/<节点号>/readout.h5`**（多位置实验里同节点下每个位置一个文件 `readout.<位置>.h5`）。上游有记录事例、且（多位置下）该位置有电流文件时写出，先删旧文件再逐事例追加。底层读写函数见[电子学读出（`core/readout`）](../core/readout.md)，HDF5 属性与数据集如下：
 
@@ -237,3 +239,4 @@ FileNotFoundError: no field of <det_name> ready for this run: solve it with `ras
 
 - **写：`nodes/readout/<节点号>/node.json`**。记下本节点的输入，以及代码版本、运行环境和运行状态。
 - **写：`points.json` 与 `points/<点名>/readout/<作业号>`**。参数表记各点 `readout` 用的节点号；视图软链接指向该节点。
+- **写：`<器件 project>/network/<节点号>/`**（只在 `--draw network` 时）。`network.h5`、`node.json`，以及 `plots/` 下的 `network_waveforms.png` 和扫描时的 `network_sharing.png`；`network.h5` 的属性 `dt`（$\text{s}$）、`charge`（$\text{C}$）、`electrodes` 与 `device_circuit`，数据集 `point` 形状为 `(points, 2)`，单位 $\mu\text{m}$，是各冲击点的 $(x, y)$，数据集 `voltage` 形状为 `(points, outputs, bins)`，单位 $\text{V}$，是冲击各点时各读出电极在时间箱中心的输出电压。
