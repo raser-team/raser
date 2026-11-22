@@ -19,15 +19,15 @@ DT_S = 20e-12
 
 
 def _resistive_strips(tmp_path):
-    """Arguments of the slice for 20 cells of 10 um under 1 kOhm a square,
-    strips 1000 um long on the cells 2 to 4 and 15 to 17 (from 0), and a
-    currents file with 1 fC on the cell 7, cell8 by its name, 25 um from the
+    """Arguments of the slice for 20 RC nodes of 10 um under 1 kOhm a square,
+    strips 1000 um long on the RC nodes 2 to 4 and 15 to 17 (from 0), and a
+    currents file with 1 fC on the RC node 7, node8 by its name, 25 um from the
     edge of the left strip and 75 um from that of the right one."""
     device = json.loads(device_file("SiC_LGAD_strip").read_text(encoding="utf-8"))
     device.update(
         {
             "read_ele_num": 20,
-            "read_out_contact": [{"x_span": 0, "y_span": 0, "name": "cell"}],
+            "read_out_contact": [{"x_span": 0, "y_span": 0, "name": "node"}],
             "p_x": 10,
             "l_y": 1000,
             "capacitance_pF": 0.0123,
@@ -41,7 +41,7 @@ def _resistive_strips(tmp_path):
     current[7, :10] = 1e-15 / (10 * DT_S)
     append_currents(
         tmp_path / "current.h5",
-        [f"cell{k}" for k in range(1, 21)],
+        [f"node{k}" for k in range(1, 21)],
         DT_S,
         EventCurrents(0, 0.0, current, current.sum(axis=1) * DT_S, 0.0),
     )
@@ -53,13 +53,13 @@ def _resistive_strips(tmp_path):
     }
 
 
-def test_currents_on_the_cells_of_a_resistive_layer_come_out_on_its_strips(tmp_path):
+def test_currents_on_the_rc_nodes_of_a_resistive_layer_come_out_on_its_strips(tmp_path):
     # each strip on its 50 Ohm
     waveforms(_resistive_strips(tmp_path))
 
     record = read_waveforms(tmp_path / "readout.h5")
     assert record.electrodes == ["left", "right"]
-    # the cells lie below the electrode on 740 V: they collect holes
+    # the RC nodes lie below the electrode on 740 V: they collect holes
     assert record.pulse_edge == ["rising", "rising"]
     charge_fc = record.events[0].voltage.sum(axis=1) * DT_S / 50.0 * 1e15
     left_ohm, right_ohm = 25 + 50.0, 75 + 50.0

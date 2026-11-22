@@ -28,7 +28,7 @@ Avalanche multiplication in the SiC AC-LGAD device is calculated by `CalCurrentG
 
 - [`field`](../stages/field.md): reuses the field node containing the electric field, gain-layer profile, and weighting field of the SiC AC-LGAD pixel device at the operating bias; if no field is found, it is solved before jobs begin and stored in `work/<device>/field/<node>/`.
 - [`deposit`](../stages/deposit.md): uses Geant4 to simulate energy deposition and electron-hole pair generation near the entrance surface of the SiC AC-LGAD pixel device by $\alpha$ particles emitted from the hydrogen–boron fusion source in the target-chamber geometry.
-- [`current`](../stages/current.md): simulates electron and hole drift and `"Hatakeyama"` avalanche multiplication in the SiC multiplication field, computing the induced current in each cell.
+- [`current`](../stages/current.md): simulates electron and hole drift and `"Hatakeyama"` avalanche multiplication in the SiC multiplication field, computing the induced current in each RC node.
 - [`readout`](../stages/readout.md): feeds the induced currents into the 2D resistive-layer and AC-coupling capacitance grid (`device_grid`) of the AC-LGAD and the front-end amplifier chain to solve output voltage waveforms for each pixel channel.
 - [`digitizer`](../stages/digitizer.md) and [`trigger`](../stages/trigger.md): performs digitization sampling/quantization and threshold-crossing trigger selection on each pixel channel's waveform.
 - [`reconstruction`](../stages/reconstruction.md): reads the events recorded by `trigger` from `digitizer.h5`, converts the quantized codes back to voltage ($\text{V}$), and extracts arrival time (`ToA`, `CFD`), amplitude, and pixel cluster position for each hit from the pixel waveforms.

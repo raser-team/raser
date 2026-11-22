@@ -28,8 +28,14 @@ SLICES = chain.expand(DEVICES, deposit=_deposits)
 
 WORKFLOW = Workflow(
     name="cflm",
-    keys=("voltage", "irradiation", "plots", "amplifier", "sheet_resistance", "threshold", "amplitude_threshold", "fractions", "edge"),
-    defaults={**chain.READOUT_DEFAULTS, **chain.RECONSTRUCTION_DEFAULTS, "plots": 0},
+    keys=tuple(key for key in chain.KEYS if not key.startswith("deposit.")),
+    defaults={
+        **{key: value for key, value in chain.DEFAULTS.items() if not key.startswith("deposit.")},
+        "current.plots": 0,
+    },
+    sections=chain.SECTIONS,
+    scanned=chain.SCANNED,
+    slots={"field.device": "device"},
     in_file=chain.IN_FILE,
     slices=SLICES,
     devices=DEVICES,
@@ -39,11 +45,5 @@ WORKFLOW = Workflow(
 def register(subparsers):
     parser = subparsers.add_parser("cflm", help="CEPC Fast Luminosity Monitor")
     parser.add_argument("det_name", help="Device project")
-    parser.add_argument("--plots", type=int, help="draw the first N recorded bunches of each pad")
-    parser.add_argument("-vol", "--voltage", type=float, help="bias voltage")
-    parser.add_argument("-irr", "--irradiation", type=float, help="irradiation flux")
-    parser.add_argument("-amp", "--amplifier", type=str, help="amplifier")
-    parser.add_argument("--sheet-resistance", type=float, help="of the resistive layer of the pads [Ohm]")
-    chain.reconstruction_arguments(parser)
     WORKFLOW.attach(parser)
     parser.set_defaults(_project="det_name")

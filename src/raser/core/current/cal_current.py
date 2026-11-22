@@ -21,14 +21,17 @@ from .drift import Cluster, Drifted, advance, induced_charges, surviving, surviv
 from . import draw
 from .draw_drift_path import draw_drift_path
 from .currents import EventCurrents, append_currents
+from ..field.resistive_layer import shares
 
 from ..deposit.deposits import EventDeposits, read_deposits
 from raser.supports.output import output
 
+# smaller steps no longer change the waveforms: the CFD time moves by less
+# than 1 ps and the rise time by less than 2 % behind a 2 GHz front end
 t_bin = {
     1: 5e-12,
-    2: 50e-12,
-    3: 50e-12  # resolution of oscilloscope
+    2: 10e-12,
+    3: 10e-12
 }
 
 t_end = {
@@ -43,8 +46,8 @@ t_start = {
 
 delta_t = {
     1: 2e-12,  # simulation time step
-    2: 20e-12,
-    3: 20e-12
+    2: 5e-12,
+    3: 5e-12
 }
 
 logger = logging.getLogger(__name__)
@@ -396,6 +399,15 @@ class CalCurrent:
             if len(path) < 2:
                 continue
             carriers = born if remaining is None else remaining
+            if getattr(my_d, "resistive_layer", None) is not None:
+                induced = induced_charges(path, carriers, my_f, 0, (0.0, 0.0))
+                for value, start, end in zip(induced, path[:-1], path[1:]):
+                    middle = (0.5 * (start[0] + end[0]), 0.5 * (start[1] + end[1]))
+                    for number, share in shares(my_d, middle).items():
+                        spread_over_bins(
+                            bins[number], share * value / self.t_bin, start[3], end[3], self.t_start, bin_width
+                        )
+                continue
             for number, in_field, offset in self.electrodes_near(path[0][0], path[0][1], my_d, my_f):
                 induced = induced_charges(path, carriers, my_f, in_field, offset)
                 for value, t_from, t_to in zip(induced, path[:-1, 3], path[1:, 3]):

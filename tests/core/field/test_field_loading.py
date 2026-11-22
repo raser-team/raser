@@ -94,13 +94,16 @@ def test_the_electric_field_of_a_row_is_read_in_one_cell(
 ) -> None:
     _solved(tmp_path, ["z", "x"])
     for name in FILES:
-        _along_x(tmp_path, name, 3 if "weightingfield" in name else cells_of_the_field)
+        # the weighting potential is on five cells: the cell is the pitch,
+        # whatever the width of the mesh of the weighting potential
+        _along_x(tmp_path, name, 5 if "weightingfield" in name else cells_of_the_field)
     field = DevsimField(
         "device",
         57,
         [{"name": "top", "x_span": 1, "y_span": 0}],
         bounds={"x": [0.0, 1000.0], "z": [0.0, 50.0]},
         field_directory=tmp_path,
+        pitch={"x": 100.0},
     )
 
     # ten cells of 100 um: a place is read as far into the cell of the field
@@ -109,6 +112,31 @@ def test_the_electric_field_of_a_row_is_read_in_one_cell(
     assert field.get_potential(30.0, 0.0, 25.0) == pytest.approx(first + 30.0)
     assert field.get_potential(250.0, 0.0, 25.0) == pytest.approx(first + 50.0)
     assert field.get_potential(970.0, 0.0, 25.0) == pytest.approx(first + 70.0)
+
+
+@pytest.mark.parametrize(
+    ("pitch_um", "said"),
+    [
+        (120.0, "less than the pitch"),  # the mesh of 100 um does not hold one cell
+        (80.0, "whole number of pitches"),  # 1.25 cells: no cell to take a place back into
+    ],
+)
+def test_a_field_whose_mesh_does_not_fit_the_pitch_is_not_loaded(
+    tmp_path: Path, pitch_um: float, said: str
+) -> None:
+    _solved(tmp_path, ["z", "x"])
+    for name in FILES:
+        _along_x(tmp_path, name, 1)
+
+    with pytest.raises(ValueError, match=said):
+        DevsimField(
+            "device",
+            57,
+            [{"name": "top"}],
+            bounds={"x": [0.0, 1000.0], "z": [0.0, 50.0]},
+            field_directory=tmp_path,
+            pitch={"x": pitch_um},
+        )
 
 
 def test_unstructured_3d_field_is_regularized_with_explicit_bins() -> None:

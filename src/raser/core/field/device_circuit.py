@@ -13,7 +13,7 @@ class DeviceCircuit:
     outputs : for each read-out, by its name, the node its first amplifier
         stage reads. The read-outs may be other than the electrodes of the
         currents: those of a resistive layer are its strips, the currents
-        are those of its cells.
+        are those of its RC nodes.
     alike : groups of outputs that have the same circuit behind each of
         them, so that their noise is the same: one noise spectrum, that of
         the middle output of the group, serves the whole group. An output in

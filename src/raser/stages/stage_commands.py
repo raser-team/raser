@@ -1,4 +1,4 @@
-"""raser deposit|current|readout|reconstruction <experiment folder or device>: the chain of
+"""raser deposit|current|readout|reconstruction|analysis <experiment folder or device>: the chain of
 an experiment run up to that stage, with what it lacks before it, the field
 among it. raser field is the stage command of the field.
 
@@ -20,12 +20,13 @@ from raser.stages import chain
 from raser.supports.paths import project_root_context
 from raser.supports.paths import work_root
 
-# stage -> its short command, what it does, and the options of it and of the stages before it
+# stage -> its short command and what it does; its settings are in config.json, given with --set and --scan
 STAGES = {
-    "deposit": ("dep", "the energy deposited by the source", (chain.deposit_arguments,)),
-    "current": ("cur", "the induced currents, after the deposits and the field", (chain.deposit_arguments, chain.current_arguments)),
-    "readout": ("rdo", "the waveforms of the electronics, after all before them", (chain.deposit_arguments, chain.current_arguments, chain.readout_arguments)),
-    "reconstruction": ("reco", "every event of the waveforms as a row of its table, after all before them", (chain.deposit_arguments, chain.current_arguments, chain.readout_arguments, chain.reconstruction_arguments)),
+    "deposit": ("dep", "the energy deposited by the source"),
+    "current": ("cur", "the induced currents, after the deposits and the field"),
+    "readout": ("rdo", "the waveforms of the electronics, after all before them"),
+    "reconstruction": ("reco", "every event of the waveforms as a row of its table, after all before them"),
+    "analysis": ("ana", "the results of the points, after all before them"),
 }
 
 
@@ -50,7 +51,8 @@ def run(stage, kwargs):
     folder, words, device = _experiment(kwargs["target"])
     workflow = WORKFLOWS[" ".join(words)]
     names = [piece.name for piece in workflow.slices]
-    if stage not in {name.split(".")[0] for name in names}:
+    stages = {name.split(".")[0] for name in names} | ({"analysis"} if workflow.analysis else set())
+    if stage not in stages:
         raise SystemExit(
             f"{folder}: the experiment {' '.join(words)} has no {stage} slice; its slices: {names}"
         )
@@ -73,12 +75,11 @@ def run(stage, kwargs):
 
 
 def register(subparsers):
-    for stage, (short, does, adders) in STAGES.items():
+    for stage, (short, does) in STAGES.items():
         parser = subparsers.add_parser(
             stage, aliases=[short], help=f"stage: {does}, in an experiment or a device's signal"
         )
         parser.add_argument("target", help="experiment folder, or a device for work/<device>/signal")
-        for add in adders:
-            add(parser)
+        chain.run_arguments(parser)
         run_arguments(parser)
         parser.set_defaults(_run=partial(run, stage))

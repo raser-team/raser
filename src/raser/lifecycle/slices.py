@@ -37,6 +37,10 @@ class Slice:
     # field it found: `notes` reads it back. It is kept, not judged.
     run: Callable
     keys: tuple = ()  # the options that change what it writes
+    # Those of its keys that say how much is measured or drawn, not what:
+    # jobs that differ in them alone measured the same thing, and an
+    # analysis takes them together.
+    counts: tuple = ()
     kinds: tuple = ()  # the kinds of json file that change what it writes
     # A scanned option of it makes each point a measurement of its own, with
     # its own events: the point runs the slices before this one itself. False
@@ -82,7 +86,7 @@ def owners(slices, key) -> set[int]:
     named = {
         k
         for k, piece in enumerate(slices)
-        if key in piece.keys or key in piece.kinds or key.split(".")[0] in piece.kinds
+        if key in piece.keys or any(key == kind or key.startswith(kind + ".") for kind in piece.kinds)
     }
     return named or {k for k in range(len(slices)) if not upstream(slices, k)}
 

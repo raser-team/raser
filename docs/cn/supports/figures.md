@@ -21,7 +21,7 @@ RASER 画的每一张图，不论出自哪个环节、实验还是资产，也�
 
 ## 坐标轴与单位
 
-轴标题用英文，写成 `量名 [单位]`：量名首字母大写、用完整的词；无量纲量不加方括号，例如 `Charge collection efficiency`。直方图纵轴写 `Events`。
+轴标题用英文，写成 `量名 [单位]`：量名首字母大写、用完整的词；无量纲量不加方括号，例如 `Charge collection efficiency`。直方图等计数的纵轴写 `Events`，刻度只取整数，由 `events(axis)` 设好。计数轴按数据自己选线性或对数：最高的一格比最矮的非空一格高 30 倍以上时用对数轴，看得见稀疏的尾巴；否则用线性轴。电极编号这类只取整数的量，轴刻度也只取整数，由 `integers(axis)` 设好。单事例波形（感应电流、放大器输出）的时间轴只画信号所在的一段：取幅度超过峰值 1% 的第一个和最后一个时刻，两边各留出这段长度的 20%；整条波形都是零时画全程。
 
 画图时把数据换算成下表的单位：先把数据化成国际单位制（场求解给出的长度是 cm、电场是 V/cm、掺杂是 cm⁻³，要先化成 m、V/m、m⁻³），再除以 `UNIT[<单位>]`。刻度上不出现 `×10⁻⁹` 这类公共乘子；跨好几个数量级的量（漏电流、掺杂浓度、俘获率）用对数轴。
 
@@ -59,6 +59,7 @@ RASER 画的每一张图，不论出自哪个环节、实验还是资产，也�
 | 总和（总电流、总电荷） | 黑 |
 | 初始沉积点 | 灰 `#808080` |
 | 阈值、均值等参考线 | 黑色虚线 |
+| 器件内部的分界 | 灰色细虚线 |
 | 拟合曲线 | 黑色实线 |
 | 直方图 | 灰蓝 `#6c8ebf` 填充 |
 
@@ -86,7 +87,7 @@ RASER 画的每一张图，不论出自哪个环节、实验还是资产，也�
 
 ## 各环节的图
 
-每个环节至少画下面这些图。“单事例”的图画前 `<环节>.plots` 个记录事例，这个选项和它的默认值写在各环节页里；其余每个节点画一张。实验和应用（telescope、tct、bmos、cflm 等）自己特有的图照同样的规矩画，放在它们读写的那个环节的节点里。
+每个环节至少画下面这些图。“单事例”的图画前 `<环节>.plots` 个记录事例，这个选项和它的默认值写在各环节页里；其余每个节点画一张。实验和应用（telescope、tct、bmos、cflm 等）自己特有的图照同样的规矩画，放在它们读写的那个环节的节点里。field 沿深度的各张剖面图（`doping`、`potential`、`electric_field`、`trapping_rate`、`weighting_potential`、`weighting_field`）在器件内部的每一处分界画一条竖线；分界取掺杂浓度在相邻网格点之间变化一个数量级以上的位置，例如 PN 结、高阻层与衬底的交界。
 
 | 环节 | 图名 | 画的是 | 张数 |
 | --- | --- | --- | --- |
@@ -144,6 +145,9 @@ figures.save_canvas(canvas, folder, "drift_path", 17)   # drift_path_17.png、.p
 | `save_canvas(canvas, folder, name, *suffixes)` | 存 `.png`、`.pdf`、`.root` 三份，返回 png 的路径 |
 | `file_name(name, *suffixes)` | 按上面的规则拼出文件名（不含扩展名）。后缀可以是数、小写词，或“数和单位”的二元组：`file_name("electric_field", (200.0, "V"))` 为 `electric_field_200V`，`file_name("current", 17, "electrode", 2)` 为 `current_17_electrode_2` |
 | `label(quantity, unit=None, root=False)` | 拼轴标题：`label("Depth", "um")` 为 `Depth [μm]`，不给单位时只有量名 |
+| `events(axis, which="y", counts=None)` | 把计数轴的标题设为 `Events`、刻度只取整数；给了各格的计数 `counts` 时按上面的规则选线性或对数 |
+| `integers(axis, which="x")` | 让这根轴的刻度只取整数 |
+| `signal_window(time, values)` | 按上面的规则返回单事例波形时间轴的范围 `(起, 止)`，单位同 `time` |
 | `UNIT` | 单位到国际单位制的倍数，例如 `UNIT["ns"] == 1e-9`；画图时用国际单位制的数据除以它。键为单位表里的全部单位，用 ASCII 写：`ns`、`ps`、`uA`、`A`、`V`、`mV`、`um`、`mm`、`kV/cm`、`cm-1`、`cm-3`、`s-1`、`pF`、`fC`、`keV` |
 | `ELECTRON`、`HOLE`、`GAIN_ELECTRON`、`GAIN_HOLE`、`TOTAL`、`DEPOSIT`、`HISTOGRAM` | 上面颜色表里的颜色 |
 | `series(count, ordered)` | 一张图里几条同类曲线的颜色：`ordered=True` 从 viridis 等距取，否则按 Okabe–Ito 依次取 |

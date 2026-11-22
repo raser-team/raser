@@ -20,6 +20,31 @@ def floored(expression):
             .replace("Holes", "ifelse(Holes > CarrierFloor, Holes, CarrierFloor)"))
 
 
+def irradiation_defects(device, region, label, custom_defect=None):
+    """The defects of the irradiation model `label`, as a list of dicts.
+
+    A label that names no built-in model takes `custom_defect` as the list.
+    """
+    if label == 'XingChen':
+        return CreateIrradiationModel_XingChen(device, region)
+    elif label == 'Perugia':
+        return CreateIrradiationModel_Perugia(device, region)
+    elif label == 'Schwandt':
+        return CreateIrradiationModel_Schwandt(device, region)
+    elif label == 'CommonDefect':
+        if devsim.get_material(device=device, region=region) == "Diamond":
+            return CreateIntrinsicModel_DiamondCommonDefect(device, region)
+        return CreateIntrinsicModel_SiCCommonDefect(device, region)
+    return custom_defect
+
+
+def set_fluence(device, region, defects, flux):
+    """Set the trap concentration N_t_irr_<name> [cm^-3] of every defect to
+    its background N_t0 [cm^-3] plus g_int [cm^-1] times the fluence `flux` [cm^-2]."""
+    for defect in defects:
+        devsim.set_parameter(device=device, region=region, name="N_t_irr_" + defect["name"], value=defect.get("N_t0", 0.0) + defect["g_int"] * flux)
+
+
 def CreateIrradiation(device, region, label="XingChen", flux=1e15, custom_defect = {}):
 
     # if not InEdgeModelList(device, region, "ElectricField"):
@@ -27,19 +52,7 @@ def CreateIrradiation(device, region, label="XingChen", flux=1e15, custom_defect
     #     CreateEdgeModelDerivatives(device, region, "ElectricField", "(Potential@n0-Potential@n1)*EdgeInverseLength", "Potential")
 
     # TODO: change labels into formal names
-    if label == 'XingChen':
-        defects = CreateIrradiationModel_XingChen(device, region)
-    elif label == 'Perugia':
-        defects = CreateIrradiationModel_Perugia(device, region)
-    elif label == 'Schwandt':
-        defects = CreateIrradiationModel_Schwandt(device, region)
-    elif label == 'CommonDefect':
-        if devsim.get_material(device=device, region=region) == "Diamond":
-            defects = CreateIntrinsicModel_DiamondCommonDefect(device, region)
-        else:
-            defects = CreateIntrinsicModel_SiCCommonDefect(device, region)
-    else:
-        defects = custom_defect
+    defects = irradiation_defects(device, region, label, custom_defect)
 
     # In a diamond region the carrier densities in the defect terms are held
     # at CARRIER_FLOOR or above.

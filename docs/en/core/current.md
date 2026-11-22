@@ -109,16 +109,14 @@ The 1D steady-state two-carrier multiplication integral is from Ref. [7]. Impact
 
 ### Built-in Constants
 
-The table below lists all built-in physical constants and numerical step parameters in `drift.py`, `cal_current.py`, and `diffusion.py`. They are module constants with no corresponding keys in the device file; the time window, step size, and `max_drift_time` are selected from the table by device dimension:
+The table below lists all built-in physical constants and numerical step parameters in `drift.py`, `cal_current.py`, and `diffusion.py`. They are module constants with no corresponding keys in the device file; the step size is selected from the table by device dimension, the time window is set by the drift result (see the opening of "Induced Charge Binning"), and `max_drift_time` comes from a device-file key or an estimate (see step 1 of "Single-Step Advance and Stop Conditions"):
 
 | Constant | 1D (or selected 2D mesh in the transverse $x$-$y$ plane) | 2D / 3D | Unit | Location and Meaning |
 | --- | --- | --- | --- | --- |
-| `t_bin` | `5e-12` | `50e-12` | $\text{s}$ | Output time step of current: induced-current time-bin width (file attribute `dt`) |
-| `t_start` (relative) | `-1.25e-9` | `-12.5e-9` | $\text{s}$ | Start offset relative to the event's earliest creation time (`-0.25 * t_end`) |
-| `t_end` (relative) | `5e-9` | `50e-9` | $\text{s}$ | Minimum end offset relative to the event's latest creation time |
-| `delta_t` | `2e-12` | `20e-12` | $\text{s}$ | Single-step carrier drift time step $\Delta t$ |
+| `t_bin` | `5e-12` | `10e-12` | $\text{s}$ | Output time step of current: induced-current time-bin width (file attribute `dt`) |
+| `delta_t` | `2e-12` | `5e-12` | $\text{s}$ | Single-step carrier drift time step $\Delta t$ |
 | `min_intensity` | `1` | `1` | $\text{V/cm}$ | Minimum electric-field threshold for stopping drift (`"low_field"`) |
-| `max_drift_time` | `100e-9` | `100e-9` | $\text{s}$ | Upper cap on single-cluster drift duration (`"time_out"`) |
+| `max_drift_time` | from key or estimate | from key or estimate | $\text{s}$ | Upper cap on single-cluster drift duration (`"time_out"`), taken from `max_drift_time_ns` in the device file and estimated from the device when absent, see step 1 of "Single-Step Advance and Stop Conditions" |
 | `kboltz` | `8.617333262e-5` | `8.617333262e-5` | $\text{eV/K}$ | CODATA 2018 Boltzmann constant for thermal diffusion in `drift.py` (numerically equal to $k_B/e$ [$\text{V/K}$]) |
 | `e0` | `1.602176634e-19` | `1.602176634e-19` | $\text{C}$ | CODATA 2018 elementary charge for Shockley-Ramo induced charge in `drift.py` |
 | `edge_sampling` | `0.05` | `0.05` | $\mu\text{m}$ | Default sampling spacing in `split_at_conductor_edges` for locating conductive boundaries |
@@ -130,8 +128,8 @@ The table below lists all built-in physical constants and numerical step paramet
 
 When an event enters `CalCurrent`, it initializes in the following steps:
 
-1. **Select profile**: if the 2D mesh selected in the `field` section lies in the transverse $x$-$y$ plane, use `t_bin[1]`, `t_end[1]`, `t_start[1]`, and `delta_t[1]`; otherwise select the profile by `my_d.dimension`.
-2. **Determine time window and bin count**: find the minimum $t_{\min}$ and maximum $t_{\max}$ of all input deposition creation times $t_m$ ($\text{s}$) (both $0.0$ if there are no inputs). Set the left edge of the first time bin to $t_{\text{start}} = t_{\min} + \text{relative\_start}$ and the initial bin count to $n_{\text{bin}} = \lceil (t_{\max} + \text{relative\_end} - t_{\text{start}}) / t_{\text{bin}} \rceil$. If floating-point rounding causes $t_{\text{start}} + n_{\text{bin}} t_{\text{bin}} < t_{\max} + \text{relative\_end}$, increment $n_{\text{bin}}$ until coverage is satisfied, and finally set $t_{\text{end}} = t_{\text{start}} + n_{\text{bin}} t_{\text{bin}}$.
+1. **Select profile**: if the 2D mesh selected in the `field` section lies in the transverse $x$-$y$ plane, use `t_bin[1]` and `delta_t[1]`; otherwise select the profile by `my_d.dimension`.
+2. **The window is set after the drift**: no time window is set at this point. Once all clusters have drifted to a stop, $t_{\text{start}}$, $n_{\text{bin}}$, and $t_{\text{end}}$ are set by Eqs. (10) and (11) at the opening of "Induced Charge Binning".
 3. **Determine readout electrode names**: call `electrode_names(read_out_contact, read_ele_num)`. If `len(read_out_contact) == read_ele_num`, take each entry's `"name"`; if length is `1`, generate `"<name>1"` through `"<name><read_ele_num>"`; otherwise raise `ValueError`.
 4. **Total pair count and spatial filtering**: sum all input `ionized_pairs` into `pairs`. Retain only deposition steps $(x, y, z, t)$ satisfying both:
    - inside the device bounds: $0 \le x \le l_x$, $0 \le y \le l_y$, $0 \le z \le l_z$;
@@ -144,7 +142,13 @@ For particle steps straddling a conductive/depleted boundary, the module also pr
 
 Starting from $(\mathbf{r}_0, t_0)$, a single cluster repeatedly calls `advance` inside the `drift` loop until `reason` is non-empty. Each step executes in the following strict order:
 
-1. **Timeout check (`"time_out"`)**: if $t - t_0 \ge \text{max\_drift\_time}$, stop immediately and record `reason = "time_out"`.
+1. **Timeout check (`"time_out"`)**: if $t - t_0 \ge \text{max\_drift\_time}$, stop immediately and record `reason = "time_out"`. `max_drift_time` ($\text{s}$) is given by the device-file key `max_drift_time_ns` ($\text{ns}$, converted by $10^{-9}$); the device file's value is used when given, and an estimate from the device is used when it is not. `ValueError` is raised when `max_drift_time_ns` is not a positive finite number: `"max_drift_time_ns of <det_name> must be a positive finite number in ns, not <value>"`. The estimate is $10$ times the larger of the drift times of electrons and holes across the whole thickness:
+
+   $$T_c = 10^{-4}\int_{\{z \in [0,\, l_z]\,:\ E(z) > E_{\min}\}} \frac{dz}{\mu_c\bigl(T,\, N_{\text{eff}}(z),\, E(z)\bigr)\,E(z)} \tag{12}$$
+
+   $$T_{\text{est}} = 10\,\max(T_e,\, T_h) \tag{13}$$
+
+   where $T_c$ ($\text{s}$) is the drift time of carrier $c$ (electrons $e$, holes $h$) across the whole thickness; the integral runs along the depth direction through the transverse device center $(l_x/2,\, l_y/2)$, with $z$ ($\mu\text{m}$) from $0$ to $l_z$ and $10^{-4}$ the $\text{cm}/\mu\text{m}$ conversion factor; $E(z)$ is the field magnitude on that line ($\text{V/cm}$) and $N_{\text{eff}}(z)$ the local net doping ($\text{cm}^{-3}$); $E_{\min}$ is `min_intensity` in the table above, and only the part with $E(z) > E_{\min}$ is integrated, since below it the carrier stops anyway; $\mu_c$ ($\text{cm}^2/(\text{V}\cdot\text{s})$) is the mobility of that carrier under the device's mobility model, temperature, and local doping; $T_{\text{est}}$ ($\text{s}$) is the estimate. The factor $10$ covers diffusion, lateral path length, and the extra path of gain carriers; this factor is a proposal, pending review. `ValueError` is raised when no point on the depth line has $E(z) > E_{\min}$: `"<det_name> has no field above <min_intensity> V/cm along its depth at the bias <V> V: give max_drift_time_ns in the device file"`. The estimate is computed once from the field in use each time `current` is constructed, and is written to the log (one `INFO` line giving $T_e$, $T_h$, and the value used).
 2. **Conductive region check (`"collected"`)**: if `my_f.get_conductive(x, y, z)` is true, stop immediately and record `reason = "collected"`. What counts as conductive is classified by the field module at that bias: all nodes of the enclosing mesh element must be conductive, see [field.md](field.md).
 3. **Missing field check (`"no_field"`)**: call `my_f.get_e_field_cached(x, y, z)` to obtain $\mathbf{E} = (E_x, E_y, E_z)$ ($\text{V/cm}$). If `ValueError` is raised, stop immediately and record `reason = "no_field"`; if any component is non-finite (`NaN` or `Inf`), raise `ValueError`.
 4. **Low field check (`"low_field"`)**: compute field magnitude $E = \sqrt{E_x^2 + E_y^2 + E_z^2}$. If $E \le \text{min\_intensity}$, stop immediately and record `reason = "low_field"`.
@@ -172,6 +176,14 @@ When `count_ends` tallies carrier counts by stop reason, it takes unsigned value
 
 ### Induced Charge Binning
 
+The time window is set and the bins are filled only after all clusters of an event (primary electrons, primary holes, and, when avalanche is enabled, gain electrons and gain holes) have drifted to a stop. The left edge of the first time bin $t_{\text{start}}$ ($\text{s}$) is the minimum $t_{\min}$ of the creation times $t_m$ of all input deposition steps of the event ($0.0$ if there are no inputs); the end of the window is set by the maximum $t_{\text{stop}}$ ($\text{s}$) of the stop times of all clusters ($t_{\text{start}}$ if there are no clusters). The bin count $n_{\text{bin}}$ (dimensionless) and the right edge of the window $t_{\text{end}}$ ($\text{s}$) are:
+
+$$n_{\text{bin}} = \max\!\left(1,\ \left\lceil \frac{t_{\text{stop}} - t_{\text{start}}}{t_{\text{bin}}} \right\rceil\right) \tag{10}$$
+
+$$t_{\text{end}} = t_{\text{start}} + n_{\text{bin}}\,t_{\text{bin}} \tag{11}$$
+
+where $t_{\text{bin}}$ ($\text{s}$) is the time-bin width in the table above. The window runs from the earliest creation time to the stop of the last cluster and leaves no blank before or after: the baseline before the signal and the length over which the amplifier output falls back are added by [electronics readout](readout.md) itself. The same rule holds for 1D, 2D, and 3D. The window covers all stop times and no step is earlier than $t_{\min}$, so no induced charge falls into the overflow or underflow bin any more; both bins stay in the array with value zero. The number of time bins of an event is no longer fixed (each event in the file already has its own `count`), and a typical 2D or 3D file is one to two orders of magnitude smaller than before.
+
 `CalCurrent.binned` allocates a floating-point array `bins` ($\text{A}$) of length $n_{\text{bin}} + 2$ per electrode: index `0` is the underflow bin ($t < t_{\text{start}}$), indices `1` through `n_bin` are the in-window bins, and index `n_bin + 1` is the overflow bin ($t \ge t_{\text{end}}$). For each path with $\ge 2$ points:
 
 1. **Identify electrodes and weighting-potential shifts (`electrodes_near`)**:
@@ -179,12 +191,13 @@ When `count_ends` tallies carrier counts by stop reason, it takes unsigned value
    - If `len(read_out_contact) == 1` (single repeated electrode), determine the starting electrode indices $(i_x, i_y)$ from $(x_0, y_0)$ and evaluate only neighboring electrodes $i \in [\max(i_x - s_x, 0),\, \min(i_x + s_x, N_x - 1)]$, $j \in [\max(i_y - s_y, 0),\, \min(i_y + s_y, N_y - 1)]$, where $s_x = \text{my\_f.cells\_either\_side}$ and $s_y = \text{read\_out\_contact}[0].\text{get}(\text{"y\_span"}, 0)$. Electrode index is $i \cdot N_y + j$, querying weighting potential `0` in the field with shift:
      $$\Delta x_{\text{off}} = x_{\text{first}} + (i - s_x)\,p_x, \qquad \Delta y_{\text{off}} = y_{\text{first}} + (j - s_y)\,p_y$$
      Electrodes outside this neighborhood are neglected as zero.
+   - If the device has a `resistive_layer`, the readout electrodes are the RC nodes of the resistive layer, and the weighting potential is only that of the one planar electrode, the resistive layer (see "Weighting potential" in [field.md](field.md)), with shift $(0, 0)$. At each step the induced charge $\Delta Q_k$ on this planar electrode is computed as in step 2, and then divided among the RC nodes by the lateral position of the midpoint of the step, $\bigl(\tfrac{x_k + x_{k+1}}{2}, \tfrac{y_k + y_{k+1}}{2}\bigr)$: the $n$-th node receives $s_n\,\Delta Q_k$, where the share $s_n$ is the share that Eqs. (5)–(7) of [readout.md](readout.md) distribute linearly by the distance to the centers of the adjacent nodes, and the shares of all nodes sum to $\Delta Q_k$. If the midpoint lies outside the node array, `ValueError` is raised, giving the coordinates and the extent of the array.
 2. **Compute per-step induced charge (`induced_charges`)**: for each target electrode, query $\phi_{w,k} = \text{my\_f.get\_w\_p}(x_k - \Delta x_{\text{off}},\, y_k - \Delta y_{\text{off}},\, z_k,\, e_{\text{field}})$ along the path and compute step $k$'s induced charge $\Delta Q_k = N_k e_0 (\phi_{w,k+1} - \phi_{w,k})$ ($\text{C}$), where $N_k = N_0$ without trapping and $N_k = N_{k + 1/2}$ with trapping.
-3. **Distribute across bins by time overlap (`spread_over_bins`)**: let bin width $\Delta t_{\text{bin}} = (t_{\text{end}} - t_{\text{start}}) / n_{\text{bin}}$ (equal to $t_{\text{bin}}$ by construction in step 2) and equivalent single-bin current $v_k = \Delta Q_k / t_{\text{bin}}$. Compute the range of logical bin indices covered by $[t_k, t_{k+1}]$: $m_{\text{first}} = \lfloor (t_k - t_{\text{start}}) / \Delta t_{\text{bin}} \rfloor$ to $m_{\text{last}} = \lfloor (t_{k+1} - t_{\text{start}}) / \Delta t_{\text{bin}} \rfloor$. For each $m \in [m_{\text{first}}, m_{\text{last}}]$:
+3. **Distribute across bins by time overlap (`spread_over_bins`)**: let bin width $\Delta t_{\text{bin}} = (t_{\text{end}} - t_{\text{start}}) / n_{\text{bin}}$ (equal to $t_{\text{bin}}$ by Eqs. (10) and (11)) and equivalent single-bin current $v_k = \Delta Q_k / t_{\text{bin}}$. Compute the range of logical bin indices covered by $[t_k, t_{k+1}]$: $m_{\text{first}} = \lfloor (t_k - t_{\text{start}}) / \Delta t_{\text{bin}} \rfloor$ to $m_{\text{last}} = \lfloor (t_{k+1} - t_{\text{start}}) / \Delta t_{\text{bin}} \rfloor$. For each $m \in [m_{\text{first}}, m_{\text{last}}]$:
    - overlap interval $[a_m, b_m] = \bigl[\max(t_k,\, t_{\text{start}} + m\,\Delta t_{\text{bin}}),\, \min(t_{k+1},\, t_{\text{start}} + (m + 1)\,\Delta t_{\text{bin}})\bigr]$;
    - time fraction $w_m = \max(b_m - a_m,\, 0) / (t_{k+1} - t_k)$;
    - accumulate $v_k w_m$ into `bins[e, clamp(m + 1, 0, n_bin + 1)]`, placing all $m < 0$ into underflow bin `0` and all $m \ge n_{\text{bin}}$ into overflow bin `n_bin + 1`.
-4. **Total current and net charge**: sum primary hole bins and primary electron bins (plus gain hole and gain electron bins when avalanche is enabled) elementwise into `sum_bins`. The in-window electrode current is the slice `[:, 1:-1]`, whereas net induced charge `charge = sum_bins.sum(axis=1) * t_bin` ($\text{C}$) includes all charge in the underflow and overflow bins.
+4. **Total current and net charge**: sum primary hole bins and primary electron bins (plus gain hole and gain electron bins when avalanche is enabled) elementwise into `sum_bins`. The in-window electrode current is the slice `[:, 1:-1]`, whereas net induced charge `charge = sum_bins.sum(axis=1) * t_bin` ($\text{C}$) sums over all bins, and since the window covers all times it equals the sum of the in-window bins.
 
 ### Avalanche Multiplication Algorithms
 
@@ -228,7 +241,7 @@ Limitation: `"local_path"` computes gain only once along primary carrier paths; 
 
 `CalCurrentLaser` convolves the time-domain induced currents calculated under instantaneous generation with the laser temporal pulse shape $P(t)$ ($\text{s}^{-1}$, normalized to $\int P(t)\,dt = 1$):
 
-1. Calls parent class `CalCurrent` to drift, multiply, and bin the initial electron-hole pairs produced by laser injection `my_l` (`CalCurrentLaser` defaults to `diffusion=True`, while `write_laser_currents` explicitly passes `diffusion=False`).
+1. Calls parent class `CalCurrent` to drift, multiply, and bin the initial electron-hole pairs produced by laser injection `my_l` (`CalCurrentLaser` defaults to `diffusion=True`, while `write_laser_currents` explicitly passes `diffusion=False`). When the window is set, $t_{\text{stop}}$ in Eq. (10) is replaced by $t_{\text{stop}} + T_{\text{ker}}$, where $T_{\text{ker}} = k_{\max} t_{\text{bin}}$ ($\text{s}$) is the length of the convolution kernel and $k_{\max}$ is the largest bin offset with nonzero weight $p_k$ in the next step, so that the convolved tail stays inside the window.
 2. Calls `pulse_in_bins(my_l.timePulse, my_l.temporal_FWHM, n_bin, bin_width)` to compute discrete pulse weights at integer bin offsets $k \in [-(n_{\text{bin}} - 1),\, n_{\text{bin}} - 1]$:
    - Choose per-bin midpoint sample count $S = \max\!\left(1,\, \lceil 20\,\Delta t_{\text{bin}} / \text{FWHM} \rceil\right)$ (sampling spacing at most $\text{FWHM}/20$);
    - Integrate by the midpoint rectangle rule:
@@ -274,7 +287,7 @@ See [../stages/current.md](../stages/current.md) for commands and `current` sect
 
 ### Keys Read from the Device File
 
-Users can configure only the keys listed in the table below; the mobility model is selected by name in the device file (see [model.md](model.md)). All other parameters on this page (time window, step sizes, diffusion switch) are hardcoded.
+Users can configure only the keys listed in the table below; the mobility model is selected by name in the device file (see [model.md](model.md)). All other parameters on this page (step sizes, diffusion switch) are hardcoded.
 
 | Key or Derived Attribute | Default | Unit | Meaning |
 | --- | --- | --- | --- |
@@ -283,6 +296,7 @@ Users can configure only the keys listed in the table below; the mobility model 
 | `electrodes`, `p_x`, `p_y`, `x_ele_num`, `y_ele_num`, `read_ele_num` | see [device.md](device.md) | $\mu\text{m}$ / count | Layout, pitch, and counts of the centered readout electrode array; `electrodes` (`"strip"`/`"pixel"`) also determines the charge-collection plot type, and `"pixel"` is required for `collect_by_diffusion` |
 | `read_out_contact` | None (required) | None | List of readout electrode dicts, each containing `"name"`; for a single repeated electrode, optional `"y_span"` (default `0`) sets neighbor span along `y` (`x` span comes from `cells_either_side` of the field object) |
 | `det_name`, `det_model` | `det_name` defaults to filename stem; `det_model` has no default (required for plotting) | None | Device name (used in error messages) and model identifier (used in `<det_model>_drift_path` filenames) |
+| `max_drift_time_ns` | None (estimated from the device when absent, see step 1 of [Single-Step Advance and Stop Conditions](#single-step-advance-and-stop-conditions)) | $\text{ns}$ | Maximum drift duration of a single cluster, a positive finite number |
 | `material`, `temperature` | None (required) | None, $\text{K}$ | Material name (passed to `Material` in [model.md](model.md)) and device temperature $T$ |
 | `irradiation.irradiation_model` | `None` if no `irradiation` block | None | Maps to `irradiation_model`; enables carrier trapping decay when non-`None` |
 | `enable_gain`, `avalanche_model` | `False`, `None` | None | When both are active, `has_avalanche` is true and enables `CalCurrentGain`; supports `"vanOverstraeten"`, `"Okuto"`, `"Hatakeyama"` |
@@ -314,7 +328,7 @@ Written event by event via `append_currents`, storing only electrodes whose curr
 | `pairs` | `(events,)`, `float64` | pairs | Total input electron-hole pairs for the event (before avalanche multiplication) |
 | `sensitive_pairs` | `(events,)`, `float64` (optional) | pairs | Electron-hole pairs born inside the device, above the electrode array, and in a non-conductive region (present when written by drifting in a solved field) |
 | `carriers_without_field` | `(events,)`, `float64` (optional) | count | Total untrapped carriers remaining at stop time in clusters (including gain clusters) that stopped with `"no_field"` (present when written by drifting in a solved field) |
-| `charge` | `(events, len(electrodes))`, `float64` (gzip) | $\text{C}$ | Signed net induced charge on each readout electrode (including underflow and overflow bins before/after the time window) |
+| `charge` | `(events, len(electrodes))`, `float64` (gzip) | $\text{C}$ | Signed net induced charge on each readout electrode (the time window covers the stopping times of all clusters) |
 | `stored` | `(events,)`, `int64` | count | Number of electrodes in the event with non-all-zero current arrays stored in `current` |
 | `index` | `(sum(stored),)`, `int64` | None | `0`-based index in `electrodes` of each stored electrode, partitioned per event by `stored` |
 | `current` | `(sum(stored * count),)`, `float64` (gzip) | $\text{A}$ | Mean induced current across `count` time bins for each stored electrode, concatenated sequentially by event and stored electrode |
@@ -326,7 +340,7 @@ Written event by event via `append_currents`, storing only electrodes whose curr
 | Filename | Content | Unit |
 | --- | --- | --- |
 | `drift_path_<event>.png`, `.pdf`, `.root` | Top panel: 3D device bounding box with deposition points (grey), hole (red), electron (blue), gain hole (orange), and gain electron (light blue) paths; bottom panel: $x$-$z$ plane projection | spatial axes $\mu\text{m}$ |
-| `current_<event>.png`, `.pdf`, `.root` (`current_<event>_electrode_<k>` with several readout electrodes) | Drawn only for the $k$-th electrode (`1`-based) having non-zero current components, showing `electrons`, `holes`, `total` (plus `gain electrons` and `gain holes` when avalanche is enabled) | `Time [ns]`, `Current [μA]` |
+| `current_<event>.png`, `.pdf`, `.root` (`current_<event>_electrode_<k>` with several readout electrodes) | Drawn only for the $k$-th electrode (`1`-based) having non-zero current components, showing `electrons`, `holes`, `total` (plus `gain electrons` and `gain holes` when avalanche is enabled) | `Time [ns]`, `Current [μA]`; the time axis covers only where the signal is (see [Figures](../supports/figures.md)) |
 | `charge_per_electrode_<event>.png`, `.pdf`, `.root` | Line graph of collected charge per strip (`TGraph`) when `is_strip` is true; 2D pixel distribution (`TH2D`) when `is_pixel` is true; values are the net charge of each electrode, with the vertical axis (color axis for 2D pixel plots) titled `Charge [fC]` | $\text{fC}$ |
 
 ## References

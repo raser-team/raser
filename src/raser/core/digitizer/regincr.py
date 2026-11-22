@@ -1,16 +1,22 @@
-#=========================================================================
+"""Legacy pymtl3 example kept as a reference for future pure digital logic.
+
+It is unrelated to analogue sampling and quantisation.
+"""
+
+# =========================================================================
 # RegIncr
-#=========================================================================
+# =========================================================================
 # This is a simple model for a registered incrementer. An eight-bit value
 # is read from the input port, registered, incremented by one, and
 # finally written to the output port.
 
 import pymtl3 as mtl
 
+
 class RegIncr(mtl.Component):
     def construct(s):
         # Port-based interface
-        s.in_ = mtl.InPort (mtl.Bits8)
+        s.in_ = mtl.InPort(mtl.Bits8)
         s.out = mtl.OutPort(mtl.Bits8)
 
         # update_ff block modeling register
@@ -31,4 +37,4 @@ class RegIncr(mtl.Component):
             s.out @= s.reg_out + 1
 
     def line_trace(s):
-        return "{}({}){}".format(s.in_,s.reg_out,s.out)
+        return "{}({}){}".format(s.in_, s.reg_out, s.out)

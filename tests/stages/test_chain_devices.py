@@ -44,7 +44,7 @@ def two(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 
 def _kwargs(**given: Any) -> dict[str, Any]:
     kwargs: dict[str, Any] = {"det_name": "devA", "jobs": None, "batch": False, "mem": 1, "seed": 1}
-    kwargs.update(dry_run=False, scan=[], same_seeds=False, _entry_command_prefix=("toy",))
+    kwargs.update(dry_run=False, set=[], scan=[], same_seeds=False, _entry_command_prefix=("toy",))
     return {**kwargs, **given}
 
 
@@ -63,7 +63,7 @@ def test_another_bias_of_one_device_runs_its_field_and_positions_alone_again(two
     execute(two["workflow"], _kwargs())
     two["ran"].clear()
 
-    execute(two["workflow"], _kwargs(**{"A.voltage": 200.0}))
+    execute(two["workflow"], _kwargs(set=["field.A.voltage=200.0"]))
 
     assert two["ran"] == [
         "field.A", "current.a1", "readout.a1", "reconstruction.a1", "current.a2", "readout.a2", "reconstruction.a2"
@@ -74,7 +74,7 @@ def test_another_bias_of_one_device_runs_its_field_and_positions_alone_again(two
 
 
 def test_a_scanned_bias_of_one_device_still_gives_every_point_its_own_deposits(two: dict[str, Any]) -> None:
-    execute(two["workflow"], _kwargs(scan=["A.voltage=200,300"]))
+    execute(two["workflow"], _kwargs(scan=["field.A.voltage=200,300"]))
 
     for point in ("A.voltage_200", "A.voltage_300"):
         held_in = json.loads((two["root"] / point / "seed_1" / "run.json").read_text())["held_in"]

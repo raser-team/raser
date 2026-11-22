@@ -19,7 +19,7 @@ raser analysis examples/HPK-Si-PiN/signal
 
 ### 单点统计与分布图
 
-每个扫描点汇总它用到的全部作业。程序先算全部事例的电荷收集效率（事例数不少于 `2` 时画出 `efficiency.png`、`efficiency.pdf`）。再对单电极重建结果取出选中事例的各定时量与最早沉积时刻 `truth`，写入 `events.h5`，画出 `amplitude.png`、`amplitude.pdf`。最后对 `ToA`、`CoG` 与各 `CFD*` 通道计算 `time - truth` 的核心宽度，画出 `time_difference` 与 `resolution_of_fraction`，各有 `.png`、`.pdf`。
+每个扫描点汇总测的是同一件事的全部已完成作业，不论种子、每个作业的事例数和 `plots`，规则见[片与重跑](../lifecycle/slices.md)。程序先算全部事例的电荷收集效率（事例数不少于 `2` 时画出 `efficiency.png`、`efficiency.pdf`）。再对单电极重建结果取出选中事例的各定时量与最早沉积时刻 `truth`，写入 `events.h5`，画出 `amplitude.png`、`amplitude.pdf`。最后对 `ToA`、`CoG` 与各 `CFD*` 通道计算 `time - truth` 的核心宽度，画出 `time_difference` 与 `resolution_of_fraction`，各有 `.png`、`.pdf`。
 
 样本不足时作业照常完成：效率不足 `2` 个事例、全点 `0` 事例，或任一时间通道有效样本不足 `20` 个，原因写进 `result.json` 对应的 `error` 字段，相应的图跳过。某个作业在 `deposit` 里录得 `0` 个事例时，它的下游环节随之跳过，统计时也跳过它。
 
@@ -300,9 +300,9 @@ raser analysis examples/HPK-Si-PiN/signal
 
 | 文件路径 | 生成条件 | 内容 | 坐标单位 |
 | --- | --- | --- | --- |
-| `points/<点名>/analysis/efficiency.png`、`.pdf` | 事例数 $\ge 2$ | 全部事例电荷收集效率的 `60` 箱直方图、均值黑色虚线；图例写事例数 `<N> events` 与均值 `mean <均值>` | 横轴 `Charge collection efficiency`（无量纲），纵轴 `Events` |
-| `points/<点名>/analysis/amplitude.png`、`.pdf` | 事例数 $\ge 1$ | 选中事例基线以上脉冲幅度的 `60` 箱直方图、`amplitude_threshold` 黑色虚线；图例写选中数与总事例数 `<n> of <N> events` 和阈值 `threshold <阈值> mV` | 横轴 `Amplitude [mV]`，纵轴 `Events` |
-| `points/<点名>/analysis/time_difference.png`、`.pdf` | `timing.times` 全部算出 | 最多 `3 × 4` 子图展示 `ToA`、`CoG` 与前 `10` 个 `CFD*` 通道相对 `truth` 的时间差分布（`mean ± 8 * sigma` 分 `64` 箱）、末轮拟合窗口阴影与黑色截断高斯拟合曲线；每幅小标题写通道名，左上角写 `sigma68`、`sigma` 与窗内事例数 | 横轴 `<通道名> - truth [ps]`，纵轴 `Events` |
-| `points/<点名>/analysis/resolution_of_fraction.png`、`.pdf` | `timing.times` 全部算出 | 各 `CFD*` 通道的截断高斯拟合 `sigma`（黑色实心圆，带误差棒）与 `sigma68`（黑色空心方块）随恒比比例变化 | 横轴 `CFD fraction`（无量纲），纵轴 `Time resolution [ps]` |
+| `points/<点名>/analysis/plots/efficiency.png`、`.pdf` | 事例数 $\ge 2$ | 全部事例电荷收集效率的 `60` 箱直方图、均值黑色虚线；图例写事例数 `<N> events` 与均值 `mean <均值>` | 横轴 `Charge collection efficiency`（无量纲），纵轴 `Events` |
+| `points/<点名>/analysis/plots/amplitude.png`、`.pdf` | 事例数 $\ge 1$ | 选中事例基线以上脉冲幅度的 `60` 箱直方图、`amplitude_threshold` 黑色虚线；图例写选中数与总事例数 `<n> of <N> events` 和阈值 `threshold <阈值> mV` | 横轴 `Amplitude [mV]`，纵轴 `Events` |
+| `points/<点名>/analysis/plots/time_difference.png`、`.pdf` | `timing.times` 全部算出 | 最多 `3 × 4` 子图展示 `ToA`、`CoG` 与前 `10` 个 `CFD*` 通道相对 `truth` 的时间差分布（`mean ± 8 * sigma` 分 `64` 箱）、末轮拟合窗口阴影与黑色截断高斯拟合曲线；每幅小标题写通道名，左上角写 `sigma68`、`sigma` 与窗内事例数 | 横轴 `<通道名> - truth [ps]`，纵轴 `Events` |
+| `points/<点名>/analysis/plots/resolution_of_fraction.png`、`.pdf` | `timing.times` 全部算出 | 各 `CFD*` 通道的截断高斯拟合 `sigma`（黑色实心圆，带误差棒）与 `sigma68`（黑色空心方块）随恒比比例变化 | 横轴 `CFD fraction`（无量纲），纵轴 `Time resolution [ps]` |
 | `<实验文件夹>/analysis/trend.png`、`.pdf` | 有结果的扫描点多于 `1` 个、变化选项恰有 `1` 个且取值均为非布尔数值 | 按扫描变量升序绘制左右双图：左图为收集效率及误差棒，右图为各 `CFD*` 通道的 `sigma` 及误差棒，每个通道一条线 | 横轴为扫描选项名；左图纵轴 `Charge collection efficiency`，右图纵轴 `Time resolution [ps]` |
 | `<实验文件夹>/analysis/energy_resolution.png`、`.pdf` | 同 `trend` | 按扫描变量升序，左图收集电荷、右图读出幅度，各画 `resolution`（黑色圆点实线）与 `core_resolution`（蓝色方点虚线）；缺该量结果的点在该幅中省略 | 横轴为扫描选项名；纵轴 `Energy resolution of the charge`、`Energy resolution of the amplitude`（无量纲，下限 `0`） |

@@ -98,7 +98,7 @@ The only keys users can set in a device JSON file are listed in the tables below
 | `bias_resistance_ohm` | `None` | `Ohm` | Bias resistance from a single readout electrode to signal ground |
 | `coupling_capacitance_pF` | `None` | `pF` | AC coupling capacitance from a single readout electrode to the amplifier input; when provided, `bias_resistance_ohm` must also be given |
 | `undepleted_resistance_ohm`, `undepleted_capacitance_pF` | `None` | `Ohm`, `pF` | Equivalent parallel resistance and capacitance of the undepleted bulk under bias; when omitted, computed by 1D `field` from the field solution at the runtime bias; the two keys must be given together or both omitted |
-| `resistive_layer` | None (optional) | `Ohm` for `sheet_resistance`, `cm^-2` for `implanted`, `um` for `thickness`, `°C` for `anneal` | Resistive charge-sharing layer definition object, containing sheet resistance `"sheet_resistance"` (or aluminum-implantation parameters `"implanted"`, `"thickness"`, `"anneal"`), cell span (`"strips"` or `"pads"`), and optional grounded contacts `"grounded"` and dielectric coupling layer `"coupling"` (with `"thickness"` [`um`] and dimensionless `"permittivity"`) |
+| `resistive_layer` | None (optional) | `Ohm` for `sheet_resistance`, `cm^-2` for `implanted`, `um` for `thickness`, `°C` for `anneal` | Resistive charge-sharing layer definition object, containing sheet resistance `"sheet_resistance"` (or aluminum-implantation parameters `"implanted"`, `"thickness"`, `"anneal"`), RC node span (`"strips"` or `"pads"`), the name of the mesh contact the layer sits on `"contact"`, and optional grounded contacts `"grounded"` and dielectric coupling layer `"coupling"` (with `"thickness"` [`um`] and dimensionless `"permittivity"`) |
 
 ### Physics Models and Solving Dimension
 
@@ -183,7 +183,7 @@ Three-region depth doping profile of `HPK-Si-PiN`: `0–1 um` at the surface is 
 
 ## Built-in Components
 
-`components/device/` contains the following 23 detector components:
+`components/device/` contains the following 24 detector components:
 
 | Component Name | Description | Source | Applicable Devices or Experiments |
 | --- | --- | --- | --- |
@@ -202,6 +202,7 @@ Three-region depth doping profile of `HPK-Si-PiN`: `0–1 um` at the surface is 
 | `iLGAD` | Si `ilgad_planar` device ($10000 \times 10000 \times 285\ \mu\text{m}$, 1D) | Unspecified | |
 | `ITk-md8` | Si `planar` device ($8000 \times 8000 \times 50\ \mu\text{m}$, 1D, with `"Schwandt"` irradiation model) | ATLAS ITk MD8 silicon planar diode (component model `ITk-md8`) | |
 | `ITk-Si-strip` | Si `strip` device ($96791 \times 48000 \times 305\ \mu\text{m}$, $1282$ strips, pitch $75.5\ \mu\text{m}$, with `"XingChen"` irradiation model) | ATLAS ITk silicon microstrip detector (component model `ITk-Si-strip`) | |
+| `LBNL-SiC-AC-LGAD` | SiC `lgad_pixel` device ($1000 \times 1000 \times 75.8\ \mu\text{m}$, 1D field; the resistive layer cut into $20 \times 20$ RC nodes of $50\ \mu\text{m}$, 4 electrodes of $100\ \mu\text{m}$ AC-coupled through $0.3\ \mu\text{m}$ of oxide at a pitch of $500\ \mu\text{m}$, grounded around the edge) | T. Yang et al., `arXiv:2610.27535`; layers from IEEE Electron Device Lett. 46 (2025) 845, doi:10.1109/LED.2025.3548509; the sheet resistance of $630\ \Omega$ is estimated from the doping, not measured | [`signal`](../bench/signal.md): `raser signal LBNL-SiC-AC-LGAD`, the current is given per RC node and read out on the four electrodes |
 | `NJU-PiN` | SiC `planar` device ($5000 \times 5000 \times 100\ \mu\text{m}$, 1D/2D) | Nanjing University (NJU) 4H-SiC PiN (component model `NJU-PiN`) | SiC example device for [`signal`](../bench/signal.md) and [`tct`](../bench/tct.md) |
 | `NJU-PiN-bmos` | SiC `planar` device ($5000 \times 5000 \times 100\ \mu\text{m}$, 1D/2D) | Nanjing University (NJU) 4H-SiC PiN (component model `NJU-PiN-bmos`) | [`bmos`](../apps/bmos.md) |
 | `MIM-Diamond` | Diamond `planar` device ($4500 \times 4500 \times 500\ \mu\text{m}$, 2D, metal–intrinsic diamond–metal, top electrode at $+300\ \text{V}$, with the `"CommonDefect"` background defects) | peiyao's MIM diamond detector (his `MIM-Diamond.json`) | [`signal`](../bench/signal.md), with the setup `mim_diamond_gold` |

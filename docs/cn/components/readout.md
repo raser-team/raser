@@ -73,9 +73,17 @@ R1 in 0 50
 
 `Termination50` 终端负载原理图：`50 Ohm` 接地电阻 `R1`，作为读出链的最后一级，只含单输入端口 `in`。
 
+### `Belden8259`
+
+```json
+{"impedance_ohm": 50, "velocity_factor": 0.66, "attenuation_db_per_m": {"100": 0.177, "1000": 0.748}, "source": "Belden 8259 product data sheet"}
+```
+
+`Belden8259` 同轴线缆组件：JSON 文件，与 `.cir` 放在同一个读出组件目录下，文件名即组件名，描述 `50 Ohm` RG58 同轴电缆的特性阻抗、速度因子与两个频率处的单位长度衰减。
+
 ## 键的含义
 
-前端电路组件是 `.cir` 文本文件，使用者能定义和修改的是子电路端口、主子电路内的 SPICE 元件行、主子电路外的辅助模型（`.subckt` 与 `.MODEL`）以及行尾 `;` 后的原理图布局提示；`readout.amplifier` 是槽位，由几级串成，组件里的量按“段.槽位.级名.元件名”寻址：在实验 `config.json` 或命令行 `--set`、`--scan` 中用 `readout.amplifier.<放大级名>.<元件名>`（如 `readout.amplifier.SantaCruz.R1`）覆盖或扫描主子电路内元件的数值。换放大器链写 `--set readout.amplifier=<组件名>`，扫放大器链写 `--scan readout.amplifier=<组件名1>,<组件名2>`，这时槽位整个换成那套组件，原来覆盖的元件数值一并去掉。
+前端电路组件是 `.cir` 文本文件，使用者能定义和修改的是子电路端口、主子电路内的 SPICE 元件行、主子电路外的辅助模型（`.subckt` 与 `.MODEL`）以及行尾 `;` 后的原理图布局提示；`readout.amplifier` 是槽位，由几级串成，组件里的量按“段.槽位.级名.元件名”寻址：在实验 `config.json` 或命令行 `--set`、`--scan` 中用 `readout.amplifier.<放大级名>.<元件名>`（如 `readout.amplifier.SantaCruz.R1`）覆盖或扫描主子电路内元件的数值。换放大器链写 `--set readout.amplifier=<组件名>`，扫放大器链写 `--scan readout.amplifier=<组件名1>,<组件名2>`，这时槽位整个换成那套组件，原来覆盖的元件数值一并去掉。需要中继放大器时，直接在 `readout.amplifier` 里多串一级放大器组件（例如 `SantaCruz+Gali52+Gali52+Termination50`）。
 
 ### 子电路端口与元件行语法
 
@@ -117,6 +125,17 @@ R1 in 0 50
 | 脉冲方向探测参数 | 探针电容 `1e-12`、注入电荷 `1e-15`、`dt = 10e-12`、`2000` 箱（第 `5` 箱注入） | `F`, `C`, `s`, 箱 | `src/raser/core/readout/pulse_edge.py`，`chain_sign` 测试放大器链同相或反相的固定探针输入 |
 | `NO_ANSWER_V` | `1e-9` | `V` | `src/raser/core/readout/pulse_edge.py`，`chain_sign` 判定放大器链对 `1 fC` 注入有响应的最小输出摆幅阈值 |
 | `COLLECTOR`, `EMITTER`, `dpi` | `(2, 1)`, `(2, -1)`, `160` | 网格步, 网格步, `dpi` | `src/raser/core/readout/schematic.py`，NPN 晶体管集电极与发射极相对基极的网格偏移及导出原理图的分辨率 |
+
+### 线缆组件 JSON 键
+
+读出线缆组件是 JSON 文件，与 `.cir` 放在同一个读出组件目录（`components/readout/`，project 目录优先于库内目录），文件名词干即组件名。文件内支持以下四个键（在阶段设置里通过 `readout.cable` 选用并配置各通道线长 `readout.cable.length_m`，见 [`readout`](../stages/readout.md)）：
+
+| 键名 | 默认值 | 单位 | 含义 |
+| --- | --- | --- | --- |
+| `impedance_ohm` | 无（必填） | $\Omega$ | 同轴线缆的特性阻抗 $Z_0$ |
+| `velocity_factor` | 无（必填） | 无量纲 | 线缆速度因子 $\text{VF}$（传播速度 $v = c \cdot \text{VF}$，其中真空光速 $c = 299792458\ \text{m/s}$） |
+| `attenuation_db_per_m` | 无（必填） | 键为 $\text{MHz}$，值为 $\text{dB/m}$ | 频率字符串到单位长度衰减的映射对象，必须恰好给出两个频率，用于解算趋肤效应损耗系数 $a_s$ 与介质损耗系数 $a_d$ |
+| `source` | 无（必填） | 无 | 数据来源说明文字（如 `"Belden 8259 product data sheet"`） |
 
 ## 读进程序以后怎么用
 
@@ -218,7 +237,7 @@ I1 undepleted top_pad PWL(2.5e-12 0 7.5e-12 0 1.25e-11 0 1.75e-11 0)
 
 ## 库里有哪些组件
 
-`raser/components/readout/` 包含以下 5 个 SPICE 电路组件：
+`raser/components/readout/` 包含以下 5 个 SPICE 电路组件与 1 个线缆组件：
 
 | 组件名称 | 端口数 | 电路描述 | 出处 | 适用的器件或实验 |
 | --- | --- | --- | --- | --- |
@@ -227,6 +246,7 @@ I1 undepleted top_pad PWL(2.5e-12 0 7.5e-12 0 1.25e-11 0 1.75e-11 0)
 | `Gali52` | 2（放大器级：`in`, `out`） | Mini-Circuits GALI-52+ 反相增益模块，低频增益 `22.66 dB`，极点 `1.41 GHz`，输入输出阻抗 `50 Ohm` | 文件头注释：Mini-Circuits GALI 系列数据手册（`50 mA`、`4.4 V`、`50 Ohm` 系统下 `100 MHz` 至 `2 GHz` S 参数单极点拟合） | [`readout`](../stages/readout.md)、[`signal`](../bench/signal.md)、[`timeres`](../bench/timeres.md)、[`tct`](../bench/tct.md)、[`bmos`](../apps/bmos.md)、[`cflm`](../apps/cflm.md) 默认链第二级 |
 | `SantaCruz` | 2（放大器级：`in`, `out`） | UC Santa Cruz 单通道 LGAD 读出板，基于 `BFR840L3RHESD` 的 `475 Ohm` 反馈反相跨阻放大级，`2.25 V` 供电，输入输出 `3.3 nF` 交流耦合 | 文件头注释：SCIPP/UCSC 原理图 *"Prototype Beam Test Board"*（M. Wilder, 2016-02-19, `proto_beam_test_board_V1.1C.pdf`） | [`readout`](../stages/readout.md)、[`signal`](../bench/signal.md)、[`timeres`](../bench/timeres.md)、[`tct`](../bench/tct.md)、[`bmos`](../apps/bmos.md)、[`cflm`](../apps/cflm.md) 默认链第一级 |
 | `Termination50` | 1（终端负载：`in`） | `50 Ohm` 接地终端负载电阻 | 文件头注释：示波器或后级仪器的 `50 Ohm` 输入端接 | [`readout`](../stages/readout.md)、[`signal`](../bench/signal.md)、[`timeres`](../bench/timeres.md)、[`tct`](../bench/tct.md)、[`bmos`](../apps/bmos.md)、[`cflm`](../apps/cflm.md) 默认链末级负载 |
+| `Belden8259` | 线缆 JSON（无端口） | RG58 同轴电缆，特性阻抗 `50 Ohm`，速度因子 `0.66`，`100 MHz` 衰减 `0.177 dB/m`、`1000 MHz` 衰减 `0.748 dB/m` | `source` 字段：Belden 8259 产品数据表 | 模拟传输线延迟、阻抗失配反射及高频衰减色散（`readout.cable`） |
 
 ![BroadBandCividec 原理图](../../images/readout/schematic-BroadBandCividec.png)
 

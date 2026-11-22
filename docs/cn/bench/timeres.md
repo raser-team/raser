@@ -86,7 +86,7 @@ $$\sigma_1^2 = \frac{\sigma_{12}^2 + \sigma_{13}^2 - \sigma_{23}^2}{2}, \qquad \
 `timeres` 的执行步骤如下：
 
 1. **求解或复用共享场（`field`）**：分别为被测器件和参考器件定位各自在目标偏压 `voltage`（$\text{V}$）与辐照注量 `irradiation_flux`（$\text{cm}^{-2}$，$1\ \text{MeV}$ 中子等效注量）下的电场、权重场与等效电路参数，未就绪时在作业开始前补算。两块器件的共享场节点各自存放在对应器件 project 的 `field/<节点号>/` 下。
-2. **在 `time_resolution` 装置下模拟双器件沉积（`deposit`）**：按各自器件文件同时建出参考器件与被测器件实体，并放置 `Al`、`pcb1`、`pcb2`。从 `decay/Sr90` 发射衰变产物，记录有效沉积事例直到录满 `events_per_job` 个事例（示例里为 `10000`；最多生成 `generated_limit` 个源事例），按 `ionized_pairs` 抽样电子-空穴对数写入 `deposit` 节点的同一份 `deposit.h5`，并以 `detector` 字段区分参考器件和被测器件的沉积步。
+2. **在 `time_resolution` 装置下模拟双器件沉积（`deposit`）**：按各自器件文件同时建出参考器件与被测器件实体，并放置 `Al`、`pcb1`、`pcb2`。从 `decay/Sr90` 发射衰变产物，记录任一器件有沉积的事例（双器件符合由 `trigger` 判）直到录满 `events_per_job` 个事例（示例里为 `10000`；最多生成 `generated_limit` 个源事例），按 `ionized_pairs` 抽样电子-空穴对数写入 `deposit` 节点的同一份 `deposit.h5`，并以 `detector` 字段区分参考器件和被测器件的沉积步。
 3. **两块器件各自漂移、读出与数字化（`current`、`readout`、`digitizer`）**：被测器件与参考器件各自在对应求解场中漂移载流子算出感应电流（示例里 `current.plots = 0`，不画逐事例图），经各自器件等效电路与前端放大器链（默认 `SantaCruz+Gali52+Termination50`）求解输出电压波形并按由作业种子派生的 `readout` 噪声种子叠加频域热噪声，再按数字化器组件（默认 `MXR608A`）的模拟带宽、采样和量化设置（时钟相位与孔径抖动由作业种子派生的 `digitizer` 种子抽取）生成两路量化码数字波形写入 `digitizer` 节点。
 4. **双器件符合触发（`trigger`）**：检查同一事例中参考器件与被测器件的量化数字波形，按触发组件里的符合条件，要求列表里全部器件在同一事例都过幅度阈值。只有通过双器件符合的事例被记录，其事例号数据集 `event`（`int64`）写入 `trigger` 节点的 `trigger.h5`。
 5. **两块器件各自提取脉冲定时（`reconstruction`）**：读取 `digitizer.h5` 中被 `trigger.h5` 记录的符合事例，按 `lsb_V`、`offset_V` 将量化码换回电压（$\text{V}$），采样时刻为 `t0 + k·sampling_period`；分别对被测器件与参考器件的波形扣除前 `BASELINE_POINTS = 200` 点基线并按脉冲边沿翻正，在相邻采样点间线性插值求出过阈到达时间 `ToA`、过阈时长 `ToT`、过阈区间时间重心 `CoG` 以及越过 `fractions`（示例里 `0.1` 至 `0.9` 共 `9` 档）乘以峰值幅度 `amplitude` 的恒比定时时刻 `CFD10`–`CFD90`，找到团簇种子的事例记为 `selected` 并写入 `reconstruction` 节点。
@@ -110,7 +110,7 @@ $$\sigma_1^2 = \frac{\sigma_{12}^2 + \sigma_{13}^2 - \sigma_{23}^2}{2}, \qquad \
 ### 环节
 
 - [`field`](../stages/field.md)：分别为被测器件与参考器件求解或复用目标偏压与辐照注量下的电场、权重场与等效电路参数，各自保存在对应器件 project 的 `field/<节点号>/` 下。
-- [`deposit`](../stages/deposit.md)：在 `time_resolution` 装置下用 Geant4 模拟粒子依次穿过铝片、参考器件、上层 PCB 板、被测器件和下层 PCB 板，同时记录两块器件内的能量沉积，示例里每作业录满 `10000` 个有效事例。
+- [`deposit`](../stages/deposit.md)：在 `time_resolution` 装置下用 Geant4 模拟粒子依次穿过铝片、参考器件、上层 PCB 板、被测器件和下层 PCB 板，记录任一器件有沉积的事例（示例里每作业录满 `10000` 个事例，双器件符合由 `trigger` 判）。
 - [`current`](../stages/current.md)：分别在被测器件和参考器件的求解场中漂移载流子，算出各自读出电极上的感应电流与净电荷，示例里不画单事例图（`current.plots = 0`）。
 - [`readout`](../stages/readout.md)：分别将两块器件的感应电流送入各自器件等效电路和前端放大器链，求解输出电压波形并叠加频域热噪声。
 - [`digitizer`](../stages/digitizer.md)：按示波器或数字化板的模拟带宽、采样与量化设置，将两块器件的模拟输出波形分别转换为量化码数字波形。
@@ -149,8 +149,8 @@ raser timeres NJU-PiN --scan field.voltage=-300,-500
 | `deposit.generated_limit` | `10000000` | 事例 | 为录满 `events_per_job` 允许生成的最大源事例数上限 |
 | `deposit.edep_min` | `null`（不设下限） | $\text{MeV}$ | 记录事例的最小沉积能量下限 |
 | `deposit.edep_max` | `null`（不设上限） | $\text{MeV}$ | 记录事例的最大沉积能量上限 |
-| `deposit.require` | `"all"` | 无 | 记录事例的符合条件：参考器件和被测器件都有沉积才记录，见 [`stages/deposit`](../stages/deposit.md) |
-| `deposit.coincidence_window_ns` | `null`（不卡时间） | $\text{ns}$ | 两块器件最早沉积时刻之差的上限 |
+| `deposit.require` | `"any"` | 无 | 记录任一器件有沉积的事例；双器件符合由 `trigger` 判（需要省下游计算时可设成 `"ref AND dut"`：在默认装置上被测器件有沉积的事例里约四分之三参考器件没有沉积，设成 `"ref AND dut"` 后这些事例不进下游，但也就不能用来比较别的触发条件），见 [`stages/deposit`](../stages/deposit.md) |
+| `deposit.coincidence_window_ns` | `null`（不卡时间） | $\text{ns}$ | 符合时间窗宽度（把命中时刻落在同一 $[t_0, t_0 + W]$ 区间内的槽位算作命中；`null` 表示不卡时间） |
 | `deposit.fano` | `true` | 无 | 电离对数转化是否开启 Fano 涨落抽样 |
 | `deposit.plots` | `0` | 事例 | 每作业画 Geant4 几何与径迹图的前若干个记录事例数 |
 | `current.plots` | `0` | 事例 | 每作业画载流子漂移路径图与电流图的前若干个记录事例数 |

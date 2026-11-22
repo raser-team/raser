@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
 
 from raser_app.cflm import PADS
+from raser_app.cflm import WORKFLOW as CFLM
+from raser_bench.signal import WORKFLOW
 from raser.cli.raser import main
 from raser.lifecycle import jobs
+from raser.lifecycle.workflow import written_config
+from raser.supports.paths import app_component_root
 
 
 @pytest.fixture
@@ -18,6 +23,12 @@ def work_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fields_ready: Non
     monkeypatch.delenv("RASER_COMPONENT_PATH", raising=False)
     monkeypatch.chdir(tmp_path)
     return root
+
+
+def _config(workflow, scan: dict | None = None) -> dict:
+    """config.json of an experiment of `workflow` on HPK-Si-PiN with the defaults of every setting."""
+    held = {"workflow": workflow.name, "device": "HPK-Si-PiN", "set": dict(workflow.defaults), "scan": scan or {}}
+    return written_config(workflow, held)
 
 
 def _slices(out: str) -> list[str]:
@@ -78,11 +89,11 @@ def test_raser_field_on_an_experiment_solves_the_fields_its_points_need_and_runs
 
     started: list[float] = []
     monkeypatch.setattr(field.SHARED, "ready", lambda options, files: None)
-    monkeypatch.setattr(field.SHARED, "start", lambda kwargs, options, files: started.append(options["voltage"]))
+    monkeypatch.setattr(field.SHARED, "start", lambda kwargs, options, files: started.append(options["field.voltage"]))
     monkeypatch.setattr(jobs, "run_indexed_jobs", lambda *a, **k: pytest.fail("submitted"))
     experiment = work_root / "HPK-Si-PiN" / "signal"
     experiment.mkdir(parents=True)
-    config = {"workflow": "signal", "device": "HPK-Si-PiN", "set": {}, "scan": {"voltage": [100, 300]}}
+    config = _config(WORKFLOW, {"field.voltage": [100, 300]})
     (experiment / "config.json").write_text(json.dumps(config))
 
     assert main(["-b", "fld", str(experiment)]) == 0
@@ -105,7 +116,7 @@ def test_a_stage_command_on_an_experiment_with_a_slice_per_position_runs_all_of_
 ) -> None:
     experiment = work_root / "HPK-Si-PiN" / "cflm"
     experiment.mkdir(parents=True)
-    (experiment / "config.json").write_text(json.dumps({"workflow": "cflm", "device": "HPK-Si-PiN"}))
+    (experiment / "config.json").write_text(json.dumps(_config(CFLM)))
 
     assert main(["current", str(experiment), "--seed", "1", "--dry-run"]) == 0
 
@@ -121,7 +132,7 @@ def test_a_batch_stage_command_given_a_relative_folder_records_where_it_is(
     assert main(["rdo", "HPK-Si-PiN", "--seed", "1", "--dry-run"]) == 0
     experiment = work_root / "HPK-Si-PiN" / "signal"
     experiment.mkdir(parents=True, exist_ok=True)
-    (experiment / "config.json").write_text(json.dumps({"workflow": "signal", "device": "HPK-Si-PiN"}))
+    (experiment / "config.json").write_text(json.dumps(_config(WORKFLOW)))
 
     assert main(["-b", "cur", "work/HPK-Si-PiN/signal", "--seed", "1"]) == 0
 
@@ -138,13 +149,13 @@ def test_raser_field_on_an_experiment_solves_the_field_of_a_point_given_on_its_c
 
     started: list[float] = []
     monkeypatch.setattr(field.SHARED, "ready", lambda options, files: None)
-    monkeypatch.setattr(field.SHARED, "start", lambda kwargs, options, files: started.append(options["voltage"]))
+    monkeypatch.setattr(field.SHARED, "start", lambda kwargs, options, files: started.append(options["field.voltage"]))
     experiment = work_root / "HPK-Si-PiN" / "signal"
     experiment.mkdir(parents=True)
-    config = {"workflow": "signal", "device": "HPK-Si-PiN", "set": {}, "scan": {"voltage": [100, 300]}}
+    config = _config(WORKFLOW, {"field.voltage": [100, 300]})
     (experiment / "config.json").write_text(json.dumps(config))
 
-    assert main(["-b", "fld", str(experiment), option, "voltage=200"]) == 0
+    assert main(["-b", "fld", str(experiment), option, "field.voltage=200"]) == 0
 
     assert started == [200]
     assert json.loads((experiment / "config.json").read_text()) == config
@@ -153,11 +164,38 @@ def test_raser_field_on_an_experiment_solves_the_field_of_a_point_given_on_its_c
 def test_reco_runs_the_chain_up_to_the_reconstruction_of_the_waveforms(
     work_root: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert main(["reco", "HPK-Si-PiN", "--seed", "1", "--edge", "rising", "--dry-run"]) == 0
+    assert main(["reco", "HPK-Si-PiN", "--seed", "1", "--set", "reconstruction.edge=rising", "--dry-run"]) == 0
 
     assert _slices(capsys.readouterr().out) == ["deposit", "field", "current", "readout", "reconstruction"]
-    with pytest.raises(SystemExit):
-        main(["ana", str(work_root / "HPK-Si-PiN" / "signal"), "-threshold", "30"])  # set on the reconstruction now
+
+
+def test_ana_is_the_last_stage_of_the_chain_and_the_whole_chain_ends_in_it(
+    work_root: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from raser.stages import analysis
+
+    analysed: list[tuple[Path, str]] = []
+    monkeypatch.setattr(analysis, "collect", lambda root: analysed.append((root, os.environ["RASER_COMPONENT_PATH"])))
+    monkeypatch.setattr(jobs, "run_indexed_jobs", lambda *a, **k: None)
+    experiment = work_root / "HPK-Si-PiN" / "signal"
+
+    assert main(["ana", "HPK-Si-PiN", "--seed", "1", "-s", "2"]) == 0  # every slice before it, then the analysis
+    assert _slices(capsys.readouterr().out) == ["deposit", "field", "current", "readout", "reconstruction"]
+    assert main(["signal", "HPK-Si-PiN", "--seed", "1", "-s", "2"]) == 0  # the command of the experiment too
+    assert main(["rdo", str(experiment), "--seed", "1", "-s", "2"]) == 0  # a stage before it stops there
+
+    assert [root for root, _ in analysed] == [experiment, experiment]
+    # the components are found as the command of the experiment finds them
+    assert analysed[0][1].split(os.pathsep)[0] == str(app_component_root("raser_bench/signal"))
+
+
+def test_ana_on_an_experiment_whose_chain_has_no_analysis_says_so(work_root: Path) -> None:
+    experiment = work_root / "cflm"
+    experiment.mkdir(parents=True)
+    (experiment / "config.json").write_text(json.dumps({"workflow": "cflm", "device": "HPK-Si-PiN"}))
+
+    with pytest.raises(SystemExit, match="has no analysis slice"):
+        main(["ana", str(experiment)])
 
 
 def test_gen_takes_the_place_of_the_events_a_job_records_and_both_at_once_are_refused(
@@ -165,9 +203,11 @@ def test_gen_takes_the_place_of_the_events_a_job_records_and_both_at_once_are_re
 ) -> None:
     monkeypatch.setattr(jobs, "run_indexed_jobs", lambda *a, **k: None)
 
-    assert main(["dep", "HPK-Si-PiN", "-gen", "30", "--seed", "1", "-s", "2"]) == 0
+    assert main(["dep", "HPK-Si-PiN", "--set", "deposit.generated_per_job=30", "--seed", "1", "-s", "2"]) == 0
 
     options = json.loads((work_root / "HPK-Si-PiN" / "signal" / "seed_1" / "run.json").read_text())["options"]
-    assert options["generated_per_job"] == 30 and "events_per_job" not in options
-    with pytest.raises(ValueError, match="events_per_job and generated_per_job are given at once"):
-        main(["dep", "HPK-Si-PiN", "-gen", "30", "-evt", "5", "--seed", "2", "-s", "2"])
+    assert options["deposit.generated_per_job"] == 30 and "deposit.events_per_job" not in options
+    with pytest.raises(ValueError, match="deposit.events_per_job and deposit.generated_per_job are given at once"):
+        main(
+            ["dep", "HPK-Si-PiN", "--set", "deposit.generated_per_job=30", "--set", "deposit.events_per_job=5", "--seed", "2", "-s", "2"]
+        )
