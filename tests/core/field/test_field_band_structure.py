@@ -57,3 +57,10 @@ def test_the_solver_takes_the_other_bands_as_they_were(
     monkeypatch: pytest.MonkeyPatch, material: str, name: str, expected: float
 ) -> None:
     assert _solver_parameters(monkeypatch, material, 254.0)[name] == expected
+
+
+def test_the_solver_takes_the_low_field_mobilities_of_diamond(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Pernegger et al., J. Appl. Phys. 97 (2005) 073704: electrons 1714, holes 2064 cm2/(V s).
+    parameters = _solver_parameters(monkeypatch, "Diamond", 300.0)
+
+    assert (parameters["mu_n"], parameters["mu_p"]) == (1714.0, 2064.0)

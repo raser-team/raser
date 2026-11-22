@@ -44,7 +44,7 @@ $$U_{\text{SRH}} = \frac{np - n_i^2}{\tau_p\,(n + n_1) + \tau_n\,(p + p_1)}, \qq
 
 其中 $n_i$ 为本征载流子浓度（$\text{cm}^{-3}$，由 [model.md](model.md) 的 `BAND_STRUCTURE` 在温度 $T$ 下给出），$\tau_n$、$\tau_p$ 为寿命（$\text{s}$）。
 
-代码对应关系：`physics_drift_diffusion.CreateSiliconDriftDiffusion` 依次建立 `CreatePE`（式 1）、`CreateBernoulli` 与 `CreateElectronCurrent`/`CreateHoleCurrent`（式 4、5）、`CreateSRH`（式 3、6）、`CreateECE`/`CreateHCE`（式 2）。`create_parameter.create_parameter` 按 DEVSIM 区域材料 `Silicon`、`SiliconCarbide`、`Diamond`、`gas` 写入常数。迁移率模型按名字注册，器件文件按名字选用，每种材料有缺省选用的模型（见 [model.md](model.md)）；DEVSIM 求解中各材料现在缺省选用的是与场强、掺杂无关的常数迁移率，取区域参数 `mu_n`、`mu_p`（Si `1450`/`500`，SiC `1100`/`114`，Diamond `110`/`1100`，单位 $\text{cm}^2/(\text{V}\cdot\text{s})$）。寿命取 `SRH_LIFETIME`（Si `7e-3`/`7e-3` s，SiC `2.5e-6`/`0.5e-6` s，Diamond `5.6e-7`/`2.4e-7` s）；SiC 的电子寿命取自 [20]，空穴寿命 `0.5e-6` s 由组里的时间分辨光致发光测量确认 [21]。
+代码对应关系：`physics_drift_diffusion.CreateSiliconDriftDiffusion` 依次建立 `CreatePE`（式 1）、`CreateBernoulli` 与 `CreateElectronCurrent`/`CreateHoleCurrent`（式 4、5）、`CreateSRH`（式 3、6）、`CreateECE`/`CreateHCE`（式 2）。`create_parameter.create_parameter` 按 DEVSIM 区域材料 `Silicon`、`SiliconCarbide`、`Diamond`、`gas` 写入常数。迁移率模型按名字注册，器件文件按名字选用，每种材料有缺省选用的模型（见 [model.md](model.md)）；DEVSIM 求解中各材料现在缺省选用的是与场强、掺杂无关的常数迁移率，取区域参数 `mu_n`、`mu_p`（Si `1450`/`500`，SiC `1100`/`114`，Diamond `1714`/`2064`，单位 $\text{cm}^2/(\text{V}\cdot\text{s})$）。寿命取 `SRH_LIFETIME`（Si `7e-3`/`7e-3` s，SiC `2.5e-6`/`0.5e-6` s，Diamond `5.6e-7`/`2.4e-7` s）；SiC 的电子寿命取自 [20]，空穴寿命 `0.5e-6` s 由组里的时间分辨光致发光测量确认 [21]。
 
 所有电极按欧姆接触处理（各调用处 `set_contact_type` 均为 `None`）：电极节点上 $n = n_0$、$p = n_i^2/n_0$（$N_{\text{net}} > 0$）或 $p = p_0$、$n = n_i^2/p_0$（$N_{\text{net}} \le 0$），电势 $\psi = V_{\text{bias}} + V_T \ln(n_0/n_i)$ 或 $\psi = V_{\text{bias}} - V_T \ln(p_0/n_i)$，其中 $n_0 = 10^{-10} + \tfrac12\bigl|N_{\text{net}} + \sqrt{N_{\text{net}}^2 + 4n_i^2}\bigr|$，$p_0$ 同式但 $N_{\text{net}}$ 取负。方程组与接触条件改写自 DEVSIM 示例 [3]。
 
@@ -254,7 +254,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 | `eps_0` | `8.8541878128e-14` | F/cm | 同上，及各材料 `Permittivity` | 无 |
 | `T0` | `300.0` | K | 同上，区域参数 | 无 |
 | `vel_mean` | `1e7` | cm/s | 缺陷俘获的热速度 $v_{\text{th}}$ | 无 |
-| `mu_n`, `mu_p` | Si `1450`/`500`；SiC `1100`/`114`；Diamond `110`/`1100` | $\text{cm}^2/(\text{V}\cdot\text{s})$ | 常数迁移率 | 无（`parameter` 可覆盖任一区域参数） |
+| `mu_n`, `mu_p` | Si `1450`/`500`；SiC `1100`/`114`；Diamond `1714`/`2064` | $\text{cm}^2/(\text{V}\cdot\text{s})$ | 常数迁移率 | 无（`parameter` 可覆盖任一区域参数） |
 | `taun`, `taup` | Si `7e-3`/`7e-3`；SiC `2.5e-6`/`0.5e-6`；Diamond `5.6e-7`/`2.4e-7` | s | `SRH_LIFETIME` | 无 |
 | `n1`, `p1` | $n_i$ | $\text{cm}^{-3}$ | SRH 陷阱取本征能级 | 无 |
 | `n_i`（`gas`） | `1e-9` | $\text{cm}^{-3}$ | 权重场介质 | 无 |
