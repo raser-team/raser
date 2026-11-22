@@ -96,21 +96,23 @@ def solved_capacitance(folder, voltage):
     return float(point["specific_capacitance_pF"]) * float(point["area_factor"]) * 1e-12
 
 
-def solved_undepleted(folder, voltage):
-    """The undepleted bulk of a planar device at this bias, as the field in
-    `folder` gives it: (resistance [Ohm], capacitance [F]) of that layer for
-    the area factor of the device, or None when the device is fully depleted.
-    An error says what is missing."""
+def solved_undepleted(folder, voltage, area_cm2):
+    """The undepleted bulk of a device at this bias, as the field in `folder`
+    gives it: (resistance [Ohm], capacitance [F]) of that layer for the area
+    `area_cm2` [cm^2] the caller gives, or None when the device is fully
+    depleted. An error says what is missing."""
     record = json.loads((folder / "run.json").read_text())
     device = record["files"]["device"]
     solved = record.get("solved", {}).get("undepleted", [])
     if float(voltage) not in solved:
         raise FileNotFoundError(
             f"the field in {folder} has no undepleted bulk at {voltage} V (solved at: {solved}): "
-            f"it is stored for a field in one dimension; solve it with `raser field {device['det_name']} -bias {voltage}`"
+            f"solve it with `raser field {device['det_name']} -bias {voltage}`"
         )
     layer = json.loads((folder / f"{float(voltage)}V.undepleted.json").read_text())
     if not layer["undepleted_width_um"]:
         return None
-    area = float(device.get("area_factor", 1.0))
-    return float(layer["specific_resistance_ohm_cm2"]) / area, float(layer["specific_capacitance_pF"]) * area * 1e-12
+    return (
+        float(layer["specific_resistance_ohm_cm2"]) / area_cm2,
+        float(layer["specific_capacitance_pF"]) * area_cm2 * 1e-12,
+    )

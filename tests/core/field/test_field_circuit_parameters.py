@@ -9,6 +9,7 @@ from raser.core.field.assets import field_pickle_path
 from raser.core.field.circuit_parameters import device_circuit
 from raser.core.field.circuit_parameters import field_circuit
 from raser.core.field.circuit_parameters import junction_capacitance
+from raser.core.field.circuit_parameters import part_of_row
 from raser.core.readout.spice import solve
 
 
@@ -170,9 +171,24 @@ def test_undepleted_layer_with_one_of_its_two_values_is_an_error():
         device_circuit(_device(undepleted_resistance_ohm=2e3), ["pad"])
 
 
-def test_row_of_strips_with_an_undepleted_layer_is_an_error():
-    with pytest.raises(ValueError, match="undepleted"):
-        device_circuit(_strips(), ["top1"], row=ROW, solved_undepleted=(2e3, 60e-12))
+def test_electrodes_of_a_device_not_fully_depleted_share_its_undepleted_layer():
+    # one undepleted layer of the whole device, 2 kOhm and 60 pF, behind the
+    # depleted layers of both electrodes
+    circuit, _ = device_circuit(
+        _device(capacitance_pF=20.0), ["a", "b"], solved_undepleted=(2e3, 60e-12)
+    )
+
+    depleted = {line.split()[0]: line.split() for line in circuit.lines}
+    assert depleted["Ca_depleted"][2] == "undepleted"
+    assert depleted["Cb_depleted"][2] == "undepleted"
+    layer = [line.split() for line in circuit.lines if line.split()[0] == "R_undepleted"]
+    assert len(layer) == 1
+    assert layer[0][1:3] == ["undepleted", "0"]
+    assert float(layer[0][3]) == pytest.approx(2e3, rel=1e-9, abs=0)
+    assert circuit.sources == {
+        "a": ("undepleted", "a_pad"),
+        "b": ("undepleted", "b_pad"),
+    }
 
 
 def _strips(**keys):
@@ -249,6 +265,26 @@ def test_charge_on_one_strip_of_a_row_is_shared_by_the_capacitances_between_them
     assert voltage[:, -1] == pytest.approx(expected, rel=1e-3)
 
 
+def test_part_of_a_row_has_the_depleted_layers_of_the_strips_left_out_on_its_undepleted_layer():
+    # 3 strips around top5 of a row of 10, each 0.5 pF in all: the 7 left out
+    # are on virtual ground and each has, as a strip in the middle of the
+    # row, 0.5 pF less 2 x (0.125 + 0.03125) pF to its neighbours on the
+    # undepleted layer, 60 pF of its own
+    electrodes = [f"top{number}" for number in range(10)]
+    circuit = part_of_row(
+        _strips(), electrodes, ["top5"], 1, row=ROW, solved_undepleted=(2e3, 60e-12)
+    )
+
+    middle_f = 0.5e-12 - 2 * (0.125e-12 + 0.03125e-12)
+    to_ground = sum(
+        float(line.split()[3])
+        for line in circuit.lines
+        if line.startswith("C") and sorted(line.split()[1:3]) == ["0", "undepleted"]
+    )
+    assert sorted(circuit.sources) == ["top4", "top5", "top6"]
+    assert to_ground == pytest.approx(60e-12 + 7 * middle_f, rel=1e-9, abs=0)
+
+
 def test_capacitances_of_a_row_are_not_taken_for_a_device_without_strips():
     with pytest.raises(ValueError, match="not a row of strips"):
         device_circuit(_device(), ["top"], row=ROW)
@@ -316,9 +352,20 @@ def test_field_gives_a_row_of_strips_the_capacitances_it_stored(tmp_path):
 
     stored.parent.mkdir(parents=True)
     stored.write_text(json.dumps(ROW))
+    # fully depleted at its bias of -500 V
+    (tmp_path / "run.json").write_text(
+        json.dumps(
+            {
+                "files": {"device": {"det_name": "ITk-Si-strip"}},
+                "solved": {"undepleted": [-500.0]},
+            }
+        )
+    )
+    (tmp_path / "-500.0V.undepleted.json").write_text(
+        json.dumps({"undepleted_width_um": 0.0})
+    )
     row, solved_f, undepleted = field_circuit(tmp_path, device)
 
-    # a strip device of two dimensions has no slab of undepleted bulk
     assert row == ROW
     assert solved_f is None
     assert undepleted is None
