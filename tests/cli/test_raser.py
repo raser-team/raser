@@ -299,23 +299,23 @@ def test_the_experiments_of_the_source_tree_and_of_other_packages_are_commands(
     from raser.cli.raser import experiments
 
     (tmp_path / "pyproject.toml").write_text(
-        '[project.entry-points."raser.experiments"]\nsignal = "raser_bench.signal"\n',
+        '[project.entry-points."raser.experiments"]\nsignal = "raser_bench.signal:Signal"\n',
         encoding="utf-8",
     )
     # raser installed from this tree as well: its own entry points are those of the tree
     _registered(
         monkeypatch,
         [
-            _Point("signal", "raser_bench.signal", "raser"),
+            _Point("signal", "raser_bench.signal:Signal", "raser"),
             _Point("mine", "my_lab.mine", "my-lab"),
         ],
     )
 
     assert experiments(tmp_path) == {
-        "signal": "raser_bench.signal",
+        "signal": "raser_bench.signal:Signal",
         "mine": "my_lab.mine",
     }
-    assert experiments(None) == {"signal": "raser_bench.signal", "mine": "my_lab.mine"}
+    assert experiments(None) == {"signal": "raser_bench.signal:Signal", "mine": "my_lab.mine"}
 
 
 @pytest.mark.parametrize(

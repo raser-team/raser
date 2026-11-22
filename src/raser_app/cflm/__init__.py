@@ -8,6 +8,8 @@ time resolution study of the same SiC PIN (Yang et al., Front. Phys. 10
 (2022) 718071), on the UCSC board with a broadband amplifier.
 """
 
+from raser.lifecycle.experiment import Experiment
+from raser.lifecycle.experiment import Slot
 from raser.lifecycle.workflow import Workflow
 from raser.stages import chain
 
@@ -21,29 +23,31 @@ def _deposits(kwargs):
     deposits.deposits(kwargs)
 
 
-# One device, the device of the command, in 24 positions: the pads.
-DEVICES = {"pad": (None, list(PADS))}
-# Its own deposits until the Geant4 world scripts place the pads.
-SLICES = chain.expand(DEVICES, deposit=_deposits)
+class Cflm(Experiment):
+    name = "cflm"
+    help = "CEPC Fast Luminosity Monitor"
+    stages = ("field", "deposit", "current", "readout", "reconstruction")
+    # One device, the device of the command, in 24 positions: the pads.
+    devices = {"Device": Slot(positions=PADS)}
 
-WORKFLOW = Workflow(
-    name="cflm",
-    keys=tuple(key for key in chain.KEYS if not key.startswith("deposit.")),
-    defaults={
-        **{key: value for key, value in chain.DEFAULTS.items() if not key.startswith("deposit.")},
-        "current.plots": 0,
-    },
-    sections=chain.SECTIONS,
-    scanned=chain.SCANNED,
-    slots={"field.device": "device"},
-    in_file=chain.IN_FILE,
-    slices=SLICES,
-    devices=DEVICES,
-)
+    @classmethod
+    def build(cls) -> Workflow:
+        devices = cls.table()
+        return Workflow(
+            name=cls.name,
+            keys=tuple(key for key in chain.KEYS if not key.startswith("deposit.")),
+            defaults={
+                **{key: value for key, value in chain.DEFAULTS.items() if not key.startswith("deposit.")},
+                "current.plots": 0,
+            },
+            sections=chain.SECTIONS,
+            scanned=chain.SCANNED,
+            slots={"field.device": "device"},
+            in_file=chain.IN_FILE,
+            # Its own deposits until the Geant4 world scripts place the pads.
+            slices=chain.expand(devices, deposit=_deposits),
+            devices=devices,
+        )
 
 
-def register(subparsers):
-    parser = subparsers.add_parser("cflm", help="CEPC Fast Luminosity Monitor")
-    parser.add_argument("det_name", help="Device project")
-    WORKFLOW.attach(parser)
-    parser.set_defaults(_project="det_name")
+WORKFLOW = Cflm.workflow()
