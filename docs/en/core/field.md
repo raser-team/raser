@@ -152,6 +152,8 @@ $$C_j = \frac{\varepsilon_r\,|Q_j|}{V_1} \tag{18}$$
 
 where $Q_j$ is the contact charge on electrode $j$ ($\text{C/cm}$), $V_1 = 1\ \text{V}$ is the voltage applied to the readout electrode, $\varepsilon_r$ is the relative permittivity of the device material (solved in $\varepsilon_0$ and then multiplied back), and $C_j$ is in $\text{F/cm}$. The left and right strips at distance $k$ from the readout strip are merged into a single electrode `neighbour<k>`.
 
+The resistive charge-sharing layer (a device file with `resistive_layer`) is one continuous conductor and, for the drifting carriers, one planar electrode: only one weighting potential is solved, the solution with the contact `resistive_layer.contact` on which the layer sits set to $1$ and the other electrodes set to $0$, obtained by Eq. (16) on the device's own mesh, which on a 1D mesh is the weighting potential of a slab. The RC nodes do not each get a weighting potential; which RC nodes the total induced current falls on is distributed by [current.md](current.md) according to the lateral position of the carrier.
+
 ### Conductive Region Classification
 
 After solving, the code determines whether each node is conductive at that bias voltage from its resistivity and depletion state:
@@ -337,7 +339,7 @@ When solving for the electric field, `solver_section.main` executes in the follo
 
 1. **Prerequisite**: raises `FileNotFoundError` if `Conductive_<V_g>V.pkl` is missing, instructing to solve the field at that bias first.
 2. **Electrodes**: readout electrodes are taken from `name` in `read_out_contact` (or from `name` in `ac_contact` of the selected 2D mesh if non-empty); one voltage source is attached to each electrode.
-3. **Row cell count**: when `read_out_contact` has only one entry and `read_ele_num > 1`, $s$ is set by Eq. (17).
+3. **Row cell count**: when `read_out_contact` has only one entry and `read_ele_num > 1`, $s$ is set by Eq. (17). When the device has a `resistive_layer`, $s = 0$ and only `resistive_layer.contact` is taken as the readout electrode.
 4. **Per electrode**: solves only the Poisson equation (material `"gas"`); `take_conductors_into_electrodes` reads `Conductive_<V_g>V.pkl` and matches every region node to its nearest point in the file (for a stitched row, lateral coordinates are first taken modulo the cell width), raising `ValueError` for any node farther than $10^{-9}$ times the mesh span; then joins the conductive nodes into pieces along the mesh edges whose two ends are both conductive, raising `ValueError` when a piece holds contact nodes of two electrodes, naming the two electrodes, the bias $V_g$, the number of nodes of the piece and its coordinate range: such a piece makes the two electrodes one conductor and inflates the capacitances of Eq. (18) by about `CONDUCTOR_PERMITTIVITY`; finally rewrites `PotentialEdgeFlux` and `contactcharge_edge` according to Eq. (16), sets the readout electrode to $1\ \text{V}$ and solves.
 5. **Row-end check** ($s > 0$): takes the maximum $r$ of $|\phi_w|$ within one unit cell at each end, computes mutual capacitances by Eq. (18), and counts `neighbours_coupled` as the number $c$ of consecutive neighbors starting from `neighbour1` satisfying $C_{\text{neighbour}k} \ge$ `crosstalk_tolerance` $\times\sum_j C_j$. If $r >$ `weighting_tolerance` or $c = s$: sets $s' = \lceil 1.5\,s\rceil$; raises `ValueError` if $s' > 2s_0$ (the weighting potential does not decay along the row, typically caused by a conductive region touching the readout electrode); otherwise clears DEVSIM (preserving `direct_solver` and `solver_callback`) and re-solves from scratch with $s'$.
 6. **Saving**: saves the weighting potential to `weightingfield/<contact>/Potential_<V_g>V.pkl`; when $s > 0$, also writes `Capacitance_<V_g>V.json`; records $V_g$ in `solved.weighting`; writes `weightingfield/weightingfield.dat`.
@@ -465,6 +467,7 @@ Users can configure the device file keys in the table below and the solver setti
 | `resistive_layer.strips` | None | RC node index | Row circuit: mapping strip name to first and last RC node indices `[first, last]` |
 | `resistive_layer.pads` | None | RC node index | Grid circuit: mapping electrode name to `[x_first, x_last, y_first, y_last]` |
 | `resistive_layer.grounded` | `{}` | RC node index | Grounded contacts; `[first, last]` for a row, list of rectangles for a grid |
+| `resistive_layer.contact` | None (required when there is a `resistive_layer`) | None | Name of the mesh contact the resistive layer sits on; the weighting potential is solved for this contact and stored as `weightingfield/<contact>/Potential_<V>V.pkl` |
 | `resistive_layer.coupling.thickness`, `.permittivity` | None | $\mu\text{m}$, None | Dielectric layer beneath electrodes |
 | `det_model` | None | None | Selects analytic field type; if it contains `"3d"`, `Detector.capacitance` is `None` when `capacitance_pF` is absent |
 | `depletion_voltage`, `input_doping` | `|bias.voltage|`, `1e12` | V, $\text{cm}^{-3}$ | Analytic fields |

@@ -152,6 +152,8 @@ $$C_j = \frac{\varepsilon_r\,|Q_j|}{V_1} \tag{18}$$
 
 其中 $Q_j$ 为第 $j$ 个电极上的接触电荷（$\text{C/cm}$），$V_1 = 1\ \text{V}$ 为读出电极上置的电压，$\varepsilon_r$ 为器件材料的相对介电常数（解在 $\varepsilon_0$ 中求得，再乘回），$C_j$ 单位 $\text{F/cm}$。离读出条 $k$ 个位置的左右两条合为一个电极 `neighbour<k>`。
 
+阻性电荷共享层（器件文件有 `resistive_layer`）是连续的一片导体，对漂移的载流子是一个平面电极：权重势只求一个，是层所在的接触 `resistive_layer.contact` 置 $1$、其余电极置 $0$ 的解，在器件自己的网格上按式 (16) 求得，一维网格上即平板的权重势。RC 格点不各求权重势；总的感应电流落到哪几个 RC 格点由 [current.md](current.md) 按载流子的横向位置分配。
+
 ### 导电区的划分
 
 求解后，代码按每个节点的电阻率与耗尽程度判定它在该偏压下是否导电：
@@ -337,7 +339,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 
 1. **前提**：`Conductive_<V_g>V.pkl` 不存在时抛出 `FileNotFoundError`，提示先求该偏压的场。
 2. **电极**：读出电极取 `read_out_contact` 的 `name`（所选二维网格的 `ac_contact` 非空时取它的 `name`），每个电极接一个电压源。
-3. **行晶胞数**：`read_out_contact` 只有一项且 `read_ele_num > 1` 时，$s$ 取式 (17)。
+3. **行晶胞数**：`read_out_contact` 只有一项且 `read_ele_num > 1` 时，$s$ 取式 (17)。 器件有 `resistive_layer` 时 $s = 0$，读出电极只取 `resistive_layer.contact` 一个。
 4. **逐个电极**：只解泊松方程（材料 `"gas"`）；`take_conductors_into_electrodes` 读 `Conductive_<V_g>V.pkl`，每个区域节点按最近邻匹配到文件中的点（拼接行先把横向坐标对晶胞宽度取模），距离超过 $10^{-9}$ 倍网格跨度的节点视为不在网格上，抛出 `ValueError`；然后沿两端都导电的网格边把导电节点连成片，一片里有两个电极的接触节点时抛出 `ValueError`，写明这两个电极、偏压 $V_g$、该片的节点数与坐标范围：这片导电区把两个电极连成一块导体，式 (18) 的互容会被放大约 `CONDUCTOR_PERMITTIVITY` 倍；最后按式 (16) 改写 `PotentialEdgeFlux` 与 `contactcharge_edge`，读出电极置 $1\ \text{V}$ 求解。
 5. **行端检查**（$s > 0$）：取两端各一个晶胞内 $|\phi_w|$ 的最大值 $r$，按式 (18) 求互容，`neighbours_coupled` 从 `neighbour1` 起数满足 $C_{\text{neighbour}k} \ge$ `crosstalk_tolerance` $\times\sum_j C_j$ 的连续个数 $c$。若 $r >$ `weighting_tolerance` 或 $c = s$：令 $s' = \lceil 1.5\,s\rceil$；$s' > 2s_0$ 时抛出 `ValueError`（行上权重势不衰减，通常是接触读出电极的导电区所致）；否则清空 DEVSIM（保留 `direct_solver`、`solver_callback`）后以 $s'$ 从头重解。
 6. **存盘**：权重势存为 `weightingfield/<contact>/Potential_<V_g>V.pkl`；$s > 0$ 时另写 `Capacitance_<V_g>V.json`；在 `solved.weighting` 记 $V_g$；写 `weightingfield/weightingfield.dat`。
@@ -465,6 +467,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 | `resistive_layer.strips` | 无 | RC 格点号 | 行电路：条名到首末 RC 格点号 `[first, last]` |
 | `resistive_layer.pads` | 无 | RC 格点号 | 网格电路：电极名到 `[x_first, x_last, y_first, y_last]` |
 | `resistive_layer.grounded` | `{}` | RC 格点号 | 接地触点；行为 `[first, last]`，网格为矩形列表 |
+| `resistive_layer.contact` | 无（有 `resistive_layer` 时必选） | 无 | 阻性层所在的网格接触名；权重势按这个接触求，存为 `weightingfield/<contact>/Potential_<V>V.pkl` |
 | `resistive_layer.coupling.thickness`, `.permittivity` | 无 | $\mu\text{m}$, 无 | 电极下介质层 |
 | `det_model` | 无 | 无 | 选解析场类型；含 `"3d"` 时 `Detector.capacitance` 在没有 `capacitance_pF` 时为 `None` |
 | `depletion_voltage`, `input_doping` | `|bias.voltage|`, `1e12` | V, $\text{cm}^{-3}$ | 解析场 |
