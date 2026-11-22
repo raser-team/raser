@@ -123,7 +123,7 @@ Component files and packaged files of benchmark and application classes are loca
    - Iterates over `roots`, deduplicating by string `key = str(root)` in set `seen` while preserving first appearance, and returns `deduped` (`list[Path]`).
 2. **Generating candidate paths (`component_candidates(*parts, roots=None)`)**: Uses `search_roots = component_roots()` when `roots is None`, or `search_roots = list(roots)` when `roots` is explicitly provided. Appends relative path segments `*parts` to each root and returns `[root.joinpath(*parts) for root in search_roots]`.
 3. **Searching candidates in order (`component_path(*parts, roots=None)`, `optional_component_path(*parts, roots=None)`)**:
-   - Iterates over `component_candidates(*parts, roots=roots)` and returns the first `Path` for which `candidate.exists()` is true;
+   - Iterates over `component_candidates(*parts, roots=roots)` and returns the first `Path` that is there. The name is compared level by level as it is written, capitals included: `HPK-Si-PIN` does not find `HPK-Si-PiN.json`, on a file system that does not tell capitals apart (as of macOS) either, so one command gives the same result on every machine;
    - If none of the candidates exist: `optional_component_path()` returns `None`; `component_path()` raises `FileNotFoundError` listing all inspected paths:
 
      ```text

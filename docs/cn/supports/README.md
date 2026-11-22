@@ -123,7 +123,7 @@ Memory increase: RSS = 1.50 MB, VMS = 0.00 MB
    - 遍历 `roots`，以字符串 `key = str(root)` 在集合 `seen` 中去重，保留首次出现的位置，返回 `deduped`（`list[Path]`）。
 2. **生成候选路径列表（`component_candidates(*parts, roots=None)`）**：`roots is None` 时取 `search_roots = component_roots()`，显式传入 `roots` 时取 `search_roots = list(roots)`。依次把相对路径片段 `*parts` 拼接到每个根目录后，返回 `[root.joinpath(*parts) for root in search_roots]`。
 3. **按候选顺序查找组件（`component_path(*parts, roots=None)`、`optional_component_path(*parts, roots=None)`）**：
-   - 遍历 `component_candidates(*parts, roots=roots)`，返回第一个满足 `candidate.exists()` 为真的 `Path`；
+   - 遍历 `component_candidates(*parts, roots=roots)`，返回第一个存在的 `Path`。名字按写法逐级核对，大小写也要一致：`HPK-Si-PIN` 找不到 `HPK-Si-PiN.json`，在不区分大小写的文件系统（如 macOS）上也一样，同一条命令在各台机器上结果相同；
    - 若所有候选路径都不存在：`optional_component_path()` 返回 `None`；`component_path()` 抛出 `FileNotFoundError` 并列出检查过的全部路径：
 
      ```text

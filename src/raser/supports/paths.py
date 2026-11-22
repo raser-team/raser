@@ -155,10 +155,25 @@ def component_candidates(*parts: str, roots=None):
     return [root.joinpath(*parts) for root in search_roots]
 
 
+def _is_there_as_written(root: Path, parts) -> bool:
+    """Whether root/<parts> is there with the letters of `parts` as they are
+    written: a file system that takes HPK-Si-PIN for HPK-Si-PiN finds a
+    component here that the same command does not find on another machine."""
+    if Path(*parts).is_absolute():
+        return root.joinpath(*parts).exists()  # a path of its own, not a name under the root
+    path = root
+    for name in Path(*parts).parts:
+        if name not in (".", "..") and (not path.is_dir() or name not in os.listdir(path)):
+            return False
+        path = path / name
+    return path.exists()
+
+
 def component_path(*parts: str, roots=None):
-    candidates = component_candidates(*parts, roots=roots)
-    for candidate in candidates:
-        if candidate.exists():
+    search_roots = component_roots() if roots is None else list(roots)
+    candidates = component_candidates(*parts, roots=search_roots)
+    for root, candidate in zip(search_roots, candidates, strict=True):
+        if _is_there_as_written(root, parts):
             return candidate
     searched = "\n  - ".join(str(candidate) for candidate in candidates)
     raise FileNotFoundError(
@@ -167,8 +182,9 @@ def component_path(*parts: str, roots=None):
 
 
 def optional_component_path(*parts: str, roots=None):
-    for candidate in component_candidates(*parts, roots=roots):
-        if candidate.exists():
+    search_roots = component_roots() if roots is None else list(roots)
+    for root, candidate in zip(search_roots, component_candidates(*parts, roots=search_roots), strict=True):
+        if _is_there_as_written(root, parts):
             return candidate
     return None
 
