@@ -2,7 +2,7 @@
 
 `telescope`（`raser_bench` 包）是继承 `raser` 实验基类的测试类（见[架构总纲](../architecture.md#实验是-python-类)），用束流望远镜测量位置灵敏被测器件（DUT）在 $x$、$y$ 方向的空间分辨。望远镜由沿束流方向排布的一串探测平面组成，用一个器件列表给出，列几块放几块，每块都是按器件文件建成的真实器件：前面若干层参考层、中间被测器件、后面若干层参考层。参考层默认是 `TAICHU3`（太初 3 号 CMOS 像素探测器），中间被测器件默认放两块，命令行给定的器件替换中间的两块被测器件，两块都换成它。望远镜的总层数任意，每一层的器件都可以换成别的器件，每一层的板子可以朝 $x$-$y$ 平面内四个方向之一摆放。
 
-`telescope` 读取[探测器组件（`components/device`）](../components/device.md)、[能量沉积组件（`components/deposit`）](../components/deposit.md)、[前端读出电路组件（`components/readout`）](../components/readout.md)、[数字化器组件（`components/digitizer`）](../components/digitizer.md)和[触发组件（`components/trigger`）](../components/trigger.md)，依次走完 [`field`](../stages/field.md)、[`deposit`](../stages/deposit.md)、[`current`](../stages/current.md)、[`readout`](../stages/readout.md)、[`digitizer`](../stages/digitizer.md)、[`trigger`](../stages/trigger.md)、[`reconstruction`](../stages/reconstruction.md) 和 [`analysis`](../stages/analysis.md) 八个环节。全部探测平面共用同一次 [`deposit`](../stages/deposit.md) 模拟高能粒子束流依次穿过各层。每一层各自走一遍 `field`、`current`、`readout`、`digitizer`、`trigger`、`reconstruction`，其中 `reconstruction` 在每层做团簇聚类求击中位置，再用参考层的击中拟合直线径迹并外推到被测器件所在平面。局限：`analysis` 现在只统计单电极的结果，多电极、多位置的统计（例如 telescope 的残差、cflm 各焊盘的汇总）还没做。
+`telescope` 读取[探测器组件（`components/device`）](../components/device.md)、[能量沉积组件（`components/deposit`）](../components/deposit.md)、[前端读出电路组件（`components/readout`）](../components/readout.md)、[数字化器组件（`components/digitizer`）](../components/digitizer.md)和[触发组件（`components/trigger`）](../components/trigger.md)，依次走完 [`field`](../stages/field.md)、[`deposit`](../stages/deposit.md)、[`current`](../stages/current.md)、[`readout`](../stages/readout.md)、[`digitizer`](../stages/digitizer.md)、[`trigger`](../stages/trigger.md)、[`reconstruction`](../stages/reconstruction.md) 和 [`analysis`](../stages/analysis.md) 八个环节。全部探测平面共用同一次 [`deposit`](../stages/deposit.md) 模拟高能粒子束流依次穿过各层。每一层各自走一遍 `field`、`current`、`readout`、`digitizer`、`trigger`、`reconstruction`，其中 `reconstruction` 在每层做团簇聚类求击中位置。`analysis` 把各层的击中拼成径迹，求被测器件的残差并拟合宽度，给出残差标准差 $\sigma_{\text{Tol}}$。
 
 ## 装置与通用范式
 
@@ -14,7 +14,7 @@
 
 $$(x_{p}, y_{p}) = \bigl((i_x + 0.5)\,p_x,\; (i_y + 0.5)\,p_y\bigr), \qquad \Delta x^{2} + \Delta y^{2} \le p_x^{2} + p_y^{2} + \epsilon, \qquad (\bar{x}_{c}, \bar{y}_{c}) = \frac{1}{n_c}\sum_{m=1}^{n_c}(x_{p,m}, y_{p,m}) \tag{1}$$
 
-各层的局部团簇重心按该层板子在 $x$-$y$ 平面内的摆放朝向变换到望远镜全局 $(x, y)$ 坐标系，第 $j$ 层参考层（$j \in \mathcal{R}$）与第 $d$ 块被测器件（$d = 1, \dots, N_{\text{DUT}}$）的击中位置分别记为 $(\bar{x}_{c,j}, \bar{y}_{c,j})$ 与 $(\bar{x}_{c,d}, \bar{y}_{c,d})$。[`reconstruction`](../stages/reconstruction.md) 选取参考层与被测器件均给出单团簇的事例，用全部 $N_{\text{ref}}$ 层参考层的灵敏层中面坐标 $z_j + l_{z,j}/2$ 与击中位置 $(\bar{x}_{c,j}, \bar{y}_{c,j})$ 分别对 $x$-$z$ 和 $y$-$z$ 做最小二乘直线拟合：
+各层的局部团簇重心按该层板子在 $x$-$y$ 平面内的摆放朝向变换到望远镜全局 $(x, y)$ 坐标系，第 $j$ 层参考层（$j \in \mathcal{R}$）与第 $d$ 块被测器件（$d = 1, \dots, N_{\text{DUT}}$）的击中位置分别记为 $(\bar{x}_{c,j}, \bar{y}_{c,j})$ 与 $(\bar{x}_{c,d}, \bar{y}_{c,d})$。[`analysis`](../stages/analysis.md) 选取参考层与被测器件均给出单团簇的事例，用全部 $N_{\text{ref}}$ 层参考层的灵敏层中面坐标 $z_j + l_{z,j}/2$ 与击中位置 $(\bar{x}_{c,j}, \bar{y}_{c,j})$ 分别对 $x$-$z$ 和 $y$-$z$ 做最小二乘直线拟合：
 
 $$\hat{x}(z) = k_x z + b_x, \qquad \hat{y}(z) = k_y z + b_y \tag{2}$$
 
@@ -89,12 +89,12 @@ r_{x,j} &= \hat{x}\!\left(z_j + \frac{l_{z,j}}{2}\right) - \bar{x}_{c,j}, & r_{y
 1. **求解或复用各层共享场（[`field`](../stages/field.md)）**：为器件列表中的每一层器件定位其在目标偏压 `voltage`（$\text{V}$）与辐照注量 `irradiation_flux`（$\text{cm}^{-2}$，$1\ \text{MeV}$ 中子等效注量）下的电场、权重场与等效电路参数，未就绪时在作业开始前补算。各层器件的共享场节点各自存放在对应器件 project 下的 `field/<节点号>/` 中。
 2. **全望远镜能量沉积（[`deposit`](../stages/deposit.md)）**：在 Geant4 望远镜装置中按器件列表与各层板子朝向建出前 $N_{\text{front}}$ 层参考层、中间 $N_{\text{DUT}}$ 块被测器件与后 $N_{\text{back}}$ 层参考层的实体。高能粒子束流沿 $+z$ 方向依次穿过全部 $N$ 层平面，统一记录各层内的能量沉积步并转化为初始电子-空穴对，写入 `deposit` 节点的 `deposit.h5`，按层区分归属。
 3. **逐层漂移、读出、数字化与触发（[`current`](../stages/current.md)、[`readout`](../stages/readout.md)、[`digitizer`](../stages/digitizer.md)、[`trigger`](../stages/trigger.md)）**：每一层各自在对应的求解场中漂移载流子，计算各像素电极的感应电流与净电荷，经各自的器件等效电路与前端放大器链求解模拟电压波形并按由作业种子派生的 `readout` 噪声种子叠加电路热噪声。随后各层分别按数字化器的模拟带宽、采样率与量化位数（时钟相位与孔径抖动由作业种子派生的 `digitizer` 种子抽取）生成量化码数字波形写入 `digitizer` 节点，并经触发判选将被记录事例的事例号数据集 `event`（`int64`）写入 `trigger` 节点的 `trigger.h5`。
-4. **团簇聚类与径迹拟合（[`reconstruction`](../stages/reconstruction.md)）**：读取 `digitizer.h5` 中被 `trigger.h5` 记录的事例，按 `lsb_V`、`offset_V` 将量化码换回电压（$\text{V}$），采样时刻为 `t0 + k·sampling_period`；在每一层上提取像素信号特征，以 `amplitude_threshold` 找团簇种子并将找到种子的事例记为 `selected`，按式 (1) 对过阈击中像素做连通团簇聚类，求出该层在局部坐标系中的击中位置 $(\bar{x}_c, \bar{y}_c)$（$\mu\text{m}$）与团簇大小 $n_c$（个）；再按各层朝向把击中位置变换到望远镜全局坐标系，用全部 $N_{\text{ref}}$ 层参考层的击中位置按式 (2) 拟合直线径迹并外推到各块被测器件所在平面。
-5. **统计（[`analysis`](../stages/analysis.md)）**：局限：`analysis` 现在只统计单电极的结果，多电极、多位置的统计（例如 telescope 的残差、cflm 各焊盘的汇总）还没做。
+4. **团簇聚类（[`reconstruction`](../stages/reconstruction.md)）**：读取 `digitizer.h5` 中被 `trigger.h5` 记录的事例，按 `lsb_V`、`offset_V` 将量化码换回电压（$\text{V}$），采样时刻为 `t0 + k·sampling_period`；在每一层上提取像素信号特征，以 `amplitude_threshold` 找团簇种子并将找到种子的事例记为 `selected`，按式 (1) 对过阈击中像素做连通团簇聚类，求出该层在局部坐标系中的击中位置 $(\bar{x}_c, \bar{y}_c)$（$\mu\text{m}$）与团簇大小 $n_c$（个）。
+5. **径迹拟合与空间分辨提取（[`analysis`](../stages/analysis.md)）**：读各作业每一层的击中位置，按各层朝向变换到望远镜全局坐标系，用全部 $N_{\text{ref}}$ 层参考层的击中位置按式 (2) 拟合直线径迹并外推到各块被测器件所在平面，按式 (3) 求残差；对每块被测器件 $x$、$y$ 方向的残差分布各做一次截断高斯拟合（[统计分析](../core/analysis.md) 的 `residual_widths`），得到残差标准差 $\sigma_{\text{Tol}}$（$\mu\text{m}$）。
 
 ### 快速跑法
 
-`reconstruction.hits = "deposit"` 时，`telescope` 不跑 `field`、`current`、`readout`、`digitizer`、`trigger`，[`reconstruction`](../stages/reconstruction.md) 直接读 `deposit` 节点：一层上沉积了电子-空穴对的像素记为过阈击中像素，其余照第 4 步。配合直线 MIP 源 `toy/MIP_telescope`（不启动 Geant4，无多次散射），残差只来自像素的离散化，可以很快地扫被测器件的像素间距、层间距和朝向，看几何本身给出的分辨。
+`reconstruction.hits = "deposit"` 时，`telescope` 不跑 `field`、`current`、`readout`、`digitizer`、`trigger`，[`reconstruction`](../stages/reconstruction.md) 直接读 `deposit` 节点：一层上沉积了电子-空穴对的像素记为过阈击中像素，其余照第 4、5 步。配合直线 MIP 源 `toy/MIP_telescope`（不启动 Geant4，无多次散射），残差只来自像素的离散化，可以很快地扫被测器件的像素间距、层间距和朝向，看几何本身给出的分辨。
 
 ## 用到的环节和组件
 
@@ -106,8 +106,8 @@ r_{x,j} &= \hat{x}\!\left(z_j + \frac{l_{z,j}}{2}\right) - \bar{x}_{c,j}, & r_{y
 - [`readout`](../stages/readout.md)：将每一层的电极感应电流分别送入对应器件等效电路与前端放大器链，求解输出模拟电压波形并叠加电路热噪声。
 - [`digitizer`](../stages/digitizer.md)：按数字化器的模拟带宽、采样率与量化位数，将每一层的模拟输出波形分别转换为量化码数字波形。
 - [`trigger`](../stages/trigger.md)：对每一层的数字波形按触发条件判选需要记录的事例，将被记录事例的事例号写入 `trigger.h5`。
-- [`reconstruction`](../stages/reconstruction.md)：读取 `digitizer.h5` 中被 `trigger` 记录的事例，按 `lsb_V`、`offset_V` 将量化码换回电压（$\text{V}$），在每一层上对过阈击中像素按式 (1) 做团簇聚类求击中位置并将找到种子的事例记为 `selected`，再用参考层的击中位置按式 (2) 拟合直线径迹并外推到被测器件所在平面。
-- [`analysis`](../stages/analysis.md)：局限：`analysis` 现在只统计单电极的结果，多电极、多位置的统计（例如 telescope 的残差、cflm 各焊盘的汇总）还没做。
+- [`reconstruction`](../stages/reconstruction.md)：读取 `digitizer.h5` 中被 `trigger` 记录的事例，按 `lsb_V`、`offset_V` 将量化码换回电压（$\text{V}$），在每一层上对过阈击中像素按式 (1) 做团簇聚类求击中位置并将找到种子的事例记为 `selected`。
+- [`analysis`](../stages/analysis.md)：用参考层的击中位置按式 (2) 拟合直线径迹并外推到被测器件所在平面，按式 (3) 求残差，对每块被测器件 $x$、$y$ 方向的残差分布各做一次截断高斯拟合，输出单点的 $\sigma_{\text{Tol}}$。
 
 ### 组件
 
@@ -155,7 +155,7 @@ raser telescope <器件> --set deposit.source=toy/MIP_telescope --set reconstruc
 | `reconstruction.fractions` | `[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]` | 无量纲 | 恒比定时（`CFD`）的幅度比例列表，每项须位于 `(0, 1)` 开区间内 |
 | `reconstruction.edge` | `null`（沿用对应层 `readout` 写出的 `pulse_edge`） | 无 | 阈值作用的脉冲边沿方向，可选 `"rising"` 或 `"falling"` |
 | `reconstruction.hits` | `"signal"` | 无 | 击中像素从哪里来：`"signal"` 为 `trigger` 记录的数字波形过 `reconstruction.threshold`，`"deposit"` 为沉积了电子-空穴对的像素（快速跑法） |
-| `reconstruction.plots` | `10` | 事例 | 每作业画径迹拟合图的前若干个选中事例数 |
+| `analysis.plots` | `10` | 事例 | 每个扫描点画径迹拟合图的前若干个选中事例数 |
 
 装置槽位 `deposit.g4setup` 里各槽位的位置和朝向是组件内部键，地址为 `deposit.g4setup.devices.<槽位>.position`（$\mu\text{m}$）与 `deposit.g4setup.devices.<槽位>.rotation_z`（度）。
 
@@ -168,15 +168,15 @@ raser telescope <器件> --set deposit.source=toy/MIP_telescope --set reconstruc
 各环节与统计分析写出的主要内容如下：
 
 - **上游各环节节点（[`deposit`](../stages/deposit.md) 至 [`reconstruction`](../stages/reconstruction.md)）**：`deposit` 节点的 `deposit.h5` 记录全部 $N$ 层平面的能量沉积步与电离对（坐标 $\mu\text{m}$、时间 $\text{s}$、能量 $\text{MeV}$、电离对数 对）。各层在作业节点里分别保存对应的感应电流与净收集电荷（`current.<位置>.h5`，时间 $\text{s}$、电流 $\text{A}$、电荷 $\text{C}$）、前端读出模拟电压波形（`readout.<位置>.h5`，时间 $\text{s}$、电压 $\text{V}$）、数字化量化码波形（`digitizer.<位置>.h5`，量化整型码 `code`［`int16`，无量纲］与换算属性 `lsb_V`［$\text{V}$］、`offset_V`［$\text{V}$］、`sampling_period`［$\text{s}$］、`bits`［位］，格式见 [`stages/digitizer.md`](../stages/digitizer.md)）、触发记录事例（`trigger.h5`，被记录事例的事例号数据集 `event`［`int64`］），以及逐事例团簇聚类得到的击中位置（$\mu\text{m}$）、团簇大小（个）与直线径迹拟合结果（`reconstruction.<位置>.h5`）。
-- **空间分辨统计与图像（[`analysis`](../stages/analysis.md)）**：局限：`analysis` 现在只统计单电极的结果，多电极、多位置的统计（例如 telescope 的残差、cflm 各焊盘的汇总）还没做。
+- **空间分辨统计与图像（[`analysis`](../stages/analysis.md)）**：`events.h5` 每个选中事例一行，记径迹参数与各层的全局击中位置、残差；`result.json` 的 `residual.<槽位>.x`、`residual.<槽位>.y` 给出各块被测器件 $x$、$y$ 方向残差的截断高斯拟合结果，其中 `sigma` 为残差标准差 $\sigma_{\text{Tol}}$（$\mu\text{m}$）；`residual_<槽位>` 图画出残差分布与拟合曲线。
 
 各环节节点的 `plots/` 里画下面这些图（规矩见[出图](../supports/figures.md)）：
 
 | 环节 | 图名 | 画的是 | 张数 |
 | --- | --- | --- | --- |
 | deposit | `geometry` | 望远镜的 Geant4 几何和前 `deposit.plots` 个事例的径迹 | 每个节点一张 |
-| reconstruction | `hitmap_<槽位>` | 该层全部记录事例的团簇重心在层局部坐标中的二维分布（`x [μm]`、`y [μm]`，色标为团簇数） | 每层一张 |
-| reconstruction | `track_<事例号>` | 左：$x$-$z$；右：$y$-$z$。各层团簇重心（参考层实心、被测器件空心）与式 (2) 的拟合直线（`z [mm]`、`x [μm]`、`y [μm]`） | 前 `reconstruction.plots` 个选中事例 |
+| reconstruction | `hitmap_<槽位>` | 该层恰有一个团簇的记录事例的团簇重心在层局部坐标中的二维分布（`x [μm]`、`y [μm]`，色标为团簇数） | 每层一张 |
+| analysis | `track_<事例号>` | 左：$x$-$z$；右：$y$-$z$。各层团簇重心（参考层实心、被测器件空心）与式 (2) 的拟合直线（`z [mm]`、`x [μm]`、`y [μm]`） | 前 `analysis.plots` 个选中事例 |
 | analysis | `residual_<槽位>` | 左：$r_x$；右：$r_y$。被测器件残差分布（`Residual x [μm]`、`Events`）与高斯拟合曲线，标出 $\sigma_{\text{Tol}}$ | 每块被测器件一张 |
 
 ![一层 TAICHU3 的像素收集电子数](../images/telescope-pixel-charge.png)
