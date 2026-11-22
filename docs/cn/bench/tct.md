@@ -171,8 +171,8 @@ raser tct NJU-PiN --set deposit.laser=PIL037_top_SiC --scan deposit.laser.fz_rel
 
 | 路径 | 写出环节 / 函数 | 内容 | 坐标与物理量单位 |
 | --- | --- | --- | --- |
-| `nodes/deposit/<节点号>/nocarrier_<fx_rel>_<fy_rel>_<fz_rel>.pdf` | [`deposit`](../stages/deposit.md)（`LaserInjection.draw_nocarrier3D`） | 激光脉冲在器件内生成的初始电子-空穴对的三维体密度（`TH3D`，`50 × 50 × 50` 箱，按吸收公式在各箱中心算出，低于最大值 `10%` 的箱留空，文件名中相对坐标四舍五入至 `5` 位小数） | 三轴 `Depth [um]`、`Width [um]`、`Thick [um]`，箱内容为对每 $\mu\text{m}^3$ |
-| `nodes/deposit/<节点号>/nocarrier2D_<fx_rel>_<fy_rel>_<fz_rel>.pdf` | [`deposit`](../stages/deposit.md)（`LaserInjection.draw_nocarrier2D`） | $y = \text{fy\_rel}\cdot l_y$ 的 $x$-$z$ 面（过光轴）上初始电子-空穴对的体密度，按吸收公式在 `200 × 200` 网格上算出（`TH2D`，`COLZ` 色标） | 横轴 `x axis [um]`，纵轴 `z axis [um]`，色标 `Pairs [um^-3]` |
+| `nodes/deposit/<节点号>/plots/pair_density_3d.png`、`.pdf`、`.root` | [`deposit`](../stages/deposit.md)（`LaserInjection.draw_nocarrier3D`） | 激光脉冲在器件内生成的初始电子-空穴对的三维体密度（`TH3D`，`50 × 50 × 50` 箱，按吸收公式在各箱中心算出，低于最大值 `10%` 的箱留空） | 三轴 `x [μm]`、`y [μm]`、`z [μm]`，箱内容为对每 $\mu\text{m}^3$ |
+| `nodes/deposit/<节点号>/plots/pair_density.png`、`.pdf`、`.root` | [`deposit`](../stages/deposit.md)（`LaserInjection.draw_nocarrier2D`） | $y = \text{fy\_rel}\cdot l_y$ 的 $x$-$z$ 面（过光轴）上初始电子-空穴对的体密度，按吸收公式在 `200 × 200` 网格上算出（`TH2D`，`COLZ` 色标） | 横轴 `x [μm]`，纵轴 `z [μm]`，色标 `Pair density [μm⁻³]` |
 | `nodes/current/<节点号>/plots/current_0.png`, `.pdf`, `.root`（多个读出电极时为 `current_0_electrode_<k>`） | [`current`](../stages/current.md)（`draw_currents`） | 第 $k$ 号非零电流电极（从 `1` 起）经激光时间脉冲卷积后的 `electrons`、`holes`、`total`（开启雪崩时含 `gain electrons`、`gain holes`）感应电流波形 | 横轴 `Time [ns]`，纵轴 `Current [μA]` |
 | `analysis/points.png` | [`analysis`](../stages/analysis.md) | 跨焦点位置扫描的收集电荷与信号随焦点位置变化曲线 | 横轴相对焦点位置（无量纲），纵轴按对应物理量标注单位 |
 
