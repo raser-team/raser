@@ -295,7 +295,7 @@ $$\delta x_{\text{orig},i} = \frac{x_{\text{orig},i}}{p_x} - \operatorname{round
 
 ### 绘图输出
 
-下表列出 `WaveformStatistics.draw(output_path, tag, vis)` 直接生成的 ROOT 统计图，以及 [../stages/analysis.md](../stages/analysis.md) 基于 `collection_efficiency` 与 `core_width` 输出生成的 Matplotlib 统计图；后者中 `points.png` 写在 `<实验文件夹>/analysis/` 下，其余写在 `points/<点名>/analysis/` 下：
+下表列出 `WaveformStatistics.draw(output_path, tag, vis)` 直接生成的 ROOT 统计图，以及 [../stages/analysis.md](../stages/analysis.md) 基于 `collection_efficiency` 与 `core_width` 输出生成的 Matplotlib 统计图；后者各有 `.png`、`.pdf`，其中 `trend` 写在 `<实验文件夹>/analysis/` 下，其余写在 `points/<点名>/analysis/` 下：
 
 | 文件名 | 内容 | 坐标单位 |
 | --- | --- | --- |
@@ -308,11 +308,11 @@ $$\delta x_{\text{orig},i} = \frac{x_{\text{orig},i}}{p_x} - \operatorname{round
 | `<tag>_ita_calibration_ToT.pdf`, `.C`；`..._amplitude.pdf`, `.C`；`..._charge.pdf`, `.C` | `WaveformStatistics.ita_calibration` 绘制 `20 × 20` 箱二维 $\eta$ 位置校准图 `TH2F`（`"COLZ"`） | 横轴 `Original x`（`[-0.5, 0.5]`，电极间距倍数），纵轴 `Reconstructed x`（`[0.5, -0.5]`，电极间距倍数） |
 | `track_<事例号>` | `tracking.py` 的 `draw_track` 对前 `analysis.plots` 个选中事例各画一张：左 $X$-$Z$、右 $Y$-$Z$，参考层实心点、被测器件空心点与式 (13) 的直线 | 横轴 `z [mm]`，纵轴 `x [μm]`、`y [μm]` |
 | `residual_<槽位>` | `tracking.py` 的 `draw_residual` 对每块被测器件画一张：左 `residual_x`、右 `residual_y`，`mean ± 8 * sigma` 内 `64` 箱的直方图、末轮窗口阴影与截断高斯曲线，图例标 $\sigma_{\text{Tol}}$ | 横轴 `Residual x [μm]`、`Residual y [μm]`，纵轴 `Events` |
-| `efficiency.png` | `stages/analysis` 在记录事例数 $\ge 2$ 时绘制全部记录事例的电荷收集效率 `60` 箱直方图与均值竖虚线 | 横轴 `charge collection efficiency`（无量纲），纵轴 `events`（个） |
-| `amplitude.png` | `stages/analysis` 在记录事例数 $\ge 1$ 时绘制选中事例脉冲幅度 `60` 箱直方图与 `amplitude_threshold` 竖虚线 | 横轴 `amplitude above the baseline [mV]`，纵轴 `events`（个） |
-| `time_difference.png` | `stages/analysis` 在时间通道拟合成功时以 `3 × 4` 子图绘制 `ToA`、`CoG` 及前 `10` 个 `CFD*` 通道在 `mean ± 8 * sigma` 内的 `64` 箱时间差直方图、末轮窗口阴影与截断高斯曲线 | 横轴 `<channel> - truth [ps]`，纵轴事例数（个） |
-| `resolution_of_fraction.png` | `stages/analysis` 绘制各 `CFD*` 通道的截断高斯 `sigma`（带误差棒）与 `sigma68` 随恒比比例变化图 | 横轴 `fraction of the CFD`（无量纲），纵轴 `width of time - truth [ps]` |
-| `points.png` | `stages/analysis` 在多扫描点且唯一变化扫描项为数值时，绘制收集效率（左）与各 `CFD*` 通道 `sigma`（右）随扫描变量的变化曲线 | 横轴 `<scanned_key>`，左纵轴 `charge collection efficiency`（无量纲），右纵轴 `sigma of time - truth [ps]` |
+| `efficiency.png`、`.pdf` | `stages/analysis` 在记录事例数 $\ge 2$ 时绘制全部记录事例的电荷收集效率 `60` 箱直方图与均值黑色竖虚线；图例写 `<N> events` 与 `mean <均值>` | 横轴 `Charge collection efficiency`（无量纲），纵轴 `Events` |
+| `amplitude.png`、`.pdf` | `stages/analysis` 在记录事例数 $\ge 1$ 时绘制选中事例脉冲幅度 `60` 箱直方图与 `amplitude_threshold` 黑色竖虚线；图例写 `<n> of <N> events` 与 `threshold <阈值> mV` | 横轴 `Amplitude [mV]`，纵轴 `Events` |
+| `time_difference.png`、`.pdf` | `stages/analysis` 在时间通道拟合成功时以 `3 × 4` 子图绘制 `ToA`、`CoG` 及前 `10` 个 `CFD*` 通道在 `mean ± 8 * sigma` 内的 `64` 箱时间差直方图、末轮窗口阴影与黑色截断高斯曲线；每幅小标题写通道名，左上角写 `sigma68`、`sigma` 与窗内事例数 | 横轴 `<channel> - truth [ps]`，纵轴 `Events` |
+| `resolution_of_fraction.png`、`.pdf` | `stages/analysis` 绘制各 `CFD*` 通道的截断高斯 `sigma`（黑色实心圆，带误差棒）与 `sigma68`（黑色空心方块）随恒比比例变化图 | 横轴 `CFD fraction`（无量纲），纵轴 `Time resolution [ps]` |
+| `trend.png`、`.pdf` | `stages/analysis` 在多扫描点且唯一变化扫描项为数值时，绘制收集效率（左）与各 `CFD*` 通道 `sigma`（右）随扫描变量的变化曲线，右幅每个 `CFD*` 通道一条线 | 横轴 `<scanned_key>`，左纵轴 `Charge collection efficiency`（无量纲），右纵轴 `Time resolution [ps]` |
 
 ## 参考文献
 
