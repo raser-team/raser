@@ -73,7 +73,7 @@ $$P(t) = \frac{2\sqrt{\ln 2}}{\sqrt{\pi}\,\text{FWHM}_t}\exp\!\left(-\frac{4\ln 
 | 光子能量常数 $h$, $c$ | `6.626e-34`, `2.998e8` | $\text{J}\cdot\text{s}$, $\text{m/s}$ | `src/raser/core/deposit/laser.py`，计算单光子能量 $E_{\text{ph}} = h c / \lambda$ 使用的普朗克常数与光速 |
 | 光路积分细分倍数 | `50` | 步 | `src/raser/core/deposit/laser.py`，光路总长除以最小特征尺度 $\min(L, l_R, 10^6/\alpha)$ 后的积分采样倍数 |
 | `rings`, `sectors` | `4`, `8` | 环, 扇区 | `src/raser/core/deposit/laser.py`，激光横截面等份额切分的同心环数与扇区数（每层 `32` 群） |
-| 载流子分布图箱数 | `50 × 50 × 50`（3D） | 箱 | `src/raser/core/deposit/laser.py`，`draw_nocarrier3D` 直方图分箱数 |
+| 载流子分布图箱数 | `50 × 50 × 50`（3D） | 箱 | `src/raser/core/deposit/laser.py`，`draw_nocarrier3D` 计算体密度的箱数 |
 | 载流子密度图网格与横向范围 | `200 × 200`，光轴两侧各 `2` 倍最大光斑半径 | 点, 无量纲 | `src/raser/core/deposit/laser.py`，`draw_nocarrier2D` 计算体密度的网格点数与横向画图范围 |
 | 脉冲卷积单箱采样倍数 | `20` | 点 | `src/raser/core/current/cal_current.py`，`pulse_in_bins` 要求单箱内中点矩形积分采样间距不超过 $\text{FWHM}_t / 20$ |
 | `t_bin`, `delta_t` | 1D: `5e-12`, `2e-12`；2D/3D: `50e-12`, `20e-12` | $\text{s}$ | `src/raser/core/current/cal_current.py`，感应电流时间箱宽与单步漂移步长 |
@@ -171,7 +171,7 @@ raser tct NJU-PiN --set deposit.laser=PIL037_top_SiC --scan deposit.laser.fz_rel
 
 | 路径 | 写出环节 / 函数 | 内容 | 坐标与物理量单位 |
 | --- | --- | --- | --- |
-| `nodes/deposit/<节点号>/nocarrier_<fx_rel>_<fy_rel>_<fz_rel>.pdf` | [`deposit`](../stages/deposit.md)（`LaserInjection.draw_nocarrier3D`） | 激光脉冲在器件内生成的初始载流子群三维对数分布直方图（`TH3D`，`50 × 50 × 50` 箱，文件名中相对坐标四舍五入至 `5` 位小数） | 三轴 `Depth [um]`、`Width [um]`、`Thick [um]`，箱权重为电子-空穴对数 |
+| `nodes/deposit/<节点号>/nocarrier_<fx_rel>_<fy_rel>_<fz_rel>.pdf` | [`deposit`](../stages/deposit.md)（`LaserInjection.draw_nocarrier3D`） | 激光脉冲在器件内生成的初始电子-空穴对的三维体密度（`TH3D`，`50 × 50 × 50` 箱，按吸收公式在各箱中心算出，低于最大值 `10%` 的箱留空，文件名中相对坐标四舍五入至 `5` 位小数） | 三轴 `Depth [um]`、`Width [um]`、`Thick [um]`，箱内容为对每 $\mu\text{m}^3$ |
 | `nodes/deposit/<节点号>/nocarrier2D_<fx_rel>_<fy_rel>_<fz_rel>.pdf` | [`deposit`](../stages/deposit.md)（`LaserInjection.draw_nocarrier2D`） | $y = \text{fy\_rel}\cdot l_y$ 的 $x$-$z$ 面（过光轴）上初始电子-空穴对的体密度，按吸收公式在 `200 × 200` 网格上算出（`TH2D`，`COLZ` 色标） | 横轴 `x axis [um]`，纵轴 `z axis [um]`，色标 `Pairs [um^-3]` |
 | `nodes/current/<节点号>/plots/current_0.png`, `.pdf`, `.root`（多个读出电极时为 `current_0_electrode_<k>`） | [`current`](../stages/current.md)（`draw_currents`） | 第 $k$ 号非零电流电极（从 `1` 起）经激光时间脉冲卷积后的 `electrons`、`holes`、`total`（开启雪崩时含 `gain electrons`、`gain holes`）感应电流波形 | 横轴 `Time [ns]`，纵轴 `Current [μA]` |
 | `analysis/points.png` | [`analysis`](../stages/analysis.md) | 跨焦点位置扫描的收集电荷与信号随焦点位置变化曲线 | 横轴相对焦点位置（无量纲），纵轴按对应物理量标注单位 |

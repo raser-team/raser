@@ -321,3 +321,39 @@ def test_two_photon_pairs_sit_at_the_depth_of_the_focus_from_every_face() -> Non
     assert middle(2, direction="top", fz_rel=0.3) == pytest.approx(15.0, abs=0.1)
     assert middle(2, direction="bottom", fz_rel=0.3) == pytest.approx(15.0, abs=0.1)
     assert middle(0, direction="edge", fx_rel=0.3) == pytest.approx(15.0, abs=0.1)
+
+
+def test_picture_box_follows_the_beam_from_the_face_it_enters() -> None:
+    top = _laser("LA01R_top_Si", alpha=1e6)
+    bottom = _laser("LA01R_bottom_Si", alpha=1e6)
+
+    for laser, z_range in ((top, (0.0, 4.605)), (bottom, (50.0 - 4.605, 50.0))):
+        low, high = laser._drawn_box()
+        w_max = math.sqrt(laser._w_squared(np.linspace(0, laser._drawn_path(), 400)).max())
+
+        assert (low[2], high[2]) == pytest.approx(z_range, rel=2e-2)
+        assert low[0] == pytest.approx(25.0 - 2 * w_max, rel=1e-6)
+        assert high[0] == pytest.approx(25.0 + 2 * w_max, rel=1e-6)
+        assert low[1] == pytest.approx(25.0 - 2 * w_max, rel=1e-6)
+        assert high[1] == pytest.approx(25.0 + 2 * w_max, rel=1e-6)
+
+
+def test_picture_box_stays_inside_the_detector() -> None:
+    low, high = _laser("LA01IR_top_Si", fx_rel=0.0)._drawn_box()
+
+    assert low[0] == 0.0
+    assert high[0] > 0.0
+    assert np.all(low >= 0.0)
+    assert np.all(high <= 50.0)
+
+
+def test_picture_box_runs_along_x_for_light_from_the_edge() -> None:
+    # from the edge the beam runs along x through (fy, fz) of the size; with
+    # an absorption length of 1 um the picture ends at 4.605 um
+    laser = _laser("LA01IR_edge_Si", alpha=1e6, fy_rel=0.4, fz_rel=0.6)
+    low, high = laser._drawn_box()
+    w_max = math.sqrt(laser._w_squared(np.linspace(0, laser._drawn_path(), 400)).max())
+
+    assert (low[0], high[0]) == pytest.approx((0.0, 4.605), rel=2e-2)
+    assert (low[1], high[1]) == pytest.approx((20.0 - 2 * w_max, 20.0 + 2 * w_max), rel=1e-6)
+    assert (low[2], high[2]) == pytest.approx((30.0 - 2 * w_max, 30.0 + 2 * w_max), rel=1e-6)
