@@ -163,7 +163,7 @@ $$C = \frac{\varepsilon_0 \varepsilon_r \left(A \times 10^{-12}\right)}{d \times
 | `depletion_depth` | `l_z` | $\mu\text{m}$ | `Detector.capacitance` 按平行板公式估算结电容时使用的耗尽层深度（必须 $> 0$） |
 | `bias_resistance_ohm` | 无（下游缺省取 `None`） | $\Omega$ | 单个读出电极的偏置电阻（给出时原样映射为同名属性，由 [field.md](field.md) 读取） |
 | `coupling_capacitance_pF` | 无（下游缺省取 `None`） | $\text{pF}$ | 单个读出电极的交流耦合电容，给出时须同时提供 `bias_resistance_ohm`（原样映射为同名属性） |
-| `undepleted_resistance_ohm`, `undepleted_capacitance_pF` | 无（下游缺省取 `None`） | $\Omega$, $\text{pF}$ | 未耗尽体区的等效电阻与电容；通常由 [field.md](field.md) 按运行时偏压从一维场算出，器件文件给出时优先采用给定值，两个键须同时给出或同时省略 |
+| `undepleted_resistance_ohm`, `undepleted_capacitance_pF` | 无（下游缺省取 `None`） | $\Omega$, $\text{pF}$ | 未耗尽体区的等效电阻与电容；通常由 [field.md](field.md) 按运行时偏压从场算出，器件文件给出时优先采用给定值，两个键须同时给出或同时省略 |
 | `resistive_layer` | 无（可选） | 无 | 阻性层定义对象，含方阻 `"sheet_resistance"`（$\Omega$）或注入参数、单元跨度（`"strips"` 或 `"pads"`）及可选 `"grounded"`、`"coupling"`（原样映射为同名属性） |
 
 #### 物理模型与求解维度

@@ -31,18 +31,18 @@ class DeviceCircuit:
 def planar_circuit(
     electrode,
     depleted_capacitance_f,
-    undepleted=None,
+    back="0",
     bias_resistance_ohm=None,
     coupling_capacitance_f=None,
 ):
-    """DeviceCircuit of a planar device with one read-out electrode, its back
-    on ground.
+    """DeviceCircuit of a planar device with one read-out electrode.
 
     electrode : name of the read-out electrode.
     depleted_capacitance_f : capacitance of the depleted layer [F].
-    undepleted : None for a fully depleted device, otherwise the resistance
-        [Ohm] and the capacitance [F] of the undepleted layer, which lie in
-        parallel between the depleted layer and the back.
+    back : node at the back of the depleted layer: ground "0" for a fully
+        depleted device, otherwise "undepleted", the one node all read-out
+        electrodes share. The caller lays the resistance and the capacitance
+        of the undepleted layer in parallel between it and ground.
     bias_resistance_ohm : resistance on the device from the electrode to its
         bias, which is ground for the signal [Ohm]. None: there is none.
     coupling_capacitance_f : capacitance on the device between the electrode
@@ -59,18 +59,7 @@ def planar_circuit(
             "electrode has no DC potential"
         )
     pad = f"{electrode}_pad"
-    if undepleted is None:
-        back_of_depleted = "0"
-        lines = [f"C{electrode}_depleted {pad} 0 {depleted_capacitance_f:.9g}"]
-    else:
-        resistance_ohm, capacitance_f = undepleted
-        back_of_depleted = f"{electrode}_inner"
-        lines = [
-            f"C{electrode}_depleted {pad} {back_of_depleted} "
-            f"{depleted_capacitance_f:.9g}",
-            f"R{electrode}_undepleted {back_of_depleted} 0 {resistance_ohm:.9g}",
-            f"C{electrode}_undepleted {back_of_depleted} 0 {capacitance_f:.9g}",
-        ]
+    lines = [f"C{electrode}_depleted {pad} {back} {depleted_capacitance_f:.9g}"]
     if bias_resistance_ohm is not None:
         lines.append(f"R{electrode}_bias {pad} 0 {bias_resistance_ohm:.9g}")
     output = pad
@@ -81,7 +70,7 @@ def planar_circuit(
         )
     return DeviceCircuit(
         lines=tuple(lines),
-        sources={electrode: (back_of_depleted, pad)},
+        sources={electrode: (back, pad)},
         outputs={electrode: output},
     )
 

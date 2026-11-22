@@ -12,9 +12,10 @@ def resistive_row(
     capacitance_per_area_f_m2,
     strips,
     grounded=None,
+    back="0",
 ):
     """DeviceCircuit of a resistive layer with strips in contact with it, the
-    back of the device on ground.
+    back of its depleted layer on the node `back`.
 
     The layer is cut across the strips into cells of one width, each a node
     with the capacitance of the depleted layer under it to the back; the
@@ -32,6 +33,8 @@ def resistive_row(
         and of the last cell under it.
     grounded : the same for each contact on the layer that is held on ground
         and not read out; none if not given.
+    back : node at the back of the depleted layer, as planar_circuit takes
+        it: ground "0", or "undepleted", shared with the undepleted layer.
 
     The layer ends open at both ends of the row. A positive current flows
     into the cell.
@@ -68,7 +71,7 @@ def resistive_row(
     lines = []
     for number, name in enumerate(cells):
         if node[number] != "0":
-            lines.append(f"Clayer_{name} {node[number]} 0 {capacitance_f:.9g}")
+            lines.append(f"Clayer_{name} {node[number]} {back} {capacitance_f:.9g}")
         if number + 1 == len(cells) or node[number] == node[number + 1]:
             continue
         on_strips = sum(
@@ -86,7 +89,7 @@ def resistive_row(
             )
     return DeviceCircuit(
         lines=tuple(lines),
-        sources={name: ("0", node[number]) for number, name in enumerate(cells)},
+        sources={name: (back, node[number]) for number, name in enumerate(cells)},
         outputs={strip: f"{strip}_pad" for strip in strips},
     )
 
@@ -123,9 +126,10 @@ def resistive_grid(
     pads,
     coupling_per_area_f_m2=None,
     grounded=None,
+    back="0",
 ):
     """DeviceCircuit of a resistive layer cut into a grid of cells, with pads
-    that are read out, the back of the device on ground.
+    that are read out, the back of its depleted layer on the node `back`.
 
     cells : names of the cells; the cell number i along x and j along y is
         cells[i * counts[1] + j]. The current induced on a cell flows into
@@ -143,6 +147,8 @@ def resistive_grid(
         under a pad are one node.
     grounded : for each contact on the layer that is held on ground and not
         read out, by its name, the list of its rectangles, each as a pad.
+    back : node at the back of the depleted layer, as planar_circuit takes
+        it: ground "0", or "undepleted", shared with the undepleted layer.
 
     The layer ends open at its four sides. A positive current flows into the
     cell.
@@ -179,7 +185,7 @@ def resistive_grid(
             here = node[i][j]
             if here != "0":
                 lines.append(
-                    f"Clayer_{name} {here} 0 {capacitance_per_area_f_m2 * area_m2:.9g}"
+                    f"Clayer_{name} {here} {back} {capacitance_per_area_f_m2 * area_m2:.9g}"
                 )
             if (i, j) in under:
                 if here == "0":
@@ -206,7 +212,7 @@ def resistive_grid(
     return DeviceCircuit(
         lines=tuple(lines),
         sources={
-            cells[i * counts[1] + j]: ("0", node[i][j])
+            cells[i * counts[1] + j]: (back, node[i][j])
             for i in range(counts[0])
             for j in range(counts[1])
         },
