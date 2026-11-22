@@ -40,7 +40,7 @@ where $E(\cdot)$ is the value of the logic expression when the given slots are t
 ## Algorithm
 
 1. **Read**: Digital waveform files and trigger conditions. An error is raised if a channel of the trigger conditions lies beyond `electrodes`.
-2. **Event-by-event evaluation**: For an oscilloscope's trigger condition: if any channel used has no digital waveform in that event, the event is not recorded; otherwise convert the codes of those channels back to voltage and find the trigger time by edge or pattern, and if none is found, do not record the event. For a standalone trigger device: find the hit time of each slot from its digital waveforms and evaluate Eq. (3) for the trigger time; slots with no digital waveform in that event do not hit.
+2. **Event-by-event evaluation**: For an oscilloscope's trigger condition: if any channel used has no digital waveform in that event, the event is not recorded; otherwise convert the codes of those channels back to voltage and find the trigger time by edge or pattern, and if none is found, do not record the event. For a standalone trigger device: find the hit time of each slot from its digital waveforms and evaluate Eq. (3) for the trigger time; slots with no digital waveform in that event do not hit, and a slot with no digital waveform file at all (upstream left no waveforms at that position) hits in no event.
 3. **Output**: Pass the event IDs and trigger times of recorded events to the trigger stage to write into `trigger.h5`.
 
 ## Software Implementation
