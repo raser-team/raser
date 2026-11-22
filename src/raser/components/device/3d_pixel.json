@@ -1,5 +1,5 @@
 {
-    "det_name" : "3D_pixel",
+    "det_name" : "3d_pixel",
     "det_model" : "3D_pixel",
     "electrodes" : "pixel",
     "material" : "Si",

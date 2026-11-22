@@ -170,7 +170,8 @@ warning: <锁文件路径> cannot be locked here (Operation not supported): noth
 
 ### 源文件分工
 
-- `src/raser/lifecycle/workflow.py`：提供实验基类与并发占用退出异常 `Running`；实现 `raser new --from` 示例 project 复制、公共运行选项注册 `run_arguments`、分段 `config.json` 读写与 `--set`/`--scan` “段.键”地址合并、节点指纹计算、`points.json` 参数表与 `points/<点名>/<环节>/<作业号>` 软链接视图维护、共享场节点准备、多扫描点本地与集群作业调度，以及集群自动续跑 `_start_again`/`_run_again`。
+- `src/raser/lifecycle/experiment.py`：实验基类 `Experiment` 与器件槽位 `Slot`。
+- `src/raser/lifecycle/workflow.py`：提供并发占用退出异常 `Running`；实现 `raser new --from` 示例 project 复制、公共运行选项注册 `run_arguments`、分段 `config.json` 读写与 `--set`/`--scan` “段.键”地址合并、节点指纹计算、`points.json` 参数表与 `points/<点名>/<环节>/<作业号>` 软链接视图维护、共享场节点准备、多扫描点本地与集群作业调度，以及集群自动续跑 `_start_again`/`_run_again`。
 - `src/raser/core/seeding.py`：维护模块级当前种子 `_job_seed` 与命名随机流字典 `_streams`；提供 `seed_generators(seed)` 统一播种 Python `random`、`ROOT.gRandom` 并清空流缓存，提供 `stream(name)` 按流名经 SHA-256 派生并缓存独立的 `ROOT.TRandom3` 实例。
 - `src/raser/cli/raser.py`：定义 `raser` 命令行入口 `main` 与参数解析器 `build_parser`，维护子命令映射表 `APPLICATIONS` 与八个环节短别名表 `SHORT`；提供 `_experiment_arguments` 在含 `config.json` 的实验文件夹根目录下自动补全命令词与器件名，并将顶层 `-b`/`-t` 全局选项归并至子命令参数。
 
@@ -179,6 +180,8 @@ warning: <锁文件路径> cannot be locked here (Operation not supported): noth
 | 数据结构与字段 | 类型与默认值 | 单位 | 含义 |
 | --- | --- | --- | --- |
 | 实验基类与实验子类 | Python 类 | 无 | `raser_bench`、`raser_app` 及用户自定义实验继承的基类，声明实验包含的环节、器件清单、各器件角色（如被测器件、参考器件），通过包入口点 `raser.experiments` 或 project 文件夹自动发现并按名字注册（见[架构总纲](../architecture.md#实验是-python-类)） |
+| `Experiment` 的类属性 | `name`（命令词）、`stages`（环节）、`devices`（槽位名 → `Slot`，按实验里的顺序）、`components`、`application`（默认 `False`） | 无 | 一个器件的实验只有槽位 `Device`；槽位名只用字母、数字、`_`、`-`；`application` 为 `True` 时输出放在 `work/<名字>/`，否则放在 `work/<器件>/<名字>/` |
+| `Slot(role, device, positions)` | `role` 为 `"tested"`（默认）或 `"reference"`；`device` 默认 `None`；`positions` 默认 `()` | 无 | 被测槽位由命令行给的器件占用，不写 `device`；参考槽位必须写 `device`；至少有一个被测槽位；`positions` 是这块器件占的各个位置，不写时只有一个位置、名字同槽位 |
 | `Running` | `SystemExit` 子类 | 无 | 目标锁文件已被另一进程持有时抛出的并发占用退出异常 |
 | `seeding._job_seed` | `int \| None`，默认 `None` | 无 | 当前由 `seed_generators` 写入的整数随机种子（范围 $[1, 2^{31}-1]$） |
 | `seeding._streams` | `dict[str, ROOT.TRandom3]`，默认 `{}` | 无 | 当前作业或环节内按流名 `name` 缓存的独立 `ROOT.TRandom3` 实例字典 |

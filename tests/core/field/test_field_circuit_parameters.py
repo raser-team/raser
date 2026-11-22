@@ -371,6 +371,34 @@ def test_field_gives_a_row_of_strips_the_capacitances_it_stored(tmp_path):
     assert undepleted is None
 
 
+def test_field_gives_a_row_on_a_resistive_layer_no_capacitances_between_strips(
+    tmp_path,
+):
+    # the strips of a resistive layer are joined by the layer: the weighting
+    # field stored no Capacitance_<bias>V.json for them, and none is asked for
+    device = _strips(
+        read_ele_num=20,
+        read_out_contact=[{"x_span": 0, "y_span": 0, "name": "node"}],
+        resistive_layer={"sheet_resistance": 1000.0, "strips": {"left": [2, 4]}},
+    )
+    bias_v = float(device.voltage)
+    (tmp_path / "run.json").write_text(
+        json.dumps(
+            {
+                "files": {"device": {"det_name": "ITk-Si-strip"}},
+                "solved": {"undepleted": [bias_v]},
+            }
+        )
+    )
+    (tmp_path / f"{bias_v}V.undepleted.json").write_text(
+        json.dumps({"undepleted_width_um": 0.0})
+    )
+
+    row, _, _ = field_circuit(tmp_path, device)
+
+    assert row is None
+
+
 def test_field_gives_a_device_the_capacitance_it_solved_at_its_bias(tmp_path):
     # 200 pF per cm^2 of the mesh on the 0.0169 cm^2 of HPK-Si-PiN at 200 V;
     # its file here has no measured capacitance

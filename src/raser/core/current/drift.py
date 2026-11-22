@@ -7,6 +7,8 @@ import numpy as np
 
 from raser.core.seeding import stream
 
+from .trapping import Trapping, survivors, survivors_at
+
 kboltz = 8.617333262e-5  # eV/K
 e0 = 1.602176634e-19  # C
 min_intensity = 1  # V/cm, a carrier in a field not above this stops
@@ -147,23 +149,18 @@ def induced_charges(path, carriers, my_f, electrode, offset=(0.0, 0.0)):
     return carriers * e0 * np.diff(potential)
 
 
-def surviving(path, carriers, my_f):
-    """Carriers of a cluster not yet trapped, at the middle of each step.
+def surviving(path, carriers, my_f, trapping=None):
+    """Carriers of a cluster not yet lost, at the middle of each step.
 
-    The trapping rate [1/s] of holes or electrons, by the sign of `carriers`,
-    is read from `my_f` at the start of each step and held over the step.
+    `trapping` is a `Trapping`; without it the carriers are trapped at the
+    rate of `my_f` [1/s] for holes or electrons, by the sign of `carriers`,
+    read at the start of each step and held over the step. See
+    `trapping.survivors` for the other ways to lose them.
     """
-    rate = my_f.get_trap_h_cached if carriers > 0 else my_f.get_trap_e_cached
-    rates = np.array([rate(x, y, z) for x, y, z, _ in path[:-1]])
-    decay = rates * np.diff(path[:, 3])
-    return carriers * np.exp(-(np.cumsum(decay) - decay / 2))
+    return survivors(path, carriers, my_f, Trapping() if trapping is None else trapping)
 
 
-
-def surviving_at(path, carriers, my_f, step, fraction):
-    """Carriers of a cluster not yet trapped `fraction` of the way through
+def surviving_at(path, carriers, my_f, step, fraction, trapping=None):
+    """Carriers of a cluster not yet lost `fraction` of the way through
     step `step` of its path, with the rates `surviving` takes."""
-    rate = my_f.get_trap_h_cached if carriers > 0 else my_f.get_trap_e_cached
-    rates = np.array([rate(x, y, z) for x, y, z, _ in path[: step + 1]])
-    decay = rates * np.diff(path[: step + 2, 3])
-    return carriers * np.exp(-(decay[:step].sum() + fraction * decay[step]))
+    return survivors_at(path, carriers, my_f, Trapping() if trapping is None else trapping, step, fraction)

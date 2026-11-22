@@ -7,7 +7,8 @@ from raser.core.current.cal_current import electrode_names
 from raser.core.device.build_device import Detector
 from raser.core.device.build_device import device_file
 from raser.core.field.circuit_parameters import device_row
-from raser.core.readout.network import impulse_response
+from raser.core.field.device_circuit import DeviceCircuit
+from raser.core.readout.network import admittance, impulse_response
 from raser.core.field.resistive_layer import shares
 
 pytestmark = pytest.mark.ngspice
@@ -185,3 +186,73 @@ def test_point_off_the_rc_nodes_of_the_layer_is_refused(x_um):
 
     with pytest.raises(ValueError, match="RC nodes of the layer"):
         shares(my_d, [x_um])
+
+
+def _strip_admittance(frequencies_hz, **layer):
+    my_d = _device(sheet_resistance=1000.0, **layer)
+    rc_nodes = electrode_names(my_d.read_out_contact, my_d.read_ele_num)
+    circuit, _ = device_row(my_d, rc_nodes)
+    return admittance(circuit, frequencies_hz)
+
+
+def test_admittance_between_two_read_outs_joined_by_one_kiloohm_is_a_conductance():
+    # a resistor of 1 kOhm between the two ports: 1 / 1000 Ohm = 1 mS on the
+    # diagonal, minus that off it, and no imaginary part
+    circuit = DeviceCircuit(
+        lines=("R1 a b 1000",), sources={}, outputs={"a": "a", "b": "b"}
+    )
+
+    y = admittance(circuit, [1e3, 1e6, 1e9])
+
+    assert y.shape == (3, 2, 2)
+    expected = np.array([[1e-3, -1e-3], [-1e-3, 1e-3]])
+    for row in y:
+        assert row.real == pytest.approx(expected, rel=1e-6, abs=1e-12)
+        assert row.imag == pytest.approx(0.0, abs=1e-12)
+
+
+def test_admittance_of_a_read_out_on_one_picofarad_is_its_susceptance():
+    # j * 2 pi f C with C = 1 pF
+    circuit = DeviceCircuit(lines=("C1 a 0 1p",), sources={}, outputs={"a": "a"})
+    frequencies = np.array([1e6, 1e8])
+
+    y = admittance(circuit, frequencies)
+
+    expected = 2j * np.pi * frequencies * 1e-12
+    assert y[:, 0, 0].imag == pytest.approx(expected.imag, rel=1e-6)
+    assert y[:, 0, 0].real == pytest.approx(0.0, abs=1e-12)
+
+
+def test_admittance_of_two_strips_on_an_open_layer_is_the_layer_between_them():
+    # the strips touch the layer, which has no other way to ground: what goes
+    # in at one strip comes out at the other, through the layer between their
+    # inner edges at 50 and 150 um: 1000 Ohm a square * 100 um / 1000 um
+    # = 100 Ohm, so -1 / 100 Ohm = -0.01 S off the diagonal
+    (y,) = _strip_admittance([1e3])
+
+    assert np.abs(y.sum(axis=1)).max() < 1e-3 * abs(y[0, 0])
+    assert y[0, 1] == pytest.approx(y[1, 0], rel=1e-6)
+    assert y[0, 1].real == pytest.approx(-1 / 100.0, rel=1e-2)
+
+
+def test_admittance_of_strips_coupled_through_a_dielectric_has_no_direct_current():
+    # the layer is held on ground at the RC node 19 and the strips lie on it
+    # over 0.5 um of oxide: only the coupling capacitance carries current, and
+    # its susceptance grows with the frequency
+    y = _strip_admittance(
+        [1e3, 1e9],
+        grounded={"ring": [19, 19]},
+        coupling={"thickness": 0.5, "permittivity": 3.9},
+    )
+
+    assert abs(y[0, 0, 0]) < 1e-3 * abs(y[1, 0, 0])
+
+
+@pytest.mark.parametrize("frequencies", [[], [0.0], [2e6, 1e6]])
+def test_admittance_at_no_frequency_a_zero_one_or_a_falling_list_is_refused(
+    frequencies,
+):
+    circuit = DeviceCircuit(lines=("R1 a 0 50",), sources={}, outputs={"a": "a"})
+
+    with pytest.raises(ValueError):
+        admittance(circuit, frequencies)

@@ -59,7 +59,7 @@ The table below lists all module-level constants, layout constraint tables, and 
    - Compute `self.voltage = float(self.device_dict['bias']['voltage'])` ($\text{V}$). Raises `KeyError` if `'bias'` or `'voltage'` is missing, or `TypeError`/`ValueError` if the value cannot be converted to `float`.
    - Check `"irradiation" in self.device_dict`: if true, set `self.irradiation_model = self.device_dict['irradiation']['irradiation_model']` and `self.irradiation_flux = self.device_dict['irradiation']['irradiation_flux']` ($\text{cm}^{-2}$; raises `KeyError` if `'irradiation_model'` or `'irradiation_flux'` is missing from `'irradiation'`); if false, set `self.irradiation_model = None` and `self.irradiation_flux = 0`.
 4. **Compute name, solve dimension, and 3D bounds**:
-   - Set `self.det_name = self.device_dict.get('det_name', path.stem)`, and also set `self.device = self.det_name` and `self.region = self.det_name`.
+   - Set `self.det_name = self.device_dict.get('det_name', path.stem)`, and also set `self.device = self.det_name`.
    - Set `self.dimension = self.device_dict.get('field_dimension', self.device_dict['default_dimension'])`. `default_dimension` is required and raises `KeyError` if absent.
    - Build bounds dict `self.bound = {'x': (0, self.l_x), 'y': (0, self.l_y), 'z': (0, self.l_z)}` ($\mu\text{m}$). If any of `l_x`, `l_y`, `l_z` is missing from the JSON top level, accessing the attribute raises `AttributeError`.
 5. **Validate readout electrode layout and exclusive keys**:
@@ -107,7 +107,7 @@ A `Detector` instance provides the following on-demand properties and methods at
 | --- | --- | --- | --- |
 | `device_dict` | `dict` | None | Deep copy of the device JSON dict |
 | `definition_path` | `Path` | None | Absolute path of the device JSON returned by `device_file(device_name)` after `resolve()` |
-| `det_name`, `device`, `region` | `str` | None | Detector name (all three equal; defaults to `stem` of the path returned by `device_file(device_name)`, i.e. filename stem before `resolve()`) |
+| `det_name`, `device` | `str` | None | Detector name (both equal; defaults to `stem` of the path returned by `device_file(device_name)`, i.e. filename stem before `resolve()`) |
 | `dimension` | `int` | None | Device field solving dimension (`field_dimension` if present, otherwise `default_dimension`) |
 | `voltage` | `float` | $\text{V}$ | Bias voltage `float(device_dict["bias"]["voltage"])` |
 | `irradiation_model` | `str \| None` | None | Irradiation defect model name (`None` if no `irradiation` block) |
@@ -132,7 +132,7 @@ Users can configure the device JSON keys listed in the tables below; vacuum perm
 
 | Key | Default | Unit | Meaning |
 | --- | --- | --- | --- |
-| `det_name` | JSON filename stem (`path.stem`) | None | Detector name, assigned to `det_name`, `device`, and `region` on construction |
+| `det_name` | JSON filename stem (`path.stem`) | None | Detector name, assigned to `det_name` and `device` on construction |
 | `det_model` | None (required when accessing `capacitance` without `capacitance_pF`; required downstream) | None | Detector model identifier, one of `"planar"`, `"lgad"`, `"ilgad_planar"`, `"strip"`, `"lgadstrip"`, `"pixel"`, `"lgad_pixel"`, `"lgadpixel"`, `"3D_pixel"`, `"3D_column_series"`; when lowercased string contains `"3d"`, parallel-plate capacitance returns `None` |
 | `material` | None (required for parallel-plate `capacitance` branch and downstream) | None | Semiconductor material: `"Si"`, `"SiC"`, `"Diamond"`, or `"GaN"`; the parallel-plate branch passes it to `Material(material)` in [model.md](model.md), where relative permittivity is defined only for `"Si"`, `"SiC"`, and `"Diamond"`, so `"GaN"` devices must provide `capacitance_pF` |
 | `l_x`, `l_y`, `l_z` | None (required) | $\mu\text{m}$ | Full detector dimensions along $x$, $y$, and $z$ ($z$ is thickness), used to construct `bound`, default electrode sizes, and default depletion depth |

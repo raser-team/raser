@@ -895,7 +895,7 @@ def _points(workflow, kwargs, config, given) -> tuple[dict, dict]:
     """The scanned options and the points of an experiment.
 
     One point for every combination of the scanned values. A point's folder is
-    named by the scanned options that differ from the unscanned run."""
+    named by every scanned option and its value, as its view is."""
     # Another component in a slot is another file: what config.json set or
     # scanned inside the one before it is not read by this command.
     replaced = tuple(
@@ -957,8 +957,8 @@ def _points(workflow, kwargs, config, given) -> tuple[dict, dict]:
                 f"{key} and {other} would both be {label[key]!r} in the names of folders: "
                 'give one of them a name under "names" in config.json'
             )
-    # A scanned address is not given in the unscanned run: there it takes the file's value.
-    base, _ = _point(
+    # A scanned address that no file of the run holds is told before any point is made.
+    _point(
         workflow, kwargs, {**dict.fromkeys(key for key in scan if "." in key and key not in workflow.keys), **fixed}
     )
     # folder inside the experiment -> (options, files, the options given, per
@@ -972,8 +972,7 @@ def _points(workflow, kwargs, config, given) -> tuple[dict, dict]:
         options do not make a measurement of its own (Slice.new_events)."""
         given_here = {**fixed, **values}
         options, files = _point(workflow, kwargs, given_here)
-        changed = [key for key in values if options[key] != base.get(key)]
-        name = "_".join(f"{label[key]}_{_text(options[key])}" for key in changed)
+        name = "_".join(f"{label[key]}_{_text(options[key])}" for key in values)
         if name in points and any(points[name][0].get(key) != options.get(key) for key in scan):
             other = {key: points[name][0].get(key) for key in scan}
             raise ValueError(

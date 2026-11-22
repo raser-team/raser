@@ -30,11 +30,11 @@ def capacitance(my_d, folder, voltage, solver):
         acreal=float(solver["ac"]["real"]),
         acimag=float(solver["ac"]["imaginary"]),
     )
+    for name in ("extended_solver", "extended_model", "extended_equation"):
+        devsim.set_parameter(name=name, value=True)
     devsim.load_devices(file=str(saved))
     # The file keeps the mesh, the models and the solution, not the parameters.
     create_parameter(my_d, my_d.device, my_d.region)
-    for name in ("extended_solver", "extended_model", "extended_equation"):
-        devsim.set_parameter(name=name, value=True)
     for contact in devsim.get_contact_list(device=my_d.device):
         devsim.set_parameter(
             device=my_d.device,

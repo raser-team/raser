@@ -330,7 +330,7 @@ def _folders(started: list[Any], experiment: Path) -> list[str]:
     return [str(Path(tail[-1]).relative_to(experiment)) for _, tail, _, _ in started]
 
 
-def test_a_scan_runs_every_value_and_only_values_that_differ_get_a_folder(
+def test_a_scan_runs_every_value_and_every_value_gets_a_folder_named_by_the_scanned_key(
     started: list[Any], disk: dict[str, Any], tmp_path: Path
 ) -> None:
     scan = ["voltage=200,300"]
@@ -338,12 +338,12 @@ def test_a_scan_runs_every_value_and_only_values_that_differ_get_a_folder(
     execute(BIASED, _kwargs(det_name="dev", voltage=None, scan=scan, jobs=2))
 
     experiment = tmp_path / "toy"
-    assert _folders(started, experiment) == ["seed_42", "voltage_300/seed_42"]
-    assert _record(experiment / "seed_42")["options"]["voltage"] == 200
+    assert _folders(started, experiment) == ["voltage_200/seed_42", "voltage_300/seed_42"]
+    assert _record(experiment / "voltage_200" / "seed_42")["options"]["voltage"] == 200
     assert _record(experiment / "voltage_300" / "seed_42")["options"]["voltage"] == 300
 
 
-def test_a_scanned_address_is_written_into_the_file_of_each_point_that_differs(
+def test_a_scanned_address_is_written_into_the_file_of_each_point(
     started: list[Any], disk: dict[str, Any], tmp_path: Path
 ) -> None:
     scan = ["device.bias.voltage=200,300"]
@@ -351,8 +351,8 @@ def test_a_scanned_address_is_written_into_the_file_of_each_point_that_differs(
     execute(TOY_DEVICE, _kwargs(det_name="dev", scan=scan, jobs=2))
 
     experiment = tmp_path / "toy"
-    assert _folders(started, experiment) == ["seed_42", "bias.voltage_300/seed_42"]
-    unscanned = _record(experiment / "seed_42")
+    assert _folders(started, experiment) == ["bias.voltage_200/seed_42", "bias.voltage_300/seed_42"]
+    unscanned = _record(experiment / "bias.voltage_200" / "seed_42")
     scanned = _record(experiment / "bias.voltage_300" / "seed_42")
     assert unscanned["files"]["device"]["bias"] == {"electrode": "top", "voltage": 200.0}
     assert scanned["files"]["device"]["bias"] == {"electrode": "top", "voltage": 300}
@@ -374,7 +374,7 @@ def test_a_name_the_config_gives_an_address_names_the_folders_and_may_be_scanned
 
     execute(TOY_DEVICE, _kwargs(det_name="dev", scan=scan, jobs=2))
 
-    assert _folders(started, experiment) == ["seed_42", "bias_300/seed_42"]
+    assert _folders(started, experiment) == ["bias_200/seed_42", "bias_300/seed_42"]
     scanned = _record(experiment / "bias_300" / "seed_42")
     assert scanned["files"]["device"]["bias"]["voltage"] == 300
     assert scanned["options"]["device.bias.voltage"] == 300
@@ -397,9 +397,9 @@ def test_two_scanned_addresses_that_end_alike_stop_the_command_until_one_is_name
     execute(TOY_DEVICE, _kwargs(det_name="dev", scan=scan, jobs=2))
 
     assert _folders(started, experiment) == [
-        "seed_42",
-        "spare_2/seed_42",
-        "bias.voltage_300/seed_42",
+        "bias.voltage_200_spare_1/seed_42",
+        "bias.voltage_200_spare_2/seed_42",
+        "bias.voltage_300_spare_1/seed_42",
         "bias.voltage_300_spare_2/seed_42",
     ]
 
@@ -424,7 +424,7 @@ def test_an_address_that_leads_nowhere_stops_the_command_and_says_where(
     assert not (tmp_path / "toy").exists()
 
 
-def test_two_scanned_options_give_every_combination_named_by_what_differs(
+def test_two_scanned_options_give_every_combination_named_by_both_keys(
     started: list[Any], tmp_path: Path
 ) -> None:
     scan = ["gain=5,7", "width=1.0,2.0"]
@@ -432,9 +432,9 @@ def test_two_scanned_options_give_every_combination_named_by_what_differs(
     execute(GAIN, _kwargs(gain=None, width=None, scan=scan, jobs=2))
 
     assert _folders(started, tmp_path / "toy") == [
-        "seed_42",
-        "width_2/seed_42",
-        "gain_7/seed_42",
+        "gain_5_width_1/seed_42",
+        "gain_5_width_2/seed_42",
+        "gain_7_width_1/seed_42",
         "gain_7_width_2/seed_42",
     ]
 
@@ -442,9 +442,9 @@ def test_two_scanned_options_give_every_combination_named_by_what_differs(
 def test_two_combinations_that_would_name_one_folder_stop_the_command_before_any_job(
     started: list[Any], tmp_path: Path
 ) -> None:
-    scan = ["gain=7_width_2,7", "width=1.0,2.0"]
+    scan = ["gain=5_width_1,5", "width=2,1_width_2"]
 
-    with pytest.raises(ValueError, match="gain_7_width_2"):
+    with pytest.raises(ValueError, match="gain_5_width_1_width_2"):
         execute(GAIN, _kwargs(gain=None, width=None, scan=scan, jobs=2))
 
     assert started == []
@@ -472,9 +472,9 @@ def test_the_first_run_writes_its_scan_to_the_config_and_later_runs_repeat_it(
     execute(GAIN, _kwargs(gain=None, width=None, seed=2, jobs=2))
 
     assert _folders(started, tmp_path / "toy") == [
-        "seed_1",
+        "gain_5/seed_1",
         "gain_7/seed_1",
-        "seed_2",
+        "gain_5/seed_2",
         "gain_7/seed_2",
     ]
 
@@ -583,7 +583,7 @@ def test_the_finished_jobs_of_a_folder_come_from_the_workflow_and_device_its_con
     points = workflow_module.finished_in(tmp_path / "toy")
 
     assert [(name, options["voltage"], [index for _, index in done]) for name, options, done in points] == [
-        ("", 200, [0, 1]),
+        ("voltage_200", 200, [0, 1]),
         ("voltage_300", 300, [0, 1]),
     ]
     assert [(name, options, len(done)) for name, options, done in workflow_module.finished_in(tmp_path / "other")] == [
@@ -620,7 +620,7 @@ def test_finished_lists_every_point_with_the_jobs_of_all_its_seed_folders(
     execute(GAIN, _kwargs(gain=None, width=None, scan=scan, seed=2, jobs=1))
 
     assert _finished(tmp_path / "toy") == [
-        ("", 5, ["seed_1:0", "seed_1:1", "seed_2:0"]),
+        ("gain_5", 5, ["seed_1:0", "seed_1:1", "seed_2:0"]),
         ("gain_7", 7, ["seed_1:0", "seed_1:1", "seed_2:0"]),
     ]
 
@@ -650,7 +650,7 @@ def _point_seeds(seeded: list[int], experiment: Path, **given: Any) -> list[list
     """Job seeds of the two points of a gain scan, for job indices 0 and 1."""
     execute(GAIN, _kwargs(gain=None, width=None, scan=["gain=5,7"], jobs=2, **given))
     seeds = []
-    for point in ("", "gain_7"):
+    for point in ("gain_5", "gain_7"):
         seeded.clear()
         for index in (0, 1):
             folder = str(experiment / point / "seed_42")
@@ -706,7 +706,7 @@ def test_without_seeds_the_job_of_every_point_runs_in_the_point_folder_at_every_
 
     experiment = tmp_path / "toy"
     assert [options["_run_path"] for options in received] == [
-        str(experiment),
+        str(experiment / "x_1"),
         str(experiment / "x_2"),
     ] * 2
     assert "seed" not in received[0]
@@ -715,7 +715,7 @@ def test_without_seeds_the_job_of_every_point_runs_in_the_point_folder_at_every_
     }
     assert "same_seeds" not in json.loads((experiment / "config.json").read_text())
     assert [(name, len(done)) for name, _, done in
-            workflow_module.finished(workflow, _plain(), experiment)] == [("", 1), ("x_2", 1)]
+            workflow_module.finished(workflow, _plain(), experiment)] == [("x_1", 1), ("x_2", 1)]
 
 
 def test_a_workflow_that_names_its_folder_has_its_experiment_there_wherever_the_command_is_run(
@@ -818,7 +818,7 @@ def test_without_seeds_a_point_whose_folder_begins_with_seed_counts_as_finished(
     execute(workflow, _plain(scan=["seed_layer=1,2"]))
 
     points = workflow_module.finished(workflow, _plain(), tmp_path / "toy")
-    assert [(name, len(done)) for name, _, done in points] == [("", 1), ("seed_layer_2", 1)]
+    assert [(name, len(done)) for name, _, done in points] == [("seed_layer_1", 1), ("seed_layer_2", 1)]
 
 
 def test_each_of_several_points_runs_in_a_process_of_its_own_and_one_failing_leaves_the_rest(
@@ -852,7 +852,7 @@ def test_each_of_several_points_runs_in_a_process_of_its_own_and_one_failing_lea
 
     assert ran == [1, 2, 3]
     assert commands == [
-        ["toy", "--job-dir", str(experiment / name)] for name in ("", "x_2", "x_3")
+        ["toy", "--job-dir", str(experiment / name)] for name in ("x_1", "x_2", "x_3")
     ]
     assert "1 of 3 points failed" in str(stopped.value)
     assert str(experiment / "x_2") in str(stopped.value)
@@ -1441,9 +1441,9 @@ def test_with_same_seeds_the_slices_before_the_scanned_one_stay_in_the_unscanned
         ("waveforms", "standard"),
     ]
     experiment = tmp_path / "toy"
-    assert _marks(experiment / "seed_42") == [
+    assert _marks(experiment / "seed_42") == ["deposits_0.done"]
+    assert _marks(experiment / "voltage_200" / "seed_42") == [
         "currents_0.done",
-        "deposits_0.done",
         "job_0.done",
         "waveforms_0.done",
     ]

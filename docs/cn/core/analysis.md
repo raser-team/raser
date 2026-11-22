@@ -101,6 +101,23 @@ $$\delta x_{\text{orig},i} = \frac{x_{\text{orig},i}}{p_x} - \operatorname{round
 
 式 (8) 与式 (10) 分别由 `waveform_stats.py` 中的 `fit_data_normal` 与 `fit_data_landau` 调用 `ROOT.TF1` 内置模型 `'gaus'` 与 `'landau'`（配合 `TH1.Fit` 的 `"ROQ+"` 选项）拟合；式 (9) 与式 (11) 分别由 `WaveformStatistics.time_resolution_fit` 与 `WaveformStatistics.ita_calibration` 实现。薄层电离能损的朗道分布见文献 [6]，半导体条形探测器电荷共享重心与 $\eta$ 位置校准方法见文献 [7]，ROOT 数据分析与拟合框架见文献 [8]。
 
+### 能量分辨率估计量
+
+扫描点上每个事例的收集电荷与读出幅度，其分布宽度与均值之比是能量分辨率的估计量。代码给出两种：一是对全部样本直接取高斯 FWHM 与均值之比；二是先去掉远离分布中心的样本，再对核心样本取同一比值，使少量离群样本不决定结果。
+
+$$R = \frac{2\sqrt{2\ln 2}\,s}{|\bar{x}|} \approx \frac{2.3548\,s}{|\bar{x}|}, \qquad \bar{x} = \frac{1}{n}\sum_{i=1}^{n} x_i, \qquad s = \sqrt{\frac{1}{n}\sum_{i=1}^{n}(x_i - \bar{x})^2} \tag{15}$$
+
+$$m = \operatorname{median}(X), \qquad \sigma_{\text{MAD}} = 1.4826\,\operatorname{median}\bigl(|x_i - m|\bigr), \qquad \mathcal{C} = \bigl\{x_i : |x_i - m| \le 5\,\sigma_{\text{MAD}}\bigr\} \tag{16}$$
+
+$$R_{\text{core}} = R(\mathcal{C}) \tag{17}$$
+
+- $x_i$、$n$：输入的一维样本（收集电荷 $\text{C}$ 或读出幅度 $\text{V}$）及其个数（无量纲）；$X$ 为全体样本；
+- $\bar{x}$、$s$：样本均值与总体标准差（`ddof=0`），与样本同单位；$R$ 为全体样本的 FWHM/均值（无量纲，代码中键名 `resolution`）；$2\sqrt{2\ln 2}$ 是高斯分布 FWHM 与标准差之比，对非高斯分布 $R$ 只是等效高斯宽度；
+- $m$、$\sigma_{\text{MAD}}$：全体样本的中位数与由中位绝对偏差换算的标准差（键名 `median`、`mad_sigma`），与样本同单位；$1.4826 = 1/\Phi^{-1}(3/4)$（$\Phi$ 为标准正态分布函数），使高斯分布的 $\sigma_{\text{MAD}}$ 等于其标准差；
+- $\mathcal{C}$：核心样本集，$R_{\text{core}}$ 为核心样本的 FWHM/均值（键名 `core_resolution`）；核心判据中的系数 $5$ 无出处。
+
+式 (15) 由 `resolution.py` 中的 `fwhm_over_mean(values)` 计算，式 (16)–(17) 由 `mad_core_resolution(values)` 计算。式 (15) 用 $s$ 而不用 $\sigma$ 是因为它不依赖拟合；它与 `core_width` 的截断高斯 $\sigma$（式 (3)–(6)）是两种不同的宽度，不可互换。
+
 ## 算法
 
 ### 内置常数
@@ -118,6 +135,9 @@ $$\delta x_{\text{orig},i} = \frac{x_{\text{orig},i}}{p_x} - \operatorname{round
 | 窗口收缩容差 | `1e-3` | 无量纲 | `core_width` 判定新窗口相对当前窗口宽度不再显著收缩的阈值（$0.1\%$） |
 | 分位数区间 | `[0.16, 0.84]` | 无量纲 | `core_width` 计算窗口内样本 `sigma68` 所取的分位数端点 |
 | `step` | `1e-4` | 无量纲 | `truncated_gaussian` 计算负对数似然二阶中心差分海森矩阵的无量纲参数步长 |
+| `FWHM_OVER_SIGMA` | $2\sqrt{2\ln 2}$ | 无量纲 | `resolution.py`；高斯分布 FWHM 与标准差之比，式 (15) |
+| `MAD_TO_SIGMA` | `1.4826` | 无量纲 | `resolution.py`；中位绝对偏差换算为标准差的系数 $1/\Phi^{-1}(3/4)$，式 (16) |
+| `CORE_SIGMAS` | `5` | 无量纲 | `resolution.py`；核心判据 $\lvert x - m\rvert \le 5\,\sigma_{\text{MAD}}$ 的倍数，式 (16)；无出处 |
 | `CFD_LABEL` | `"CFD50"` | 无 | `waveform_stats.py` 自 `raser.core.reconstruction.event` 导入的恒比定时通道键名 |
 | 波形绘制上限 | `100`（`count > 100`） | 条 | `WaveformStatistics.draw(vis=True)` 为每个读出电极叠加绘制的最大波形条数（最多加入 `101` 条） |
 | `n2_bin`（常规 / `CFD50`） | `100` / `30` | 箱 | `time_resolution_fit`（常规 `100` 箱；`model == "CFD50"` 且样本数 $\ge 20$ 时在 `[2%, 98%]` 排序分位区间分 `30` 箱）、`amplitude_fit`（`100` 箱）与 `gravity_center_error_fit`（`100` 箱）的 `TH1F` 箱数 |
@@ -168,6 +188,16 @@ $$\delta x_{\text{orig},i} = \frac{x_{\text{orig},i}}{p_x} - \operatorname{round
    - **更新窗口**：令 `low, high = new_low, new_high`，进入下一轮。
 4. **返回与下游异常分流**：循环结束后返回 `fit`。在 [../stages/analysis.md](../stages/analysis.md) 的 `time_widths` 与 `write_point` 中，对每个时间通道先剔除 `NaN` 样本再调用 `core_width`：若抛出 `TooFewValues`，`write_point` 捕获异常并将原因记入 `result.json` 的 `timing.error`，跳过绘制时间分布图；若样本已满 `20` 个但 `truncated_gaussian` 抛出 `ArithmeticError` 或 `ValueError`，或样本的 MAD 为 `0` 使 `core_width` 自己抛出 `ValueError: the window [...] is empty`，异常向上抛出并中止作业。MAD 为 `0` 即该通道一半以上的 `time - truth` 取同一个值，报错中的窗口上下界就是这个值；此时 `events.h5` 与 `amplitude.png` 已经写出，可从 `events.h5` 中该通道与 `truth` 之差查看这些相同的值，再在 Python 中以 `core_width(values, window=(low, high))` 手给首轮窗口拟合。
 
+### 能量分辨率估计量计算与少样本处理
+
+`mad_core_resolution(values)`（`resolution.py`）按以下步骤执行，第 1 步即 `fwhm_over_mean(values)`：
+
+1. **全体样本的 FWHM/均值**：将 `values` 转为 `float64` 数组。`values.ndim != 1` 时抛出 `ValueError: values have shape <values.shape>, expected (events,)`；样本数少于 `2` 时抛出 `TooFewValues: <n> values, a mean and a width need at least 2`（与 `efficiency_spread` 的下限一致，是样本的结果状态）；存在非有限值时抛出 `ValueError: values <indices> are not finite`，不静默剔除；均值为 `0` 时抛出 `ValueError: the mean of the values is 0, FWHM / mean is not defined`。否则按式 (15) 返回 `events`、`mean`、`sigma`、`resolution`。
+2. **核心判据**：取 `median = np.median(values)` 与 `mad_sigma = 1.4826 * np.median(np.abs(values - median))`。`mad_sigma == 0`（过半样本等于中位数）时抛出 `NoSpread: <n> values, more than half of them equal <median>`，不以全体样本代替核心。
+3. **核心样本的 FWHM/均值**：取 `np.abs(values - median) <= 5 * mad_sigma` 的样本，对它们再做第 1 步，按式 (17) 得 `core_events`、`core_mean`、`core_sigma`、`core_resolution`；与第 1 步的键以及 `median`、`mad_sigma` 并成一个字典返回。
+
+[../stages/analysis.md](../stages/analysis.md) 的 `energy_resolution(values)` 只捕获 `TooFewValues` 与 `NoSpread`，把它们转为结果中的 `events` 与 `error`；其余 `ValueError` 照常抛出。
+
 ### 径迹拟合与被测器件残差宽度（`tracking.py`）
 
 `track_events(hits, placements, roles)` 把一个作业各槽位的重建结果拼成径迹。三个参数都是按槽位名取值的字典，槽位顺序取 `placements` 的顺序；函数只用传入的数据。`hits[槽位]` 是 `SlotHits(event, clusters, cluster_x, cluster_y)`，取自该槽位事件表的同名列。`placements[槽位]` 是 `Placement(front, facing, rotation_z, l_x, l_y, l_z, p_x, p_y)`，`front` 为式 (12) 的 $\mathbf{P}$（`[x, y, z]`，$\mu\text{m}$），由调用方从装置的 `along_beam` 求出。`roles[槽位]` 是 `"reference"` 或 `"dut"`。
@@ -211,7 +241,7 @@ $$\delta x_{\text{orig},i} = \frac{x_{\text{orig},i}}{p_x} - \operatorname{round
 ### 模块与函数分工
 
 - `collection.py`：定义元电荷常数 `ELEMENTARY_CHARGE`，实现逐事例电荷收集效率计算函数 `collection_efficiency`。
-- `resolution.py`：定义常数 `ROUNDS`、`MINIMUM_EVENTS` 与样本不足异常类 `TooFewValues`，实现单窗口无分箱截断高斯最大似然拟合函数 `truncated_gaussian` 与多轮缩窗迭代求核心宽度函数 `core_width`。
+- `resolution.py`：定义常数 `ROUNDS`、`MINIMUM_EVENTS` 与样本不足异常类 `TooFewValues`，实现单窗口无分箱截断高斯最大似然拟合函数 `truncated_gaussian` 与多轮缩窗迭代求核心宽度函数 `core_width`。`fwhm_over_mean` 与 `mad_core_resolution` 计算全体样本与核心样本的 FWHM/均值，`NoSpread` 表示中位绝对偏差为 `0`。
 - `tracking.py`：实现望远镜的实验级统计。`track_events` 把各槽位的团簇换到全局坐标、拟合直线径迹并求残差；`residual_widths` 求各被测器件残差的核心宽度；`draw_track`、`draw_residual` 画图。
 - `waveform_stats.py`：实现基于 PyROOT 的分箱高斯拟合函数 `fit_data_normal`、分箱朗道拟合函数 `fit_data_landau` 以及面向单事例重建字典的统计绘图类 `WaveformStatistics`。
 
@@ -219,6 +249,8 @@ $$\delta x_{\text{orig},i} = \frac{x_{\text{orig},i}}{p_x} - \operatorname{round
 
 - `core_width` 返回字典（`resolution.py`）：单通道分布核心宽度的拟合结果字典，包含输入总样本数 `"events"`（个）、末轮拟合窗口 `"window"`（`(low, high)` 二元浮点元组，与输入 `values` 同单位）、末轮窗口内样本数 `"window_events"`（个）、实际执行的拟合轮数 `"rounds"`（轮）、截断高斯拟合均值 `"mean"` 及标准误 `"mean_error"`（与输入同单位）、截断高斯拟合标准差 `"sigma"` 及标准误 `"sigma_error"`（与输入同单位），以及末轮窗口内样本 $16\%$ 至 $84\%$ 分位数间距之半 `"sigma68"`（与输入同单位）。
 - `TooFewValues`（`resolution.py`）：继承自 `ValueError` 的异常类，表示样本总数或首轮窗口内样本数低于统计下限（`core_width` 中为 `< 20` 个，`stages/analysis` 的 `efficiency_spread` 中为 `< 2` 个），属于样本统计量的结果状态而非拟合算法崩溃。
+- `NoSpread`（`resolution.py`）：继承自 `ValueError` 的异常类，表示过半样本等于中位数、中位绝对偏差为 `0`、没有核心可取；与 `TooFewValues` 一样是样本的结果状态。
+- `mad_core_resolution` 返回字典（`resolution.py`）：`"events"`（个）、`"mean"`、`"sigma"`（与样本同单位）、`"resolution"`（无量纲）为全体样本的 `fwhm_over_mean`；`"median"`、`"mad_sigma"`（与样本同单位）；`"core_events"`（个）、`"core_mean"`、`"core_sigma"`（与样本同单位）、`"core_resolution"`（无量纲）为核心样本的 `fwhm_over_mean`。
 - `WaveformStatistics`（`waveform_stats.py`）：多事例波形特征累积与 ROOT 绘图实例，包含器件对象 `detector`（`Detector`）、读出电极有效间距 `pitch_x` 与 `pitch_y`（$\mu\text{m}$）、过阈阈值 `threshold` 与幅度阈值 `amplitude_threshold`（与 `InputWaveform` 输入电压同单位）、输出目录路径字符串 `output_path`（调用 `draw` 后生成）、按特征名汇集各事例数值的字典 `data`（含 `"ToA"`、`"CFD50"`、`"ToT"`［$\text{s}$］，`"amplitude"`、`"charge"`［随输入电压单位］，`"gravity_center_*"`、`"gravity_center_*_error"`［电极间距倍数，无量纲］，`"cluster_size_*"`、`"cluster_charge"`［个］，`"original_x"`［$\mu\text{m}$］），以及按读出电极存放 `(t, v)` 轨迹的列表 `waveforms`（时间为 $\text{s}$，电压随输入波形单位）。
 
 ## 接口
@@ -244,7 +276,7 @@ $$\delta x_{\text{orig},i} = \frac{x_{\text{orig},i}}{p_x} - \operatorname{round
 | 来源文件 | 名称与类别 | 形状与类型 | 单位 | 用途 |
 | --- | --- | --- | --- | --- |
 | `current.h5`（[current.md](current.md)） | 数据集 `event` | `(events,)`, `int64` | 无 | 与 `reconstruction.h5` 的 `event` 核对事例号集合完全一致 |
-| `current.h5`（[current.md](current.md)） | 数据集 `charge` | `(events, len(electrodes))`, `float64` | $\text{C}$ | 作为 `collection_efficiency(charge, pairs)` 的 `charge` 输入 |
+| `current.h5`（[current.md](current.md)） | 数据集 `charge` | `(events, len(electrodes))`, `float64` | $\text{C}$ | 作为 `collection_efficiency(charge, pairs)` 的 `charge` 输入，其各电极代数和的绝对值也是逐事例收集电荷，交给 `mad_core_resolution` |
 | `current.h5`（[current.md](current.md)） | 数据集 `pairs` | `(events,)`, `float64` | 对 | 作为 `collection_efficiency(charge, pairs)` 的 `pairs` 输入 |
 | `reconstruction.h5`（[reconstruction.md](reconstruction.md)） | 属性 `electrodes` | 字符串数组 | 无 | 校验单电极约束（`len(electrodes) == 1`） |
 | `reconstruction.h5`（[reconstruction.md](reconstruction.md)） | 属性 `threshold`, `amplitude_threshold`, `fractions`, `edge` | `float64`, `float64`, `float64[]`, 字符串数组 | $\text{V}$, $\text{V}$, 无量纲, 无 | 校验同扫描点各作业重建参数一致，并将两个阈值除以 `1e-3` 换算为 $\text{mV}$ 写入 `result.json` |
@@ -289,6 +321,9 @@ $$\delta x_{\text{orig},i} = \frac{x_{\text{orig},i}}{p_x} - \operatorname{round
 | `result.json`: `timing.polarity` | `float` | 无量纲 | 脉冲边沿极性符号，`"rising"` 为 `1.0`，`"falling"` 为 `-1.0`（有记录事例时写入） |
 | `result.json`: `timing.times.<channel>` | `dict` | 见右 | `<channel>` 为 `"ToA"`、`"CoG"` 及各 `"CFD<percent>"`；含 `core_width` 对非 `NaN` 的 `time - truth` 算出的 `"events"`（个）、`"window"`（`[low, high]`，$\text{s}$）、`"window_events"`（个）、`"rounds"`（轮）、`"mean"`、`"mean_error"`、`"sigma"`、`"sigma_error"`、`"sigma68"`（均为 $\text{s}$），以及该通道值为 `NaN` 的选中事例数 `"missing"`（个） |
 | `result.json`: `timing.error` | `str` | 无 | 全点 `0` 事例或任一时间通道触发 `TooFewValues` 时替代 `timing.times` 写入的说明 |
+| `result.json`: `energy_resolution.charge` | `dict` | 见右 | 总写入；全部记录事例收集电荷的 `mad_core_resolution`：`events`、`mean`、`sigma`、`median`、`mad_sigma`、`core_mean`、`core_sigma`（$\text{C}$）、`core_events`（个）、`resolution`、`core_resolution`（无量纲）；样本不足或无核心时只写 `events` 与 `error` |
+| `result.json`: `energy_resolution.amplitude` | `dict` | 见右 | 点上至少有 `1` 个记录事例时写入；选中事例读出幅度的 `mad_core_resolution`，键同 `charge`，带单位的量为 $\text{V}$；样本不足或无核心时只写 `events` 与 `error` |
+| `points.json`: `[i].energy_resolution` | `dict` | 无量纲 | 总写入；键 `charge`、`amplitude`，各为 `{"resolution", "core_resolution"}`；没有结果的量省略，二者都没有时为 `{}` |
 | `points.json`: `[i].point`, `[i].<scanned_key>` | `str`, 随选项 | 无, 随选项 | 有结果的扫描点多于 `1` 个时写出；点名与在各点间取值变化的扫描选项键值 |
 | `points.json`: `[i].events`, `efficiency`, `efficiency_error`, `selected` | `int`, `float \| null` | 个, 无量纲 | 该点的总记录事例数、平均电荷收集效率及标准误（无结果时为 `null`）与选中事例数 |
 | `points.json`: `[i].<channel>` | `dict` | $\text{s}$ | 该点各时间通道的 `{"sigma68", "sigma", "sigma_error"}`（该点无时间分辨结果时省略） |
@@ -313,6 +348,7 @@ $$\delta x_{\text{orig},i} = \frac{x_{\text{orig},i}}{p_x} - \operatorname{round
 | `time_difference.png`、`.pdf` | `stages/analysis` 在时间通道拟合成功时以 `3 × 4` 子图绘制 `ToA`、`CoG` 及前 `10` 个 `CFD*` 通道在 `mean ± 8 * sigma` 内的 `64` 箱时间差直方图、末轮窗口阴影与黑色截断高斯曲线；每幅小标题写通道名，左上角写 `sigma68`、`sigma` 与窗内事例数 | 横轴 `<channel> - truth [ps]`，纵轴 `Events` |
 | `resolution_of_fraction.png`、`.pdf` | `stages/analysis` 绘制各 `CFD*` 通道的截断高斯 `sigma`（黑色实心圆，带误差棒）与 `sigma68`（黑色空心方块）随恒比比例变化图 | 横轴 `CFD fraction`（无量纲），纵轴 `Time resolution [ps]` |
 | `trend.png`、`.pdf` | `stages/analysis` 在多扫描点且唯一变化扫描项为数值时，绘制收集效率（左）与各 `CFD*` 通道 `sigma`（右）随扫描变量的变化曲线，右幅每个 `CFD*` 通道一条线 | 横轴 `<scanned_key>`，左纵轴 `Charge collection efficiency`（无量纲），右纵轴 `Time resolution [ps]` |
+| `energy_resolution.png`、`.pdf` | `stages/analysis` 在与 `trend` 相同的条件下，按扫描变量升序绘制左图收集电荷、右图读出幅度的两条曲线：全体样本 FWHM/均值（黑色圆点实线）与核心样本 FWHM/均值（蓝色方点虚线）；缺该量结果的点在该幅中省略 | 横轴 `<scanned_key>`，纵轴 `Energy resolution of the charge`、`Energy resolution of the amplitude`（无量纲，下限 `0`） |
 
 ## 参考文献
 
