@@ -1384,10 +1384,12 @@ def _write(path, content) -> None:
 
 
 def _commit() -> str:
-    """The commit of the code; +dirty when files differ from it or it is unknown.
-    Installed as a package, raser has no commit: the version of the package."""
+    """The commit of the code, +dirty when files differ from it. Where there
+    is no commit to read, in a package that is installed or in a source tree
+    that is not a git repository, the version of the package."""
+    version = f"raser {raser.__version__}"
     if REPO_ROOT is None:
-        return f"raser {raser.__version__}"
+        return version
 
     def git(*words):
         command = ["git", "-C", str(REPO_ROOT), *words]
@@ -1395,4 +1397,6 @@ def _commit() -> str:
         return result.stdout.strip() if result.returncode == 0 else None
 
     commit, changes = git("rev-parse", "HEAD"), git("status", "--short")
-    return (commit or "unknown") + ("" if commit and changes == "" else "+dirty")
+    if commit is None:
+        return version
+    return commit + ("" if changes == "" else "+dirty")
