@@ -156,9 +156,9 @@ $$C_j = \frac{\varepsilon_r\,|Q_j|}{V_1} \tag{18}$$
 
 求解后，代码按每个节点的电阻率与耗尽程度判定它在该偏压下是否导电：
 
-$$\text{导电} \iff \rho < \rho_0 \ \ \text{或}\ \ \bigl(|N_{\text{net}}| > 0 \ \text{且}\ n + p > 0.5\,|N_{\text{net}}|\bigr), \qquad \rho = \frac{1}{q(\mu_n n + \mu_p p)} \tag{19}$$
+$$\text{导电} \iff \rho < \rho_0 \ \ \text{或}\ \ \bigl(|N_{\text{net}}| > 0 \ \text{且}\ n_{\text{maj}} > 0.5\,|N_{\text{net}}|\bigr), \qquad \rho = \frac{1}{q(\mu_n n + \mu_p p)} \tag{19}$$
 
-其中 $\rho$ 为电阻率（$\Omega\cdot\text{cm}$），$\rho_0$ = `RESISTIVITY` $= 10\ \Omega\cdot\text{cm}$，`UNDEPLETED` $= 0.5$ 为每个净掺杂离子对应的载流子数阈值，$q$ 取 `1.602176634e-19` C。无净掺杂的节点只看电阻率。DEVSIM 求解的场用该区域选用的迁移率（缺省为常数迁移率参数 `mu_n`、`mu_p`）；TCAD 导入的场用文件里每个节点的 `eMobility`、`hMobility`。实现为 `conductive.conductive`，判定结果写成 `Conductive_<V>V.pkl`，同时用于式 (16) 与 [current.md](current.md) 的“已收集”判定（`DevsimField.get_conductive`）。
+其中 $\rho$ 为电阻率（$\Omega\cdot\text{cm}$），$\rho_0$ = `RESISTIVITY` $= 10\ \Omega\cdot\text{cm}$，$n_{\text{maj}}$ 为多子浓度（$N_{\text{net}} > 0$ 的 n 型节点取 $n$，$N_{\text{net}} < 0$ 的 p 型节点取 $p$），`UNDEPLETED` $= 0.5$ 为每个净掺杂离子对应的多子数阈值：第二条判多子是否还在、未被耗尽，从别处溢入的少子不算，少子只经第一条的电阻率计入，$q$ 取 `1.602176634e-19` C。无净掺杂的节点只看电阻率。DEVSIM 求解的场用该区域选用的迁移率（缺省为常数迁移率参数 `mu_n`、`mu_p`）；TCAD 导入的场用文件里每个节点的 `eMobility`、`hMobility`。实现为 `conductive.conductive`，判定结果写成 `Conductive_<V>V.pkl`，同时用于式 (16) 与 [current.md](current.md) 的“已收集”判定（`DevsimField.get_conductive`）。
 
 ### 器件电路参数
 
@@ -174,7 +174,7 @@ $$\text{1D:}\quad r = \sum_{k} w_k\,\bar\rho_k, \quad W_{\text{und}} = \sum_k w_
 
 其中：
 
-- 体区节点的条件是有净掺杂、$n + p > 0.5|N_{\text{net}}|$ 且 $\rho \ge 10\ \Omega\cdot\text{cm}$（电极下的重掺杂层不算）；
+- 体区节点的条件是有净掺杂、$n_{\text{maj}} > 0.5|N_{\text{net}}|$（多子同式 (19)）且 $\rho \ge 10\ \Omega\cdot\text{cm}$（电极下的重掺杂层不算）；
 - 1D：求和遍及相邻两节点都属于未耗尽体区的网格区间 $k$；$w_k$ 为区间宽度（cm），$\bar\rho_k$ 为两端节点电阻率的平均（$\Omega\cdot\text{cm}$）；
 - 2D、3D：求和遍及未耗尽体区节点 $i$；$V_i$ 为节点体积（DEVSIM 的 `NodeVolume`，2D 为 $\text{cm}^2$，3D 为 $\text{cm}^3$），$\rho_i$ 为节点电阻率；$S$ 为网格在电极平面内的跨度（2D 为横向宽度 cm，3D 为横向面积 $\text{cm}^2$）；$W_{\text{und}}$ 为未耗尽层的平均厚度；
 - $r$：$\Omega\cdot\text{cm}^2$；$c$：$\text{F/cm}^2$；$\varepsilon$：区域参数 `Permittivity`，$\text{F/cm}$；
