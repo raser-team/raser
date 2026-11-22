@@ -53,3 +53,38 @@ def test_the_field_of_a_device_of_several_is_found_in_its_own_project(
     kwargs = {"det_name": "PiN", "_files": {"ref": {"device": {"det_name": "LGAD"}}}}
     assert chain._field(kwargs, device="ref") == {"field": "folder"}
     assert seen == [str(tmp_path / "LGAD")]
+
+
+def test_only_the_field_lookup_of_a_device_of_several_leaves_the_project_of_the_experiment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    import os
+
+    from raser.stages import current
+    from raser.stages import files
+
+    monkeypatch.setenv("RASER_WORK_PATH", str(tmp_path))
+    monkeypatch.setenv("RASER_PROJECT_PATH", str(tmp_path / "PiN"))
+    seen: dict[str, str] = {}
+
+    def solved_field(my_d: Any, voltage: float, flux: float) -> str:
+        seen["field"] = os.environ["RASER_PROJECT_PATH"]
+        return "folder"
+
+    def devsim_field(*args: Any, **kwargs: Any) -> str:
+        seen["drift"] = os.environ["RASER_PROJECT_PATH"]
+        return kwargs["field_directory"]
+
+    monkeypatch.setattr(current, "solved_field", solved_field)
+    monkeypatch.setattr(current.devfield, "DevsimField", devsim_field)
+    kwargs = chain._of({"det_name": "PiN", "_files": {"ref": {"device": {"det_name": "LGAD"}}}}, "ref")
+
+    class Device:
+        irradiation_flux, voltage, device, bound, p_x, p_y = 0, -200, "LGAD", None, 0, 0
+        read_out_contact: list[dict[str, Any]] = []
+        device_dict: dict[str, Any] = {}
+
+    assert current.solved(Device(), kwargs) == "folder"
+    assert seen == {"field": str(tmp_path / "LGAD"), "drift": str(tmp_path / "PiN")}
+    with files.field_project({"det_name": "PiN"}):
+        assert os.environ["RASER_PROJECT_PATH"] == str(tmp_path / "PiN")

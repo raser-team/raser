@@ -13,6 +13,7 @@ from raser.core.field.circuit_parameters import device_row
 from raser.core.field.solved import solved_field
 from raser.core.readout.job import write_waveforms
 from raser.core.readout.pulse_edge import pulse_edges
+from raser.stages.files import field_project
 from raser.stages.files import output
 
 
@@ -58,9 +59,9 @@ def waveforms(kwargs, position=None):
         flux = my_d.irradiation_flux
         if kwargs.get("irradiation_flux") is not None:
             flux = float(kwargs["irradiation_flux"])
-        row, solved_f, undepleted = field_circuit(
-            solved_field(my_d, my_d.voltage, flux), my_d
-        )
+        with field_project(kwargs):
+            directory = solved_field(my_d, my_d.voltage, flux)
+        row, solved_f, undepleted = field_circuit(directory, my_d)
         circuit, values = device_circuit(
             my_d, electrodes, solved_f, row=row, solved_undepleted=undepleted
         )

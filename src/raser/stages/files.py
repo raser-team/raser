@@ -9,6 +9,9 @@ A slice of one position of several, current.<position>, writes current.<position
 """
 
 import os
+from contextlib import nullcontext
+
+from raser.supports.paths import project_root_context
 
 
 def _job(kwargs):
@@ -23,3 +26,14 @@ def output(kwargs, name):
 def plots(kwargs, name):
     """The folder of the pictures of the slice `name` of this job, in its node."""
     return os.path.join(kwargs["_node_paths"][name], "plots")
+
+
+def field_project(kwargs):
+    """The project the field of the device of this slice is looked up in.
+
+    An experiment of several devices has the field of each in the project of
+    that device, work/<device>/field, given as "_field_project"; everything
+    else of the slice stays in the project of the experiment. With one device
+    the two are the same project and nothing changes."""
+    project = kwargs.get("_field_project")
+    return nullcontext() if project is None else project_root_context(project)

@@ -4,7 +4,6 @@ Building the command line imports this file: it loads nothing heavy. The
 slices import their stage when they run.
 """
 
-from contextlib import nullcontext
 from functools import partial
 
 from raser.components.loader import read_g4setup
@@ -108,7 +107,13 @@ def _of(kwargs, device):
     prefix = device + "."
     seen = {**kwargs, **{key[len(prefix):]: value for key, value in kwargs.items() if key.startswith(prefix)}}
     device_file = kwargs["_files"][device]["device"]
-    return {**seen, "_files": {**kwargs["_files"], "device": device_file}, "det_name": device_file["det_name"]}
+    return {
+        **seen,
+        "_files": {**kwargs["_files"], "device": device_file},
+        "det_name": device_file["det_name"],
+        # Where the field of this device is solved and found, see files.field_project.
+        "_field_project": str(work_root() / device_file["det_name"]),
+    }
 
 
 def _home(files):
@@ -117,18 +122,12 @@ def _home(files):
     return project_root_context(work_root() / files["device"]["det_name"])
 
 
-def _at(kwargs, device):
-    """The project of the device a slice works for, none for a single device."""
-    return nullcontext() if device is None else _home(kwargs["_files"])
-
-
 def _field(kwargs, device=None):
     """The field the currents take: found, not solved. A command of the
     chain solves it before the jobs start."""
     kwargs = _of(kwargs, device)
     shared = field.SHARED if device is None else _shared_field(device)
-    with _at(kwargs, device):
-        folder = shared.ready(kwargs, kwargs["_files"])
+    folder = shared.ready(kwargs, kwargs["_files"])
     if folder is None:
         raise FileNotFoundError(
             f"no field of {kwargs['det_name']} ready for this run: solve it with `raser field {kwargs['det_name']}`"
@@ -139,25 +138,19 @@ def _field(kwargs, device=None):
 def _currents(kwargs, device=None, position=None):
     from . import current
 
-    seen = _of(kwargs, device)
-    with _at(seen, device):
-        return current.currents(seen, position)
+    return current.currents(_of(kwargs, device), position)
 
 
 def _waveforms(kwargs, device=None, position=None):
     from . import readout
 
-    seen = _of(kwargs, device)
-    with _at(seen, device):
-        return readout.waveforms(seen, position)
+    return readout.waveforms(_of(kwargs, device), position)
 
 
 def _reconstruction(kwargs, device=None, position=None):
     from . import reconstruction
 
-    seen = _of(kwargs, device)
-    with _at(seen, device):
-        return reconstruction.run(seen, position)
+    return reconstruction.run(_of(kwargs, device), position)
 
 
 def _shared_field(device):
