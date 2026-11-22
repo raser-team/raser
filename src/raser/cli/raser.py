@@ -30,7 +30,7 @@ LIBRARY = {  # command of the library -> the module that registers it
     "reconstruction": "raser.stages.stage_commands",
     "status": "raser.lifecycle.status",
 }
-GROUP = "raser.experiments"  # the entry points of the experiments: command -> module
+GROUP = "raser.experiments"  # the entry points of the experiments: command -> "<module>:<class>"
 
 
 def experiments(tree=REPO_ROOT) -> dict[str, str]:
@@ -104,8 +104,11 @@ def build_parser():
     subparsers = parser.add_subparsers(
         help="sub-command help", dest="_command", metavar="command"
     )
-    for module in dict.fromkeys(APPLICATIONS.values()):  # a module may register several
-        importlib.import_module(module).register(subparsers)
+    for value in dict.fromkeys(APPLICATIONS.values()):  # a module may register several
+        # "<module>:<class>" is an experiment class; a module registers itself
+        module, _, name = value.partition(":")
+        registering = importlib.import_module(module)
+        (getattr(registering, name) if name else registering).register(subparsers)
     # The component roots each command registers: `raser ana` finds the files
     # of an experiment as the command that ran it does.
     parser.set_defaults(

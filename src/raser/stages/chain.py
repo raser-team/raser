@@ -4,11 +4,14 @@ Building the command line imports this file: it loads nothing heavy. The
 slices import their stage when they run.
 """
 
+from collections.abc import Mapping
 from functools import partial
 
 from raser.components.loader import read_g4setup
+from raser.lifecycle.experiment import Experiment
 from raser.lifecycle.slices import Shared
 from raser.lifecycle.slices import Slice
+from raser.lifecycle.workflow import Workflow
 from raser.stages import field
 
 SECTIONS = ("field", "deposit", "current", "readout", "digitizer", "trigger", "reconstruction", "analysis")
@@ -256,3 +259,37 @@ def in_file_of(devices) -> dict:
 # A slice is named by the file it writes; its keys and kinds of file are what
 # it reads and no slice before it does.
 SLICES = expand()
+
+
+class Chain(Experiment):
+    """An experiment that runs the chain for its devices: a field for each
+    slot, and a current, a readout and a reconstruction for each position."""
+
+    stages = SECTIONS
+    # What the experiment takes where the chain takes another value, until
+    # the values come from the config.json of the examples.
+    defaults: Mapping = {}
+
+    @classmethod
+    def build(cls) -> Workflow:
+        devices = cls.table()
+        return Workflow(
+            name=cls.name,
+            keys=keys_of(devices),
+            defaults={**DEFAULTS, **cls.defaults},
+            sections=SECTIONS,
+            scanned=SCANNED,
+            slots=SLOTS,
+            components=COMPONENTS,
+            readers=READERS,
+            in_file=in_file_of(devices),
+            slices=expand(devices) if devices else SLICES,
+            exclusive=EXCLUSIVE,
+            command=job_command,
+            analysis=analyse,
+            devices=devices,
+        )
+
+    @classmethod
+    def arguments(cls, parser) -> None:
+        add_arguments(parser)
