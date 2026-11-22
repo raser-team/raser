@@ -135,7 +135,7 @@ $$\nabla\cdot\bigl(\varepsilon_0\,[1 + 10^{10}\,c_0 c_1]\,\nabla\phi_w\bigr) = 0
 其中：
 
 - $\phi_w$：无量纲权重势；
-- $c_0$、$c_1$：一条网格边两端节点的导电标志（`Conductive`，`1.0` 或 `0.0`），来自该偏压的 `Conductive_<V>V.pkl`，判据见式 (19)；两端都导电的边的介电常数放大 `CONDUCTOR_PERMITTIVITY` $= 10^{10}$ 倍，导体内残留的权重势量级为 $10^{-10}$；不接触任何电极的导电区浮空；
+- $c_0$、$c_1$：一条网格边两端节点的导电标志（`Conductive`，`1.0` 或 `0.0`），来自该偏压的 `Conductive_<V>V.pkl`，判据见式 (19)；两端都导电的边的介电常数放大 `CONDUCTOR_PERMITTIVITY` $= 10^{10}$ 倍，导体内残留的权重势量级为 $10^{-10}$；不接触任何电极的导电区浮空，同时接触两个电极的导电区报错（见“权重场求解”第 4 步）；
 - 介质部分一律取真空介电常数 $\varepsilon_0$：`DevsimMesh._regions` 把所有区域材料换成 `"gas"`（`n_i = 1e-9`），掺杂换成 `Acceptors = "0"`、`Donors = "1"`，权重势与材料无关。
 
 所以“按电阻率换材料”在代码里的做法是：低电阻率或未耗尽的节点当作导体并入电极，其余（包括耗尽的半导体）当作介电常数为 $\varepsilon_0$ 的介质。`weighting.take_conductors_into_electrodes` 实现这一步。
@@ -156,9 +156,9 @@ $$C_j = \frac{\varepsilon_r\,|Q_j|}{V_1} \tag{18}$$
 
 求解后，代码按每个节点的电阻率与耗尽程度判定它在该偏压下是否导电：
 
-$$\text{导电} \iff \rho < \rho_0 \ \ \text{或}\ \ \bigl(|N_{\text{net}}| > 0 \ \text{且}\ n + p > 0.5\,|N_{\text{net}}|\bigr), \qquad \rho = \frac{1}{q(\mu_n n + \mu_p p)} \tag{19}$$
+$$\text{导电} \iff \rho < \rho_0 \ \ \text{或}\ \ \bigl(|N_{\text{net}}| > 0 \ \text{且}\ n_{\text{maj}} > 0.5\,|N_{\text{net}}|\bigr), \qquad \rho = \frac{1}{q(\mu_n n + \mu_p p)} \tag{19}$$
 
-其中 $\rho$ 为电阻率（$\Omega\cdot\text{cm}$），$\rho_0$ = `RESISTIVITY` $= 10\ \Omega\cdot\text{cm}$，`UNDEPLETED` $= 0.5$ 为每个净掺杂离子对应的载流子数阈值，$q$ 取 `1.602176634e-19` C。无净掺杂的节点只看电阻率。DEVSIM 求解的场用该区域选用的迁移率（缺省为常数迁移率参数 `mu_n`、`mu_p`）；TCAD 导入的场用文件里每个节点的 `eMobility`、`hMobility`。实现为 `conductive.conductive`，判定结果写成 `Conductive_<V>V.pkl`，同时用于式 (16) 与 [current.md](current.md) 的“已收集”判定（`DevsimField.get_conductive`）。
+其中 $\rho$ 为电阻率（$\Omega\cdot\text{cm}$），$\rho_0$ = `RESISTIVITY` $= 10\ \Omega\cdot\text{cm}$，$n_{\text{maj}}$ 为多子浓度（$N_{\text{net}} > 0$ 的 n 型节点取 $n$，$N_{\text{net}} < 0$ 的 p 型节点取 $p$），`UNDEPLETED` $= 0.5$ 为每个净掺杂离子对应的多子数阈值：第二条判多子是否还在、未被耗尽，从别处溢入的少子不算，少子只经第一条的电阻率计入，$q$ 取 `1.602176634e-19` C。无净掺杂的节点只看电阻率。DEVSIM 求解的场用该区域选用的迁移率（缺省为常数迁移率参数 `mu_n`、`mu_p`）；TCAD 导入的场用文件里每个节点的 `eMobility`、`hMobility`。实现为 `conductive.conductive`，判定结果写成 `Conductive_<V>V.pkl`，同时用于式 (16) 与 [current.md](current.md) 的“已收集”判定（`DevsimField.get_conductive`）。
 
 ### 器件电路参数
 
@@ -174,7 +174,7 @@ $$\text{1D:}\quad r = \sum_{k} w_k\,\bar\rho_k, \quad W_{\text{und}} = \sum_k w_
 
 其中：
 
-- 体区节点的条件是有净掺杂、$n + p > 0.5|N_{\text{net}}|$ 且 $\rho \ge 10\ \Omega\cdot\text{cm}$（电极下的重掺杂层不算）；
+- 体区节点的条件是有净掺杂、$n_{\text{maj}} > 0.5|N_{\text{net}}|$（多子同式 (19)）且 $\rho \ge 10\ \Omega\cdot\text{cm}$（电极下的重掺杂层不算）；
 - 1D：求和遍及相邻两节点都属于未耗尽体区的网格区间 $k$；$w_k$ 为区间宽度（cm），$\bar\rho_k$ 为两端节点电阻率的平均（$\Omega\cdot\text{cm}$）；
 - 2D、3D：求和遍及未耗尽体区节点 $i$；$V_i$ 为节点体积（DEVSIM 的 `NodeVolume`，2D 为 $\text{cm}^2$，3D 为 $\text{cm}^3$），$\rho_i$ 为节点电阻率；$S$ 为网格在电极平面内的跨度（2D 为横向宽度 cm，3D 为横向面积 $\text{cm}^2$）；$W_{\text{und}}$ 为未耗尽层的平均厚度；
 - $r$：$\Omega\cdot\text{cm}^2$；$c$：$\text{F/cm}^2$；$\varepsilon$：区域参数 `Permittivity`，$\text{F/cm}$；
@@ -338,7 +338,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 1. **前提**：`Conductive_<V_g>V.pkl` 不存在时抛出 `FileNotFoundError`，提示先求该偏压的场。
 2. **电极**：读出电极取 `read_out_contact` 的 `name`（所选二维网格的 `ac_contact` 非空时取它的 `name`），每个电极接一个电压源。
 3. **行晶胞数**：`read_out_contact` 只有一项且 `read_ele_num > 1` 时，$s$ 取式 (17)。
-4. **逐个电极**：只解泊松方程（材料 `"gas"`）；`take_conductors_into_electrodes` 读 `Conductive_<V_g>V.pkl`，每个区域节点按最近邻匹配到文件中的点（拼接行先把横向坐标对晶胞宽度取模），距离超过 $10^{-9}$ 倍网格跨度的节点视为不在网格上，抛出 `ValueError`；然后按式 (16) 改写 `PotentialEdgeFlux` 与 `contactcharge_edge`；读出电极置 $1\ \text{V}$ 求解。
+4. **逐个电极**：只解泊松方程（材料 `"gas"`）；`take_conductors_into_electrodes` 读 `Conductive_<V_g>V.pkl`，每个区域节点按最近邻匹配到文件中的点（拼接行先把横向坐标对晶胞宽度取模），距离超过 $10^{-9}$ 倍网格跨度的节点视为不在网格上，抛出 `ValueError`；然后沿两端都导电的网格边把导电节点连成片，一片里有两个电极的接触节点时抛出 `ValueError`，写明这两个电极、偏压 $V_g$、该片的节点数与坐标范围：这片导电区把两个电极连成一块导体，式 (18) 的互容会被放大约 `CONDUCTOR_PERMITTIVITY` 倍；最后按式 (16) 改写 `PotentialEdgeFlux` 与 `contactcharge_edge`，读出电极置 $1\ \text{V}$ 求解。
 5. **行端检查**（$s > 0$）：取两端各一个晶胞内 $|\phi_w|$ 的最大值 $r$，按式 (18) 求互容，`neighbours_coupled` 从 `neighbour1` 起数满足 $C_{\text{neighbour}k} \ge$ `crosstalk_tolerance` $\times\sum_j C_j$ 的连续个数 $c$。若 $r >$ `weighting_tolerance` 或 $c = s$：令 $s' = \lceil 1.5\,s\rceil$；$s' > 2s_0$ 时抛出 `ValueError`（行上权重势不衰减，通常是接触读出电极的导电区所致）；否则清空 DEVSIM（保留 `direct_solver`、`solver_callback`）后以 $s'$ 从头重解。
 6. **存盘**：权重势存为 `weightingfield/<contact>/Potential_<V_g>V.pkl`；$s > 0$ 时另写 `Capacitance_<V_g>V.json`；在 `solved.weighting` 记 $V_g$；写 `weightingfield/weightingfield.dat`。
 
@@ -348,7 +348,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 
 1. **节点量**：逐区域收集坐标与 `Potential`、`NetDoping`、`Electrons`、`Holes`、`TrappingRate_n`、`TrappingRate_p`；DEVSIM 场另算 `Conductive`（式 19）。
 2. **未耗尽体区**（DEVSIM 场，1D、2D、3D）：按式 (20a) 求 $W_{\text{und}}$ 与比电阻 $r$，写 `<V>V.undepleted.json`，比电容为 $10^{12}\varepsilon/W_{\text{und}}$（$\text{pF/cm}^2$），全耗尽时为 `null`；记入 `solved.undepleted`。
-3. **画图**：电势、电子与空穴俘获率（无辐照时不画）、电场（DEVSIM 场取网格边中点的边电场；TCAD 1D/2D 取 `ElectricField_0`，3D 取三分量的模）。
+3. **画图**：电势、电子与空穴俘获率（无辐照时不画）、电场。1D 的电场：DEVSIM 场取网格边中点的边电场，TCAD 场取 `ElectricField_0`。2D、3D 的电场画场强 $|\mathbf{E}| = |\nabla\psi|$：在每个网格单元（三角形、四面体）上按节点电势的线性插值求梯度，再按单元面积（体积）加权平均到节点，DEVSIM 场与 TCAD 场相同；权重场同样画 $|\nabla\phi_w|$。
 4. **写 pickle**：每个量一个文件；`NetDoping` 只在 $V = 0$ 或 TCAD 场时写。`is_flip` 为真时 2D 的两坐标互换。
 
 ### 读取：场节点里的资产
@@ -512,7 +512,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 
 ### 画出的图
 
-1D 器件的图存进场节点目录的 `plots/`，样式见[出图（`supports/figures`）](../supports/figures.md)；2D、3D 的图存在节点目录下。
+1D、2D、3D 器件的图都存进场节点目录的 `plots/`，样式见[出图（`supports/figures`）](../supports/figures.md)。
 
 | 文件 | 内容 | 坐标单位 |
 | --- | --- | --- |
@@ -522,9 +522,18 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 | `plots/doping.png/.pdf` | 1D 施主、受主浓度沿深度，对数纵轴；轴 `Depth [μm]`、`Doping [cm⁻³]` | μm, $\text{cm}^{-3}$ |
 | `plots/potential_<V>V`, `plots/electric_field_<V>V`, `plots/trapping_rate_<V>V`（均有 `.png/.pdf`） | 1D 每档偏压的电势 `Potential [V]`、电场 `Electric field [kV/cm]`、电子（蓝）与空穴（红）俘获率同画一张，对数纵轴 `Trapping rate [s⁻¹]`；两者全为零（无辐照）时不画俘获率；`<V>` 写成最短形式（`200.0` 写作 `200`） | μm；V、kV/cm、$\text{s}^{-1}$ |
 | `plots/weighting_potential_<contact>_<V>V`, `plots/weighting_field_<contact>_<V>V`（均有 `.png/.pdf`） | 1D 每个读出电极、每档算了权重场的偏压的权重势 `Weighting potential`、权重场 `Weighting field [cm⁻¹]`；与其他图同在 `plots/`，不在 `weightingfield/<contact>/` 下 | μm；无、$\text{cm}^{-1}$ |
-| `<title><v>_2d.pdf/.root`, `<title><v>_1d.pdf/.root` | 2D 等值图与中线剖面，`<title>` 为 `Potential`、`Electric Field`、`Electron Trapping Rate`、`Hole Trapping Rate`、`Weighting Potential`、`Weighting Field` | $\mu\text{m}$ |
-| `<title>_<v>_3d_1d.pdf/.root`, `_XY`, `_YZ`, `_XZ` | 3D 中心线剖面与三个中截面，`<title>` 为 `Potential Distribution `、`Electric Field`、`Electron Trapping Rate `、`Hole Trapping Rate `（末尾有空格）或 `Weighting Potential`、`Weighting Field` | $\mu\text{m}$ |
+| `plots/potential_<V>V`, `plots/electric_field_<V>V`（均有 `.png/.pdf`） | 2D、3D 每档偏压一张，三幅并排：左为二维切面（viridis 色图，色标为该量），中为深度剖面，右为横向剖面；轴 `Potential [V]`、`Electric field [kV/cm]` | μm；V、kV/cm |
+| `plots/trapping_rate_<V>V`（`.png/.pdf`） | 2D、3D 电子（蓝）与空穴（红）俘获率的深度剖面，同画一张，对数纵轴；全为零（无辐照）时不画 | μm；$\text{s}^{-1}$ |
+| `plots/weighting_potential_<contact>_<V>V`, `plots/weighting_field_<contact>_<V>V`（均有 `.png/.pdf`） | 2D、3D 每个读出电极的权重势、权重场，三幅同上；轴 `Weighting potential`、`Weighting field [cm⁻¹]` | μm；无、$\text{cm}^{-1}$ |
 | `HEMT_TRANSPORT_IdVg.png/.pdf` | HEMT 转移特性 | V, mA/mm |
+
+2D、3D 图的切面与剖面按 `mesh_axes` 取，轴标题写器件的轴：横向为 `x [μm]`、`y [μm]`，深度为 `Depth [μm]`。“中点”指该坐标在网格上的最小值与最大值的平均。
+
+- 深度与 $x$ 的网格 `("z", "x")`：切面为整张网格；深度剖面取在 $x$ 的中点，横向剖面沿 $x$、取在深度的中点。
+- 横截面网格 `("x", "y")`：切面为整张网格；没有深度，两条剖面分别沿 $x$（取在 $y$ 的中点）、沿 $y$（取在 $x$ 的中点）。
+- 3D：切面为过 $y$ 中点的 $x$-$z$ 平面；深度剖面取在 $x$、$y$ 的中点，横向剖面沿 $x$、取在 $y$ 与深度的中点。
+- 权重势、权重场：深度剖面取在该读出电极各节点横向坐标的平均处，即电极正下方；拼成一行晶胞时即中间晶胞的电极。
+- 剖面和 3D 切面上的值在网格单元上线性插值得到。
 
 ## 参考文献
 

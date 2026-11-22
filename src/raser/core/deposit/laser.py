@@ -15,6 +15,7 @@ from raser.core.device.build_device import Detector
 from raser.core.deposit.deposits import Deposits
 from raser.core.deposit.deposits import EventDeposits
 from raser.core.deposit.ionization import PAIR_ENERGY_EV
+from raser.supports import figures
 from raser.supports.paths import optional_component_path
 
 
@@ -310,59 +311,68 @@ class LaserInjection:
         # to reduce run time, convolute the time pulse function with the signal after the signal is calculated
         return np.exp(-4 * np.log(2) * t ** 2 / self.temporal_FWHM ** 2) / ((2*np.pi)**(1/2) * self.temporal_FWHM / (2 * (2*np.log(2))**(1/2)))
     
-    def _extent(self):
-        # the box around the groups, for the pictures
-        places = np.array(self.track_position)[:, :3]
-        low, high = places.min(axis=0), places.max(axis=0)
-        return low, np.where(high > low, high, low + 1.0)
+    def _drawn_box(self):
+        """The box (low, high) of x, y, z [um] the pictures show: along the
+        path up to _drawn_path, across it twice the largest radius of the beam
+        on either side of the axis, cut at the faces of the detector."""
+        reach = self._drawn_path()
+        along = np.linspace(0, reach, 400)
+        half_width = 2 * np.sqrt(self._w_squared(along).max())
+        if self.direction == "edge":
+            low = np.array([0.0, max(self.fy_abs - half_width, 0.0), max(self.fz_abs - half_width, 0.0)])
+            high = np.array([reach, min(self.fy_abs + half_width, self.l_y), min(self.fz_abs + half_width, self.l_z)])
+        else:
+            low = np.array([max(self.fx_abs - half_width, 0.0), max(self.fy_abs - half_width, 0.0), 0.0])
+            high = np.array([min(self.fx_abs + half_width, self.l_x), min(self.fy_abs + half_width, self.l_y), reach])
+            if self.direction == "bottom":
+                low[2], high[2] = self.l_z - reach, self.l_z
+        return low, high
 
     def draw_nocarrier3D(self,path):
-        ROOT.gStyle.SetOptStat(0)
-        c1 = ROOT.TCanvas("c1","canvas2",200,10,1000,1000)
-        low, high = self._extent()
+        c1 = figures.canvas()
+        low, high = self._drawn_box()
         h = ROOT.TH3D("h","",\
             50, low[0], high[0],\
             50, low[1], high[1],\
             50, low[2], high[2],)
-        for i in range(len(self.track_position)):
-            h.Fill(self.track_position[i][0], self.track_position[i][1], self.track_position[i][2], self.ionized_pairs[i],)
+        x = low[0] + (np.arange(50) + 0.5) * (high[0] - low[0]) / 50
+        y = low[1] + (np.arange(50) + 0.5) * (high[1] - low[1]) / 50
+        z = low[2] + (np.arange(50) + 0.5) * (high[2] - low[2]) / 50
+        x, y, z = x[:, None, None], y[None, :, None], z[None, None, :]
+        if self.direction == "edge":
+            s = x
+            r = np.sqrt((y - self.fy_abs) ** 2 + (z - self.fz_abs) ** 2)
+        elif self.direction == "top":
+            s = z
+            r = np.sqrt((x - self.fx_abs) ** 2 + (y - self.fy_abs) ** 2)
+        else:
+            s = self.l_z - z
+            r = np.sqrt((x - self.fx_abs) ** 2 + (y - self.fy_abs) ** 2)
+        grid = self.pair_density(s, r)
+        # only the beam is drawn: bins under a tenth of the highest density stay empty
+        grid = np.where(grid >= 0.1 * grid.max(), grid, 0.0)
+        for i in range(50):
+            for j in range(50):
+                for k in range(50):
+                    h.SetBinContent(i + 1, j + 1, k + 1, float(grid[i, j, k]))
         h.Draw()
-        h.GetXaxis().SetTitle("Depth [\mum]")#[μm]
-        h.GetXaxis().SetTitleSize(0.08)
-        h.GetXaxis().SetLabelSize(0.08)
-        h.GetXaxis().SetNdivisions(5)
-        h.GetYaxis().SetTitle("Width [\mum]")
-        h.GetYaxis().SetTitleSize(0.08)
-        h.GetYaxis().SetLabelSize(0.08)
-        h.GetYaxis().SetNdivisions(5)
-        h.GetZaxis().SetTitle("Thick [\mum]")
-        h.GetZaxis().SetTitleSize(0.08)
-        h.GetZaxis().SetLabelSize(0.08)
-        h.GetZaxis().SetNdivisions(5)
-        h.GetXaxis().SetTitleOffset(1.8)
+        h.GetXaxis().SetTitle(figures.label("x", "um", root=True))
+        h.GetYaxis().SetTitle(figures.label("y", "um", root=True))
+        h.GetZaxis().SetTitle(figures.label("z", "um", root=True))
+        h.GetXaxis().SetTitleOffset(1.6)
         h.GetYaxis().SetTitleOffset(2.2)
-        h.GetZaxis().SetTitleOffset(1.4)
-        c1.SetLeftMargin(0.15)
-        c1.Update()
-        c1.SaveAs(path+"/nocarrier_"\
-            +str(round(self.fx_rel,5))+"_"\
-            +str(round(self.fy_rel,5))+"_"\
-            +str(round(self.fz_rel,5))+".pdf")  
+        h.GetZaxis().SetTitleOffset(1.6)
+        c1.SetLeftMargin(0.12)
+        c1.SetBottomMargin(0.12)
+        figures.save_canvas(c1, path, "pair_density_3d")
 
     def draw_nocarrier2D(self, path):
-        ROOT.gStyle.SetOptStat(0)
-        c1 = ROOT.TCanvas("c1","canvas2",200,10,1400,1000)
+        c1 = figures.canvas()
         # the x-z plane through the axis at y = fy_abs: the coordinate along the
         # path s and the distance r from the axis follow from x and z
-        reach = self._drawn_path()
-        along = np.linspace(0, reach, 400)
-        w_max = np.sqrt(self._w_squared(along).max())
-        if self.direction == "edge":
-            x_low, x_high = 0.0, reach
-            z_low, z_high = max(self.fz_abs - 2 * w_max, 0.0), min(self.fz_abs + 2 * w_max, self.l_z)
-        else:
-            x_low, x_high = max(self.fx_abs - 2 * w_max, 0.0), min(self.fx_abs + 2 * w_max, self.l_x)
-            z_low, z_high = (0.0, reach) if self.direction == "top" else (self.l_z - reach, self.l_z)
+        low, high = self._drawn_box()
+        x_low, x_high = low[0], high[0]
+        z_low, z_high = low[2], high[2]
         h = ROOT.TH2D("h","",\
             200, x_low, x_high,\
             200, z_low, z_high,)
@@ -379,25 +389,11 @@ class LaserInjection:
             for j in range(200):
                 h.SetBinContent(i + 1, j + 1, float(grid[i, j]))
         h.Draw("COLZ")
-        h.GetXaxis().SetTitle("x axis [\mum]")#[μm]
-        h.GetXaxis().SetTitleSize(0.08)
-        h.GetXaxis().SetLabelSize(0.08)
-        h.GetYaxis().SetTitle("z axis [\mum]")
-        h.GetYaxis().SetTitleSize(0.08)
-        h.GetYaxis().SetLabelSize(0.08)
-        h.GetYaxis().SetTitleOffset(0.9)
-        h.GetZaxis().SetTitle("Pairs [\mum^{-3}]")
-        h.GetZaxis().SetTitleSize(0.08)
-        h.GetZaxis().SetLabelSize(0.08)
-        h.GetZaxis().SetTitleOffset(1.2)
-        h.GetXaxis().SetNdivisions(5)
-        h.GetYaxis().SetNdivisions(5)
-        h.GetZaxis().SetNdivisions(5)
-        c1.SetRightMargin(0.25)
-        c1.SetLeftMargin(0.2)
-        c1.SetBottomMargin(0.2)
-        c1.Update()
-        c1.SaveAs(path+"/nocarrier2D_"\
-            +str(round(self.fx_rel,5))+"_"\
-            +str(round(self.fy_rel,5))+"_"\
-            +str(round(self.fz_rel,5))+".pdf")  
+        h.GetXaxis().SetTitle(figures.label("x", "um", root=True))
+        h.GetYaxis().SetTitle(figures.label("z", "um", root=True))
+        h.GetZaxis().SetTitle("Pair density [#mum^{-3}]")
+        h.GetZaxis().SetTitleOffset(1.4)
+        c1.SetLeftMargin(0.12)
+        c1.SetRightMargin(0.2)
+        c1.SetBottomMargin(0.14)
+        figures.save_canvas(c1, path, "pair_density")

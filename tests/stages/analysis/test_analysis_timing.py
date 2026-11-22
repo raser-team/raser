@@ -1,3 +1,4 @@
+import hashlib
 import json
 
 import numpy as np
@@ -20,6 +21,18 @@ BEFORE = 200  # bins before the triangle
 OFFSET = 2.0e-3  # of the baseline [V]
 
 
+def _slice(folder, index, name):
+    """The file of the slice `name` of a job of the seed folder `folder`: in a
+    node of its own, which the mark of the slice names."""
+    node = hashlib.sha1(f"{folder}/{index}/{name}".encode()).hexdigest()[:12]
+    mark = folder / "batch" / f"{name}_{index}.done"
+    mark.parent.mkdir(parents=True, exist_ok=True)
+    mark.write_text(json.dumps({"node": node}))
+    path = folder.parent / "nodes" / name / node / f"{name}.h5"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def _alone(folder):
     """The seed folder of an experiment without points: it holds its slices."""
     folder.mkdir(parents=True, exist_ok=True)
@@ -31,12 +44,13 @@ def _reconstructed(jobs):
     """The jobs, once each job with a readout has its reconstruction: 3 mV
     and 5 mV on the falling edge, CFD at 10 % ... 90 %."""
     for folder, index in jobs:
-        batch = folder / "batch"
-        if (batch / f"readout_{index}.h5").exists():
+        if _slice(folder, index, "readout").exists():
             reconstruct(
-                batch / f"readout_{index}.h5", batch / f"reconstruction_{index}.h5", 3, 5,
+                _slice(folder, index, "readout"), _slice(folder, index, "reconstruction"), 3, 5,
                 tuple(k / 10 for k in range(1, 10)), "falling",
             )
+        else:  # a job without events: the mark of its reconstruction, without the file
+            _slice(folder, index, "reconstruction")
     return jobs
 
 
@@ -47,8 +61,6 @@ def _job(folder, index, events, electrodes=("top",), truths=None):
     job i has the Geant4 number 1000 i + n and two deposits, the earlier one
     (n + 1) ps before t0, or at truths[n]."""
     _alone(folder)
-    batch = folder / "batch"
-    batch.mkdir(parents=True, exist_ok=True)
     deposits = []
     for number, (t0, scale) in enumerate(events):
         earliest = t0 - (number + 1) * 1.0e-12 if truths is None else truths[number]
@@ -63,13 +75,13 @@ def _job(folder, index, events, electrodes=("top",), truths=None):
             samples[-1] += 12.0e-3
         voltage = np.array([samples] * len(electrodes))
         append_waveforms(
-            batch / f"readout_{index}.h5",
+            _slice(folder, index, "readout"),
             list(electrodes),
             DT,
             EventWaveforms(1000 * index + number, t0 - BEFORE * DT, voltage),
             pulse_edge=["falling"] * len(electrodes),
         )
-    write_deposits(str(batch / f"deposit_{index}.h5"), Deposits(50, None, None, deposits))
+    write_deposits(str(_slice(folder, index, "deposit")), Deposits(50, None, None, deposits))
 
 
 def test_point_takes_the_quantities_of_the_events_above_the_amplitude_threshold(tmp_path) -> None:
@@ -78,7 +90,7 @@ def test_point_takes_the_quantities_of_the_events_above_the_amplitude_threshold(
     _job(first, 1, [(2.0e-10, 0.4)])  # 4 mV, below the amplitude threshold
     _job(second, 0, [(-1.0e-10, 2.0)])  # 20 mV: crosses 3 mV three quarters of a bin earlier
     _job(second, 2, [(5.0e-9, 1.0)])  # not among the finished jobs
-    write_deposits(str(second / "batch" / "deposit_1.h5"), Deposits(50, None, None, []))
+    write_deposits(str(_slice(second, 1, "deposit")), Deposits(50, None, None, []))
 
     count, polarity, times = event_times(point_tables(_reconstructed([(first, 0), (first, 1), (second, 0), (second, 1)])))
 
@@ -111,8 +123,7 @@ def test_several_electrodes_are_refused(tmp_path) -> None:
 def test_event_that_is_not_among_the_deposits_is_an_error(tmp_path) -> None:
     _job(tmp_path, 0, [(0.0, 1.0)])
     _job(tmp_path, 1, [(0.0, 1.0)])
-    batch = tmp_path / "batch"
-    (batch / "deposit_1.h5").write_bytes((batch / "deposit_0.h5").read_bytes())
+    _slice(tmp_path, 1, "deposit").write_bytes(_slice(tmp_path, 0, "deposit").read_bytes())
 
     with pytest.raises(ValueError, match="event 1000 is not among the deposits"):
         event_times(point_tables(_reconstructed([(tmp_path, 0), (tmp_path, 1)])))
@@ -147,7 +158,7 @@ def test_selected_event_without_a_time_is_counted_as_missing(tmp_path) -> None:
     # in one more event the pulse is in the first bin: nothing before it to cross
     samples = OFFSET + np.concatenate([[-10.0e-3], np.zeros(BEFORE + 12)])
     append_waveforms(
-        tmp_path / "batch" / "readout_0.h5",
+        _slice(tmp_path, 0, "readout"),
         ["top"],
         DT,
         EventWaveforms(0, 0.0, np.array([samples])),

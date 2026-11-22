@@ -18,6 +18,15 @@ Datasets, one row per event of the readout file:
     cluster_size    electrodes of its cluster, 0 when it has none
     cluster_center  amplitude-weighted place of the cluster, in electrodes
                     from the first one; NaN when it has none
+    clusters        pixel devices only: clusters of the event on the 2D array
+    cluster_x, cluster_y
+                    pixel devices only: place of the cluster in the device
+                    [um]; NaN unless the event has one cluster
+    cluster_pixels  pixel devices only: pixels of the cluster; 0 unless the
+                    event has one cluster
+    cluster_seed    pixel devices only: electrode index of the pixel of the
+                    cluster with the largest amplitude; -1 unless the event
+                    has one cluster
 Datasets, one row per event and one column per electrode:
     traced          the readout holds a waveform of the electrode in the
                     event; one without has NaN in the columns below and is
@@ -57,7 +66,16 @@ from .event import net_pulse
 ELECTRODE_COLUMNS = ("traced", "baseline", "noise", "amplitude", "above", "ToA", "ToT", "CoG", "area")
 EVENT_COLUMNS = ("event", "selected", "cluster_size", "cluster_center")
 EDGE_SIGN = {"rising": 1.0, "falling": -1.0}
-KINDS = {"event": "int64", "selected": "bool", "traced": "bool", "above": "bool", "cluster_size": "int64"}
+KINDS = {
+    "event": "int64",
+    "selected": "bool",
+    "traced": "bool",
+    "above": "bool",
+    "cluster_size": "int64",
+    "clusters": "int64",
+    "cluster_pixels": "int64",
+    "cluster_seed": "int64",
+}
 
 
 @dataclass

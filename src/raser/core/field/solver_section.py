@@ -288,7 +288,7 @@ def main (kwargs):
             
             loop.initial_solver(contact=contact,set_contact_type=None,impact_model=impact_model,irradiation_model=irradiation_model,irradiation_flux=irradiation_flux,)
             take_conductors_into_electrodes(
-                device, region, conductive_file,
+                device, region, conductive_file, bias=v_goal,
                 cell_width=float(MyDetector.p_x) * 1e-4 if cells_either_side else None,
             )
             loop.loop_solver(circuit_contact=contact,v_trial=v_trial,area_factor=paras["area_factor"],)

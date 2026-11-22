@@ -202,7 +202,7 @@ raser signal HPK-Si-PiN --scan field.voltage=100,200
 
 | 路径 | 写出环节 | 内容 | 坐标与物理量单位 |
 | --- | --- | --- | --- |
-| `nodes/deposit/<节点号>/g4_geometry.png` | [`deposit`](../stages/deposit.md) | `deposit.plots > 0` 且使用 Geant4 源时离屏绘出的装置几何与前 `deposit.plots` 个记录事例径迹图 | 空间尺寸 $\mu\text{m}$ |
+| `nodes/deposit/<节点号>/plots/g4_geometry.png` | [`deposit`](../stages/deposit.md) | `deposit.plots > 0` 且使用 Geant4 源时离屏绘出的装置几何与前 `deposit.plots` 个记录事例径迹图 | 空间尺寸 $\mu\text{m}$ |
 | `nodes/current/<节点号>/plots/drift_path_<event>.png`, `.pdf`, `.root` | [`current`](../stages/current.md) | 前 `current.plots` 个记录事例的三维器件边界与载流子漂移轨迹图（上）及 $x$-$z$ 平面投影图（下） | 空间轴 $\mu\text{m}$ |
 | `nodes/current/<节点号>/plots/current_<event>.png`, `.pdf`, `.root`（多个读出电极时为 `current_<event>_electrode_<k>`） | [`current`](../stages/current.md) | 前 `current.plots` 个记录事例中非零电流电极 $k$ 的 `electrons`、`holes`、`total`（及雪崩增益）感应电流波形 | 横轴 `Time [ns]`，纵轴 `Current [μA]` |
 | `nodes/current/<节点号>/plots/charge_per_electrode_<event>.png`, `.pdf`, `.root` | [`current`](../stages/current.md) | 条形（`strip`）或像素（`pixel`）器件在前 `current.plots` 个记录事例中各电极收集到的电荷分布 | 电极编号（无量纲），电荷 `Charge [fC]` |

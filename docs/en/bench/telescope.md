@@ -62,20 +62,34 @@ The telescope consists of $N$ detector planes arranged sequentially along $+z$: 
 
 Reference layers default to `TAICHU3` (`TAICHU3.json`): a silicon (`"Si"`) pixel detector with full dimensions $l_x = 1500\ \mu\text{m}$, $l_y = 1500\ \mu\text{m}$, $l_z = 20\ \mu\text{m}$, an array of $60 \times 60$ pixels (`3600` total), pixel pitch $p_x = p_y = 25.0\ \mu\text{m}$, a centered rectangular collection zone of $10.0 \times 10.0\ \mu\text{m}$ per pixel, operating temperature $300.0\ \text{K}$, default bias `-1.8` $\text{V}$, acceptor concentration `1e12` $\text{cm}^{-3}$, and donor concentration `0` $\text{cm}^{-3}$.
 
-The setup used in the example configuration is `telescope` from [energy deposition components](../components/deposit.md#built-in-geant4-setups): 8 slots arranged along $+z$ in vacuum at equal $40\ \text{mm}$ spacing, with every slot's front-surface center on the beam axis and `rotation_z` set to `0`.
+The setup used in the example configuration is `telescope` from [energy deposition components](../components/deposit.md#built-in-geant4-setups): one column in vacuum from the source downstream along the beam (see [Energy Deposition and Ionization](../core/deposit.md#line-along-the-beam) for the notation). The first layer is $260\ \text{mm}$ after the source, and each further layer is $40\ \text{mm}$ behind the back of the one before it; all 8 slots are on the beam axis with their front surfaces facing the source, and `rotation_z` is `0` for all:
 
-| Slot | Role | Default Device | Front-Surface $z$ ($\text{mm}$) | `rotation_z` (degrees) |
+```python
+"along_beam": [
+    "source",
+    {"gap": 260000}, {"slot": "ref1"},
+    {"gap": 40000}, {"slot": "ref2"},
+    {"gap": 40000}, {"slot": "ref3"},
+    {"gap": 40000}, {"slot": "dut1"},
+    {"gap": 40000}, {"slot": "dut2"},
+    {"gap": 40000}, {"slot": "ref4"},
+    {"gap": 40000}, {"slot": "ref5"},
+    {"gap": 40000}, {"slot": "ref6"},
+]
+```
+
+| Slot | Role | Default Device | Gap Before ($\text{mm}$) | `rotation_z` (degrees) |
 | --- | --- | --- | --- | --- |
-| `ref1` | Reference layer | `TAICHU3` | `-140` | `0` |
-| `ref2` | Reference layer | `TAICHU3` | `-100` | `0` |
-| `ref3` | Reference layer | `TAICHU3` | `-60` | `0` |
-| `dut1` | Device under test (DUT) | Device given on the command line | `-20` | `0` |
-| `dut2` | Device under test (DUT) | Device given on the command line | `20` | `0` |
-| `ref4` | Reference layer | `TAICHU3` | `60` | `0` |
-| `ref5` | Reference layer | `TAICHU3` | `100` | `0` |
-| `ref6` | Reference layer | `TAICHU3` | `140` | `0` |
+| `ref1` | Reference layer | `TAICHU3` | `260` | `0` |
+| `ref2` | Reference layer | `TAICHU3` | `40` | `0` |
+| `ref3` | Reference layer | `TAICHU3` | `40` | `0` |
+| `dut1` | Device under test (DUT) | Device given on the command line | `40` | `0` |
+| `dut2` | Device under test (DUT) | Device given on the command line | `40` | `0` |
+| `ref4` | Reference layer | `TAICHU3` | `40` | `0` |
+| `ref5` | Reference layer | `TAICHU3` | `40` | `0` |
+| `ref6` | Reference layer | `TAICHU3` | `40` | `0` |
 
-The beam used in the example configuration is `beam/electron_5GeV_spread`: $5\ \text{GeV}$ electrons are emitted from $z = -400\ \text{mm}$ along $+z$ with a uniform aiming spread of $\pm 750\ \mu\text{m}$ in both $x$ and $y$ (aiming point at $z = 100\ \text{mm}$), covering the $1.5 \times 1.5\ \text{mm}$ sensitive area of the reference layers.
+The beam used in the example configuration is `beam/electron_5GeV_spread`: $5\ \text{GeV}$ electrons are emitted from the source along $+z$ with a uniform spread of $\pm 1.5\ \text{mrad}$ in both $x$ and $y$ (`par_randx = par_randy = 390 um`, added to the $260\ \text{mm}$ direction vector toward the front surface of the first layer); at the last layer they spread transversely by about $\pm 0.8\ \text{mm}$, comparable to the $1.5 \times 1.5\ \text{mm}$ sensitive area of the reference layers.
 
 Each layer's detector board is mounted perpendicular to the beam axis $z$ and may be oriented in one of four directions in the $x$-$y$ plane (rotated by $0^\circ$, $90^\circ$, $180^\circ$, or $270^\circ$ around the $z$ axis). Following standard beam-telescope practice, this degree of freedom serves two needs:
 
@@ -124,11 +138,14 @@ Pass the name of the DUT placed in the middle of the telescope on the command li
 ```bash
 raser telescope <device>
 raser telescope <device> --scan field.voltage=-100,-200
-raser telescope <device> --set deposit.g4setup.devices.dut2.rotation_z=90
 raser telescope <device> --set deposit.source=toy/MIP_telescope --set reconstruction.hits=deposit
 ```
 
-The third line rotates the second DUT by $90^\circ$, and the fourth line is the fast run.
+The third line is the fast run. To change the layer spacing or orientation, or to add or remove layers, write the setup in the `deposit` section of `config.json` as an object with `name` and give the whole `along_beam` column; for example, to rotate the second DUT by $90^\circ$:
+
+```json
+"g4setup": {"name": "telescope", "along_beam": ["source", {"gap": 260000}, {"slot": "ref1"}, {"gap": 40000}, {"slot": "ref2"}, {"gap": 40000}, {"slot": "ref3"}, {"gap": 40000}, {"slot": "dut1"}, {"gap": 40000}, {"slot": "dut2", "rotation_z": 90}, {"gap": 40000}, {"slot": "ref4"}, {"gap": 40000}, {"slot": "ref5"}, {"gap": 40000}, {"slot": "ref6"}]}
+```
 
 The experiment directory `<project>/telescope/config.json` records settings sectioned by stage (see [Architecture Overview](../architecture.md#project) for the format). The telescope device list is defined in the `telescope` experiment class, with 3 `TAICHU3` layers upstream and 3 downstream by default and two DUTs in the middle; the device given on the command line replaces the DUTs. The device list, per-layer orientations, and per-layer settings such as bias voltage are configured individually.
 
@@ -157,7 +174,6 @@ The table below lists the stage configuration keys shared between `telescope` an
 | `reconstruction.hits` | `"signal"` | None | Source of hit pixels: `"signal"` takes digital waveforms recorded by `trigger` crossing `reconstruction.threshold`; `"deposit"` takes pixels with deposited electron-hole pairs (fast run) |
 | `analysis.plots` | `10` | events | Number of leading selected events per scan point for which track-fit plots are drawn |
 
-The position and orientation of each slot in the setup `deposit.g4setup` are component-internal keys addressed as `deposit.g4setup.devices.<slot>.position` ($\mu\text{m}$) and `deposit.g4setup.devices.<slot>.rotation_z` (degrees).
 
 ## Outputs
 
