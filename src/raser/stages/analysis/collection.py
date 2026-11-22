@@ -10,39 +10,42 @@ from .files import job_file
 
 
 def _job_events(tables):
-    """The events of the currents of each job of `tables`, which must be those
-    of its reconstruction table, no more and no fewer."""
+    """The events of the currents of each job of `tables`, and the event
+    numbers of its reconstruction table: those the trigger recorded, all of
+    them among the currents."""
     for _, experiment, nodes, table in tables:
         path = job_file(experiment, nodes, "current")
         events = read_currents(path).events
-        numbers, rows = sorted(event.event for event in events), sorted(int(number) for number in table.columns["event"])
-        if numbers != rows:
-            raise ValueError(
-                f"{path}: events {sorted(set(numbers) ^ set(rows))} are in the currents "
-                "or in the reconstruction of the job, not in both"
-            )
-        yield events
+        numbers, rows = {event.event for event in events}, {int(number) for number in table.columns["event"]}
+        if rows - numbers:
+            raise ValueError(f"{path}: events {sorted(rows - numbers)} are in the reconstruction of the job, not in its currents")
+        yield events, rows
 
 
 def event_efficiencies(tables):
-    """Efficiency of every event of a point, from the currents of its jobs.
+    """Efficiency of every event of the currents of a point, recorded by the
+    trigger or not.
 
     tables : what `point_tables` gives
     """
     efficiencies = [
         collection_efficiency([event.charge for event in events], [event.pairs for event in events])
-        for events in _job_events(tables)
+        for events, _ in _job_events(tables)
     ]
     return np.concatenate(efficiencies) if efficiencies else np.empty(0)
 
 
 def event_charges(tables):
-    """Collected charge of every event of a point [C]: the absolute value of
-    the net charge of all read-out electrodes together, as in the efficiency.
+    """Collected charge of every event of a point the trigger recorded [C]:
+    the absolute value of the net charge of all read-out electrodes together,
+    as in the efficiency.
 
     tables : what `point_tables` gives
     """
-    charges = [np.abs([np.sum(event.charge) for event in events]) for events in _job_events(tables)]
+    charges = [
+        np.abs([np.sum(event.charge) for event in events if event.event in rows])
+        for events, rows in _job_events(tables)
+    ]
     return np.concatenate(charges) if charges else np.empty(0)
 
 

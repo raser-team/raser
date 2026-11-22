@@ -1,4 +1,4 @@
-"""The deposits, currents, waveforms and reconstruction slices put together for an experiment.
+"""The slices of the chain, from the deposits to the reconstruction, put together for an experiment.
 
 Building the command line imports this file: it loads nothing heavy. The
 slices import their stage when they run.
@@ -37,15 +37,31 @@ KEYS = (
     "readout.pre_window_ns",
     "readout.max_post_window_ns",
     "readout.cable",
+    "digitizer.device",
+    "digitizer.plots",
+    "trigger.device",
     "reconstruction.threshold",
     "reconstruction.amplitude_threshold",
     "reconstruction.fractions",
     "reconstruction.edge",
 )
-COMPONENTS = {"source": "deposit.source", "g4setup": "deposit.g4setup"}  # kind of file -> the setting naming it
+# kind of file -> the setting naming it; a setting that is null names no file
+COMPONENTS = {
+    "source": "deposit.source",
+    "g4setup": "deposit.g4setup",
+    "digitizer": "digitizer.device",
+    "trigger": "trigger.device",
+}
+NULLABLE = ("trigger.device",)  # null: the trigger of digitizer.device, no file of a trigger device
 READERS = {"g4setup": read_g4setup}  # kind of file -> what reads the file its setting names
 # <section>.<slot> -> the kind of file: a key inside it is <section>.<slot>.<key>
-SLOTS = {"field.device": "device", "deposit.source": "source", "deposit.g4setup": "g4setup"}
+SLOTS = {
+    "field.device": "device",
+    "deposit.source": "source",
+    "deposit.g4setup": "g4setup",
+    "digitizer.device": "digitizer",
+    "trigger.device": "trigger",
+}
 IN_FILE = {"field.voltage": "device.bias.voltage"}  # setting -> where it sits in a file
 
 
@@ -65,6 +81,9 @@ DEFAULTS = {
     "readout.pre_window_ns": 15.0,
     "readout.max_post_window_ns": 1000.0,
     "readout.cable": None,
+    "digitizer.device": "MXR608A",
+    "digitizer.plots": 100,
+    "trigger.device": None,
     "reconstruction.threshold": 10.0,
     "reconstruction.amplitude_threshold": 10.0,
     "reconstruction.fractions": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
@@ -156,6 +175,26 @@ def _waveforms(kwargs, device=None, position=None):
     return readout.waveforms(_of(kwargs, device), position)
 
 
+def _digitized(kwargs, device=None, position=None):
+    from . import digitizer
+
+    return digitizer.digitized(_of(kwargs, device), position)
+
+
+def _triggered(kwargs, device=None, position=None):
+    """The trigger of the digitizer of each position. A trigger device of
+    its own judges an event over all the positions at once, in one node that
+    holds a file for each: the chain does not run that yet."""
+    from . import trigger
+
+    if kwargs["device"] is not None:
+        raise ValueError(
+            f"trigger.device {kwargs['device']}: a trigger device of its own is not run by the chain yet; "
+            "set trigger.device to null for the trigger of digitizer.device"
+        )
+    return trigger.triggered(_of(kwargs, device), position)
+
+
 def _reconstruction(kwargs, device=None, position=None):
     from . import reconstruction
 
@@ -197,9 +236,11 @@ def expand(devices=None, deposit=None) -> tuple:
 
     One deposit slice; a field for each device, field.<device> when there are
     more than one; a current and a readout for each position, current.<position>
-    and readout.<position> when there are more than one, and a reconstruction
-    of each readout, reconstruction.<position>, each reading the
-    deposits and the field of its device. `deposit` lets an experiment put its
+    and readout.<position> when there are more than one, and a
+    digitizer.<position>, a trigger.<position> and a reconstruction.<position>
+    of each readout. The digitizer reads the readout, the trigger the
+    digitizer, and the reconstruction the events the trigger recorded of the
+    digitizer. `deposit` lets an experiment put its
     own energy deposition in place of the stage's, until the Geant4 world
     scripts place its devices (a stopgap for cflm)."""
     devices = devices or {None: (None, [None])}
@@ -262,6 +303,34 @@ def expand(devices=None, deposit=None) -> tuple:
                     needs=(current, name),
                 )
             )
+            of = {"device": device if several else None, "position": at}
+            # What the digitizer draws, its clock phase and its jitter, is of
+            # its own seed: the seed of the slice, which holds its position.
+            digitizer = f"digitizer.{at}" if at else "digitizer"
+            pieces.append(
+                Slice(
+                    digitizer,
+                    partial(_digitized, **of) if at or several else _digitized,
+                    keys=("digitizer.device", "digitizer.plots"),
+                    counts=("digitizer.plots",),
+                    kinds=("digitizer.device",),
+                    new_events=False,
+                    needs=(readout,),
+                )
+            )
+            # The level of the trigger is a key of digitizer.device that the
+            # digitizer does not use: both slices read the file.
+            trigger = f"trigger.{at}" if at else "trigger"
+            pieces.append(
+                Slice(
+                    trigger,
+                    partial(_triggered, **of) if at or several else _triggered,
+                    keys=("trigger.device", "digitizer.device"),
+                    kinds=("trigger.device",),
+                    new_events=False,
+                    needs=(digitizer,),
+                )
+            )
             pieces.append(
                 Slice(
                     f"reconstruction.{at}" if at else "reconstruction",
@@ -270,7 +339,7 @@ def expand(devices=None, deposit=None) -> tuple:
                     else _reconstruction,
                     keys=tuple(key for key in KEYS if key.startswith("reconstruction.")),
                     new_events=False,
-                    needs=(readout,),
+                    needs=(trigger, digitizer),
                 )
             )
     return tuple(pieces)
@@ -301,7 +370,8 @@ SLICES = expand()
 
 class Chain(Experiment):
     """An experiment that runs the chain for its devices: a field for each
-    slot, and a current, a readout and a reconstruction for each position."""
+    slot, and a current, a readout, a digitizer, a trigger and a
+    reconstruction for each position."""
 
     stages = SECTIONS
     # What the experiment takes where the chain takes another value, until
@@ -319,6 +389,7 @@ class Chain(Experiment):
             scanned=SCANNED,
             slots=SLOTS,
             components=COMPONENTS,
+            nullable=NULLABLE,
             readers=READERS,
             in_file=in_file_of(devices),
             slices=expand(devices) if devices else SLICES,

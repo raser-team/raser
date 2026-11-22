@@ -6,7 +6,8 @@ import pytest
 from raser.stages.analysis.timing import event_times
 from raser.stages.analysis.timing import point_resolution
 from raser.stages.analysis.timing import point_tables
-from raser.stages.reconstruction import reconstruct
+from raser.core.readout.waveforms import read_waveforms
+from raser.stages.reconstruction import tabulate
 from raser.core.readout.waveforms import EventWaveforms
 from raser.core.readout.waveforms import append_waveforms
 from raser.core.deposit.deposits import Deposits
@@ -51,7 +52,7 @@ def _reconstructed(jobs):
         if readout.exists():
             reconstruction = folder / "nodes" / "reconstruction" / nodes["reconstruction"] / "reconstruction.h5"
             reconstruction.parent.mkdir(parents=True, exist_ok=True)
-            reconstruct(readout, reconstruction, 3, 5, tuple(k / 10 for k in range(1, 10)), "falling")
+            tabulate(read_waveforms(readout), readout, reconstruction, 3, 5, tuple(k / 10 for k in range(1, 10)), "falling")
     return jobs
 
 

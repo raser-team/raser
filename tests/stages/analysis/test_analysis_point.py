@@ -7,7 +7,8 @@ import pytest
 
 from raser.stages import analysis as ana
 from raser.stages.analysis.point import write_point
-from raser.stages.reconstruction import reconstruct
+from raser.core.readout.waveforms import read_waveforms
+from raser.stages.reconstruction import tabulate
 from raser.core.current.currents import EventCurrents
 from raser.core.current.currents import append_currents
 from raser.core.readout.waveforms import EventWaveforms
@@ -79,8 +80,8 @@ def _job(folder, index, scale, count, seed, amplitude_threshold=5, jitter=3.0e-1
         )
     write_deposits(str(_slice(folder, index, "deposit")), Deposits(50, {}, "any", None, deposits))
     if count:
-        reconstruct(
-            _slice(folder, index, "readout"), _slice(folder, index, "reconstruction"), 3, amplitude_threshold, (0.2, 0.5, 0.8), "falling"
+        tabulate(
+            read_waveforms(_slice(folder, index, "readout")), _slice(folder, index, "readout"), _slice(folder, index, "reconstruction"), 3, amplitude_threshold, (0.2, 0.5, 0.8), "falling"
         )
 
 
@@ -169,15 +170,33 @@ def test_enough_events_whose_fit_fails_are_an_error(tmp_path) -> None:
         write_point([_of(seed, 0)], tmp_path / "out")
 
 
-def test_currents_and_reconstruction_of_other_events_are_refused(tmp_path) -> None:
+# Deliberate change: the efficiency of the recorded events only, or the charges of all the currents.
+def test_the_efficiency_counts_every_current_and_the_charge_the_recorded_events(tmp_path) -> None:
     seed = tmp_path / "seed_1"
     _job(seed, 0, 1.0, 30, seed=4)
     other = tmp_path / "other"
     _job(other, 0, 1.0, 31, seed=4)
-    # the currents of events 0 ... 30 next to the reconstruction of 0 ... 29
+    # the currents of events 0 ... 30 next to the reconstruction of 0 ... 29:
+    # event 30 was not recorded by the trigger
     _slice(seed, 0, "current").write_bytes(_slice(other, 0, "current").read_bytes())
 
-    with pytest.raises(ValueError, match=r"events \[30\] are in the currents or in the reconstruction of the job, not in both"):
+    write_point([_of(seed, 0)], tmp_path / "out")
+
+    result = json.loads((tmp_path / "out" / "result.json").read_text())
+    assert result["collection"]["events"] == 31
+    assert result["energy_resolution"]["charge"]["events"] == 30
+
+
+# Deliberate change: the check dropped, so that a table of other currents is taken.
+def test_a_reconstruction_of_events_not_in_the_currents_is_refused(tmp_path) -> None:
+    seed = tmp_path / "seed_1"
+    _job(seed, 0, 1.0, 30, seed=4)
+    other = tmp_path / "other"
+    _job(other, 0, 1.0, 31, seed=4)
+    # the reconstruction of events 0 ... 30 next to the currents of 0 ... 29
+    _slice(seed, 0, "reconstruction").write_bytes(_slice(other, 0, "reconstruction").read_bytes())
+
+    with pytest.raises(ValueError, match=r"events \[30\] are in the reconstruction of the job, not in its currents"):
         write_point([_of(seed, 0)], tmp_path / "out")
 
 

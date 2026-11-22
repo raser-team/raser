@@ -12,7 +12,7 @@ class Bmos(chain.Chain):
     name = "bmos"
     help = "Beam Monitor Online System"
     components = ("raser_app/bmos",)
-    defaults = {"deposit.source": "bunch", "deposit.plots": 0, "current.plots": 0}
+    defaults = {"deposit.source": "bunch", "deposit.plots": 0, "current.plots": 0, "digitizer.plots": 0}
 
 
 WORKFLOW = Bmos.workflow()

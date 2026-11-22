@@ -95,6 +95,10 @@ class Workflow:
     keys: tuple = ()  # the options an experiment may set
     defaults: Mapping = field(default_factory=dict)  # their values when nobody set them
     components: Mapping = field(default_factory=dict)  # kind of json file -> the option naming it
+    # Those of the options of `components` that may be null: a null one names
+    # no file of its kind, as trigger.device names no trigger device of its own.
+    # Any other one that is null is an error.
+    nullable: tuple = ()
     # kind of file -> the function that reads the file its option names into
     # a dict, for a file that is not json, such as the SPICE files of a chain
     readers: Mapping = field(default_factory=dict)
@@ -1014,6 +1018,8 @@ def _point(workflow, kwargs, options) -> tuple[dict, dict]:
     elif workflow.device:
         files["device"] = device_json(kwargs["det_name"])
     for kind, key in workflow.components.items():
+        if key in workflow.nullable and options.get(key) is None:
+            continue
         if options.get(key) is None:
             raise ValueError(f"config.json has no {key}: it names the {kind} of the experiment")
         read = workflow.readers.get(kind)

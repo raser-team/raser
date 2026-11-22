@@ -171,8 +171,9 @@ def chosen_edges(given, derived, electrodes):
 def event_table(waveforms, threshold, amplitude_threshold, fractions, edges):
     """The rows of the events of one job.
 
-    waveforms : the readout of the job, as `read_waveforms` gives it; an
-        event may hold the waveforms of some of its electrodes only
+    waveforms : the waveforms of the job, as `read_waveforms` gives them; an
+        event may hold the waveforms of some of its electrodes only, and its
+        t0 [s] may be one for each of them
     threshold, amplitude_threshold : in the unit of the waveforms [V]
     edges : "rising" or "falling" for each electrode, as `chosen_edges`
         gives them
@@ -199,15 +200,18 @@ def event_table(waveforms, threshold, amplitude_threshold, fractions, edges):
     nothing = float("nan")
     columns: dict[str, list] = {name: [] for name in (*EVENT_COLUMNS, *ELECTRODE_COLUMNS, "CFD")}
     for record in waveforms.events:
-        times = record.t0 + (np.arange(record.voltage.shape[1]) + 0.5) * waveforms.dt
+        # one start for the event, or one for each of its traces, as of a
+        # digitizer whose devices sample on clocks of their own
+        starts = np.broadcast_to(np.asarray(record.t0, dtype="float64"), (len(record.electrodes),))
+        middles = (np.arange(record.voltage.shape[1]) + 0.5) * waveforms.dt
         untraced = {"traced": False, "baseline": nothing, "noise": nothing, "amplitude": nothing, "above": False,
                     "ToA": nothing, "ToT": nothing, "CoG": nothing, "area": nothing}
         rows = [dict(untraced) for _ in range(width)]
         constant = [[nothing] * len(fractions) for _ in range(width)]
-        for name, samples in zip(record.electrodes, record.voltage):
+        for name, samples, start in zip(record.electrodes, record.voltage, starts, strict=True):
             k = place[name]
             net, baseline, noise = net_pulse(samples, n_base)
-            row, constant[k] = electrode_row(times, waveforms.dt, polarity[k] * net, threshold, fractions)
+            row, constant[k] = electrode_row(start + middles, waveforms.dt, polarity[k] * net, threshold, fractions)
             rows[k] = {**row, "traced": True, "baseline": baseline, "noise": noise}
         size, center = cluster([row["amplitude"] for row in rows], threshold, amplitude_threshold)
         columns["event"].append(record.event)

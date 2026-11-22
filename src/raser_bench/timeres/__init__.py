@@ -21,6 +21,7 @@ class Timeres(chain.Chain):
         "deposit.events_per_job": 10000,
         "deposit.plots": 0,
         "current.plots": 0,
+        "digitizer.plots": 0,
     }
 
 

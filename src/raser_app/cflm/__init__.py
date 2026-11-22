@@ -26,7 +26,7 @@ def _deposits(kwargs):
 class Cflm(Experiment):
     name = "cflm"
     help = "CEPC Fast Luminosity Monitor"
-    stages = ("field", "deposit", "current", "readout", "reconstruction")
+    stages = ("field", "deposit", "current", "readout", "digitizer", "trigger", "reconstruction")
     # One device, the device of the command, in 24 positions: the pads.
     devices = {"Device": Slot(positions=PADS)}
 
@@ -39,10 +39,13 @@ class Cflm(Experiment):
             defaults={
                 **{key: value for key, value in chain.DEFAULTS.items() if not key.startswith("deposit.")},
                 "current.plots": 0,
+                "digitizer.plots": 0,
             },
             sections=chain.SECTIONS,
             scanned=chain.SCANNED,
-            slots={"field.device": "device"},
+            slots={key: kind for key, kind in chain.SLOTS.items() if not key.startswith("deposit.")},
+            components={kind: key for kind, key in chain.COMPONENTS.items() if not key.startswith("deposit.")},
+            nullable=chain.NULLABLE,
             in_file=chain.IN_FILE,
             # Its own deposits until the Geant4 world scripts place the pads.
             slices=chain.expand(devices, deposit=_deposits),

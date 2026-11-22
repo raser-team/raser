@@ -166,7 +166,7 @@ def test_reco_runs_the_chain_up_to_the_reconstruction_of_the_waveforms(
 ) -> None:
     assert main(["reco", "HPK-Si-PiN", "--seed", "1", "--set", "reconstruction.edge=rising", "--dry-run"]) == 0
 
-    assert _slices(capsys.readouterr().out) == ["deposit", "field", "current", "readout", "reconstruction"]
+    assert _slices(capsys.readouterr().out) == ["deposit", "field", "current", "readout", "digitizer", "trigger", "reconstruction"]
 
 
 def test_ana_is_the_last_stage_of_the_chain_and_the_whole_chain_ends_in_it(
@@ -180,7 +180,7 @@ def test_ana_is_the_last_stage_of_the_chain_and_the_whole_chain_ends_in_it(
     experiment = work_root / "HPK-Si-PiN" / "signal"
 
     assert main(["ana", "HPK-Si-PiN", "--seed", "1", "-s", "2"]) == 0  # every slice before it, then the analysis
-    assert _slices(capsys.readouterr().out) == ["deposit", "field", "current", "readout", "reconstruction"]
+    assert _slices(capsys.readouterr().out) == ["deposit", "field", "current", "readout", "digitizer", "trigger", "reconstruction"]
     assert main(["signal", "HPK-Si-PiN", "--seed", "1", "-s", "2"]) == 0  # the command of the experiment too
     assert main(["rdo", str(experiment), "--seed", "1", "-s", "2"]) == 0  # a stage before it stops there
 

@@ -52,8 +52,8 @@ def test_the_slices_of_two_devices_in_two_positions_each() -> None:
     names = [piece.name for piece in chain.expand(DEVICES)]
     assert names == [
         "deposit",
-        "field.A", "current.a1", "readout.a1", "reconstruction.a1", "current.a2", "readout.a2", "reconstruction.a2",
-        "field.B", "current.b1", "readout.b1", "reconstruction.b1", "current.b2", "readout.b2", "reconstruction.b2",
+        "field.A", "current.a1", "readout.a1", "digitizer.a1", "trigger.a1", "reconstruction.a1", "current.a2", "readout.a2", "digitizer.a2", "trigger.a2", "reconstruction.a2",
+        "field.B", "current.b1", "readout.b1", "digitizer.b1", "trigger.b1", "reconstruction.b1", "current.b2", "readout.b2", "digitizer.b2", "trigger.b2", "reconstruction.b2",
     ]
     needs = {piece.name: piece.needs for piece in chain.expand(DEVICES)}
     assert needs["current.b2"] == ("deposit", "field.B") and needs["readout.b2"] == ("current.b2", "field.B")
@@ -66,7 +66,7 @@ def test_another_bias_of_one_device_runs_its_field_and_positions_alone_again(two
     execute(two["workflow"], _kwargs(set=["field.A.voltage=200.0"]))
 
     assert two["ran"] == [
-        "field.A", "current.a1", "readout.a1", "reconstruction.a1", "current.a2", "readout.a2", "reconstruction.a2"
+        "field.A", "current.a1", "readout.a1", "digitizer.a1", "trigger.a1", "reconstruction.a1", "current.a2", "readout.a2", "digitizer.a2", "trigger.a2", "reconstruction.a2"
     ]
     record = json.loads((two["root"] / "seed_1" / "run.json").read_text())
     assert record["files"]["A"]["device"]["bias"]["voltage"] == 200.0
