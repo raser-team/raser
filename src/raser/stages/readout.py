@@ -67,7 +67,7 @@ def waveforms(kwargs, position=None):
         if row is not None:
 
             def part_of(hit, margin):
-                return part_of_row(my_d, electrodes, hit, margin, solved_f, row)
+                return part_of_row(my_d, electrodes, hit, margin, solved_f, row, solved_undepleted=undepleted)
 
     chain = named_chain(str(kwargs["amplifier"]))
     write_waveforms(

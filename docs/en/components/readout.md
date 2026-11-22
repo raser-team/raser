@@ -191,13 +191,13 @@ For single-contact multi-strip devices, `write_waveforms` (`job.py`) uses `_solv
 When the device has an undepleted bulk (for example, undepleted resistance `1000 Ohm` and capacitance `2 pF`), the four lines for the device circuit and current source in the netlist become:
 
 ```spice
-Ctop_depleted top_pad top_inner 3.4416228e-12
-Rtop_undepleted top_inner 0 1000
-Ctop_undepleted top_inner 0 2e-12
-I1 top_inner top_pad PWL(2.5e-12 0 7.5e-12 0 1.25e-11 0 1.75e-11 0)
+Ctop_depleted top_pad undepleted 3.4416228e-12
+R_undepleted undepleted 0 1000
+C_undepleted undepleted 0 2e-12
+I1 undepleted top_pad PWL(2.5e-12 0 7.5e-12 0 1.25e-11 0 1.75e-11 0)
 ```
 
-The depletion-layer junction capacitance `Ctop_depleted` now connects between the readout electrode `top_pad` and internal node `top_inner`; the undepleted-layer parallel resistance `Rtop_undepleted` (`Ohm`) and capacitance `Ctop_undepleted` (`F`) connect between `top_inner` and ground `0`; and the induced current source `I1` connects between `top_inner` and `top_pad`, spanning only the depleted layer. This places a parallel RC impedance in series between the depleted layer and the back electrode, producing signal voltage division and RC time-constant shaping while `Rtop_undepleted` contributes thermal noise in frequency-domain noise analysis.
+The depletion-layer junction capacitance `Ctop_depleted` now connects between the readout electrode `top_pad` and node `undepleted`; the undepleted-layer parallel resistance `R_undepleted` (`Ohm`) and capacitance `C_undepleted` (`F`) connect between `undepleted` and ground `0`; and the induced current source `I1` connects between `undepleted` and `top_pad`, spanning only the depleted layer. When the device has multiple readout electrodes, the depletion-layer capacitance of each electrode connects to this single `undepleted` node. This places a parallel RC impedance in series between the depleted layer and the back electrode, producing signal voltage division and RC time-constant shaping while `R_undepleted` contributes thermal noise in frequency-domain noise analysis.
 
 ### Frequency-Domain Noise Analysis and Time-Domain Synthesis (`spice.py`, `job.py`, `spectral_noise.py`)
 

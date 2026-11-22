@@ -185,6 +185,19 @@ def test_a_row_of_strips_is_read_out_through_the_capacitances_its_field_stored(
             }
         )
     )
+    # fully depleted at its bias
+    bias_v = float(device["bias"]["voltage"])
+    (field / "run.json").write_text(
+        json.dumps(
+            {
+                "files": {"device": {"det_name": "ITk-Si-strip"}},
+                "solved": {"undepleted": [bias_v]},
+            }
+        )
+    )
+    (field / f"{bias_v}V.undepleted.json").write_text(
+        json.dumps({"undepleted_width_um": 0.0})
+    )
     monkeypatch.setattr(readout, "solved_field", lambda *_: field)
     # 1 fC on the second strip
     current = np.zeros((4, 200))

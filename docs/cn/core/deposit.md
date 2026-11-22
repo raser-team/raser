@@ -1,6 +1,6 @@
 # 能量沉积与电离（`core/deposit`）
 
-`src/raser/core/deposit/` 从 [器件模型](device.md) 取器件的尺寸与材料，从 [能量沉积组件](../components/deposit.md) 取装置脚本、放射源或束流、激光的定义。它用 Geant4 或直线 toy MIP 模型算出粒子在器件里的沉积步，把每步沉积能量换成电子-空穴对，写成 `deposit.h5`；激光则按吸收系数直接给出载流子群，同样写成 `deposit.h5`。沉积文件交给 [载流子漂移与感应电流](current.md) 做漂移，事例最早沉积时刻交给 [统计分析](analysis.md) 作 `truth`，[望远镜](../bench/telescope.md) 也读这个文件。命令与 `deposit` 段的设置见 [能量沉积环节](../stages/deposit.md)。
+`src/raser/core/deposit/` 从 [器件模型](device.md) 取器件的尺寸与材料，从 [能量沉积组件](../components/deposit.md) 取装置脚本、放射源或束流、激光的定义。它用 Geant4 或直线 toy MIP 模型算出粒子在器件里的沉积步（装置给了 `devices` 时，一次算出多块器件各自的沉积步），把每步沉积能量换成电子-空穴对，写成 `deposit.h5`；激光则按吸收系数直接给出载流子群，同样写成 `deposit.h5`。沉积文件交给 [载流子漂移与感应电流](current.md) 做漂移，事例最早沉积时刻交给 [统计分析](analysis.md) 作 `truth`，[望远镜](../bench/telescope.md) 也读这个文件。命令与 `deposit` 段的设置见 [能量沉积环节](../stages/deposit.md)。
 
 ## 物理
 
@@ -33,7 +33,7 @@ Fano 涨落见文献 [1]。
 
 ### Geant4 的能损
 
-`beam` 与 `decay_source` 两类源由 Geant4 [3, 4] 输运。物理表是 `FTFP_BERT` 加 `G4StepLimiterPhysics`；源含 `nuclides` 时再加 `G4RadioactiveDecayPhysics` [5]，并把放射性衰变的时间阈值设为 $10^{60}$ 年，使任何寿命的核素都衰变。产生阈沿用物理表的缺省值。器件逻辑体 `"Device"` 带 `G4UserLimits`，步长上限是装置的 `maxstep`。Geant4 在体积边界和物理过程处也会截断步。每个前点在 `"Device"` 内的步记为一个沉积步：
+`beam` 与 `decay_source` 两类源由 Geant4 [3, 4] 输运。物理表是 `FTFP_BERT` 加 `G4StepLimiterPhysics`；源含 `nuclides` 时再加 `G4RadioactiveDecayPhysics` [5]，并把放射性衰变的时间阈值设为 $10^{60}$ 年，使任何寿命的核素都衰变。产生阈沿用物理表的缺省值。每块器件的逻辑体（单器件为 `"Device"`，多器件为槽位名）带 `G4UserLimits`，步长上限是装置的 `maxstep`。Geant4 在体积边界和物理过程处也会截断步。每个前点在器件逻辑体内的步记为该器件的一个沉积步：
 
 $$E_k = \texttt{GetTotalEnergyDeposit}, \qquad \mathbf{r}_k = \tfrac{1}{2}\bigl(\mathbf{r}_k^{\text{pre}} + \mathbf{r}_k^{\text{post}}\bigr), \qquad \ell_k \le s_{\max} \tag{3}$$
 
@@ -83,9 +83,15 @@ $$w = \frac{K}{2}\left\langle\frac{Z}{A}\right\rangle\frac{\rho}{\beta^2} \times
 
 激光脉冲在器件里按吸收产生载流子。单光子吸收（SPA）每吸收一个光子产生一对，强度沿光路按 Beer–Lambert 定律 $e^{-\alpha s}$ 衰减。双光子吸收（TPA）按 $dI/dz = -\alpha I - \beta_2 I^2$ [15]，产生率正比于光强平方，集中在焦点附近。光束是高斯光束，横向半径随离焦距离展宽。
 
-吸收系数 $\alpha$ 在激光文件未给 `alpha` 时由 `absorption_coefficient` 查表：
+激光文件未给 `alpha` 时，吸收系数 $\alpha$ 由 `absorption_coefficient` 按器件材料给出。硅查表：
 
 $$\alpha(\lambda) = 100\,\exp\Bigl[\operatorname{interp}\bigl(10^{3}\lambda;\ \lambda_i,\ \ln \alpha_i\bigr)\Bigr] \tag{7}$$
+
+4H-SiC 是间接带隙，带边附近的吸收要声子参与。按声子辅助间接跃迁的半经验模型 [16] 计算，带器件温度 $T$：
+
+$$\alpha(\lambda, T) = 100 \sum_{p=1}^{7} \sum_{\pm} \Bigl(n_p + \tfrac{1}{2} \pm \tfrac{1}{2}\Bigr) \Bigl\{ A_p \bigl[\hbar\omega - (E_{GX} \pm \hbar\Omega_p)\bigr]_+^{1/2} + B A_p \bigl[\hbar\omega - (E_{GX} \pm \hbar\Omega_p + E_{\text{ex}})\bigr]_+^{2} \Bigr\} \tag{7a}$$
+
+$$\hbar\omega = \frac{h c}{e\,\lambda \times 10^{-6}}, \qquad n_p = \frac{1}{\exp(\hbar\Omega_p / k_B T) - 1}, \qquad E_{GX}(T) = E_{GX}(0) - \frac{\varepsilon\,\Theta}{2}\left[\bigl(1 + (2T/\Theta)^{q}\bigr)^{1/q} - 1\right] \tag{7b}$$
 
 光子能量、光子数与高斯光束半径为：
 
@@ -110,6 +116,11 @@ $$P(t) = \frac{2\sqrt{2\ln 2}}{\sqrt{2\pi}\,\tau}\exp\!\left(-\frac{4\ln 2\; t^2
 - $\lambda$：波长，$\mu\text{m}$（激光文件的 `wavelength` 以 $\text{nm}$ 给出，乘 $10^{-3}$）；
 - $\lambda_i, \alpha_i$：吸收系数表的波长（$\text{nm}$）与吸收系数（$\text{cm}^{-1}$），`interp` 为相邻行间的线性插值，$100$ 把 $\text{cm}^{-1}$ 换成 $\text{m}^{-1}$；
 - $\alpha$：吸收系数，$\text{m}^{-1}$；
+- $\hbar\omega$：光子能量，$\text{eV}$（$e$ 为元电荷）；$T$：器件文件的 `temperature`，$\text{K}$；$k_B = 8.617\times10^{-5}\ \text{eV/K}$；
+- $\hbar\Omega_p$、$A_p$：第 $p$ 个声子的能量（$\text{eV}$）与跃迁系数（$\text{eV}^{-1/2}\,\text{cm}^{-1}$），取文献 [16] 表 I（$E \perp c$，$E$ 为光的电场）：$\hbar\Omega_p$ = 32.4、45.7、50.8、67.8、76.3、95.8、106.2 meV，$A_p$ = 0.5、4、7、3.5、23、23、40.5；
+- $\pm$：上号为放出声子，下号为吸收声子；$n_p$：声子的玻色占据数；$[x]_+ = \max(x, 0)$；
+- $B = 60\ \text{eV}^{-3/2}$：连续态与激子基态跃迁系数之比；$E_{\text{ex}} = 20\ \text{meV}$：激子结合能；
+- $E_{GX}(T)$：激子带隙，$\text{eV}$；$E_{GX}(0) = 3.267\ \text{eV}$，$\varepsilon = 3\times10^{-4}\ \text{eV/K}$，$\Theta = 450\ \text{K}$，$q = 2.9$（文献 [16] 式 (5)），$300\ \text{K}$ 时 $E_{GX} = 3.233\ \text{eV}$；
 - $h = 6.626\times10^{-34}\ \text{J}\cdot\text{s}$，$c = 2.998\times10^{8}\ \text{m/s}$；$h\nu$：光子能量，$\text{J}$；
 - $E_p$：脉冲能量 `pulse_energy`，$\text{J}$；$N_\gamma$：脉冲光子数；
 - $\text{FWHM}_s$：焦点处光斑的空间半高全宽 `spacial_FWHM`，$\mu\text{m}$；$w_0$：束腰半径，$\mu\text{m}$；
@@ -122,6 +133,10 @@ $$P(t) = \frac{2\sqrt{2\ln 2}}{\sqrt{2\pi}\,\tau}\exp\!\left(-\frac{4\ln 2\; t^2
 - $P(t)$：离脉冲中心 $t$（$\text{s}$）处的归一化时间分布，$\text{s}^{-1}$（`timePulse`）。
 
 式 (11) 中第二个因子是高斯脉冲时间分布平方的积分。光强沿光路只按 $\alpha$ 衰减。$\alpha \ne 0$ 时按式 (10) 加 SPA 载流子群，`tech` 为 `"TPA"` 时再按式 (11) 加 TPA 载流子群；双光子激光的 $\alpha$ 是缺陷对带隙以下光子的吸收（代码注释）。每个群的产生时刻以 `central_time` 为中心展宽：SPA 群的半高全宽为 $\tau$，TPA 群为 $\tau/\sqrt{2}$，因为 $P^2(t)$ 是宽度缩小 $\sqrt{2}$ 的高斯。由 `LaserInjection` 实现。吸收系数表 `Si.txt` 取自文献 [7]。
+
+式 (7a) 与文献 [16] 的式 (3) 差一个因子：原文在求和之外除以 $\hbar\omega$，按原文的参数算出的吸收比原文自己的图 4（$75\ \text{K}$）低 $\hbar\omega \approx 3.3$ 倍，去掉这个除数后与图 4 一致，与文献 [17] 的 $300\ \text{K}$ 实测相比，$353$–$364\ \text{nm}$ 相差不到 $10\%$（$355\ \text{nm}$：$225$ 对 $210\ \text{cm}^{-1}$），$336\ \text{nm}$ 高 $21\%$，$369\ \text{nm}$ 低 $26\%$；更长的波长上文献 [17] 停在约 $13\ \text{cm}^{-1}$ 的测量下限，文献 [16] 测到 $0.02\ \text{cm}^{-1}$。原文参数只拟合到 $\hbar\omega = 3.8\ \text{eV}$，波长短于 $326\ \text{nm}$ 时 `absorption_coefficient` 报错，要求在激光文件里给 `alpha`。$300\ \text{K}$ 下 $375\ \text{nm}$ 的 $\alpha = 9.05\ \text{cm}^{-1}$；最低阈值 $E_{GX} - \hbar\Omega_7 = 3.126\ \text{eV}$（约 $397\ \text{nm}$），更长的波长没有带间吸收，$\alpha = 0$，缺陷的吸收须在激光文件里给 `alpha`。
+
+局限：只用了 $E \perp c$ 的一组参数，适用于在 $c$ 面晶圆上从顶面或底面入射；侧面入射时偏振可能平行于 $c$ 轴，文献 [16] 表 II 的那组参数没有接入。不计掺杂对带边的影响，文献 [16] 测的是名义未掺杂的外延层。
 
 ### 放射源
 
@@ -144,6 +159,20 @@ $$f = \frac{1 - \cos\theta_c}{2} \tag{16}$$
 
 核素由 `NuclideGeneratorAction`（`G4GeneralParticleSource`，动能 $0$）产生，时间置零、子核截断和圆锥方向由 `DecayStackingAction` 完成，判据是轨迹的产生过程子类型为 `RADIOACTIVE_DECAY = 210`。代码注释说明：Geant4 自带的 `/process/had/rdm/decayHalfAngle` 只能绕 $z$ 轴，所以自己实现。Geant4 放射性衰变见文献 [5]。
 
+### 多块器件的放置
+
+装置的 `devices` 给出若干槽位，每个槽位放一块器件，器件板面垂直于 $z$ 轴，可绕 $z$ 轴转 $0^\circ$、$90^\circ$、$180^\circ$ 或 $270^\circ$。槽位器件坐标 $(x, y, z)$（原点在器件前表面一角，与单器件的器件坐标相同）与 Geant4 坐标 $\mathbf{r}_{\text{G4}}$ 的关系为：
+
+$$\mathbf{r}_{\text{G4}} = \mathbf{P} + \begin{pmatrix} \cos\phi & -\sin\phi & 0 \\ \sin\phi & \cos\phi & 0 \\ 0 & 0 & 1 \end{pmatrix} \begin{pmatrix} x - l_x/2 \\ y - l_y/2 \\ z \end{pmatrix} \tag{17}$$
+
+其中：
+
+- $\mathbf{P}$：槽位的 `position`，器件前表面（器件坐标 $z = 0$ 的面）中心的 Geant4 坐标，$\mu\text{m}$；
+- $\phi$：槽位的 `rotation_z`，度，只取 `0`、`90`、`180`、`270`；
+- $l_x, l_y$：该槽位器件的尺寸，$\mu\text{m}$。
+
+$\mathbf{P} = 0$、$\phi = 0$ 时与单器件的放置相同。
+
 ## 算法
 
 ### 内置常数
@@ -163,30 +192,31 @@ $$f = \frac{1 - \cos\theta_c}{2} \tag{16}$$
 | 器件密度 | Diamond `3.52`，SiC `3.21`（Si:C 原子数 `50:50`） | $\text{g/cm}^3$ | `geant4/detector_construction.py` | 无 |
 | `RADIOACTIVE_DECAY` | `210` | — | `geant4/nuclide_source.py`，放射性衰变的过程子类型 | 无 |
 | $h$, $c$ | `6.626e-34`, `2.998e8` | $\text{J}\cdot\text{s}$, $\text{m/s}$ | `laser.py`，式 (8) | 无 |
+| 4H-SiC 吸收模型参数 | 见式 (7a)、(7b) 的变量说明 | — | `laser.py`，文献 [16] 表 I 与式 (5) | 无 |
 | 环数、扇区数 | `4`, `8` | 个 | `laser.py`，激光横截面的划分 | 无 |
 | 光路采样密度 | 每个最细尺度 `50` 点 | — | `laser.py`，见“激光载流子群” | 无 |
 
 ### `simulate_deposits` 的分支
 
-`simulate_deposits(my_d, source, g4setup, events, g4_seed, edep_min, edep_max, fano, generated, generated_limit, picture, drawn)` 按以下顺序执行：
+`simulate_deposits(devices, source, g4setup, events, g4_seed, edep_min, edep_max, fano, generated, generated_limit, picture, drawn)` 按以下顺序执行。`devices` 是槽位名到器件的有序字典。装置没有 `devices` 键时等同于 `"devices": {"Device": {"position": [0, 0, 0]}}`，即单器件实验的槽位名为 `"Device"`、传 `{"Device": my_d}`。装置的槽位名与 `devices` 参数的槽位名必须一一对上（顺序可以不同），多了、少了都抛 `ValueError`（`the g4setup places <装置的槽位>, the devices are <给的槽位>`）。
 
 1. **检查源的类型**：`source["kind"]` 不是 `"toy_mip"`、`"beam"`、`"decay_source"` 之一时抛 `ValueError`（`no simulation of deposits for a source of kind ...`）。
 2. **检查事例数**：`asked(events, generated, generated_limit)` 要求 `events`（要记录的事例数）与 `generated`（要生成的事例数）恰好给一个，否则抛 `ValueError`；给出的数和 `generated_limit` 小于 `1` 时抛 `ValueError`（`the <name> asked for are <number>: at least 1`）。
-3. **toy MIP 分支**（`kind == "toy_mip"`）：取 `g4setup["maxstep"]`（`g4setup` 为 `None` 时取 `DEVICE_ALONE["maxstep"] = 2`），调用 `mip_deposits`，见下节。这一支由 Python 完成，随机数取自流 `stream("toy_mip")`。
+3. **toy MIP 分支**（`kind == "toy_mip"`）：取 `g4setup["maxstep"]`（`g4setup` 为 `None` 时取 `DEVICE_ALONE["maxstep"] = 2`），调用 `mip_deposits(devices, source, g4setup, ...)`，见下节。这一支由 Python 完成，随机数取自流 `stream("toy_mip")`。
 4. **Geant4 分支**（`kind` 为 `"beam"` 或 `"decay_source"`）：
    1. 导入 `geant4.interaction`。缺 `g4ppyy` 时抛 `MissingDependency`（`Geant4's Python bindings, g4ppyy, are not installed in this Python`）。
    2. `g4_configuration` 合成运行配置：源或其 `particles` 中出现 `par_in`、`par_out`、`par_angle` 时抛 `ValueError`（源的位置属于装置）；取 `g4setup`（`None` 时取 `DEVICE_ALONE`）的深拷贝，弹出 `"source"`，没有时抛 `ValueError`（`the g4setup ... does not place the source`）；用源的键覆盖装置的同名键，删去 `name`、`kind`、`description`；令 `par_in = source.at`、`par_out = source.towards`、`par_angle = source.angle`（缺省 `0`）。有 `particles` 时，每项先取配置里的 `par_randx`、`par_randy`、`par_type`、`par_energy`，再用自己的键覆盖，发射点与瞄准点各加 `offset`（缺省 `[0, 0, 0]` $\mu\text{m}$）。最后写入 `recorded_events = events`、`total_events = generated`（按记录数运行时为 `generated_limit`）、`edep_min`、`edep_max`。
-   3. `tilted` 按入射角转动源：`par_angle` 为 `0` 时不变。否则记 $\mathbf{r}_{\text{in}} = (x_0, y_0, z_0)$、$\mathbf{r}_{\text{out}} = (x_1, y_1, z_1)$；若 $0 \le z_0 \le l_z$ 或 $z_1 = z_0$，抛 `ValueError`（源连线不从任一面进入器件）。取入射面 $z_f = l_z$（$z_0 > l_z$）或 $z_f = 0$，转轴平行于 $y$ 轴、过 $x_p = x_0 + \frac{z_f - z_0}{z_1 - z_0}(x_1 - x_0)$，对配置及各 `particles` 的 `par_in`、`par_out` 作
+   3. `tilted` 按入射角转动源：`par_angle` 为 `0` 时不变。装置有 `devices` 而 `par_angle` 不为 `0` 时抛 `ValueError`（`a g4setup with devices tilts no source`）。否则记 $\mathbf{r}_{\text{in}} = (x_0, y_0, z_0)$、$\mathbf{r}_{\text{out}} = (x_1, y_1, z_1)$；若 $0 \le z_0 \le l_z$ 或 $z_1 = z_0$，抛 `ValueError`（源连线不从任一面进入器件）。取入射面 $z_f = l_z$（$z_0 > l_z$）或 $z_f = 0$，转轴平行于 $y$ 轴、过 $x_p = x_0 + \frac{z_f - z_0}{z_1 - z_0}(x_1 - x_0)$，对配置及各 `particles` 的 `par_in`、`par_out` 作
       $$x' = (x - x_p)\cos\vartheta + (z - z_f)\sin\vartheta + x_p, \qquad z' = -(x - x_p)\sin\vartheta + (z - z_f)\cos\vartheta + z_f$$
       其中 $\vartheta$ 为 `par_angle`（度）。$\vartheta > 0$ 时，顶面上方的源转到 $-x$ 一侧，粒子带 $+x$ 分量射向入射点。$y$、`par_randx`、`par_randy` 不变，装置里的物体不动。
-   4. 构建几何（`GeneralDetectorConstruction`；`geant4_model == "gdml_import"` 时用 `GDMLDetectorConstruction`）。世界是 `world` 材料的立方体，中心在器件 $z = 0$ 面的中点，半边长由 `world_half_side` 给出：令 $\rho = \max\bigl(l_x/2,\ l_y/2,\ l_z,\ \max_{\text{物体},u}(|p_u| + a_u/2),\ \max_{\text{发射点},u}(|r_{\text{in},u}| + R)\bigr)$，其中 $p_u$、$a_u$ 是物体的 `position_<u>`、`side_<u>`，$R$ 为 `par_radius`；$\rho \le 25000\ \mu\text{m}$ 时取 `25000`，否则取 $2\rho$。器件是 $l_x \times l_y \times l_z$ 的长方体，中心在 $(0, 0, l_z/2)$，即占据 $x \in [-l_x/2, l_x/2]$、$y \in [-l_y/2, l_y/2]$、$z \in [0, l_z]$。随后按 `object` 建周边物体。同一 `compound_name` 的二元化合物组分或密度不一致时抛 `ValueError`（`Conflicting Geant4 material definition for ...`）。二元化合物按原子数份额换算质量份额 $m_i = n_i A_i / (n_1 A_1 + n_2 A_2)$。
+   4. 构建几何（`GeneralDetectorConstruction`；`geant4_model == "gdml_import"` 时用 `GDMLDetectorConstruction`）。世界是 `world` 材料的立方体，中心在器件 $z = 0$ 面的中点，半边长由 `world_half_side` 给出：令 $\rho = \max\bigl(l_x/2,\ l_y/2,\ l_z,\ \max_{\text{物体},u}(|p_u| + a_u/2),\ \max_{\text{发射点},u}(|r_{\text{in},u}| + R)\bigr)$，其中 $p_u$、$a_u$ 是物体的 `position_<u>`、`side_<u>`，$R$ 为 `par_radius`；$\rho \le 25000\ \mu\text{m}$ 时取 `25000`，否则取 $2\rho$。器件是 $l_x \times l_y \times l_z$ 的长方体，中心在 $(0, 0, l_z/2)$，即占据 $x \in [-l_x/2, l_x/2]$、$y \in [-l_y/2, l_y/2]$、$z \in [0, l_z]$。装置有 `devices` 时，世界中心在 Geant4 原点，$\rho$ 中器件一项换成各槽位的 $\max\bigl(|P_x| + \tfrac{1}{2}\max(l_x, l_y),\ |P_y| + \tfrac{1}{2}\max(l_x, l_y),\ |P_z| + l_z\bigr)$；每个槽位建一个以槽位名命名、材料按该槽位器件 `material` 取的长方体逻辑体，按式 (17) 放置：前表面中心在 `position` $\mathbf{P}$，绕 $z$ 轴转 `rotation_z`。随后按 `object` 建周边物体。同一 `compound_name` 的二元化合物组分或密度不一致时抛 `ValueError`（`Conflicting Geant4 material definition for ...`）。二元化合物按原子数份额换算质量份额 $m_i = n_i A_i / (n_1 A_1 + n_2 A_2)$。
    5. 设置随机引擎、物理表与用户动作。源含 `nuclides` 时用 `NuclideGeneratorAction` 与 `DecayStackingAction`，否则用 `GeneralPrimaryGeneratorAction`。后者每事例对每个粒子从流 `stream("source")` 抽 $\delta_x \sim U(-\texttt{par\_randx}, \texttt{par\_randx})$、$\delta_y \sim U(-\texttt{par\_randy}, \texttt{par\_randy})$，方向取 $\mathbf{d} = \mathbf{r}_{\text{out}} - \mathbf{r}_{\text{in}} + (\delta_x, \delta_y, 0)$，从 $\mathbf{r}_{\text{in}}$ 发射；`par_type` 为列表时再抽一个等概率的下标。`par_type` 与 `par_energy` 列表长度不等时抛 `ValueError`。
    6. 执行 `/run/initialize`；给了 `picture` 且 `drawn > 0` 时打开离屏绘图（见“图”）；`BeamOn(total_events)`。
-   7. 事例记录：事例结束时，若器件内总沉积 $E_{\text{tot}} > 0$ 且 $E_{\text{tot}} \ge$ `edep_min`、$E_{\text{tot}} \le$ `edep_max`（未给的界不检查），记下该事例。按记录数运行时，记录数达到 `recorded_events` 即 `AbortRun`；生成事例数 `generated_events` 取已结束的事例数。按生成数运行时 `generated_events = total_events`。
-   8. `deposits()`：按记录数运行而记录数仍少于 `recorded_events` 时抛 `RuntimeError`（`... events asked for were recorded when the limit of ... generated events was reached ...`）。否则把各步位置由 Geant4 坐标换到器件坐标 $\mathbf{r}_{\text{dev}} = \mathbf{r}_{\text{G4}} + (l_x/2,\ l_y/2,\ 0)$，用 `deposits_of_steps("Device", ...)` 去掉 $E_k \le 0$ 的步和没有剩余步的事例。事例号是 Geant4 的 `eventID`。
+   7. 事例记录（多器件时的记录条件见 `require` 与各槽位能量窗）：事例结束时，若器件内总沉积 $E_{\text{tot}} > 0$ 且 $E_{\text{tot}} \ge$ `edep_min`、$E_{\text{tot}} \le$ `edep_max`（未给的界不检查），记下该事例。按记录数运行时，记录数达到 `recorded_events` 即 `AbortRun`；生成事例数 `generated_events` 取已结束的事例数。按生成数运行时 `generated_events = total_events`。
+   8. `deposits()`：按记录数运行而记录数仍少于 `recorded_events` 时抛 `RuntimeError`（`... events asked for were recorded when the limit of ... generated events was reached ...`）。否则把各步位置由 Geant4 坐标换到所在器件的器件坐标：单器件为 $\mathbf{r}_{\text{dev}} = \mathbf{r}_{\text{G4}} + (l_x/2,\ l_y/2,\ 0)$，多器件按式 (17) 的逆变换；对每块器件用 `deposits_of_steps(<槽位名>, ...)` 去掉 $E_k \le 0$ 的步，一个事例的各器件沉积步按 `devices` 的顺序首尾相接，去掉没有剩余步的事例。事例号是 Geant4 的 `eventID`。
    9. 无论是否出错，最后调用 `close()` 释放 Geant4 对象。
 5. **写入源发射比例**：`generated_fraction(source)`：源含 `nuclides` 且 `par_cone` 非 `None` 时为式 (16)，否则为 `1.0`。
-6. **电离**：对每个事例调用 `ionized_pairs(event, my_d.material, fano)`。材料不在 `PAIR_ENERGY_EV` 中时抛 `ValueError`；`fano=True` 而材料不在 `FANO_FACTOR` 中时抛 `ValueError`。每个事例从自己的流 `stream(f"ionization/{event.event}")` 抽样，所以一个事例的对数与其前记录了哪些事例无关。
+6. **电离**：对每个事例调用 `ionized_pairs(event, material, fano)`，每一步的 `material` 取它所在槽位器件的 `material`。材料不在 `PAIR_ENERGY_EV` 中时抛 `ValueError`；`fano=True` 而材料不在 `FANO_FACTOR` 中时抛 `ValueError`。每个事例从自己的流 `stream(f"ionization/{event.event}")` 抽样，所以一个事例的对数与其前记录了哪些事例无关。
 
 `write_simulated_deposits` 调用 `simulate_deposits` 后用 `write_deposits` 写文件，返回记录事例数。
 
@@ -194,7 +224,7 @@ GDML 导入模式按 `material` 为 `"Si"`（`G4_Si`）和 `"SiC"`（Si、C 原�
 
 ### 能损线切成沉积步
 
-**Geant4**：步长由 Geant4 决定，器件内不超过 `maxstep`（式 (3)）。`GeneralSteppingAction` 对前点逻辑体名为 `"Device"` 的每一步调用 `RecordDevice`：累加 $E_{\text{tot}}$，记下步中点 $\frac{1}{2}(\mathbf{r}^{\text{pre}} + \mathbf{r}^{\text{post}}) \times 1000$（Geant4 的 $\text{mm}$ 换成 $\mu\text{m}$）、前点 $\mathbf{r}^{\text{pre}} \times 1000$（写作 `x_start` 等）、沉积能量（$\text{MeV}$）和前点的全局时间（$\text{s}$）。
+**Geant4**：步长由 Geant4 决定，器件内不超过 `maxstep`（式 (3)）。`GeneralSteppingAction` 对前点逻辑体名为 `"Device"`（多器件时为某个槽位名）的每一步调用 `RecordDevice`：按逻辑体名分开记录，累加 $E_{\text{tot}}$，记下步中点 $\frac{1}{2}(\mathbf{r}^{\text{pre}} + \mathbf{r}^{\text{post}}) \times 1000$（Geant4 的 $\text{mm}$ 换成 $\mu\text{m}$）、前点 $\mathbf{r}^{\text{pre}} \times 1000$（写作 `x_start` 等）、沉积能量（$\text{MeV}$）和前点的全局时间（$\text{s}$）。
 
 **toy MIP**（`mip_deposits`）：
 
@@ -206,9 +236,16 @@ GDML 导入模式按 `material` 为 `"Si"`（`G4_Si`）和 `"SiC"`（Si、C 原�
 6. 第 $k$ 段（$k = 0, \dots, n-1$）的位置取段中点 $\mathbf{r}_s + \frac{k + 0.5}{n}(\mathbf{r}_e - \mathbf{r}_s)$，起点 $\mathbf{r}_s + \frac{k}{n}(\mathbf{r}_e - \mathbf{r}_s)$，时刻 $0.0\ \text{s}$，探测器名 `"Device"`。
 7. 返回 `Deposits(generated_events = 最后一个事例号 + 1, ...)`。
 
+装置有 `devices` 时，径迹在 Geant4 坐标中穿过全部槽位，第 3、4、6 步换成下面的做法，其余不变：
+
+- 源含 `start`、`end`、`position_range_um` 时抛 `ValueError`（多器件的径迹起点由装置的 `source` 给出）。
+- 起点 $\mathbf{r}_s$ 取装置的 `source.at`，方向取 `source.towards - source.at`；有 `direction_sigma_mrad` 时按第 3 步抽斜率，加到方向的 $dx/dz$、$dy/dz$ 上。方向的 $z$ 分量不为正时抛 `ValueError`。
+- 对 `devices` 的每个槽位，取径迹在 $z \in [P_z, P_z + l_z]$ 内的一段，长度 $L$ 按第 4 步分段，每段中点和起点按式 (17) 的逆变换换到该槽位的器件坐标，横向落在 $[0, l_x] \times [0, l_y]$ 以外的段舍去，探测器名为槽位名，时刻 $0.0\ \text{s}$。各槽位的段按 `devices` 的顺序首尾相接。
+- 第 5 步的记录条件见 `require` 与各槽位能量窗。
+
 ### 激光载流子群
 
-`LaserInjection(my_d, laser_dic)` 读入激光键（见“接口”）。未给 `alpha` 时按式 (7) 查表：组件里没有 `deposit/absorption/<material>.txt` 时抛 `ValueError`；$10^3\lambda$ 小于表的最短波长时抛 `ValueError`；大于最长波长时 $\alpha = 0$。然后先在 $\alpha \ne 0$ 时用 $k = 2$、展宽 $\tau$ 加 SPA 群，再在 `tech == "TPA"` 时用 $k = 4$、展宽 $\tau/\sqrt{2}$ 加 TPA 群。`tech` 不是 `"SPA"`、`"TPA"` 时在加完 SPA 群之后抛 `NameError(tech)`。每次加群（`_add_groups`）的步骤：
+`LaserInjection(my_d, laser_dic)` 读入激光键（见“接口”）。未给 `alpha` 时：器件材料为 `"SiC"` 时按式 (7a)、(7b) 以器件的 `temperature` 计算，$\hbar\omega > 3.8\ \text{eV}$ 时抛 `ValueError`；其他材料按式 (7) 查表，组件里没有 `deposit/absorption/<material>.txt` 时抛 `ValueError`，$10^3\lambda$ 小于表的最短波长时抛 `ValueError`，大于最长波长时 $\alpha = 0$。然后先在 $\alpha \ne 0$ 时用 $k = 2$、展宽 $\tau$ 加 SPA 群，再在 `tech == "TPA"` 时用 $k = 4$、展宽 $\tau/\sqrt{2}$ 加 TPA 群。`tech` 不是 `"SPA"`、`"TPA"` 时在加完 SPA 群之后抛 `NameError(tech)`。每次加群（`_add_groups`）的步骤：
 
 1. **光路坐标**（`_beam_frame`）：`"top"` 从 $z = 0$ 沿 $+z$，光路长 $l_z$，焦点 $s_f = f_z l_z$，横向坐标 $(u, v) = (x, y)$，中心 $(f_x l_x, f_y l_y)$；`"bottom"` 从 $z = l_z$ 沿 $-z$，光路长 $l_z$，$s_f = l_z - f_z l_z$，$z = l_z - s$；`"edge"` 从 $x = 0$ 沿 $+x$，光路长 $l_x$，$s_f = f_x l_x$，$(u, v) = (y, z)$，中心 $(f_y l_y, f_z l_z)$。其中 $f_x, f_y, f_z$ 为 `fx_rel`、`fy_rel`、`fz_rel`。其他 `direction` 抛 `NameError(direction)`。
 2. **光路采样**：最细尺度 $d = \min\bigl(L_{\text{beam}},\ z_R,\ 10^{6}/\alpha\bigr)$（$\alpha = 0$ 时第三项取 $L_{\text{beam}}$），在 $[0, L_{\text{beam}}]$ 上取 $\lceil 50 L_{\text{beam}}/d \rceil + 1$ 个等距点，按式 (10) 或 (11) 求 $dN/ds$，用梯形法累积得 $M(s)$（乘 $10^{-6}$ 换成每 $\mu\text{m}$），总对数 $N_{\text{tot}} = M(L_{\text{beam}})$。
@@ -272,6 +309,7 @@ GDML 导入模式按 `material` 为 `"Si"`（`G4_Si`）和 `"SiC"`（Si、C 原�
 | --- | --- | --- | --- |
 | `l_x`, `l_y`, `l_z` | 无（必选） | $\mu\text{m}$ | 器件尺寸，见 [器件模型](device.md) |
 | `material` | 无（必选） | 无 | `"Si"`、`"SiC"` 或 `"Diamond"`；决定 Geant4 材料、电离能与 Fano 因子；toy MIP 只支持 `"Si"`、`"SiC"` |
+| `temperature` | 无（`"SiC"` 器件的激光未给 `alpha` 时必选） | $\text{K}$ | 式 (7b) 的 $T$ |
 
 ### 装置
 
@@ -288,8 +326,21 @@ GDML 导入模式按 `material` 为 `"Si"`（`G4_Si`）和 `"SiC"`（Si、C 原�
 | `source` | `{"at": [0, 0, -17000], "towards": [0, 0, 0], "angle": 0}` | $\mu\text{m}$, 度 | Geant4 源必填；`at` 为源位置，`towards` 为瞄准点（Geant4 坐标），`angle` 为入射角（缺省 `0`），非零时按“`simulate_deposits` 的分支”第 4.3 步转动 |
 | `object` | `{}` | 无 | Geant4 源必填；周边物体，可含 `"elemental"` 和 `"binary_compounds"` 两类 |
 | `par_type`, `par_energy`, `par_randx`, `par_randy` | 无 | 见源 | 可选；装置可给这些束流键，源里的同名键覆盖它们 |
+| `devices` | 无（可选） | 无 | 器件的槽位，见下表；每个槽位按式 (17) 放一块器件。不写时等同于只有一个槽位 `"Device"`、`position` 为 `[0, 0, 0]` |
 
 Geant4 坐标中器件占据 $x \in [-l_x/2, l_x/2]$、$y \in [-l_y/2, l_y/2]$、$z \in [0, l_z]$，顶面 $z = 0$ 之上为 $z < 0$。
+
+#### `devices` 键
+
+`devices` 是槽位名到下表字典的映射。槽位名同时是 Geant4 逻辑体名和沉积文件的探测器名，只用 `[A-Za-z0-9_-]` 中的字符，不能是 `"Device"`、`object` 里出现的名字或 [能量沉积环节](../stages/deposit.md) 的配置键（槽位名会出现在 `deposit.<槽位>.<键>` 这样的地址里），否则抛 `ValueError`。每个槽位放哪块器件不由装置给，由调用方的 `devices` 参数给（见“`simulate_deposits` 的分支”）。
+
+| 键 | 默认值 | 单位 | 含义 |
+| --- | --- | --- | --- |
+| `position` | 无（必填） | $\mu\text{m}$ | 器件前表面中心的 Geant4 坐标 `[x, y, z]`，式 (17) 的 $\mathbf{P}$ |
+| `rotation_z` | `0` | 度 | 绕 $z$ 轴的转角，只取 `0`、`90`、`180`、`270`，其他值抛 `ValueError` |
+| `colour` | `[1, 0.1, 0.8]` | 无 | 可视化 RGB 颜色（`0` 至 `1`） |
+
+两个槽位在 $z$ 上重叠且横向也重叠时抛 `ValueError`（`the devices <甲> and <乙> overlap`）。
 
 #### `object` 两类几何体键
 
@@ -354,6 +405,7 @@ GDML 文件中含字符串 `RASER_GDML_WRAPPER_WORLD` 时，GDML 的世界体直
 | `Sr90_collimator` | `src/raser_bench/signal/components/deposit/` | 空气中的黄铜准直器（见 [信号](../bench/signal.md)） |
 | `pcb_readout_gdml` | `src/raser_bench/signal/components/deposit/` | 导入 `pcb_readout.gdml` 的 PCB 读出板（见 [信号](../bench/signal.md)） |
 | `time_resolution` | `src/raser_bench/timeres/components/deposit/` | 参考硅器件与两块开孔 PCB 板（见 [时间分辨](../bench/timeres.md)） |
+| `telescope` | `src/raser_bench/telescope/components/deposit/` | 真空中沿 $z$ 排布的 8 个槽位，默认 3 + 2 + 3（见 [束流望远镜](../bench/telescope.md)） |
 
 ### 放射源和束流
 
@@ -416,7 +468,7 @@ GDML 文件中含字符串 `RASER_GDML_WRAPPER_WORLD` 时，GDML 的世界体直
 | `direction` | 无（必填） | 无 | `"top"`（从 $z = 0$ 沿 $+z$）、`"bottom"`（从 $z = l_z$ 沿 $-z$）或 `"edge"`（从 $x = 0$ 沿 $+x$） |
 | `refractionIndex` | 无（必填） | 无 | 器件材料在该波长的折射率 $n$ |
 | `wavelength` | 无（必填） | $\text{nm}$ | 激光波长 |
-| `alpha` | 按式 (7) 查表 | $\text{m}^{-1}$ | 吸收系数；给 `0` 时没有单光子吸收，`"TPA"` 激光只有 TPA 群 |
+| `alpha` | 硅按式 (7) 查表，碳化硅按式 (7a) 计算 | $\text{m}^{-1}$ | 吸收系数；给 `0` 时没有单光子吸收，`"TPA"` 激光只有 TPA 群 |
 | `beta_2` | 无（`"TPA"` 必填） | $\text{m/W}$ | 双光子吸收系数 |
 | `temporal_FWHM` | 无（必填） | $\text{s}$ | 脉冲时间半高全宽 $\tau$ |
 | `pulse_energy` | 无（必填） | $\text{J}$ | 脉冲能量 $E_p$ |
@@ -437,7 +489,7 @@ GDML 文件中含字符串 `RASER_GDML_WRAPPER_WORLD` 时，GDML 的世界体直
 | --- | --- | --- |
 | `LA01IR_top_Si`、`LA01IR_edge_Si` | `"SPA"` | $1064\ \text{nm}$，硅，查表取 $\alpha$ |
 | `LA01R_top_Si`、`LA01R_bottom_Si` | `"SPA"` | $660\ \text{nm}$，硅，查表取 $\alpha$ |
-| `PIL037_top_SiC`、`PIL037_edge_SiC` | `"SPA"` | $375\ \text{nm}$，碳化硅，`alpha` 分别为 `1000`、`21000` $\text{m}^{-1}$ |
+| `PIL037_top_SiC`、`PIL037_edge_SiC` | `"SPA"` | $375\ \text{nm}$，碳化硅，按式 (7a) 计算 $\alpha$（$300\ \text{K}$ 时 $9.05\ \text{cm}^{-1}$） |
 | `TPA1550_top_Si`、`TPA1550_edge_Si` | `"TPA"` | $1550\ \text{nm}$，硅，长于表的上限，$\alpha = 0$，只有 TPA 群 |
 
 ### `deposit.h5` 文件格式
@@ -459,8 +511,8 @@ GDML 文件中含字符串 `RASER_GDML_WRAPPER_WORLD` 时，GDML 的世界体直
 | --- | --- | --- | --- |
 | `event` | `(recorded_events,)`, `int64` | 无 | 事例号：Geant4 的 `eventID`，toy MIP 的生成序号，激光为 `0` |
 | `count` | `(recorded_events,)`, `int64` | 步 | 每个事例的沉积步数 |
-| `detector` | `(sum(count),)`, 变长 `str` | 无 | 沉积步所在的探测器名，本包写 `"Device"` |
-| `x`, `y`, `z` | `(sum(count),)`, `float64` | $\mu\text{m}$ | 器件坐标中的步中点 |
+| `detector` | `(sum(count),)`, 变长 `str` | 无 | 沉积步所在的探测器名：单器件写 `"Device"`，多器件写槽位名 |
+| `x`, `y`, `z` | `(sum(count),)`, `float64` | $\mu\text{m}$ | 所在器件的器件坐标中的步中点 |
 | `t` | `(sum(count),)`, `float64` | $\text{s}$ | 自初级粒子产生起的时间；Geant4 取步前点的全局时间，toy MIP 为 `0.0`，激光为 `central_time` |
 | `e` | `(sum(count),)`, `float64` | $\text{MeV}$ | 沉积能量；激光为对数乘电离能 |
 | `pairs` | `(sum(count),)`, `float64` | 对 | 电子-空穴对数 |
@@ -475,7 +527,7 @@ GDML 文件中含字符串 `RASER_GDML_WRAPPER_WORLD` 时，GDML 的世界体直
 | `<output>.png` | `view_geometry`（TSG 驱动） | 几何与生成事例的径迹 | Geant4 坐标 |
 | `<output>` 矢量图 | `view_geometry`（OGL 驱动） | 同上，`2000 × 2000`，白底 | Geant4 坐标 |
 | `nocarrier_<fx>_<fy>_<fz>.pdf` | `LaserInjection.draw_nocarrier3D` | 载流子群按对数加权的 `TH3D`，$50^3$ 箱，范围为各群的包围盒；轴标题 `Depth`、`Width`、`Thick`（即 $x$、$y$、$z$）；文件名中的相对坐标保留 5 位小数 | $\mu\text{m}$ |
-| `nocarrier2D_<fx>_<fy>_<fz>.pdf` | `LaserInjection.draw_nocarrier2D` | $x$-$z$ 平面的 `TH2D`（`COLZ`），$50 \times 50$ 箱，颜色为对数（`Carriers`） | $\mu\text{m}$ |
+| `nocarrier2D_<fx>_<fy>_<fz>.pdf` | `LaserInjection.draw_nocarrier2D` | $y = f_y l_y$ 的 $x$-$z$ 面上（三种入射方向下这个面都过光轴）电子-空穴对的体密度，`TH2D`（`COLZ`），由式 (10)、(11) 的 $dN/ds$ 乘横向分布 $\frac{k}{\pi w^2}\exp(-k r^2/w^2)$ 在 $200 \times 200$ 的网格上直接算出，颜色为对每 $\mu\text{m}^3$（`Pairs [μm⁻³]`）；沿光路从入射面画到累积对数 $M(s)$ 达到 $0.99\,N_{\text{tot}}$ 处，横向画到光轴两侧 $2 w_{\max}$（$w_{\max}$ 为这段光路上光斑半径的最大值，超出器件处截掉） | $\mu\text{m}$ |
 
 ## 参考文献
 
@@ -494,3 +546,5 @@ GDML 文件中含字符串 `RASER_GDML_WRAPPER_WORLD` 时，GDML 的世界体直
 - [13] M. E. Levinshtein, S. L. Rumyantsev, M. S. Shur (eds.), *Properties of Advanced Semiconductor Materials*, Wiley (2001)
 - [14] H. Bichsel, “Straggling in thin silicon detectors”, Rev. Mod. Phys. 60 (1988) 663, doi:10.1103/RevModPhys.60.663
 - [15] R. W. Boyd, *Nonlinear Optics*, 3rd ed., Academic Press (2008)
+- [16] P. Grivickas, V. Grivickas, J. Linnros, A. Galeckas, “Fundamental band edge absorption in nominally undoped and doped 4H-SiC”, J. Appl. Phys. 101 (2007) 123521, doi:10.1063/1.2749335
+- [17] S. G. Sridhara, R. P. Devaty, W. J. Choyke, “Absorption coefficient of 4H silicon carbide from 3900 to 3250 Å”, J. Appl. Phys. 84 (1998) 2963, doi:10.1063/1.368403

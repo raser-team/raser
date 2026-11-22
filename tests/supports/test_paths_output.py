@@ -85,6 +85,31 @@ def test_work_is_in_the_source_tree_or_in_the_current_folder_never_where_the_pac
     assert paths.default_work_root(tree, here) == tree / "work"
     assert paths.default_work_root(None, here) == here / "work"
     # this checkout, run as it is or after pip install -e
-    assert paths.REPO_ROOT is not None and paths.default_work_root() == paths.REPO_ROOT / "work"
+    assert (
+        paths.REPO_ROOT is not None
+        and paths.default_work_root() == paths.REPO_ROOT / "work"
+    )
     monkeypatch.setenv("RASER_WORK_PATH", str(tmp_path / "given"))
     assert paths.work_root() == tmp_path / "given"
+
+
+def test_the_files_of_a_bench_or_an_app_are_found_beside_the_library() -> None:
+    from raser.supports.paths import (
+        app_component_root,
+        app_file_path,
+        module_work_name,
+        PACKAGES_ROOT,
+    )
+
+    assert (app_component_root("raser_bench/signal") / "g4setup").is_dir()
+    assert app_file_path("raser_app/cflm", "cflm_p1.json").is_file()
+    assert (
+        module_work_name(
+            PACKAGES_ROOT / "raser_bench" / "telescope" / "telescope_signal.py"
+        )
+        == "telescope"
+    )
+    assert (
+        module_work_name(PACKAGES_ROOT / "raser" / "core" / "readout" / "spice.py")
+        == "readout"
+    )

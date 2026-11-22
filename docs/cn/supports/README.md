@@ -1,6 +1,6 @@
 # 公共基础设施（`supports`）
 
-`src/raser/supports/` 处于 RASER 软件分层的最底层（分层边界见[架构总纲](../architecture.md)），只导入 Python 标准库和 `psutil`。它承接[命令行接口（`raser`）](../cli.md)传入的命令目标参数、运行环境变量、退出清理请求与异常拦截，执行工作区与项目路径解析（`paths`）、项目内输出边界检查与文件删除（`output`）、缺失依赖报告（`dependency`）、进程退出清理回调（`process`）及函数内存占用采样（`memory_decorator`），把解析好的 `Path` 对象、目录与文件操作、依赖异常及内存诊断交给[实验、扫描点与种子](../lifecycle/experiments.md)、[仿真链与环节入口（`stages`）](../stages/README.md)、[器件模型（`core/device`）](../core/device.md)等上层模块，以及 `components` 和测试包 `raser_bench`、应用包 `raser_app`。
+`src/raser/supports/` 处于 RASER 软件分层的最底层（分层边界见[架构总纲](../architecture.md)），只导入 Python 标准库和 `psutil`；出图（`figures`）另外导入 matplotlib 和 ROOT。它承接[命令行接口（`raser`）](../cli.md)传入的命令目标参数、运行环境变量、退出清理请求与异常拦截，执行工作区与项目路径解析（`paths`）、项目内输出边界检查与文件删除（`output`）、缺失依赖报告（`dependency`）、进程退出清理回调（`process`）、函数内存占用采样（`memory_decorator`）及各环节共用的出图样式与存图（[`figures`](figures.md)），把解析好的 `Path` 对象、目录与文件操作、依赖异常及内存诊断交给[实验、扫描点与种子](../lifecycle/experiments.md)、[仿真链与环节入口（`stages`）](../stages/README.md)、[器件模型（`core/device`）](../core/device.md)等上层模块，以及 `components` 和测试包 `raser_bench`、应用包 `raser_app`。
 
 ## 行为
 
@@ -140,7 +140,7 @@ Memory increase: RSS = 1.50 MB, VMS = 0.00 MB
      - `path.exists()` 为真但不是文件（例如传了目录）时，抛出 `IsADirectoryError: RASER <kind> input must be a file: <path>`，应改为指向具体文件；
      - `path.exists()` 为假时，抛出 `FileNotFoundError: Cannot find RASER <kind> file: <path>`，应核对文件路径。
    - 若 `name_or_path` 是纯组件名，转调并返回 `component_path(kind, str(name_or_path) + suffix)`；未找到时按第 3 步抛出 `component_path()` 的 `FileNotFoundError`。
-5. **定位测试类与应用类的包内文件（`app_file_path(app_name, filename)`）**：测试类在 `raser_bench` 包（`src/raser_bench/`）、应用类在 `raser_app` 包（`src/raser_app/`），与 `raser` 平级，按各自包的根目录构造 `path = <包根>/<名字>/<filename>`。当 `path.exists()` 为真时返回 `path`；目标不存在时抛出 `FileNotFoundError: Cannot find RASER app file: <path>`。原因是测试或应用名、文件名有误，或该数据文件未打进安装包，核对拼写并确认文件存在于对应包目录即可。
+5. **定位测试类与应用类的包内文件（`app_file_path(app_name, filename)`）**：测试类在 `raser_bench` 包（`src/raser_bench/`）、应用类在 `raser_app` 包（`src/raser_app/`），与 `raser` 平级，按各自包的根目录构造 `path = <包根>/<名字>/<filename>`。`app_name` 写成 `"<包名>/<名字>"`，例如 `"raser_app/cflm"`、`"raser_bench/signal"`。当 `path.exists()` 为真时返回 `path`；目标不存在时抛出 `FileNotFoundError: Cannot find RASER app file: <path>`。原因是测试或应用名、文件名有误，或该数据文件未打进安装包，核对拼写并确认文件存在于对应包目录即可。
 
 ### 模块工作路径与项目内输出边界保护
 
