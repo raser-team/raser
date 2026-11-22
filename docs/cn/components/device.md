@@ -59,7 +59,7 @@ flowchart LR
 
 | 键名 | 默认值 | 单位 | 含义 |
 | --- | --- | --- | --- |
-| `det_name` | JSON 文件名词干（`path.stem`） | 无 | 探测器名称，同时赋给 `Detector` 的 `det_name`、`device`、`region` 属性 |
+| `det_name` | JSON 文件名词干（`path.stem`） | 无 | 探测器名称，同时赋给 `Detector` 的 `det_name`、`device` 属性；网格里的区域不以它命名，见 [`core/field`](../core/field.md) 的建网格一步 |
 | `det_model` | 无（必填） | 无 | 探测器结构模型标识，库中取 `"planar"`、`"lgad"`、`"ilgad_planar"`、`"strip"`、`"lgadstrip"`、`"pixel"`、`"lgad_pixel"`、`"lgadpixel"`、`"3D_pixel"`、`"3D_column_series"` 之一；转小写后含 `"3d"` 时不做平行板结电容估算 |
 | `material` | 无（必填） | 无 | 半导体材料名，取 `"Si"`、`"SiC"`、`"Diamond"`（传入 [`core/model`](../core/model.md) 的 `Material` 及 [`core/deposit`](../core/deposit.md)）或 `"GaN"`（HEMT 输运分支） |
 | `l_x`, `l_y`, `l_z` | 无（必填） | `um` | 探测器沿 $x$、$y$、$z$ 方向的全尺寸，$z$ 为厚度方向 |
