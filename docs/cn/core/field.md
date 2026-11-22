@@ -270,6 +270,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 | `ELEMENTARY_CHARGE` | `1.602176634e-19` | C | `conductive.py`、`simple.py` | 无 |
 | 接触 $n_0$ 偏移 | `1e-10` | $\text{cm}^{-3}$ | 欧姆接触浓度 | 无 |
 | 最小偏压步长 | `1e-7` | V | 偏压扫描放弃条件 | 无 |
+| 最小注量步长 | `1e-7` 倍目标注量 | $\text{cm}^{-2}$ | 初值里升注量的放弃条件 | 无 |
 | 行晶胞扩展倍数 | `1.5`，上限 `2` 倍 $s_0$ | 无 | 权重场单晶胞拼接 | 无 |
 | 晶胞宽度容差 | `1e-6` 倍 `p_x` | 无 | `createRowOfCells` | 无 |
 | 节点重合容差 | `1e-9` 倍网格跨度 | 无 | `createRowOfCells`、`take_conductors_into_electrodes` | 无 |
@@ -314,7 +315,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 2. **建网格与常数**：见上节；`create_parameter` 写入温度与材料常数、可选 `parameter`、节点模型 `U_const`。
 3. **辐照与雪崩**：有 `irradiation` 块且不求权重场时启用辐照项；注量取 `field.irradiation_flux`，为 `null` 时取 `irradiation.irradiation_flux`。雪崩模型取 `avalanche_model`（`has_avalanche` 为假时为 `None`）。
 4. **电路**：在 `bias.electrode` 上接电压源 `V1`（直流 `0`，交流幅值 `ac.real`、`ac.imaginary`）。
-5. **初值**（`loop_section.initial_solver`）：先只解泊松方程，载流子取本征分布 $n = n_i e^{\psi/V_T}$、$p = n_i^2/n$，用 `initial` 的容差直流求解；再以本征浓度为初值建立式 (1)–(6) 并求解；然后删去本征载流子模型。
+5. **初值**（`loop_section.initial_solver`）：先只解泊松方程，载流子取本征分布 $n = n_i e^{\psi/V_T}$、$p = n_i^2/n$，用 `initial` 的容差直流求解；再以本征浓度为初值建立式 (1)–(6) 并求解；然后删去本征载流子模型。启用辐照项时，式 (1)–(6) 先在注量为 $0$ 下求解，再把注量逐步升到目标值 $\Phi$：各缺陷的浓度参数 `N_t_irr_<缺陷>` 取 $g_{\text{int}}\Phi_k$，每步以上一步的解为初值，用 `initial` 的容差直流求解。初始步长为 $\Phi\times$ `flux_step.initial`；一步成功，步长乘 `flux_step.increase_factor`，下一步超过 $\Phi$ 时截到 $\Phi$；一步报 `"Convergence failure"`，退回上一步的解，步长乘 `flux_step.decrease_factor` 后重试；步长小于 $10^{-7}\,\Phi$ 时抛出 `RuntimeError`，写明器件名和停下时的注量。
 6. **零偏压**：在 $0\ \text{V}$ 求解并存盘，写 `0V.dd`、`0V.devsim`，在 `node.json` 的 `solved.potential` 记 `0.0`。
 7. **目标与停点**：目标偏压 $V_g$ 取 `field.voltage`，为 `null` 时取 `bias.voltage`。一个场节点对应一个目标偏压；节点里存的中间偏压文件是升压到 $V_g$ 途中的存盘点。存盘点为 $\pm k\Delta_s$（$k = 1, \dots, \lfloor |V_g|/\Delta_s\rfloor$，$\Delta_s$ = `saved_voltage_interval`），末点不足 $|V_g|$ 时补上 $V_g$；曲线点同样按 `curve_voltage_interval` 生成。正负号随 $V_g$。间隔为 `0` 时抛出 `ValueError`。
 8. **步进**：初始步长 $\Delta$ = `voltage_step.initial`，符号随 $V_g$。每步试探 $V_t = V_c + \Delta$；若 $|V_t|$ 超过最近的停点（$V_g$、下一个存盘点、下一个曲线点中绝对值最小者），把 $V_t$ 截到该停点。
@@ -480,6 +481,8 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 | `voltage_step.absolute_error`, `.relative_error`, `.maximum_iterations` | `1e20`, `1e-4`, `100` | 无, 无, 次 | 偏压步与单点电容的直流求解 |
 | `voltage_step.initial` | `1.0` | V | 初始步长 |
 | `voltage_step.increase_factor`, `.decrease_factor` | `2.0`, `0.5` | 无 | 成功放大、失败缩小倍数 |
+| `flux_step.initial` | `0.01` | 无 | 初值里升注量的初始步长，占目标注量的比例 |
+| `flux_step.increase_factor`, `.decrease_factor` | `2.0`, `0.5` | 无 | 升注量一步成功放大、失败缩小的倍数 |
 | `saved_voltage_interval` | `100.0` | V | 存盘间隔 |
 | `curve_voltage_interval` | `10.0` | V | IV/CV/噪声曲线点间隔 |
 | `ac.real`, `ac.imaginary` | `1.0`, `0.0` | V | 小信号激励 |

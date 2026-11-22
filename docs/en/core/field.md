@@ -270,6 +270,7 @@ The quantities in the table below are written into the code. The "Key" column st
 | `ELEMENTARY_CHARGE` | `1.602176634e-19` | C | `conductive.py`, `simple.py` | None |
 | Contact $n_0$ offset | `1e-10` | $\text{cm}^{-3}$ | Ohmic contact concentration | None |
 | Minimum bias step size | `1e-7` | V | Bias sweep abort condition | None |
+| Minimum fluence step | `1e-7` of the target fluence | $\text{cm}^{-2}$ | Abort condition of the fluence steps of the initial solution | None |
 | Row cell expansion factor | `1.5`, upper limit `2` times $s_0$ | None | Single-cell stitching for weighting field | None |
 | Cell width tolerance | `1e-6` times `p_x` | None | `createRowOfCells` | None |
 | Node coincidence tolerance | `1e-9` times mesh span | None | `createRowOfCells`, `take_conductors_into_electrodes` | None |
@@ -314,7 +315,7 @@ When solving for the electric field, `solver_section.main` executes in the follo
 2. **Build mesh and constants**: as described above; `create_parameter` writes temperature and material constants, optional `parameter`, and node model `U_const`.
 3. **Irradiation and avalanche**: irradiation terms are enabled when an `irradiation` block is present and a weighting field is not being solved; the fluence is taken from `field.irradiation_flux`, falling back to `irradiation.irradiation_flux` when `null`. The avalanche model is taken from `avalanche_model` (`None` when `has_avalanche` is false).
 4. **Circuit**: attaches voltage source `V1` to `bias.electrode` (DC `0`, AC amplitude `ac.real`, `ac.imaginary`).
-5. **Initial solution** (`loop_section.initial_solver`): solves the Poisson equation alone first with intrinsic carrier distributions $n = n_i e^{\psi/V_T}$, $p = n_i^2/n$ using DC tolerances from `initial`; then sets up Eqs. (1)–(6) initialized from the intrinsic concentrations and solves; finally deletes the intrinsic carrier models.
+5. **Initial solution** (`loop_section.initial_solver`): solves the Poisson equation alone first with intrinsic carrier distributions $n = n_i e^{\psi/V_T}$, $p = n_i^2/n$ using DC tolerances from `initial`; then sets up Eqs. (1)–(6) initialized from the intrinsic concentrations and solves; finally deletes the intrinsic carrier models. With the irradiation terms enabled, Eqs. (1)–(6) are first solved at a fluence of $0$, and the fluence is then raised in steps to its target $\Phi$: the concentration parameter `N_t_irr_<defect>` of each defect is set to $g_{\text{int}}\Phi_k$, and each step starts from the solution of the step before and is solved in DC with the tolerances of `initial`. The first step is $\Phi\times$ `flux_step.initial`; after a step that succeeds the step is multiplied by `flux_step.increase_factor`, and a step that would pass $\Phi$ is cut to $\Phi$; after a step that reports `"Convergence failure"` the solution of the step before is restored and the step is multiplied by `flux_step.decrease_factor` and tried again; a step below $10^{-7}\,\Phi$ raises `RuntimeError`, which names the device and the fluence reached.
 6. **Zero bias**: solves and saves at $0\ \text{V}$, writing `0V.dd` and `0V.devsim`, and records `0.0` in `solved.potential` in `node.json`.
 7. **Target and stop points**: target bias $V_g$ comes from `field.voltage`, falling back to `bias.voltage` when `null`. One field node corresponds to one target bias; intermediate bias files stored in the node are checkpoints saved along the ramp to $V_g$. Saved points are $\pm k\Delta_s$ ($k = 1, \dots, \lfloor |V_g|/\Delta_s\rfloor$, $\Delta_s$ = `saved_voltage_interval`), appending $V_g$ if the last point falls short of $|V_g|$; curve points are generated in the same way using `curve_voltage_interval`. Signs follow $V_g$. Raises `ValueError` if an interval is `0`.
 8. **Stepping**: initial step size $\Delta$ = `voltage_step.initial`, with sign following $V_g$. Each step tries $V_t = V_c + \Delta$; if $|V_t|$ passes the nearest stop point (smallest magnitude among $V_g$, next saved point, and next curve point), $V_t$ is clamped to that stop point.
@@ -480,6 +481,8 @@ In the device file, write `"field": {"solver": {...}}` nested along the key path
 | `voltage_step.absolute_error`, `.relative_error`, `.maximum_iterations` | `1e20`, `1e-4`, `100` | None, None, iterations | Bias-step and single-point capacitance DC solve |
 | `voltage_step.initial` | `1.0` | V | Initial step size |
 | `voltage_step.increase_factor`, `.decrease_factor` | `2.0`, `0.5` | None | Multipliers on success and failure |
+| `flux_step.initial` | `0.01` | None | First fluence step of the initial solution, as a share of the target fluence |
+| `flux_step.increase_factor`, `.decrease_factor` | `2.0`, `0.5` | None | Multipliers of the fluence step on success and failure |
 | `saved_voltage_interval` | `100.0` | V | Interval between saved points |
 | `curve_voltage_interval` | `10.0` | V | Interval between IV/CV/noise curve points |
 | `ac.real`, `ac.imaginary` | `1.0`, `0.0` | V | Small-signal excitation |
