@@ -62,3 +62,12 @@ def test_save_creates_folder_and_writes_png_and_pdf(tmp_path: Path) -> None:
     assert png == tmp_path / "plots" / "field" / "current_17.png"
     assert png.is_file()
     assert png.with_suffix(".pdf").is_file()
+
+
+def test_events_axis_has_integer_ticks_and_title() -> None:
+    figure, axis = figures.new()
+    axis.set_ylim(0, 7.5)
+    figures.events(axis)
+    ticks = axis.get_yticks()
+    assert all(float(t).is_integer() for t in ticks)
+    assert axis.get_ylabel() == "Events"

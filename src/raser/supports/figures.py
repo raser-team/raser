@@ -8,8 +8,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import matplotlib
+import matplotlib.axes
 import matplotlib.colors
 import matplotlib.pyplot as plt
+import matplotlib.ticker
 import numpy as np
 
 if TYPE_CHECKING:
@@ -175,6 +177,18 @@ def label(quantity: str, unit: str | None = None, root: bool = False) -> str:
     else:
         shown = unit
     return f"{quantity} [{shown}]"
+
+
+def events(axis: matplotlib.axes.Axes, which: str = "y") -> None:
+    """Title a count axis `Events` and give it integer ticks only."""
+    if which == "y":
+        axis.set_ylabel("Events")
+        axis.yaxis.set_major_locator(matplotlib.ticker.MaxNLocator(integer=True))
+    elif which == "x":
+        axis.set_xlabel("Events")
+        axis.xaxis.set_major_locator(matplotlib.ticker.MaxNLocator(integer=True))
+    else:
+        raise ValueError(f"unknown axis: {which}")
 
 
 def series(count: int, ordered: bool) -> list[str]:

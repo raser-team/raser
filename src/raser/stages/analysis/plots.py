@@ -19,7 +19,7 @@ def draw_efficiencies(efficiencies, folder):
         label=f"mean {np.mean(efficiencies):.4f}",
     )
     axis.set_xlabel(figures.label("Charge collection efficiency"))
-    axis.set_ylabel("Events")
+    figures.events(axis)
     axis.legend()
     figures.save(figure, folder, "efficiency")
 
@@ -37,7 +37,7 @@ def draw_amplitudes(amplitudes, amplitude_threshold, events, folder):
         label=f"threshold {amplitude_threshold / figures.UNIT['mV']:g} mV",
     )
     axis.set_xlabel(figures.label("Amplitude", "mV"))
-    axis.set_ylabel("Events")
+    figures.events(axis)
     axis.legend()
     figures.save(figure, folder, "amplitude")
 
@@ -79,7 +79,7 @@ def draw_differences(times, widths, folder):
             fontsize=9, transform=axis.transAxes, va="top",
         )
         axis.set_xlabel(f"{name} - truth [ps]")
-        axis.set_ylabel("Events")
+        figures.events(axis)
     for axis in axes.flat[len(names):]:
         axis.set_visible(False)
     figures.save(figure, folder, "time_difference")
