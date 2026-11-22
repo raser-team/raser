@@ -22,7 +22,7 @@ from raser.supports.paths import project_root_context
 from raser.supports.paths import work_root
 
 LIBRARY = {  # command of the library -> the module that registers it
-    "analysis": "raser.stages.analysis",
+    "analysis": "raser.stages.stage_commands",
     "field": "raser.stages.field",
     "deposit": "raser.stages.stage_commands",
     "current": "raser.stages.stage_commands",

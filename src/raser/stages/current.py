@@ -28,6 +28,7 @@ def solved(my_d, kwargs):
         bounds=my_d.bound,
         field_directory=solved_field(my_d, my_d.voltage, flux),
         interpolation_bins=my_d.device_dict.get("field_interpolation_bins"),
+        pitch={"x": my_d.p_x, "y": my_d.p_y},
     )
 
 

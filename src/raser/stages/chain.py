@@ -120,6 +120,13 @@ def job_command(kwargs):
     return []
 
 
+def analyse(root):
+    """The last stage, for the experiments whose chain ends in an analysis."""
+    from . import analysis
+
+    return analysis.collect(root)
+
+
 def _deposits(kwargs):
     from . import deposit
 

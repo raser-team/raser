@@ -332,9 +332,10 @@ def test_jobs_drifted_in_another_solve_of_the_field_are_not_among_the_jobs_of_th
     execute(experiment["workflow"], _kwargs())
     experiment["state"]["stamp"] = "second solve"
     execute(experiment["workflow"], _kwargs(seed=2))
-    assert [len(jobs) for _, _, jobs in workflow.jobs_of_points(experiment["root"])] == [1]
+    assert [len(jobs) for _, _, jobs, _ in workflow.jobs_of_points(experiment["root"])] == [1]
 
     execute(experiment["workflow"], _kwargs(seed=3))
-    ((_, _, jobs),) = workflow.jobs_of_points(experiment["root"])
+    ((_, _, jobs, others),) = workflow.jobs_of_points(experiment["root"])
     assert workflow.batches(jobs) == "seed 2: 1 job, seed 3: 1 job"
+    assert workflow.set_apart(others) == ["1 job measured something else and is not counted: other files or another field"]
 

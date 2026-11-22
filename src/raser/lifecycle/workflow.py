@@ -127,6 +127,11 @@ class Workflow:
     # its options at the addresses <name>.device.... One device is the one the
     # command names, in files["device"].
     devices: Mapping = field(default_factory=dict)
+    # The last stage of the chain, the analysis: (the experiment folder) ->
+    # the results of its points whose jobs are all done. It works on the jobs
+    # of a point together, so it is no slice of a job: the command runs it
+    # when its jobs are done, and so does the last job on the cluster.
+    analysis: Callable | None = None
 
     def __post_init__(self):
         _one_of_each_group(self.exclusive, self.defaults, f"the defaults of {self.name}")
@@ -240,6 +245,8 @@ def _execute(workflow, kwargs, register, root, config, identity, release):
         # A stage whose slices are one per position, current.<position>: all of them.
         named = [piece.name for piece in workflow.slices]
         until = [k for k, name in enumerate(named) if kwargs["until"] in (name, name.split(".")[0])]
+        if kwargs["until"] == "analysis" and workflow.analysis:
+            until = list(range(len(named)))  # the last stage: every slice before it
         if not until:
             raise ValueError(f"no slice {kwargs['until']} in {named}")
         runs = set(until).union(*(slices.upstream(workflow.slices, k) for k in until))
@@ -272,6 +279,10 @@ def _execute(workflow, kwargs, register, root, config, identity, release):
         record = {"seed": seed, "point": name, "same_seeds": same_seeds, "measured": measured}
         if not workflow.seeds:
             record = {"point": name}
+        # Whether the chain goes on to its last stage when the jobs are done.
+        analysed = bool(workflow.analysis) and kwargs.get("until") in (None, "analysis")
+        if workflow.analysis:
+            record["analysis"] = analysed
         if workflow.slices:
             # Its view: the scanned options with their values, every one of
             # them; DEFAULT for an experiment that scans nothing. A point that
@@ -380,7 +391,28 @@ def _execute(workflow, kwargs, register, root, config, identity, release):
         _close(held)
     if failed:
         raise SystemExit("\n".join([f"{len(failed)} of {len(todo)} points failed:", *failed]))
+    if workflow.analysis and kwargs.get("until") in (None, "analysis"):
+        workflow.analysis(root)
     return None
+
+
+def complete_points(root) -> list[str]:
+    """The points of points.json whose jobs are all done: every node the
+    table lists for them is there, or the job was ended before it."""
+    root = Path(root)
+    done = []
+    for name, row in _read(root / "points.json").items():
+        count = max(map(len, row["nodes"].values()))
+        whole = True
+        for index in range(count):
+            states = [
+                nodes.read(place)["state"] if ((place := nodes.node_dir(root, stage_of(piece), listed[index])) / "node.json").is_file() else None
+                for piece, listed in row["nodes"].items()
+            ]
+            whole = whole and (None not in states or "ended" in states)
+        if whole:
+            done.append(name)
+    return done
 
 
 def _write_points(workflow, kwargs, root, scan, asked, todo) -> None:
@@ -650,11 +682,12 @@ def measured_thing(workflow, inputs) -> str:
     )
 
 
-def jobs_of_points(root) -> list[tuple[str, dict, list[tuple[Path, dict]]]]:
+def jobs_of_points(root) -> list[tuple[str, dict, list[tuple[Path, dict]], list[tuple[int, dict]]]]:
     """The points of the experiment in `root` as its last command left them
-    in points.json, each with its name, the values of its scanned options and
-    the finished jobs that measured it. A job is (the experiment folder,
-    slice -> its node).
+    in points.json, each with its name, the values of its scanned options,
+    the finished jobs that measured it and, for the screen, the finished
+    jobs that measured something else: (how many, the settings they have
+    otherwise). A job is (the experiment folder, slice -> its node).
 
     The jobs of a point are all those in the nodes of the experiment that
     measured what the point measures (points.json: "measures"), whichever
@@ -672,29 +705,50 @@ def jobs_of_points(root) -> list[tuple[str, dict, list[tuple[Path, dict]]]]:
     workflow = WORKFLOWS[config["workflow"]]
     own = [piece for piece in workflow.slices if not piece.shared]
     names = [piece.name for piece in own]
+    counts = {key for piece in workflow.slices for key in piece.counts}
     written: dict = {name: {} for name in names}  # slice -> node -> its node.json
     for name in names:
         for path in sorted((root / "nodes" / stage_of(name)).glob("*/node.json")):
             record = nodes.read(path.parent)
             if record["inputs"].get("slice") == name:
                 written[name][record["node"]] = record
+
+    def finished(chain) -> bool:
+        ended = any(written[name][node]["state"] == "ended" for name, node in chain.items())
+        return len(chain) == len(names) or ended
+
+    def roots(chain) -> tuple:
+        return tuple(chain[piece.name] for piece in own if not _needs(own, piece) and piece.name in chain)
+
+    def settings(chain) -> dict:
+        """What a job was set to, of what says what is measured: its last
+        slice holds the settings of those it reads."""
+        last = [name for name in names if name in chain][-1]
+        given = written[last][chain[last]]["inputs"]["settings"]
+        return {key: value for key, value in given.items() if key not in counts}
+
+    everything = [chain for chain in _chains(own, written) if roots(chain) and finished(chain)]
     result = []
     for point, row in table.items():
-        same = {
-            name: {
-                node: record
-                for node, record in written[name].items()
-                if measured_thing(workflow, record["inputs"]) == row["measures"][name]
-            }
-            for name in names
-        }
-        jobs: dict = {}  # the nodes of the slices that read no other -> the job
-        for chain in _chains(own, same):
-            roots = tuple(chain[piece.name] for piece in own if not _needs(own, piece) and piece.name in chain)
-            ended = any(same[name][node]["state"] == "ended" for name, node in chain.items())
-            if roots and (len(chain) == len(names) or ended):
-                jobs.setdefault(roots, chain)
-        result.append((point, row["values"], [(root, chain) for _, chain in sorted(jobs.items())]))
+        mine: dict = {}  # the deposits of a job -> the job: two chains on the same deposits are one
+        elsewhere = []
+        for chain in everything:
+            same = all(
+                measured_thing(workflow, written[name][node]["inputs"]) == row["measures"][name]
+                for name, node in chain.items()
+            )
+            if same:
+                mine.setdefault(roots(chain), chain)
+            else:
+                elsewhere.append(chain)
+        here = settings(next(iter(mine.values()))) if mine else {}
+        apart: dict = {}  # what they are set to otherwise -> their deposits
+        for chain in elsewhere:
+            theirs = settings(chain)
+            differ = {name: theirs.get(name) for name in sorted(set(theirs) | set(here)) if theirs.get(name) != here.get(name)}
+            apart.setdefault(json.dumps(differ if mine else {}, sort_keys=True, default=str), set()).add(roots(chain))
+        jobs = [(root, chain) for _, chain in sorted(mine.items())]
+        result.append((point, row["values"], jobs, [(len(found), json.loads(text)) for text, found in apart.items()]))
     return result
 
 
@@ -740,14 +794,26 @@ def _chains(own, same) -> list[dict]:
 
 
 def batches(jobs) -> str:
-    """The jobs of a point by the seed of their run, for the screen."""
+    """The jobs of a point by the run that wrote them, for the screen: its
+    seed, or the time of a run that was given none."""
     count: dict = {}
     for root, chain in jobs:
         name, node = sorted(chain.items())[0]
-        seed = nodes.read(nodes.node_dir(root, stage_of(name), node))["job"]["master_seed"]
-        count[seed] = count.get(seed, 0) + 1
-    ordered = sorted(count.items(), key=lambda item: (item[0] is None, item[0] or 0))
-    return ", ".join(f"seed {seed}: {number} job{'s' * (number != 1)}" for seed, number in ordered)
+        job = nodes.read(nodes.node_dir(root, stage_of(name), node))["job"]
+        run = str(job.get("run") or f"seed_{job['master_seed']}")
+        label = f"seed {run[5:]}" if run.startswith("seed_") else f"the run of {run}, without --seed"
+        count[label] = count.get(label, 0) + 1
+    return ", ".join(f"{label}: {number} job{'s' * (number != 1)}" for label, number in sorted(count.items()))
+
+
+def set_apart(others) -> list[str]:
+    """A line for each group of finished jobs a point does not count: how
+    many, and what they were set to otherwise."""
+    lines = []
+    for number, differ in others:
+        what = ", ".join(f"{key}={value}" for key, value in differ.items()) or "other files or another field"
+        lines.append(f"{number} job{'s' * (number != 1)} measured something else and {'are' if number != 1 else 'is'} not counted: {what}")
+    return lines
 
 
 def _outdated(workflow, old, record) -> str | None:
@@ -764,8 +830,11 @@ def _outdated(workflow, old, record) -> str | None:
     if record["commit"].endswith("+dirty") and not workflow.slices:
         return "the code has uncommitted changes"
     # Nor does the name of the view of a point change what its jobs wrote.
+    # Nor does whether the chain goes on to the analysis: the jobs are the same.
     changed = [
-        key for key in record if old.get(key) != record[key] and not (workflow.slices and key in ("commit", "view"))
+        key
+        for key in record
+        if old.get(key) != record[key] and not (workflow.slices and key in ("commit", "view", "analysis"))
     ]
     return "other " + ", ".join(changed) if changed else None
 
@@ -1066,7 +1135,10 @@ def _run_one_job(workflow, kwargs, folder, index):
                 held = nodes.lock(place)
                 written = nodes.found(place, inputs)  # written while this job waited for the lock
             if written is None:
-                noted = {"job": {"index": index, "master_seed": record.get("seed")}, "code": record["commit"]}
+                noted = {
+                    "job": {"index": index, "master_seed": record.get("seed"), "run": folder.name},
+                    "code": record["commit"],
+                }
                 part = nodes.start(place, stage, inputs, noted)
                 options["_node_paths"][piece.name] = str(part)
                 try:
@@ -1112,6 +1184,13 @@ def _run_one_job(workflow, kwargs, folder, index):
         _submitted(folder, index, name).unlink(missing_ok=True)
     print(f"{JOB_ENDED}: {','.join(wanted)}")
     _start_again(workflow, record, folder, progress=bool(now - marked))
+    if workflow.analysis and record.get("analysis") and os.environ.get("RASER_CLUSTER_JOB"):
+        # On the cluster no command waits for the jobs: the one that ends
+        # last finds the points whole. Another job that analyses now does it.
+        try:
+            workflow.analysis(root)
+        except nodes.Running as running:
+            print(running)
 
 
 DEFAULT = "default"  # the view of the point of an experiment that scans nothing

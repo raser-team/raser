@@ -8,8 +8,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import matplotlib
+import matplotlib.axes
 import matplotlib.colors
 import matplotlib.pyplot as plt
+import matplotlib.ticker
 import numpy as np
 
 if TYPE_CHECKING:
@@ -68,6 +70,9 @@ GAIN_HOLE = "#f08a3c"
 TOTAL = "black"
 DEPOSIT = "#808080"
 HISTOGRAM = "#6c8ebf"
+
+# the tallest bin over the lowest non-empty bin above which a count axis is log
+LOG_COUNT_RATIO = 30
 
 OKABE_ITO = [
     "#000000",
@@ -175,6 +180,36 @@ def label(quantity: str, unit: str | None = None, root: bool = False) -> str:
     else:
         shown = unit
     return f"{quantity} [{shown}]"
+
+
+def log_counts(counts) -> bool:
+    """Whether the bin `counts` call for a log axis: the tallest bin is more
+    than LOG_COUNT_RATIO times the lowest non-empty bin."""
+    filled = np.asarray(list(counts), dtype=float)
+    filled = filled[filled > 0]
+    if filled.size == 0 or filled.max() == filled.min():
+        return False
+    return bool(filled.max() / filled.min() > LOG_COUNT_RATIO)
+
+
+def events(axis: matplotlib.axes.Axes, which: str = "y", counts=None) -> None:
+    """Title a count axis `Events`. It is log when the bin `counts` call for it
+    (see `log_counts`) and otherwise has integer ticks only."""
+    if which not in ("x", "y"):
+        raise ValueError(f"unknown axis: {which}")
+    log = counts is not None and log_counts(counts)
+    if which == "y":
+        axis.set_ylabel("Events")
+        if log:
+            axis.set_yscale("log")
+        else:
+            axis.yaxis.set_major_locator(matplotlib.ticker.MaxNLocator(integer=True))
+    else:
+        axis.set_xlabel("Events")
+        if log:
+            axis.set_xscale("log")
+        else:
+            axis.xaxis.set_major_locator(matplotlib.ticker.MaxNLocator(integer=True))
 
 
 def series(count: int, ordered: bool) -> list[str]:

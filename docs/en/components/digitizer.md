@@ -56,7 +56,7 @@ The first six keys of `MXR608A` are fixed by the instrument itself and take valu
 | Category | Key | Unit | Meaning | Value for `MXR608A` |
 | --- | --- | --- | --- | --- |
 | Fixed by device | `channels` | count | Number of channels per unit | `8` |
-| Fixed by device | `bits` | bits | ADC bit depth $N$ | `10` |
+| Fixed by device | `bits` | bits | ADC bit depth $N$, `1` to `15` (codes are stored as `int16`) | `10` |
 | Fixed by device | `max_sampling_rate_GSps` | $\text{GS/s}$ | Maximum sampling rate | `16` |
 | Fixed by device | `response` | None | Bandwidth response, `"brickwall"` (ideal brick wall) or `"none"` (unlimited bandwidth) | `"brickwall"` |
 | Fixed by device | `bandwidth_GHz` | $\text{GHz}$ | Analog bandwidth; written only when `response` is `"brickwall"` | `6` |
@@ -68,7 +68,7 @@ The first six keys of `MXR608A` are fixed by the instrument itself and take valu
 
 The full scale covers [`offset_V` $-$ `full_scale_V`$/2$, `offset_V` $+$ `full_scale_V`$/2$], divided into $2^N$ levels with step size $\text{LSB} = $`full_scale_V`$/2^N$.
 
-`digitizer.device` is a slot; quantities inside the component are addressed as "section.slot.key", written `digitizer.device.<key>`: use `--set digitizer.device.<key>=<value>` to change one value, and `--scan digitizer.device.<key>=<value1>,<value2>` to scan, for example `--set digitizer.device.full_scale_V=0.08`. Changing a panel-setting key this way is equivalent to changing a range on the oscilloscope panel; keys fixed by the device can also be overridden the same way to represent a hypothetical instrument while the library component retains the datasheet values. For an instrument that also handles triggering, its trigger conditions are also in `digitizer.device`, for example `digitizer.device.trigger.level_V`. `name` cannot be modified with `--set` or `--scan`; to switch devices, write `--set digitizer.device=<component_name>`, and to scan devices, write `--scan digitizer.device=<component_name1>,<component_name2>`, which replaces the entire slot with that component file and drops any previously overridden keys. Settings of the stage itself are described in [Digitizer Stage](../stages/digitizer.md#settings).
+`digitizer.device` is a slot; quantities inside the component are addressed as "section.slot.key", written `digitizer.device.<key>`: use `--set digitizer.device.<key>=<value>` to change one value, for example `--set digitizer.device.full_scale_V=0.08`. Changing a panel-setting key this way is equivalent to changing a range on the oscilloscope panel; keys fixed by the device can also be overridden the same way to represent a hypothetical instrument while the library component retains the datasheet values. For an instrument that also handles triggering, its trigger conditions are also in `digitizer.device`, for example `digitizer.device.trigger.level_V`. The `digitizer` section holds analysis parameters and cannot be given to `--scan`. `name` cannot be modified with `--set`; to switch devices, write `--set digitizer.device=<component_name>`, which replaces the entire slot with that component file and drops any previously overridden keys. Settings of the stage itself are described in [Digitizer Stage](../stages/digitizer.md#settings).
 
 ## Trigger Conditions
 

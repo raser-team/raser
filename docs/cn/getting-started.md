@@ -96,7 +96,7 @@ analysis 汇总所有事例。
 
 各种定时方法给出的时刻相对真实沉积时刻的差。仿真知道每个事例真实的沉积时刻，所以能这样算出时间分辨；实验里拿不到真实时刻，要测时间分辨得用参考器件，见 timeres。
 
-每一步的结果按扫描点放在 `examples/HPK-Si-PiN/signal/points/<点名>/<环节>/` 下，统计和趋势图放在 `examples/HPK-Si-PiN/signal/analysis/` 下，存放方式见 [architecture.md](architecture.md#结果)。
+每一步的结果按扫描点放在 `examples/HPK-Si-PiN/signal/points/<点名>/<环节>/` 下，每个点的统计结果和上面三张分布图在 `points/<点名>/analysis/` 里（图在其中的 `plots/` 下，不扫描时点名是 `default`），跨点的趋势图放在 `examples/HPK-Si-PiN/signal/analysis/` 下，存放方式见 [architecture.md](architecture.md#结果)。
 
 ## 5. 建自己的 project
 

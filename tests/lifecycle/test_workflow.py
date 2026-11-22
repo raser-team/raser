@@ -1230,10 +1230,10 @@ def test_runs_of_other_seeds_and_numbers_of_events_add_to_the_jobs_of_a_point(
     execute(workflow, _counted(events=40, seed=7))
     assert "events" not in json.loads((experiment / "config.json").read_text())["set"]
 
-    ((name, values, jobs),) = workflow_module.jobs_of_points(experiment)
+    ((name, values, jobs, others),) = workflow_module.jobs_of_points(experiment)
 
-    assert (name, values, len(jobs)) == ("default", {}, 2)
-    assert workflow_module.batches(jobs) == "seed 7: 1 job, seed 42: 1 job"
+    assert (name, values, len(jobs), others) == ("default", {}, 2, [])
+    assert workflow_module.batches(jobs) == "seed 42: 1 job, seed 7: 1 job"
     events = {
         json.loads((experiment / "nodes" / "deposits" / mine["deposits"] / "node.json").read_text())["inputs"][
             "settings"
@@ -1257,17 +1257,58 @@ def test_a_run_that_measured_something_else_is_not_among_the_jobs_of_the_point(
     execute(workflow, _counted(seed=7))
 
     execute(workflow, _counted(source="alpha", seed=8))  # the point is of this source now
-    assert [len(jobs) for _, _, jobs in workflow_module.jobs_of_points(experiment)] == [1]
+    ((_, _, jobs, others),) = workflow_module.jobs_of_points(experiment)
+    assert len(jobs) == 1 and others == [(2, {"source": "beta"})]
+    assert workflow_module.set_apart(others) == ["2 jobs measured something else and are not counted: source=beta"]
 
     execute(workflow, _counted(voltage=300.0, seed=9))  # and of this bias, with the usual source
-    assert [len(jobs) for _, _, jobs in workflow_module.jobs_of_points(experiment)] == [1]
+    assert [len(jobs) for _, _, jobs, _ in workflow_module.jobs_of_points(experiment)] == [1]
 
     execute(workflow, _counted())
-    assert [len(jobs) for _, _, jobs in workflow_module.jobs_of_points(experiment)] == [2]
+    assert [len(jobs) for _, _, jobs, _ in workflow_module.jobs_of_points(experiment)] == [2]
 
     disk["marker"] = "second"  # the files of the device and of the components changed
     execute(workflow, _counted(seed=10))
-    assert [len(jobs) for _, _, jobs in workflow_module.jobs_of_points(experiment)] == [1]
+    assert [len(jobs) for _, _, jobs, _ in workflow_module.jobs_of_points(experiment)] == [1]
+
+
+def test_points_that_read_the_same_deposits_through_other_electronics_each_have_their_job(
+    started: list[Any],
+    seeded: list[int],
+    disk: dict[str, Any],
+    ran: list[tuple[str, Any]],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workflow = _counting(ran, monkeypatch)
+    execute(workflow, _counted(scan=["amplifier=standard,fast"]))
+
+    points = workflow_module.jobs_of_points(tmp_path / "toy")
+
+    assert [(name, len(jobs), others) for name, _, jobs, others in points] == [
+        ("amplifier_fast", 1, [(1, {"amplifier": "standard"})]),
+        ("amplifier_standard", 1, [(1, {"amplifier": "fast"})]),
+    ]
+    (_, fast), (_, standard) = points[0][2][0], points[1][2][0]
+    assert fast["deposits"] == standard["deposits"] and fast["waveforms"] != standard["waveforms"]
+
+
+def test_a_run_without_a_seed_is_told_by_its_time(
+    started: list[Any],
+    seeded: list[int],
+    disk: dict[str, Any],
+    ran: list[tuple[str, Any]],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workflow = _counting(ran, monkeypatch)
+    monkeypatch.setattr(workflow_module.time, "strftime", lambda form: "2026_1122_190512")
+    execute(workflow, _counted(seed=None))
+    execute(workflow, _counted(seed=3, jobs=None))
+
+    ((_, _, jobs, _),) = workflow_module.jobs_of_points(tmp_path / "toy")
+
+    assert workflow_module.batches(jobs) == "seed 3: 1 job, the run of 2026_1122_190512, without --seed: 1 job"
 
 
 def test_deposits_drawn_and_not_drawn_are_one_job_and_their_events_count_once(
@@ -1285,7 +1326,7 @@ def test_deposits_drawn_and_not_drawn_are_one_job_and_their_events_count_once(
     execute(workflow, _counted(draw=5))
 
     assert len(list((experiment / "nodes" / "currents").glob("*/node.json"))) == 2  # the same deposits, drifted twice
-    assert [len(jobs) for _, _, jobs in workflow_module.jobs_of_points(experiment)] == [1]
+    assert [len(jobs) for _, _, jobs, _ in workflow_module.jobs_of_points(experiment)] == [1]
 
 
 def test_a_job_counts_when_its_slices_have_their_nodes_or_one_of_them_ended_it(
@@ -1308,11 +1349,11 @@ def test_a_job_counts_when_its_slices_have_their_nodes_or_one_of_them_ended_it(
     failing = replace(workflow, slices=(workflow.slices[0], _chain(ran, fail="currents").slices[1], workflow.slices[2]))
     with pytest.raises(RuntimeError, match="currents"):
         execute(failing, _counted())
-    assert [len(jobs) for _, _, jobs in workflow_module.jobs_of_points(experiment)] == [0]  # no currents, no waveforms
+    assert [len(jobs) for _, _, jobs, _ in workflow_module.jobs_of_points(experiment)] == [0]  # no currents, no waveforms
 
     ending = replace(workflow, slices=(replace(workflow.slices[0], run=nothing), *workflow.slices[1:]))
     execute(ending, _counted(seed=7))
-    ((_, _, jobs),) = workflow_module.jobs_of_points(experiment)
+    ((_, _, jobs, _),) = workflow_module.jobs_of_points(experiment)
     assert [sorted(mine) for _, mine in jobs] == [["deposits"]]  # it recorded no event
 
 

@@ -127,7 +127,7 @@ Single-event induced current on the `top` electrode of `HPK-Si-PiN`, showing the
    - Filter the device's solved fields to those with irradiation fluence equal to `flux` and solve mode equal to `mode`; if none exist, raise `FileNotFoundError` for missing fluence and mode.
    - Compare the device parameters read at solve time against the current `my_d` using `changed`, preferring a field with no differences; if all differ, take the first and raise `ValueError: the field in <folder> was solved for another device ...`.
    - If `float(my_d.voltage)` (in $\text{V}$) is not in the biases with solved potential, raise `FileNotFoundError` for missing potential; if it is not in the biases with solved weighting field, raise `FileNotFoundError` for missing weighting field. Once all checks pass, return that field folder.
-3. **Construct interpolated field**: Return `devfield.DevsimField(my_d.device, my_d.voltage, my_d.read_out_contact, irradiation_flux=flux, bounds=my_d.bound, field_directory=folder, interpolation_bins=my_d.device_dict.get("field_interpolation_bins"))`.
+3. **Construct interpolated field**: Return `devfield.DevsimField(my_d.device, my_d.voltage, my_d.read_out_contact, irradiation_flux=flux, bounds=my_d.bound, field_directory=folder, interpolation_bins=my_d.device_dict.get("field_interpolation_bins"), pitch={"x": my_d.p_x, "y": my_d.p_y})`.
 
 ### Induced Current Calculation (`current.currents`)
 

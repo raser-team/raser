@@ -56,7 +56,7 @@
 | 类别 | 键 | 单位 | 含义 | `MXR608A` 的值 |
 | --- | --- | --- | --- | --- |
 | 设备定死 | `channels` | 个 | 一台的通道数 | `8` |
-| 设备定死 | `bits` | 位 | ADC 位数 $N$ | `10` |
+| 设备定死 | `bits` | 位 | ADC 位数 $N$，`1` 至 `15`（码存成 `int16`） | `10` |
 | 设备定死 | `max_sampling_rate_GSps` | $\text{GS/s}$ | 最高采样率 | `16` |
 | 设备定死 | `response` | 无 | 带宽的响应，`"brickwall"`（理想砖墙）或 `"none"`（不限带宽） | `"brickwall"` |
 | 设备定死 | `bandwidth_GHz` | $\text{GHz}$ | 模拟带宽；只在 `response` 为 `"brickwall"` 时写 | `6` |
@@ -68,7 +68,7 @@
 
 满量程覆盖 [`offset_V` $-$ `full_scale_V`$/2$, `offset_V` $+$ `full_scale_V`$/2$]，分成 $2^N$ 档，每档 $\text{LSB} = $`full_scale_V`$/2^N$。
 
-`digitizer.device` 是槽位，组件里的量按“段.槽位.键”寻址，写成 `digitizer.device.<键>`：用 `--set digitizer.device.<键>=<值>` 改一个，用 `--scan digitizer.device.<键>=<值1>,<值2>` 扫描，例如 `--set digitizer.device.full_scale_V=0.08`。面板上调的键这样改，等于在示波器面板上换一档；设备定死的键也能这样改，等于换了一台假想的设备，库里的组件保持数据手册的值。兼管触发的设备，它的触发条件也在 `digitizer.device` 里，例如 `digitizer.device.trigger.level_V`。`name` 不能用 `--set`、`--scan` 改；换设备写 `--set digitizer.device=<组件名>`，扫设备写 `--scan digitizer.device=<组件名1>,<组件名2>`，这时槽位整个换成那个组件文件，原来覆盖的键一并去掉。环节本身的设置见[数字化环节](../stages/digitizer.md#设置)。
+`digitizer.device` 是槽位，组件里的量按“段.槽位.键”寻址，写成 `digitizer.device.<键>`：用 `--set digitizer.device.<键>=<值>` 改，例如 `--set digitizer.device.full_scale_V=0.08`。面板上调的键这样改，等于在示波器面板上换一档；设备定死的键也能这样改，等于换了一台假想的设备，库里的组件保持数据手册的值。兼管触发的设备，它的触发条件也在 `digitizer.device` 里，例如 `digitizer.device.trigger.level_V`。`digitizer` 段是分析参数，不能用 `--scan`。`name` 不能用 `--set` 改；换设备写 `--set digitizer.device=<组件名>`，这时槽位整个换成那个组件文件，原来覆盖的键一并去掉。环节本身的设置见[数字化环节](../stages/digitizer.md#设置)。
 
 ## 触发条件
 
