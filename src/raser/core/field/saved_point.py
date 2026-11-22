@@ -7,9 +7,12 @@ import numpy as np
 
 from .create_parameter import create_parameter
 from .physics_drift_diffusion import GetContactBiasName
+from .physics_irradiation import CARRIER_FLOOR
+from .physics_irradiation import irradiation_defects
+from .physics_irradiation import set_defect_parameters
 
 
-def capacitance(my_d, folder, voltage, solver):
+def capacitance(my_d, folder, voltage, solver, irradiation_flux=None):
     """The specific capacitance at one saved bias in V, as the mesh gives it:
     pF/cm^2 of a one-dimensional mesh, pF/cm of a two-dimensional one, pF of
     a three-dimensional one. The saved state is read back, settled at its
@@ -35,6 +38,14 @@ def capacitance(my_d, folder, voltage, solver):
     devsim.load_devices(file=str(saved))
     # The file keeps the mesh, the models and the solution, not the parameters.
     create_parameter(my_d, my_d.device, my_d.region)
+    if devsim.get_material(device=my_d.device, region=my_d.region) == "Diamond":
+        devsim.set_parameter(device=my_d.device, region=my_d.region, name="CarrierFloor", value=CARRIER_FLOOR)
+    if "irradiation" in my_d.device_dict:
+        irradiation = my_d.device_dict["irradiation"]
+        if irradiation_flux is None:
+            irradiation_flux = irradiation["irradiation_flux"]
+        defects = irradiation_defects(my_d.device, my_d.region, irradiation["irradiation_model"])
+        set_defect_parameters(my_d.device, my_d.region, defects, irradiation_flux)
     for contact in devsim.get_contact_list(device=my_d.device):
         devsim.set_parameter(
             device=my_d.device,

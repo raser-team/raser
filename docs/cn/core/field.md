@@ -340,7 +340,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 
    其中 $I_{V1}$ 为偏压电路节点 `V1` 上的交流小信号电流（1D 为 $\text{A/cm}^2$，2D 为 $\text{A/cm}$，3D 为 A），$V_{\text{ac}} = 1\ \text{V}$ 为交流激励的幅值，$f$ 为频率（Hz）。
    结果画进 CV 图；`cv.json` 由下一步的单点电容写出。
-2. **单点电容**（`saved_point.capacitance`，单点电容子任务）：读 `<V>V.devsim`（文件名用浮点格式，如 `200.0V.devsim`；不存在时抛出 `FileNotFoundError`，列出已有文件），重建参数，偏压电极置 $V$、其余置 $0$，用 `voltage_step` 的容差直流求解，再做交流求解得比电容 $10^{12}\operatorname{Im} I_{V1}/(-2\pi f)$：1D 为 $\text{pF/cm}^2$，2D 为 $\text{pF/cm}$，3D 为 pF。只有存盘点（`saved_voltage_interval` 的倍数与目标偏压）有 `.devsim` 文件。
+2. **单点电容**（`saved_point.capacitance`，单点电容子任务）：读 `<V>V.devsim`（文件名用浮点格式，如 `200.0V.devsim`；不存在时抛出 `FileNotFoundError`，列出已有文件），重建参数（材料参数；器件带缺陷模型时还有各缺陷的俘获截面、能级和在该注量下的浓度，注量由调用方传入，缺省取器件文件的 `irradiation_flux`；金刚石区域的 `CarrierFloor`），偏压电极置 $V$、其余置 $0$，用 `voltage_step` 的容差直流求解，再做交流求解得比电容 $10^{12}\operatorname{Im} I_{V1}/(-2\pi f)$：1D 为 $\text{pF/cm}^2$，2D 为 $\text{pF/cm}$，3D 为 pF。只有存盘点（`saved_voltage_interval` 的倍数与目标偏压）有 `.devsim` 文件。
 3. **噪声**：打开噪声开关时在每个曲线点做 DEVSIM 噪声求解（输出节点 `V1.I`），记录电路节点 `V1.I` 的网格值。
 
 ### 权重场求解

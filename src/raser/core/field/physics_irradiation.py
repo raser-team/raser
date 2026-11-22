@@ -45,6 +45,21 @@ def set_fluence(device, region, defects, flux):
         devsim.set_parameter(device=device, region=region, name="N_t_irr_" + defect["name"], value=defect.get("N_t0", 0.0) + defect["g_int"] * flux)
 
 
+def set_defect_parameters(device, region, defects, flux):
+    """Set the parameters the defect terms read: the capture cross sections
+    sigma_n_irr_<name>, sigma_p_irr_<name> [cm^2], the trap concentration
+    N_t_irr_<name> [cm^-3] at the fluence `flux` [cm^-2], the level E_t_<name>
+    [J], and CarrierFloor [cm^-3] in a diamond region."""
+    if devsim.get_material(device=device, region=region) == "Diamond":
+        devsim.set_parameter(device=device, region=region, name="CarrierFloor", value=CARRIER_FLOOR)
+    for defect in defects:
+        name = defect["name"]
+        devsim.set_parameter(device=device, region=region, name="sigma_n_irr_"+name, value=defect["sigma_n_irr"])
+        devsim.set_parameter(device=device, region=region, name="sigma_p_irr_"+name, value=defect["sigma_p_irr"])
+        devsim.set_parameter(device=device, region=region, name="E_t_"+name, value=defect["E_t_ev"] * 1.6*1e-19)
+    set_fluence(device, region, defects, flux)
+
+
 def CreateIrradiation(device, region, label="XingChen", flux=1e15, custom_defect = {}):
 
     # if not InEdgeModelList(device, region, "ElectricField"):
@@ -57,8 +72,7 @@ def CreateIrradiation(device, region, label="XingChen", flux=1e15, custom_defect
     # In a diamond region the carrier densities in the defect terms are held
     # at CARRIER_FLOOR or above.
     diamond = devsim.get_material(device=device, region=region) == "Diamond"
-    if diamond:
-        devsim.set_parameter(device=device, region=region, name="CarrierFloor", value=CARRIER_FLOOR)
+    set_defect_parameters(device, region, defects, flux)
 
     TrappedElectrons="0"
     TrappedHoles="0"
@@ -71,12 +85,6 @@ def CreateIrradiation(device, region, label="XingChen", flux=1e15, custom_defect
         )
         e = 1.6*1e-19
         E_t = E_t_ev * e
-        N_t_irr = defect.get("N_t0", 0.0) + g_int*flux
-
-        devsim.set_parameter(device=device, region=region, name="sigma_n_irr_"+name,   value=sigma_n_irr)
-        devsim.set_parameter(device=device, region=region, name="sigma_p_irr_"+name,   value=sigma_p_irr)
-        devsim.set_parameter(device=device, region=region, name="N_t_irr_"+name,   value=N_t_irr)
-        devsim.set_parameter(device=device, region=region, name="E_t_"+name,   value=E_t)
 
         r_n = "(vel_mean * sigma_n_irr_{name})".format(name=name)#c_n
         n_1 = "(N_c * exp(-(E_g/2 - E_t_{name})/k_T))".format(name=name)#e_n

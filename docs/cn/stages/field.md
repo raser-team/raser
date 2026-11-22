@@ -216,7 +216,7 @@ solving the field first: raser field HPK-Si-PiN --set field.voltage=200.0
    - 若 `done > 0`，调用 `_empty_devsim()`：从 `devsim.get_parameter_list()` 读取存在的 `"direct_solver"` 与 `"solver_callback"`，调用 `devsim.reset_devsim()`，再把这两个参数写回 DEVSIM。
    - 若 `part == "cv"`，调用 `_capacitance(kwargs)`：
      1. 令 `my_d = Detector(kwargs["det_name"], kwargs["_files"]["device"])`、`voltage = _bias(kwargs)`（`kwargs["cv"] is True`）或 `float(kwargs["cv"])`（$\text{V}$）、`folder = Path(kwargs["_run_path"])`；
-     2. 调用 `value, frequency = saved_point.capacitance(my_d, folder, voltage, _solver(kwargs))` 加载 `folder / f"{float(voltage)}V.devsim"`（缺失时抛出 `FileNotFoundError`）；
+     2. 调用 `value, frequency = saved_point.capacitance(my_d, folder, voltage, _solver(kwargs), kwargs.get("irradiation_flux"))` 加载 `folder / f"{float(voltage)}V.devsim"`（缺失时抛出 `FileNotFoundError`）；
      3. 构造 `point = {"voltage_V": voltage, "specific_capacitance_pF": value, "per": {1: "cm^2", 2: "cm", 3: "device"}[my_d.dimension], "area_factor": float(my_d.device_dict.get("area_factor", 1.0)), "frequency_Hz": frequency}`；
      4. 将 `point` 写入 `folder / f"{voltage}V.cv.json"`，调用 `save_solved(str(folder), "capacitance", voltage)` 更新节点记录，并打印 `point`。
    - 若 `part` 为 `"iv"` 或 `"wf"`，调用 `_ramp_or_weighting(kwargs, cv=not named, wf=(part == "wf"))`，将 `target=kwargs["det_name"]`、`bias=_bias(kwargs)`、`cv`、`wf`、`solver=_solver(kwargs)`、`_field_directory=kwargs["_run_path"]` 合并后传给 `solver_section.main`。
