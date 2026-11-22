@@ -164,7 +164,7 @@ $$\text{导电} \iff \rho < \rho_0 \ \ \text{或}\ \ \bigl(|N_{\text{net}}| > 0 
 
 器件在电子学网表中表示为电容、电阻与感应电流源组成的网络（`DeviceCircuit`）。每个读出电极 `<e>` 的耗尽层电容 $C_{\text{dep}}$ 接在 `<e>_pad` 与耗尽层背面的节点 `undepleted` 之间，感应电流源与它并联；所有读出电极共用这一个 `undepleted` 节点。未耗尽体区为 $R_{\text{und}} \parallel C_{\text{und}}$，接在 `undepleted` 与地之间。可选的偏置电阻 $R_{\text{bias}}$ 从 `<e>_pad` 接地，可选的耦合电容 $C_{\text{c}}$ 接在 `<e>_pad` 与读出端 `<e>_port` 之间。
 
-结电容 $C_{\text{dep}}$ 由 `junction_capacitance` 依次取：器件文件 `capacitance_pF`（实测值）、场在该偏压求得的电容（`<V>V.cv.json` 的比电容乘 `area_factor`）、`Detector.capacitance` 的平行板估计（读出面积除以 `depletion_depth`，缺省 `l_z`）；三者都没有时抛出 `ValueError`。场电容只来自单点电容子任务在该偏压写出的 `<V>V.cv.json`（记入 `solved.capacitance`）；只求扫描与权重场的场节点里结电容取平行板估计。
+结电容 $C_{\text{dep}}$ 由 `junction_capacitance` 依次取：器件文件 `capacitance_pF`（实测值）、场在该偏压求得的电容（`<V>V.cv.json` 的比电容乘 `area_factor`）、`Detector.capacitance` 的平行板估计（读出面积除以 `depletion_depth`，缺省 `l_z`）；三者都没有时抛出 `ValueError`。场电容来自单点电容子任务在该偏压写出的 `<V>V.cv.json`（记入 `solved.capacitance`），整套求解在目标偏压做这一步；只单独做了 IV 扫描或权重场的场节点里结电容取平行板估计。
 
 未耗尽体区按 Riegler 的集总 $R \parallel C$ 模型 [10] 处理，一维、二维、三维器件用同一组式子 [22]。场给出比电阻 $r$ 与比电容 $c$（单位面积），电路乘器件面积 $A$：
 

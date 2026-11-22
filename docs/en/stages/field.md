@@ -50,7 +50,7 @@ Behavior of the three solving paths:
 
 | Subtask enabled in `field` section | What it does | `solved` keys checked and recorded |
 | --- | --- | --- |
-| None of the three enabled (full solve) | Sweeps from `0 V` to the target bias (including CV curve along the sweep), then solves weighting fields for all readout electrodes | `"potential"`, `"undepleted"`, `"weighting"` |
+| None of the three enabled (full solve) | Sweeps from `0 V` to the target bias (including CV curve along the sweep), solves the single-point capacitance at the target bias, then solves weighting fields for all readout electrodes | `"potential"`, `"undepleted"`, `"capacitance"`, `"weighting"` |
 | IV sweep | Sweeps from `0 V` to the target bias and plots the IV curve | `"potential"`, `"undepleted"` |
 | Single-point capacitance | Loads the saved `<V>V.devsim`, solves single-point small-signal capacitance, and writes `<V>V.cv.json` | `"capacitance"` |
 | Weighting field | Reads `Conductive_<V>V.pkl` at the same bias and solves weighting fields for all readout electrodes (single-unit-cell strip electrodes also compute inter-strip mutual capacitance) | `"weighting"` |
@@ -211,7 +211,7 @@ Holding the node lock, a field-solving job enters `solve(kwargs)` and executes i
      - `have["iv"] = _bias(kwargs) in solved.get("potential", [])`;
      - `have["cv"] = cv_at in solved.get("capacitance", [])`;
      - `have["wf"] = _bias(kwargs) in solved.get("weighting", [])`.
-   - Set `left = [part for part in (named or ["iv", "wf"]) if not have[part]]`. If `left` is empty, print `f"{kwargs['_run_path']}: already solved"` and return.
+   - Set `left = [part for part in (named or ["iv", "cv", "wf"]) if not have[part]]`. If `left` is empty, print `f"{kwargs['_run_path']}: already solved"` and return.
 6. **Solve remaining subtasks sequentially and reset DEVSIM state**: Iterate `done, part in enumerate(left)`:
    - When `done > 0`, call `_empty_devsim()`: read `"direct_solver"` and `"solver_callback"` if present in `devsim.get_parameter_list()`, call `devsim.reset_devsim()`, and restore those two parameters in DEVSIM.
    - When `part == "cv"`, call `_capacitance(kwargs)`:
@@ -281,7 +281,7 @@ Settings in the `field` section are read from the experiment's `config.json` and
 The `field` section also has the following categories of settings, which do the following:
 
 - **Mesh**: A single device can have multiple meshes, and which one is used is specified by settings in the `field` section.
-- **Subtasks**: IV sweep ramps from `0 V` to the target bias to solve electric potential and electric field and output IV curves; single-point capacitance reloads that bias from an existing `<V>V.devsim` to perform a small-signal capacitance solve and write `<V>V.cv.json`; weighting field reads `Conductive_<V>V.pkl` at the same bias to solve weighting fields for all readout electrodes (single-unit-cell periodic strip electrodes also compute inter-strip mutual capacitance). When none of the three is enabled, a full solve is run: a bias sweep with CV along the sweep, followed by weighting fields.
+- **Subtasks**: IV sweep ramps from `0 V` to the target bias to solve electric potential and electric field and output IV curves; single-point capacitance reloads that bias from an existing `<V>V.devsim` to perform a small-signal capacitance solve and write `<V>V.cv.json`; weighting field reads `Conductive_<V>V.pkl` at the same bias to solve weighting fields for all readout electrodes (single-unit-cell periodic strip electrodes also compute inter-strip mutual capacitance). When none of the three is enabled, a full solve is run: a bias sweep with CV along the sweep, the single-point capacitance at the target bias, then weighting fields.
 - **Noise**: Additionally solves and plots device noise current at each bias-sweep curve sample point (dropped under the HEMT `drift_diffusion_v1` branch).
 - **UMFPACK**: Loads `devsim.umfpack.umfshim` before solving to switch to the UMFPACK linear solver.
 - **TCAD import**: Given a Sentaurus TDR file, skips the DEVSIM bias sweep, imports bulk fields, and solves weighting fields on its mesh; coordinate flip is used only with TCAD import, reversing node coordinate column order and swapping the `x` and `y` axes in 2D plots.
