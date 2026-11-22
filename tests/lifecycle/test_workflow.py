@@ -2264,3 +2264,25 @@ def test_a_component_that_no_setting_names_is_told_by_its_address() -> None:
 
     with pytest.raises(ValueError, match="config.json has no deposit.source: it names the source"):
         workflow_module._point(workflow, {}, {"deposit.source": None})
+
+
+# Deliberate change: the jobs of before set apart under every point of the scan,
+# those measured at the other value of the scanned setting too.
+def test_a_job_of_before_is_set_apart_under_the_point_of_its_own_scanned_values(
+    started: list[Any],
+    seeded: list[int],
+    disk: dict[str, Any],
+    ran: list[tuple[str, Any]],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workflow = _counting(ran, monkeypatch)
+    execute(workflow, _counted(scan=["amplifier=standard,fast"]))
+
+    execute(workflow, _counted(source="alpha", seed=8))  # both points are of this source now
+    points = workflow_module.jobs_of_points(tmp_path / "toy")
+
+    assert [(name, len(jobs), others) for name, _, jobs, others in points] == [
+        ("amplifier_fast", 1, [(1, {"source": "beta"})]),
+        ("amplifier_standard", 1, [(1, {"source": "beta"})]),
+    ]
