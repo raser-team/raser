@@ -18,6 +18,7 @@ ROOT.gROOT.SetBatch(True)
 
 from ..model.material import Material
 from .drift import Cluster, Drifted, advance, induced_charges, surviving, surviving_at
+from .trapping import Trapping
 from . import draw
 from .draw_drift_path import draw_drift_path
 from .currents import EventCurrents, append_currents
@@ -322,8 +323,9 @@ class CalCurrent:
             cluster.path = np.array(cluster.path)
         # the carriers not yet trapped along each path, taken once here for
         # every use: the induced current and the gain
+        trapping = Trapping.from_device(my_d)
         remaining = [
-            surviving(cluster.path, cluster.carriers, my_f) if my_d.irradiation_model is not None else None
+            surviving(cluster.path, cluster.carriers, my_f, trapping) if trapping.active else None
             for cluster in clusters
         ]
         return Drifted(
@@ -503,8 +505,8 @@ class CalCurrentGain(CalCurrent):
         # made in front of the layer and sends the other carrier through it:
         # its pairs are taken whole, the other carrier being through at once
         gain_depth = my_f.planar_gain_depth(my_d)
-        trapping = my_d.irradiation_model is not None
-        for carriers, path in zip(source_system.carriers, source_system.paths):
+        trapping = Trapping.from_device(my_d)
+        for carriers, path, remaining in zip(source_system.carriers, source_system.paths, source_system.remaining):
             if len(path) < 2:
                 continue
             depths = path[:, 2] - gain_depth
@@ -512,7 +514,13 @@ class CalCurrentGain(CalCurrent):
             if len(crossed):
                 step = int(crossed[0])
                 fraction = depths[step] / (depths[step] - depths[step + 1]) if depths[step] != depths[step + 1] else 0.0
-                arriving = surviving_at(path, carriers, my_f, step, fraction) if trapping else carriers
+                if not trapping.active:
+                    arriving = carriers
+                elif trapping.mode == "stochastic":
+                    # the one realisation of the drift, at the middle of the step
+                    arriving = remaining[step]
+                else:
+                    arriving = surviving_at(path, carriers, my_f, step, fraction, trapping)
             elif abs(depths[-1]) < abs(depths[0]):
                 continue
             else:

@@ -7,7 +7,7 @@ flowchart LR
     FILE["器件文件 (.json)"] --> DET["Detector 器件对象 (core/device)"]
     DET -- "doping, bias, temperature, area_factor, default_dimension / field_dimension, read_out_contact, irradiation" --> FLD["field"]
     DET -- "l_x, l_y, l_z, material" --> DEP["deposit"]
-    DET -- "read_out_contact, electrodes, irradiation, enable_gain, avalanche_model, material, temperature" --> CUR["current"]
+    DET -- "read_out_contact, electrodes, irradiation, enable_trapping, trapping_model, enable_gain, avalanche_model, material, temperature" --> CUR["current"]
     DET -- "capacitance_pF, undepleted_resistance_ohm, undepleted_capacitance_pF, bias, read_out_contact" --> RDO["readout"]
     FLD -- "电场、权重势、俘获率、导电标志" --> CUR
     FLD -- "结电容、条间互容、未耗尽层电阻和电容" --> RDO
@@ -80,6 +80,10 @@ flowchart LR
 | `temperature` | 无（必填） | `K` | 探测器工作温度 $T$ |
 | `doping` | 无（场求解与纯扩散收集必填） | `cm^-3` | 掺杂对象，场求解读取沿深度（网格坐标单位 `cm`）的 `"Acceptors"`、`"Donors"` 表达式及可选辐照附加项 `"Acceptors_ir"`、`"Donors_ir"`；纯扩散收集读取数值型 `"Donors"`、`"Acceptors"` |
 | `irradiation` | 缺省时 `irradiation_model` 为 `None`、`irradiation_flux` 为 `0` | `irradiation_flux` 为 `neq/cm^2` | 辐照对象，给出时须同时含缺陷模型 `"irradiation_model"`（`"XingChen"`、`"Perugia"`、`"Schwandt"`、`"CommonDefect"`）和辐照注量 `"irradiation_flux"` |
+| `enable_trapping` | 缺省时按 `irradiation_model` 是否非 `None` | 无 | 为真时载流子按场里的俘获率被俘获，写了就与 `irradiation_model` 无关 |
+| `enable_lifetime_decay` | `False` | 无 | 为真时载流子按 `electron_lifetime`、`hole_lifetime` 作有限寿命衰减 |
+| `electron_lifetime`, `hole_lifetime` | 无（`enable_lifetime_decay` 为真时必填） | `s` | 电子、空穴的寿命，大于 `0` |
+| `trapping_model` | 缺省时确定性模式、不释放、俘获率倍率 `1`、无空间涨落 | 见 [current.md](../core/current.md#器件文件读取的键) | 俘获模型块，含 `mode`（`"deterministic"`、`"stochastic"`）、`electron_release_time`、`hole_release_time`（`s`）、`trapping_rate_scale`（`electron`、`hole`）与 `spatial_variation`；各键含义、缺省与待拟合的数值见 [current.md](../core/current.md#俘获) |
 | `avalanche_model` | `None` | 无 | 碰撞电离倍增模型名称，取 `"vanOverstraeten"`、`"Okuto"` 或 `"Hatakeyama"`（DEVSIM 场求解另支持 `"NoAvalanche"`、`"CustomAvalanche"`、`"Fine_exponential_models"`、`"Tunnel"`） |
 | `enable_gain` | `False` | 无 | 是否启用载流子雪崩倍增，为 `true` 时必须同时提供 `avalanche_model` |
 | `gain_pair_threshold` | `0.05` | 对 | 多维场 `"local_path"` 倍增模式下触发发射新增益团簇的最小累积对数（负值截断为 `0.0`） |
@@ -162,7 +166,7 @@ flowchart LR
 ### `current` 环节（`stages/current`、`core/current`）
 
 1. **通道命名与权重势平移（`cal_current.py`）**：`electrode_names(read_out_contact, read_ele_num)` 在 `len(read_out_contact) == read_ele_num` 时直接取各项 `"name"`，在 `len(read_out_contact) == 1` 时生成 `"<name>1"` 至 `"<name><read_ele_num>"`。配合 `electrodes`（`"pad"`、`"strip"` 或 `"pixel"`）及 `x_ele_num`、`y_ele_num`、`p_x`、`p_y`（`um`）定出居中电极阵列范围。`read_out_contact` 列出全部电极时，每个通道用各自的权重势计算 Shockley-Ramo 感应电荷；只列 1 个电极并重复排布时，`electrodes_near` 按载流子轨迹起点所在电极编号 $(i_x, i_y)$，把第 `0` 号权重势平移到 $i \in [\max(i_x - s_x, 0),\, \min(i_x + s_x, N_x - 1)]$、$j \in [\max(i_y - s_y, 0),\, \min(i_y + s_y, N_y - 1)]$ 的近邻电极（其中 $s_x$ 取场对象 `cells_either_side` 或 `x_span`，$s_y$ 取 `y_span`）。
-2. **漂移、俘获与雪崩倍增（`drift.py`、`cal_current.py`、`diffusion.py`）**：单步漂移读取 `material` 与 `temperature`（`K`）求取迁移率和热扩散步长标准差。当 `irradiation_model is not None` 时，`surviving` 沿漂移路径积分场中的电子或空穴俘获率，按指数衰减扣除被俘获的载流子；无 `irradiation` 块时不计俘获。当 `has_avalanche` 为真时，`CalCurrentGain` 在原生载流子漂移后计算倍增载流子并叠回总电流：一维场（`len(my_f.axes) == 1`）走 `"planar_integral"` 沿深度积分碰撞电离系数并在峰值场强区间中心深度释放倍增对；多维场走 `"local_path"` 沿每条轨迹按 `local_gain_integration_steps` 采样积分碰撞电离系数，待发射对数达到 `gain_pair_threshold` 时按 `local_gain_emit_slices` 切分发射新增益团簇（总数超过 `gain_max_carriers` 时抛出 `ValueError`）。无场像素纯扩散收集 `collect_by_diffusion` 则读取 `e_width_x`、`e_width_y`（`um`）与数值型 `doping.Donors`、`doping.Acceptors`（`cm^-3`）。
+2. **漂移、俘获与雪崩倍增（`drift.py`、`cal_current.py`、`diffusion.py`）**：单步漂移读取 `material` 与 `temperature`（`K`）求取迁移率和热扩散步长标准差。`surviving` 沿漂移路径积分场中的电子或空穴俘获率，按指数衰减扣除被俘获的载流子；`enable_trapping`（缺省为 `irradiation_model is not None`）为真时计入俘获，`enable_lifetime_decay` 为真时另计有限寿命衰减，`trapping_model.mode` 为 `"stochastic"` 时改为逐个载流子随机俘获、释放与湮灭。当 `has_avalanche` 为真时，`CalCurrentGain` 在原生载流子漂移后计算倍增载流子并叠回总电流：一维场（`len(my_f.axes) == 1`）走 `"planar_integral"` 沿深度积分碰撞电离系数并在峰值场强区间中心深度释放倍增对；多维场走 `"local_path"` 沿每条轨迹按 `local_gain_integration_steps` 采样积分碰撞电离系数，待发射对数达到 `gain_pair_threshold` 时按 `local_gain_emit_slices` 切分发射新增益团簇（总数超过 `gain_max_carriers` 时抛出 `ValueError`）。无场像素纯扩散收集 `collect_by_diffusion` 则读取 `e_width_x`、`e_width_y`（`um`）与数值型 `doping.Donors`、`doping.Acceptors`（`cm^-3`）。
 
 ### `readout` 环节（`stages/readout`、`core/field`、`core/readout`）
 
