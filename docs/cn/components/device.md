@@ -117,7 +117,7 @@ flowchart LR
 | 常数名或固定项 | 值 | 单位 | 定义位置与含义 |
 | --- | --- | --- | --- |
 | `EPSILON_0_F_PER_M` / `VACUUM_PERMITTIVITY_F_M` | `8.8541878128e-12` | `F/m` | `src/raser/core/device/build_device.py:20`、`src/raser/core/field/circuit_parameters.py:17`，平行板结电容与阻性层介电耦合电容计算使用的真空介电常数 |
-| 缺省迁移率模型 | `"Si"`: `"Selberherr"`；`"SiC"`: `"Das"`；`"Diamond"`: `"Reggiani_diamond"` | 无 | `src/raser/core/model/material.py:46`、`:53`、`:59`、`src/raser/core/current/cal_current.py:313`，各材料缺省选用的迁移率模型 |
+| 缺省迁移率模型 | `"Si"`: `"Selberherr"`；`"SiC"`: `"Das"`；`"Diamond"`: `"Pernegger"` | 无 | `src/raser/core/model/material.py:46`、`:53`、`:59`、`src/raser/core/current/cal_current.py:313`，各材料缺省选用的迁移率模型 |
 | `ELEMENTARY_CHARGE` / `ELEMENTARY_CHARGE_C` | `1.602176634e-19` | `C` | `src/raser/core/field/conductive.py:9`、`src/raser/core/field/implanted_aluminium.py:15`，电导率与阻性层方阻换算使用的元电荷 |
 | `RESISTIVITY` | `10.0` | `Ohm cm` | `src/raser/core/field/conductive.py:10`，判定网格节点为高导电区的电阻率上限 |
 | `UNDEPLETED` | `0.5` | 无量纲 | `src/raser/core/field/conductive.py:11`，判定有净掺杂节点尚未耗尽的载流子浓度与净掺杂浓度之比下限 |

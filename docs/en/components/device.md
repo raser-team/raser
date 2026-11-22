@@ -117,7 +117,7 @@ Physical models are registered by name and selected by name in device files; eac
 | Constant or Fixed Item | Value | Unit | Definition Location and Meaning |
 | --- | --- | --- | --- |
 | `EPSILON_0_F_PER_M` / `VACUUM_PERMITTIVITY_F_M` | `8.8541878128e-12` | `F/m` | `src/raser/core/device/build_device.py:20`, `src/raser/core/field/circuit_parameters.py:17`, vacuum permittivity used in parallel-plate junction capacitance and resistive-layer dielectric coupling capacitance calculations |
-| Default mobility models | `"Si"`: `"Selberherr"`; `"SiC"`: `"Das"`; `"Diamond"`: `"Reggiani_diamond"` | None | `src/raser/core/model/material.py:46`, `:53`, `:59`, `src/raser/core/current/cal_current.py:313`, default selected mobility model for each material |
+| Default mobility models | `"Si"`: `"Selberherr"`; `"SiC"`: `"Das"`; `"Diamond"`: `"Pernegger"` | None | `src/raser/core/model/material.py:46`, `:53`, `:59`, `src/raser/core/current/cal_current.py:313`, default selected mobility model for each material |
 | `ELEMENTARY_CHARGE` / `ELEMENTARY_CHARGE_C` | `1.602176634e-19` | `C` | `src/raser/core/field/conductive.py:9`, `src/raser/core/field/implanted_aluminium.py:15`, elementary charge used in conductivity and resistive-layer sheet-resistance conversions |
 | `RESISTIVITY` | `10.0` | `Ohm cm` | `src/raser/core/field/conductive.py:10`, upper resistivity threshold for classifying a mesh node as highly conductive |
 | `UNDEPLETED` | `0.5` | dimensionless | `src/raser/core/field/conductive.py:11`, lower threshold on the ratio of carrier concentration to net doping concentration for classifying a net-doped node as undepleted |

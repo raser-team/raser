@@ -24,7 +24,7 @@ Basic physical properties and default models for each material in `Material.mat_
 | --- | --- | --- | --- | --- | --- |
 | `"Si"` | `11.9` | `0.26 * m_e` | `0.386 * m_e` | `"Selberherr"` | `"vanOverstraeten"` |
 | `"SiC"` | `9.76` | `0.29 * m_e` | `1.0 * m_e` | `"Das"` | `"Hatakeyama"` |
-| `"Diamond"` | `5.7` | Not set | Not set | `"Reggiani_diamond"` | `None` |
+| `"Diamond"` | `5.7` | Not set | Not set | `"Pernegger"` | `None` |
 
 Relative permittivity is defined in the global dictionary `RELATIVE_PERMITTIVITY` in `material.py` and assigned to `self.permittivity` in `Material(mat_name).mat_database()`; effective masses are assigned to `self.electron_mass` and `self.hole_mass` in `Material.mat_database()` (4H-SiC longitudinal effective masses for `"SiC"`, unset for `"Diamond"`). In call relationships, `Detector.capacitance` (`src/raser/core/device/build_device.py`) in [device.md](device.md) reads `Material(self.material).permittivity` to estimate parallel-plate junction capacitance; `CreateSiliconConstant`, `CreateSiliconCarbideConstant`, and `CreateDiamondConstant` (`src/raser/core/field/create_parameter.py`) in [field.md](field.md) read `RELATIVE_PERMITTIVITY` to set DEVSIM region parameters `eps` and `Permittivity`; and `capacitances` (`src/raser/core/field/solver_section.py`) in [field.md](field.md) reads `Material(MyDetector.material).permittivity` to convert contact charges computed in vacuum permittivity for weighting fields into mutual capacitance per unit length ($\text{F/cm}$) for periodic strip electrodes. The relative permittivity of silicon is from Ref. [1] (Appendix G).
 
@@ -42,7 +42,7 @@ $$\mu_p(T, N_{\text{eff}}, E) = \frac{\mu_{LI,p}}{1 + \mu_{LI,p} E / v_{\text{sa
 
 $$\mu_n(T, N_{\text{eff}}, E) = \frac{2\mu_{LI,n}}{1 + \Bigl[1 + \bigl(2\mu_{LI,n} E / v_{\text{sat},n}\bigr)^{\beta_n}\Bigr]^{1/\beta_n}} \tag{5}$$
 
-For 4H silicon carbide (`"SiC"`) under the default `"Das"` model and diamond (`"Diamond"`) under the default `"Reggiani_diamond"` model, the numerator of the low-field impurity-scattering term uses $\mu_L$ directly (without subtracting $\mu_{\min}$), and high-field saturation uses the unified Canali form:
+For 4H silicon carbide (`"SiC"`) under the default `"Das"` model, the numerator of the low-field impurity-scattering term uses $\mu_L$ directly (without subtracting $\mu_{\min}$), and high-field saturation uses the Canali form; the default `"Pernegger"` model of diamond (`"Diamond"`) takes $\mu_{LI} = \mu_L$, independent of temperature and doping, and its high-field saturation is Eq. (7) with $\beta = 1$:
 
 $$\mu_{LI} = \mu_{\min} + \frac{\mu_L}{1 + \bigl(|N_{\text{eff}}| / C_{\text{ref}}\bigr)^{\alpha}} \tag{6}$$
 
@@ -69,7 +69,7 @@ where:
 - $\beta, \beta_{p,1}, \beta_{p,2}$: dimensionless transition exponents for high-field velocity saturation;
 - $\mu_{LI}, \mu$: low-field doping-corrected mobility and total mobility including high-field saturation, $\text{cm}^2/(\text{V}\cdot\text{s})$.
 
-All parameter values for the models selected by default for the three materials (`"Selberherr"`, `"Das"`, `"Reggiani_diamond"`, corresponding to Eqs. (3)–(7)) are listed below:
+All parameter values for the models selected by default for the three materials (`"Selberherr"`, `"Das"`, `"Pernegger"`, corresponding to Eqs. (3)–(7)) are listed below:
 
 | Material and Model | Carrier (`charge`) | $\mu_L$ ($\text{cm}^2/(\text{V}\cdot\text{s})$) | $\mu_{\min}$ ($\text{cm}^2/(\text{V}\cdot\text{s})$) | $C_{\text{ref}}$ ($\text{cm}^{-3}$) | $\alpha$ (dimensionless) | $\beta$ (dimensionless) | $v_{\text{sat}}$ ($\text{cm/s}$) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -77,8 +77,8 @@ All parameter values for the models selected by default for the three materials 
 | `"Si"` / `"Selberherr"` | electron (`<= 0`) | $1430.0\,t^{-2.0}$ | $80.0\,t^{-0.45}$ | $1.12\times 10^{17}\,t^{3.2}$ | $0.72\,t^{0.065}$ | $2$ | $1.45\times 10^7\sqrt{\tanh(155.0/T)}$ |
 | `"SiC"` / `"Das"` | hole (`> 0`) | $124\,t^{-2}$ | $15.9$ | $1.76\times 10^{19}$ | $0.34$ | $1.213\,t^{0.17}$ | $2\times 10^7\,t^{0.52}$ |
 | `"SiC"` / `"Das"` | electron (`<= 0`) | $947\,t^{-2}$ | $0$ | $1.94\times 10^{17}$ | $0.61$ | $1\cdot t^{0.66}$ | $2\times 10^7\,t^{0.87}$ |
-| `"Diamond"` / `"Reggiani_diamond"` | hole (`> 0`) | $1200\,t^{-2.5}$ | $50 / t$ | $1.0\times 10^{17}$ | $0.5$ | $1.5\,t^{0.2}$ | $1.0\times 10^7\,t^{-0.5}$ |
-| `"Diamond"` / `"Reggiani_diamond"` | electron (`<= 0`) | $1800\,t^{-2.5}$ | $100 / t$ | $2.0\times 10^{17}$ | $0.5$ | $1.0\,t^{0.3}$ | $2.7\times 10^7\,t^{-0.5}$ |
+| `"Diamond"` / `"Pernegger"` | hole (`> 0`) | $2064$ | $0$ | — | — | $1$ | $1.41\times 10^7$ |
+| `"Diamond"` / `"Pernegger"` | electron (`<= 0`) | $1714$ | $0$ | — | — | $1$ | $0.96\times 10^7$ |
 
 All parameter values for the alternative `"Reggiani"` model of silicon (corresponding to Eqs. (8)–(10)) are listed below:
 
@@ -94,7 +94,7 @@ All parameter values for the alternative `"Reggiani"` model of silicon (correspo
 | $\beta_{p,2}$ | $0.15\,t + \dfrac{0.8 N_A^2}{N_A^2 + (8\times 10^{17})^2} + \dfrac{0.8 N_D^2}{N_D^2 + (10^{19})^2}$ | None | dimensionless |
 | $v_{\text{sat}}$ | $9.1\times 10^6\,t^{-0.4}$ | $\dfrac{2.4\times 10^7}{1 + 0.8\exp(t/2)}$ | $\text{cm/s}$ |
 
-Mobility calculation is implemented by `Material.cal_mobility(temperature, input_doping, charge, electric_field)` in `material.py`. Mobility models are registered by name and selected by name in the device file; each material has a default model: `"Selberherr"` for `"Si"`, `"Das"` for `"SiC"`, and `"Reggiani_diamond"` for `"Diamond"`. In call relationships:
+Mobility calculation is implemented by `Material.cal_mobility(temperature, input_doping, charge, electric_field)` in `material.py`. Mobility models are registered by name and selected by name in the device file; each material has a default model: `"Selberherr"` for `"Si"`, `"Das"` for `"SiC"`, and `"Pernegger"` for `"Diamond"`. In call relationships:
 
 - `CalCurrent.drift_all` (`src/raser/core/current/cal_current.py`) in [current.md](current.md) passes `Material(my_d.material).cal_mobility` to `advance` (`src/raser/core/current/drift.py`), evaluating the local mobility at each time step using the mobility model selected by the device to compute drift displacement and the Einstein thermal diffusion standard deviation;
 - `collect_by_diffusion` (`src/raser/core/current/diffusion.py`) in [current.md](current.md) calls `Material(my_d.material).cal_mobility(my_d.temperature, neff, -1, 0)` to compute the zero-field electron mobility in field-free pixel sensors;
@@ -102,7 +102,7 @@ Mobility calculation is implemented by `Material.cal_mobility(temperature, input
 - `Material.draw_velocity` (`material.py`) calls `self.cal_mobility` to plot electron and hole drift velocities versus electric field;
 - when a silicon device's device file selects `"Reggiani"`, `Material("Si", mobility_model="Reggiani")` is constructed.
 
-The `"Selberherr"` model for silicon is from Ref. [2], and the `"Reggiani"` model for silicon is from Ref. [3]; the `"Das"` model for 4H-SiC is from Ref. [19], with its doping parameters originating from Ref. [20], where electron $C_{\text{ref}}$ takes the original value $1.94\times 10^{17}\ \text{cm}^{-3}$ from Ref. [20] ($1.94\times 10^{19}$ in Ref. [19] is a typo) and hole $C_{\text{ref}}$ takes $1.76\times 10^{19}\ \text{cm}^{-3}$.
+The `"Selberherr"` model for silicon is from Ref. [2], and the `"Reggiani"` model for silicon is from Ref. [3]; the `"Das"` model for 4H-SiC is from Ref. [19], with its doping parameters originating from Ref. [20], where electron $C_{\text{ref}}$ takes the original value $1.94\times 10^{17}\ \text{cm}^{-3}$ from Ref. [20] ($1.94\times 10^{19}$ in Ref. [19] is a typo) and hole $C_{\text{ref}}$ takes $1.76\times 10^{19}\ \text{cm}^{-3}$. The `"Pernegger"` model for diamond is from Ref. [22]: transient-current measurements of a $470\ \mu\text{m}$ thick single-crystal CVD diamond at room temperature with Am-241 α particles, at fields of $0.2$–$1.5\ \text{V}/\mu\text{m}$; $\mu_L$ and $v_{\text{sat}}$ are the fitted values of Eq. (7) of that paper.
 
 ### Impact Ionization Coefficients
 
@@ -304,7 +304,7 @@ So that carrier drift (Python numerical evaluation) and the DEVSIM field solver 
 1. **Constructing a `Material` instance (`Material.__init__` and `mat_database`)**: stores `self.mat_name = mat_name` and calls `self.mat_database()` to populate `permittivity`, `hole_mass`, `electron_mass`, default `avalanche_model`, and default `mobility_model` across three `if` branches for `"Si"`, `"SiC"`, and `"Diamond"`. If constructor argument `mobility_model != None`, overrides `self.mobility_model`; if `avalanche_model != None`, overrides `self.avalanche_model`. `mat_name` takes one of `"Si"`, `"SiC"`, or `"Diamond"`.
 2. **Computing carrier mobility (`Material.cal_mobility(temperature, input_doping, charge, electric_field)`)**:
    - Sets $T = \text{temperature}$, $t = T / 300$, $E = \text{electric\_field}$, and $N_{\text{eff}} = \text{input\_doping}$.
-   - For `mat_name == 'SiC'` with `mobility_model == "Das"`, `mat_name == 'Diamond'` with `mobility_model == "Reggiani_diamond"`, or `mat_name == 'Si'` with `mobility_model == "Selberherr"`: takes `Neff = abs(Neff)`, then selects `charge > 0` (hole) or `charge <= 0` (electron), evaluates Eqs. (3)–(7) with the corresponding parameters, and returns `mu`.
+   - For `mat_name == 'SiC'` with `mobility_model == "Das"`, `mat_name == 'Diamond'` with `mobility_model == "Pernegger"`, or `mat_name == 'Si'` with `mobility_model == "Selberherr"`: takes `Neff = abs(Neff)`, then selects `charge > 0` (hole) or `charge <= 0` (electron), evaluates Eqs. (3)–(7) with the corresponding parameters, and returns `mu`.
    - For `mat_name == 'Si'` with `mobility_model == "Reggiani"`: sets `N_D = Neff, N_A = 0` when `Neff >= 0`, otherwise `N_A = -Neff, N_D = 0`; then selects `charge > 0` or `charge <= 0`, evaluates Eqs. (8)–(10), and returns `mu`.
 3. **Computing impact ionization coefficients (`Material.cal_coefficient(electric_field, charges, temperature)` and `hatakeyama`)**:
    - Checks `self.avalanche_model not in ('vanOverstraeten', 'Okuto', 'Hatakeyama')`; if true (including `None` for `"Diamond"`), raises `ValueError: Unsupported avalanche model: <self.avalanche_model>`.
@@ -397,3 +397,4 @@ On the command line, use `raser model --draw <model>` to plot curves of physical
 - [19] A. Das, S. P. Duttagupta, “TCAD simulation for alpha-particle spectroscopy using SiC Schottky diode”, Radiat. Prot. Dosim. 167 (2015) 443, doi:10.1093/rpd/ncu369
 - [20] W. J. Schaffer, G. H. Negley, K. G. Irvine, J. W. Palmour, “Conductivity anisotropy in epitaxial 6H and 4H SiC”, MRS Proc. 339 (1994) 595, doi:10.1557/PROC-339-595
 - [21] Z. Li et al., “Mechanisms of proton irradiation-induced defects on the electrical performance of 4H-SiC PIN detectors”, JINST 21 (2026) P03010, doi:10.1088/1748-0221/21/03/P03010, arXiv:2503.09016
+- [22] H. Pernegger et al., “Charge-carrier properties in synthetic single-crystal diamond measured with the transient-current technique”, J. Appl. Phys. 97 (2005) 073704, doi:10.1063/1.1863417
