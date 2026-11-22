@@ -42,7 +42,7 @@
 - `--seed`: Sets an integer random seed to make simulation results reproducible; defaults to the current timestamp if omitted.
 - `--same-seeds`: Makes jobs with the same index across scan points share random seeds so upstream results unaffected by the scan are reused.
 - `--set`: Modifies a setting in the configuration file using `"section.key"` as the address, for example `--set field.voltage=100`.
-- `--scan`: Scans one or more settings using `"section.key"` as the address, for example `--scan field.voltage=100,200`.
+- `--scan`: Scans one or more settings using `"section.key"` as the address, for example `--scan field.voltage=100,200`; only the settings of the sections `field`, `deposit`, `current`, `readout` can be scanned, see [lifecycle/experiments.md](lifecycle/experiments.md).
 - `--dry-run`: Prints only the scan points, stages, and job statuses to be run without starting computation.
 
 Details of configuration file sectioning rules, scan-point expansion, and cluster job scheduling are in [lifecycle/experiments.md](lifecycle/experiments.md) and [lifecycle/jobs.md](lifecycle/jobs.md).

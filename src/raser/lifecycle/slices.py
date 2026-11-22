@@ -37,6 +37,10 @@ class Slice:
     # field it found: `notes` reads it back. It is kept, not judged.
     run: Callable
     keys: tuple = ()  # the options that change what it writes
+    # Those of its keys that say how much is measured or drawn, not what:
+    # jobs that differ in them alone measured the same thing, and an
+    # analysis takes them together.
+    counts: tuple = ()
     kinds: tuple = ()  # the kinds of json file that change what it writes
     # A scanned option of it makes each point a measurement of its own, with
     # its own events: the point runs the slices before this one itself. False
@@ -82,7 +86,7 @@ def owners(slices, key) -> set[int]:
     named = {
         k
         for k, piece in enumerate(slices)
-        if key in piece.keys or key in piece.kinds or key.split(".")[0] in piece.kinds
+        if key in piece.keys or any(key == kind or key.startswith(kind + ".") for kind in piece.kinds)
     }
     return named or {k for k in range(len(slices)) if not upstream(slices, k)}
 
@@ -119,7 +123,9 @@ def forget(slices, folder) -> None:
             path.unlink()
 
 
-def run(slices, folders, index, options, wanted, before, publish=lambda piece: True) -> bool:
+def run(
+    slices, folders, index, options, wanted, before, publish=lambda piece: True, call=lambda piece, options: piece.run(options)
+) -> bool:
     """Run the `wanted` slices of one job that have no mark, in order; True
     when every slice of the job is done.
 
@@ -129,7 +135,9 @@ def run(slices, folders, index, options, wanted, before, publish=lambda piece: T
     there, and is not run when one of them raised `Ended`, which the mark of
     that one says.
     `before` is called with a slice before it runs; `publish` after, and
-    False from it stops the job without the mark of the slice."""
+    False from it stops the job without the mark of the slice. `call` runs a
+    slice with the options and returns what goes with its mark; it may say
+    {"ended": True} where the slice would raise `Ended`."""
     for k, piece in enumerate(slices):
         if piece.name not in wanted or mark(folders[piece.name], index, piece.name).exists():
             continue
@@ -146,7 +154,7 @@ def run(slices, folders, index, options, wanted, before, publish=lambda piece: T
             continue
         before(piece)
         try:
-            left = piece.run(options) or {}
+            left = call(piece, options) or {}
         except Ended:
             left = {"ended": True}
         if not publish(piece):

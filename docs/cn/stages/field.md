@@ -50,7 +50,7 @@ NotImplementedError: the <mode> mode of a field is not there yet: only field.mod
 
 | `field` 段打开的子任务 | 做什么 | 核对并记录的 `solved` 键 |
 | --- | --- | --- |
-| 三个子任务都未打开（整套求解） | 从 `0 V` 扫到目标偏压（含沿途 CV 曲线），再求解各读出电极权重场 | `"potential"`、`"undepleted"`、`"weighting"` |
+| 三个子任务都未打开（整套求解） | 从 `0 V` 扫到目标偏压（含沿途 CV 曲线），在目标偏压求单点电容，再求解各读出电极权重场 | `"potential"`、`"undepleted"`、`"capacitance"`、`"weighting"` |
 | IV 扫描 | 从 `0 V` 扫到目标偏压并绘制 IV 曲线 | `"potential"`、`"undepleted"` |
 | 单点电容 | 加载已保存的 `<V>V.devsim`，在单点求解小信号电容并写出 `<V>V.cv.json` | `"capacitance"` |
 | 权重场 | 读取同偏压的 `Conductive_<V>V.pkl`，求解各读出电极权重场（单晶胞条形电极另算条间互容） | `"weighting"` |
@@ -73,7 +73,7 @@ FileNotFoundError: the weighting field at <v_goal> V needs the field solved at t
 
 ### 仿真链中的共享场补算、等待与交付
 
-在测试、应用或下游环节命令（如 `raser signal`、`raser current`、`raser readout`、`raser digitizer`、`raser trigger`、`raser reconstruction`、`raser analysis`）中，每个实验是一个继承 `raser` 实验基类的 Python 类，写明它包含的环节、器件与各器件角色。主命令在启动实验作业前，对去重后的各扫描点共享场需求逐项调用 `ready` 检查；未就绪时打印 `the field is not ready: raser field <device> --set field.voltage=<V> ...`，以独立单作业进程（随主命令在本地运行或 `-b` 提交集群，已有的 `field` 配置保持原样）先行补算。
+在测试、应用或下游环节命令（如 `raser signal`、`raser current`、`raser readout`、`raser digitizer`、`raser trigger`、`raser reconstruction`、`raser analysis`）中，每个实验是一个继承 `raser` 实验基类的 Python 类，写明它包含的环节、器件与各器件角色。主命令在启动实验作业前，对去重后的各扫描点共享场需求逐项调用 `ready` 检查；未就绪时打印 `solving the field first: raser field <device> --set field.voltage=<V> ...`，以独立单作业进程（随主命令在本地运行或 `-b` 提交集群，已有的 `field` 配置保持原样）先行补算。
 
 如果另一进程正在求解同一个共享场节点（节点锁冲突），主命令打印 `<环节名>: <被占用对象> is run by another process now; run the command again when it is done`，随后下游实验作业进入等待（集群 `-b` 提交共享场尚未完成时同样进入等待）：
 
@@ -108,26 +108,26 @@ raser signal HPK-Si-PiN --scan field.voltage=100,200 -s 2 --set deposit.events_p
 主命令在启动信号作业前依次打印：
 
 ```text
-the field is not ready: raser field HPK-Si-PiN --set field.voltage=100.0
-the field is not ready: raser field HPK-Si-PiN --set field.voltage=200.0
+solving the field first: raser field HPK-Si-PiN --set field.voltage=100.0
+solving the field first: raser field HPK-Si-PiN --set field.voltage=200.0
 ```
 
 程序先后启动两个单作业进程求解 `100 V` 与 `200 V` 的场，结果存放在 `HPK-Si-PiN` project 的 `field/` 下，两个目标偏压各是一个场节点：
 
 - 场节点的 `node.json` 记下输入（`field` 环节设置值与读取的器件部分）、代码版本、运行环境与运行状态。
-- 两个节点合起来写出的文件有体区场 `.pkl`（`Potential`、`Electrons`、`Holes`、`TrappingRate_n`、`TrappingRate_p`、`Conductive` 及 `NetDoping_0V.pkl`）、`0V`/`100.0V`/`200.0V` 的 `.devsim` 与 `.dd` 归档、`HPK-Si-PiN.dat`、`0.0V`/`100.0V`/`200.0V.undepleted.json`（`100.0 V` 与 `200.0 V` 均已全耗尽，`undepleted_width_um` 与 `specific_resistance_ohm_cm2` 均为 `0.0`，`specific_capacitance_pF` 为 `null`）、`weightingfield/top/Potential_100V.pkl`、`Potential_200V.pkl` 和对应的权重场图，以及标上结电容、耦合电容与未耗尽层数值的器件参数电路图资产。
-- 曲线与一维分布图包括 `HPK-Si-PiN_iv.png`、`HPK-Si-PiN_cv.png`、`HPK-Si-PiN_c^-2v.png`、`Doping.png`、`simIV0to100.0.root` / `_picture.root` / `_picture.pdf`、`simIV0to200.0.root` / `_picture.root` / `_picture.pdf`、`simCV0to100.0.root` / `_picture.root` / `_picture.pdf`、`simCV0to200.0.root` / `_picture.root` / `_picture.pdf`，以及 `Electric Field0/100.0/200.0_1d.png`、`Potential0/100.0/200.0_1d.png`、`Electron Trapping Rate0/100.0/200.0_1d.png`、`Hole Trapping Rate0/100.0/200.0_1d.png`。
+- 两个节点合起来写出的文件有体区场 `.pkl`（`Potential`、`Electrons`、`Holes`、`TrappingRate_n`、`TrappingRate_p`、`Conductive` 及 `NetDoping_0V.pkl`）、`0V`/`100.0V`/`200.0V` 的 `.devsim` 与 `.dd` 归档、`HPK-Si-PiN.dat`、`0.0V`/`100.0V`/`200.0V.undepleted.json`（`100.0 V` 与 `200.0 V` 均已全耗尽，`undepleted_width_um` 与 `specific_resistance_ohm_cm2` 均为 `0.0`，`specific_capacitance_pF` 为 `null`）、`weightingfield/top/Potential_100V.pkl`、`Potential_200V.pkl` 和 `plots/` 里对应的权重场图，以及标上结电容、耦合电容与未耗尽层数值的器件参数电路图资产。
+- 曲线数据为 `simIV0to100.0.root`、`simIV0to200.0.root`、`simCV0to100.0.root`、`simCV0to200.0.root`；一维分布图都在 `plots/` 里，各有 `.png` 与 `.pdf`：`iv`、`cv`、`doping`，以及 `electric_field_0V`、`electric_field_100V`、`electric_field_200V`、`potential_0V`、`potential_100V`、`potential_200V`、`weighting_potential_top_100V`、`weighting_potential_top_200V`、`weighting_field_top_100V`、`weighting_field_top_200V`（未加辐照，不画俘获率图）。
 - 实验在 `points.json` 中为 `voltage_100` 和 `voltage_200` 两个扫描点记下各自的 `field` 节点号，并将 `points/voltage_100/field`、`points/voltage_200/field` 软链接指向对应的场节点（可用 `raser status` 查看参数表中各点各环节的状态和节点号）。
 
-![HPK-Si-PiN IV 曲线](../images/field-iv-HPK-Si-PiN.png)
+![HPK-Si-PiN IV 曲线](../../images/field/iv-HPK-Si-PiN.png)
 
 `HPK-Si-PiN` 反向偏压扫描得到的暗电流（IV）曲线。
 
-![HPK-Si-PiN CV 曲线](../images/field-cv-HPK-Si-PiN.png)
+![HPK-Si-PiN CV 曲线](../../images/field/cv-HPK-Si-PiN.png)
 
 `HPK-Si-PiN` 电容随反向偏压变化的 CV 曲线。
 
-![HPK-Si-PiN 200 V 一维电场分布](../images/field-efield-HPK-Si-PiN-200V.png)
+![HPK-Si-PiN 200 V 一维电场分布](../../images/field/efield-HPK-Si-PiN-200V.png)
 
 `200 V` 偏压下 `HPK-Si-PiN` 沿深度方向的一维电场分布。
 
@@ -211,7 +211,7 @@ the field is not ready: raser field HPK-Si-PiN --set field.voltage=200.0
      - `have["iv"] = _bias(kwargs) in solved.get("potential", [])`；
      - `have["cv"] = cv_at in solved.get("capacitance", [])`；
      - `have["wf"] = _bias(kwargs) in solved.get("weighting", [])`。
-   - 令 `left = [part for part in (named or ["iv", "wf"]) if not have[part]]`。若 `left` 为空，打印 `f"{kwargs['_run_path']}: already solved"` 并返回。
+   - 令 `left = [part for part in (named or ["iv", "cv", "wf"]) if not have[part]]`。若 `left` 为空，打印 `f"{kwargs['_run_path']}: already solved"` 并返回。
 6. **逐项求解并清空 DEVSIM 状态**：遍历 `done, part in enumerate(left)`：
    - 若 `done > 0`，调用 `_empty_devsim()`：从 `devsim.get_parameter_list()` 读取存在的 `"direct_solver"` 与 `"solver_callback"`，调用 `devsim.reset_devsim()`，再把这两个参数写回 DEVSIM。
    - 若 `part == "cv"`，调用 `_capacitance(kwargs)`：
@@ -236,7 +236,7 @@ the field is not ready: raser field HPK-Si-PiN --set field.voltage=200.0
    - 主命令遍历每个待运行扫描点所需的共享场，按器件与 `field` 段设置去重；当某组需求未在本次命令中启动且 `ready(options, files) is None` 时，调用 `start(kwargs, options, files)`：
      1. 组装 `raser field <device> --set field.voltage=<偏压>` 命令参数（若辐照注量不同于器件文件里的值，或扫描点改了器件文件里偏压以外的值，一并传入）。
      2. 写入 `batch=kwargs["batch"]`、`mem=kwargs["mem"]`、`jobs=1`（确保在独立子进程或集群作业中执行，DEVSIM 只在那里加载）、`_argv=words`、`_entry_command_prefix=("field",)`、`_waiting=kwargs.get("_waiting")`（仅 `-b` 时非空）。
-     3. 打印 `"the field is not ready: " + " ".join(["raser", *words])`，启动场求解。
+     3. 打印 `"solving the field first: " + " ".join(["raser", *words])`，启动场求解。
    - 若 `start` 因另一进程持有节点锁而抛出 `Running`，`_make_shared` 打印 `f"{piece.name}: {running}"` 并跳过；随后主命令检测到 `ready` 为 `None`，将对应下游作业移入等待并打印等待提示。
    - 若非 `-b` 且非 `--dry-run`，`start` 返回后再次检查 `ready(options, files)`；仍为 `None` 时抛出 `RuntimeError(f"{piece.name} was made in this process and is still not ready for a point of {root}: waiting would not help")`。
 5. **参数表记录、视图链接与作业内校验（`chain._field`）**：
@@ -281,7 +281,7 @@ the field is not ready: raser field HPK-Si-PiN --set field.voltage=200.0
 `field` 段还有这几类设置，各自做的事如下：
 
 - **网格**：同一个器件可以有几套网格，用哪一套由 `field` 段的设置指定。
-- **子任务**：IV 扫描从 `0 V` 扫到目标偏压求解电势与电场并输出 IV 曲线；单点电容从已有 `<V>V.devsim` 重载该偏压做小信号电容求解，写出 `<V>V.cv.json`；权重场读取同偏压 `Conductive_<V>V.pkl` 求解各读出电极权重场（单晶胞周期性条形电极另算条间互容）。三个都不打开时做整套求解：含沿途 CV 的偏压扫描，再求权重场。
+- **子任务**：IV 扫描从 `0 V` 扫到目标偏压求解电势与电场并输出 IV 曲线；单点电容从已有 `<V>V.devsim` 重载该偏压做小信号电容求解，写出 `<V>V.cv.json`；权重场读取同偏压 `Conductive_<V>V.pkl` 求解各读出电极权重场（单晶胞周期性条形电极另算条间互容）。三个都不打开时做整套求解：含沿途 CV 的偏压扫描，在目标偏压求单点电容，再求权重场。
 - **噪声**：偏压扫描各曲线采样点额外求解并绘制器件噪声电流（HEMT `drift_diffusion_v1` 分支下丢弃）。
 - **UMFPACK**：求解前加载 `devsim.umfpack.umfshim`，切至 UMFPACK 线性求解器。
 - **TCAD 导入**：给出 Sentaurus TDR 文件，跳过 DEVSIM 偏压扫描，导入体区场并在其网格上求权重场；坐标翻转只配合 TCAD 导入，反转节点坐标列序，2D 绘图同步交换 `x` 与 `y` 轴。
@@ -314,4 +314,4 @@ the field is not ready: raser field HPK-Si-PiN --set field.voltage=200.0
 
 #### `core/field` 写出的场数据、归档与图
 
-在 `<场节点目录>` 内，`.pkl` 与 `Capacitance_<V>V.json` 对整数偏压省略小数点（如 `Potential_200V.pkl`），非零偏压的 `.devsim`、`.dd` 与全部 `.undepleted.json`、`.cv.json` 保留浮点格式（如 `200.0V.undepleted.json`），零偏归档写作 `0V.devsim` 与 `0V.dd`。DEVSIM 偏压扫描（在 `0 V`、每个 `saved_voltage_interval` 存盘点与目标偏压）或 TCAD 导入写出的体区场 `.pkl`（`Potential`、`Electrons`、`Holes`、`TrappingRate_n`、`TrappingRate_p`、`Conductive`、`NetDoping_0V.pkl` 或 TCAD 下的 `NetDoping_<V>V.pkl`）、未耗尽层文件 `<V>V.undepleted.json`、DEVSIM 与 Tecplot 归档（`0V`/`<V>V.devsim`、`0V`/`<V>V.dd`、`last_solvable.dd`、`<det_name>.dat`、`converted.devsim`），权重场子任务（含整套求解）或 TCAD 导入写出的权重场 `weightingfield/<电极>/Potential_<V>V.pkl`、`weightingfield/weightingfield.dat` 与单晶胞条形互容 `weightingfield/<电极>/Capacitance_<V>V.json`，IV/CV/噪声曲线与各维度场分布图（`<det_name>_iv.png`、`simIV*`、`<det_name>_cv.png`、`<det_name>_c^-2v.png`、`simCV*`、`<det_name>_noise.png`、`simnoise*`、`Doping.png` 等），以及 HEMT `drift_diffusion_v1` 分支写出的 `HEMT_TRANSPORT_*`（`IdVg.csv`、`final_profile.csv`、`final.devsim`、`IdVg.png`/`.pdf`、`summary.json`），其内部格式、键、形状、类型与单位以及物理求解与插值细节见[场求解与加载（`core/field`）](../core/field.md)。
+在 `<场节点目录>` 内，`.pkl` 与 `Capacitance_<V>V.json` 对整数偏压省略小数点（如 `Potential_200V.pkl`），非零偏压的 `.devsim`、`.dd` 与全部 `.undepleted.json`、`.cv.json` 保留浮点格式（如 `200.0V.undepleted.json`），零偏归档写作 `0V.devsim` 与 `0V.dd`。DEVSIM 偏压扫描（在 `0 V`、每个 `saved_voltage_interval` 存盘点与目标偏压）或 TCAD 导入写出的体区场 `.pkl`（`Potential`、`Electrons`、`Holes`、`TrappingRate_n`、`TrappingRate_p`、`Conductive`、`NetDoping_0V.pkl` 或 TCAD 下的 `NetDoping_<V>V.pkl`）、未耗尽层文件 `<V>V.undepleted.json`、DEVSIM 与 Tecplot 归档（`0V`/`<V>V.devsim`、`0V`/`<V>V.dd`、`last_solvable.dd`、`<det_name>.dat`、`converted.devsim`），权重场子任务（含整套求解）或 TCAD 导入写出的权重场 `weightingfield/<电极>/Potential_<V>V.pkl`、`weightingfield/weightingfield.dat` 与单晶胞条形互容 `weightingfield/<电极>/Capacitance_<V>V.json`，IV/CV/噪声曲线数据（`simIV*`、`simCV*`、`simnoise*`）与各维度场分布图（一维的存进 `plots/`：`iv`、`cv`、`noise`、`doping`、`potential_<V>V`、`electric_field_<V>V`、`trapping_rate_<V>V`、`weighting_potential_<电极>_<V>V`、`weighting_field_<电极>_<V>V`，各有 `.png` 与 `.pdf`），以及 HEMT `drift_diffusion_v1` 分支写出的 `HEMT_TRANSPORT_*`（`IdVg.csv`、`final_profile.csv`、`final.devsim`、`IdVg.png`/`.pdf`、`summary.json`），其内部格式、键、形状、类型与单位以及物理求解与插值细节见[场求解与加载（`core/field`）](../core/field.md)。

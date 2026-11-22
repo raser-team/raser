@@ -71,7 +71,7 @@ ValueError: <deposits_path> holds no deposit in the detector <detector>: there i
 
 这说明漂移路径落到了场网格没覆盖的坐标，后面的感应电流缺了。检查器件尺寸与场网格范围是否一致。
 
-以上例 $200\ \text{V}$ 点作业 `0` 的 `current.h5` 为例：`current` 读入 `deposit` 节点的 `deposit.h5`（$200$ 个事例）和场节点里 $200\ \text{V}$ 的电场与 `top` 电极权重场，写出 `current.h5`，并在节点内 `event_<事例号>/` 下为前 $100$ 个记录事例各画 `planar_drift_path.pdf`/`.root` 与 `No_1electrode_basic_infor.pdf`/`.root`（`HPK-Si-PiN` 是单电极 `pad` 器件，`cce.pdf`/`.root` 只为条形或像素器件画）。文件属性（`attrs`）为 `dt = 5e-12`（1D 器件默认时间箱宽度，单位 $\text{s}$）和 `electrodes = ['top']`（读出电极名列表），数据集（`datasets`）如下：
+以上例 $200\ \text{V}$ 点作业 `0` 的 `current.h5` 为例：`current` 读入 `deposit` 节点的 `deposit.h5`（$200$ 个事例）和场节点里 $200\ \text{V}$ 的电场与 `top` 电极权重场，写出 `current.h5`，并在节点内 `plots/` 下为前 $100$ 个记录事例各画 `drift_path_<事例号>` 与 `current_<事例号>`（各有 `.png`、`.pdf`、`.root`；`HPK-Si-PiN` 是单电极 `pad` 器件，`charge_per_electrode_<事例号>` 只为条形或像素器件画）。文件属性（`attrs`）为 `dt = 5e-12`（1D 器件默认时间箱宽度，单位 $\text{s}$）和 `electrodes = ['top']`（读出电极名列表），数据集（`datasets`）如下：
 
 | 数据集名 | 示例形状 | 类型 | 单位 | 含义 |
 | --- | --- | --- | --- | --- |
@@ -88,11 +88,11 @@ ValueError: <deposits_path> holds no deposit in the detector <detector>: there i
 
 `index` 长度为 `196`，表示 $200$ 个记录事例中有 $196$ 个的感应电流写进了 `current`，其余 $4$ 个在全部时间箱上都为零。下游读取时按 `stored` 与 `count` 切分 `index` 和 `current`，把未存储的电极还原为零。
 
-![HPK-Si-PiN 单事例载流子漂移路径](../images/current-drift-path-HPK-Si-PiN.png)
+![HPK-Si-PiN 单事例载流子漂移路径](../../images/current/drift-path-HPK-Si-PiN.png)
 
 `HPK-Si-PiN` 单个事例的载流子漂移路径图，上方为器件三维体区内的轨迹，下方为 $x$-$z$ 平面内的沉积点、电子与空穴轨迹（坐标单位 $\mu\text{m}$）。
 
-![HPK-Si-PiN 单事例感应电流](../images/current-event-HPK-Si-PiN.png)
+![HPK-Si-PiN 单事例感应电流](../../images/current/event-HPK-Si-PiN.png)
 
 `HPK-Si-PiN` 单个事例在 `top` 电极上的感应电流图，分别画出电子分量、空穴分量与总感应电流随时间的变化（横轴单位 $\text{s}$，纵轴单位 $\text{A}$）。
 
@@ -127,7 +127,7 @@ ValueError: <deposits_path> holds no deposit in the detector <detector>: there i
    - 在器件已解过的场里筛选辐照注量等于 `flux`、求解模式等于 `mode` 的；一个都没有时抛出缺注量与模式的 `FileNotFoundError`。
    - 对筛出的场用 `changed` 比对当时读到的器件参数与当前 `my_d`，优先取无差异的；全部有差异时取第一个并抛出 `ValueError: the field in <folder> was solved for another device ...`。
    - `float(my_d.voltage)`（单位 $\text{V}$）不在已解电势的偏压里时，抛出缺电势的 `FileNotFoundError`；不在已解权重场的偏压里时，抛出缺权重场的 `FileNotFoundError`。都通过后返回该场的文件夹。
-3. **构造插值场**：返回 `devfield.DevsimField(my_d.device, my_d.voltage, my_d.read_out_contact, irradiation_flux=flux, bounds=my_d.bound, field_directory=folder, interpolation_bins=my_d.device_dict.get("field_interpolation_bins"))`。
+3. **构造插值场**：返回 `devfield.DevsimField(my_d.device, my_d.voltage, my_d.read_out_contact, irradiation_flux=flux, bounds=my_d.bound, field_directory=folder, interpolation_bins=my_d.device_dict.get("field_interpolation_bins"), pitch={"x": my_d.p_x, "y": my_d.p_y})`。
 
 ### 感应电流计算（`current.currents`）
 
@@ -136,7 +136,7 @@ ValueError: <deposits_path> holds no deposit in the detector <detector>: there i
 3. **写出感应电流（`write_induced_currents`）**：
    - 读入沉积；没有事例时抛出 `ValueError(f"{deposits_path} holds no event: there is no current to write")`。
    - 给了 `detector=position` 时，用 `deposits_in(record, detector)` 只留 `record.detector` 等于该位置的沉积步，并滤掉没有沉积步的事例；过滤后为空时抛出 `ValueError(f"{deposits_path} holds no deposit in the detector {detector}: there is no current to write")`。
-   - 电流文件已存在时先删掉，再逐事例构造 `CalCurrent(my_d, my_f, record.pairs, positions, keep_drift_paths=(count < plots))`，用 `append_currents` 追加写入；`count < plots` 时清空重建 `event_<record.event>/` 子文件夹，画轨迹图、波形图，以及（`my_d.is_strip` 或 `my_d.is_pixel` 为真时的）`cce.pdf`/`.root`。
+   - 电流文件已存在时先删掉，再逐事例构造 `CalCurrent(my_d, my_f, record.pairs, positions, keep_drift_paths=(count < plots))`，用 `append_currents` 追加写入；`plots > 0` 时开画前先删掉 `plot_path` 里上次留下的 `current_`、`drift_path_`、`charge_per_electrode_` 开头的图；`count < plots` 时画轨迹图、波形图，以及（`my_d.is_strip` 或 `my_d.is_pixel` 为真时的）各电极电荷图。
    - 全部事例结束后调用 `log_ends(ends, without_field)` 汇总停止原因。
 
 ## 软件实现
@@ -178,6 +178,6 @@ ValueError: <deposits_path> holds no deposit in the detector <detector>: there i
 - **读：`deposit` 节点里的 `deposit.h5`**。`current` 从中读记录事例的 Geant4 编号 `event`、沉积步所属逻辑体名 `detector`、局部坐标 `x`/`y`/`z`（$\mu\text{m}$）、全局时间 `t`（$\text{s}$）及电子-空穴对数 `pairs`（对）；格式见[能量沉积环节（`stages/deposit`）](deposit.md)。
 - **读：`<器件 project>/field/<节点号>/` 里的场节点**。由 `raser field` 写出。`DevsimField` 读 `Potential_<V>V.pkl`、`Conductive_<V>V.pkl`、`NetDoping_0V.pkl`（TCAD 导入为 `NetDoping_<V>V.pkl`）、`TrappingRate_n_<V>V.pkl`、`TrappingRate_p_<V>V.pkl` 及 `weightingfield/<电极>/Potential_<V>V.pkl`；各文件的数据结构与单位见[场求解与加载（`core/field`）](../core/field.md)。
 - **写：`nodes/current/<节点号>/current.h5`**（多位置实验里同节点下每个位置一个文件 `current.<位置>.h5`）。上游 `deposit` 有记录事例、且（多位置实验中）该位置本作业有沉积步时写出，重算前先删旧文件再逐事例追加。它交给 `readout` 求输出波形，`charge`（$\text{C}$）与 `pairs`（对）也交给 `analysis` 算电荷收集效率；HDF5 属性（`electrodes`、`dt`［$\text{s}$］）与全部数据集的形状、类型与单位见[载流子漂移与感应电流（`core/current`）](../core/current.md)。
-- **写：`nodes/current/<节点号>/event_<事例号>/` 里的单事例图**。`plots > 0` 时为前 `plots` 个事例写出（写前先清空该事例的 `event_<事例号>/` 子文件夹）：三维与 $x$-$z$ 平面漂移路径图 `<det_model>_drift_path.pdf`/`.root`（坐标单位 $\mu\text{m}$）、各非零电流电极（`<k>` 从 `1` 起）的电流分量波形图 `No_<k>electrode_basic_infor.pdf`/`.root`（横轴 `Time [s]`、纵轴 `Current [A]`），以及条形（`strip`）或像素（`pixel`）器件的收集电荷分布图 `cce.pdf`/`.root`（数值为净电荷除以元电荷 $e_0 = 1.602176634\times 10^{-19}\ \text{C}$ 折算的收集电子数，单位：电子数）；内容与坐标单位见[载流子漂移与感应电流（`core/current`）](../core/current.md)。
+- **写：`nodes/current/<节点号>/plots/` 里的单事例图**。`plots > 0` 时为前 `plots` 个事例写出（写前先删掉这个文件夹里上次留下的同类图），每张图有 `.png`、`.pdf`、`.root` 三份：三维与 $x$-$z$ 平面漂移路径图 `drift_path_<事例号>`（坐标单位 $\mu\text{m}$）、电流分量波形图 `current_<事例号>`（多个读出电极时各非零电流电极一张 `current_<事例号>_electrode_<k>`，`<k>` 从 `1` 起；横轴 `Time [ns]`、纵轴 `Current [μA]`），以及条形（`strip`）或像素（`pixel`）器件的各电极电荷图 `charge_per_electrode_<事例号>`（数值为各电极的净电荷，单位 $\text{fC}$）；内容与坐标单位见[载流子漂移与感应电流（`core/current`）](../core/current.md)。
 - **写：`nodes/current/<节点号>/node.json`**。记下本节点的输入，以及代码版本、运行环境和运行状态。
 - **写：`points.json` 与 `points/<点名>/current/<作业号>`**。参数表记各点 `current` 用的节点号；视图软链接指向 `../../../nodes/current/<节点号>`。

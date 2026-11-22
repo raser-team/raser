@@ -57,7 +57,7 @@ def pulse_edges(my_d, chain, outputs):
 
     A device that lists one read-out electrode for each output has them in
     the order of the outputs; one that repeats a single electrode, along a
-    row or over the cells of a resistive layer, reads that one everywhere.
+    row or over the RC nodes of a resistive layer, reads that one everywhere.
     """
     contacts = [contact["name"] for contact in my_d.read_out_contact]
     if len(contacts) == 1:

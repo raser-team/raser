@@ -98,7 +98,7 @@ The only keys users can set in a device JSON file are listed in the tables below
 | `bias_resistance_ohm` | `None` | `Ohm` | Bias resistance from a single readout electrode to signal ground |
 | `coupling_capacitance_pF` | `None` | `pF` | AC coupling capacitance from a single readout electrode to the amplifier input; when provided, `bias_resistance_ohm` must also be given |
 | `undepleted_resistance_ohm`, `undepleted_capacitance_pF` | `None` | `Ohm`, `pF` | Equivalent parallel resistance and capacitance of the undepleted bulk under bias; when omitted, computed by 1D `field` from the field solution at the runtime bias; the two keys must be given together or both omitted |
-| `resistive_layer` | None (optional) | `Ohm` for `sheet_resistance`, `cm^-2` for `implanted`, `um` for `thickness`, `°C` for `anneal` | Resistive charge-sharing layer definition object, containing sheet resistance `"sheet_resistance"` (or aluminum-implantation parameters `"implanted"`, `"thickness"`, `"anneal"`), cell span (`"strips"` or `"pads"`), and optional grounded contacts `"grounded"` and dielectric coupling layer `"coupling"` (with `"thickness"` [`um`] and dimensionless `"permittivity"`) |
+| `resistive_layer` | None (optional) | `Ohm` for `sheet_resistance`, `cm^-2` for `implanted`, `um` for `thickness`, `°C` for `anneal` | Resistive charge-sharing layer definition object, containing sheet resistance `"sheet_resistance"` (or aluminum-implantation parameters `"implanted"`, `"thickness"`, `"anneal"`), RC node span (`"strips"` or `"pads"`), the name of the mesh contact the layer sits on `"contact"`, and optional grounded contacts `"grounded"` and dielectric coupling layer `"coupling"` (with `"thickness"` [`um`] and dimensionless `"permittivity"`) |
 
 ### Physics Models and Solving Dimension
 
@@ -151,7 +151,7 @@ Physical models are registered by name and selected by name in device files; eac
 2. **Solving potential, electric field, weighting potential, and trapping rates (`create_parameter.py`, `solver_section.py`, `loop_section.py`)**: `bias` and `temperature` determine contact boundary conditions and semiconductor parameters (thermal voltage, bandgap, intrinsic carrier concentration), solving the potential and electric field on the `dimension`-dimensional mesh and solving the weighting potential for each readout electrode according to `read_out_contact`; when `irradiation` is given, defect space charge and electron/hole trapping rates are solved simultaneously. `area_factor` scales specific currents and specific capacitances solved on 1D (multiplied by area $l_x l_y$, in `cm^2`) or 2D (multiplied by the length perpendicular to the solving plane, in `cm`) meshes to full-device IV and CV values.
 3. **Undepleted bulk impedance extraction (`conductive.py`, `save_milestone.py`)**: When 1D DEVSIM solving does not deplete the entire device at the applied bias, adjacent node intervals satisfying $|N_{\text{net}}| > 0$, $n + p > 0.5|N_{\text{net}}|$, and resistivity $\rho = [e(\mu_n n + \mu_p p)]^{-1} \ge 10.0\ \Omega\cdot\text{cm}$ are integrated into undepleted layer thickness $w_{\text{undep}}$ (`cm`), specific resistance $r_{\text{undep}} = \sum \bar{\rho}\,\Delta x$ (`Ohm cm^2`), and specific capacitance $c_{\text{undep}} = 10^{12}\varepsilon / w_{\text{undep}}$ (`pF/cm^2`), where $e$ is the elementary charge (C), $\mu_n$ and $\mu_p$ are the electron and hole mobilities ($\text{cm}^2/(\text{V}\cdot\text{s})$), $n$ and $p$ are the electron and hole concentrations ($\text{cm}^{-3}$), and $\varepsilon$ is the material permittivity (F/cm), saved to `<V>V.undepleted.json` and converted in the readout stage via `area_factor` to full-device undepleted resistance and capacitance.
 
-![HPK-Si-PiN doping profile along depth](../images/field-doping-HPK-Si-PiN.png)
+![HPK-Si-PiN doping profile along depth](../../images/field/doping-HPK-Si-PiN.png)
 
 Three-region depth doping profile of `HPK-Si-PiN`: `0–1 um` at the surface is an $n^+$ layer with `Donors` at $1.0\times 10^{19}\ \text{cm}^{-3}$, `1–50 um` is the active bulk with `Acceptors` at $5\times 10^{12}\ \text{cm}^{-3}$, and `50–151 um` is a $p^+$ substrate at $1.0\times 10^{18}\ \text{cm}^{-3}$ (`l_z = 50` `um` is the active layer thickness, while the `field` mesh extends to the back electrode at the bottom of the substrate).
 
@@ -183,7 +183,7 @@ Three-region depth doping profile of `HPK-Si-PiN`: `0–1 um` at the surface is 
 
 ## Built-in Components
 
-`components/device/` contains the following 23 detector components:
+`components/device/` contains the following 24 detector components:
 
 | Component Name | Description | Source | Applicable Devices or Experiments |
 | --- | --- | --- | --- |
@@ -202,6 +202,7 @@ Three-region depth doping profile of `HPK-Si-PiN`: `0–1 um` at the surface is 
 | `iLGAD` | Si `ilgad_planar` device ($10000 \times 10000 \times 285\ \mu\text{m}$, 1D) | Unspecified | |
 | `ITk-md8` | Si `planar` device ($8000 \times 8000 \times 50\ \mu\text{m}$, 1D, with `"Schwandt"` irradiation model) | ATLAS ITk MD8 silicon planar diode (component model `ITk-md8`) | |
 | `ITk-Si-strip` | Si `strip` device ($96791 \times 48000 \times 305\ \mu\text{m}$, $1282$ strips, pitch $75.5\ \mu\text{m}$, with `"XingChen"` irradiation model) | ATLAS ITk silicon microstrip detector (component model `ITk-Si-strip`) | |
+| `LBNL-SiC-AC-LGAD` | SiC `lgad_pixel` device ($1000 \times 1000 \times 75.8\ \mu\text{m}$, 1D field; the resistive layer cut into $20 \times 20$ RC nodes of $50\ \mu\text{m}$, 4 electrodes of $100\ \mu\text{m}$ AC-coupled through $0.3\ \mu\text{m}$ of oxide at a pitch of $500\ \mu\text{m}$, grounded around the edge) | T. Yang et al., `arXiv:2610.27535`; layers from IEEE Electron Device Lett. 46 (2025) 845, doi:10.1109/LED.2025.3548509; the sheet resistance of $630\ \Omega$ is estimated from the doping, not measured | [`signal`](../bench/signal.md): `raser signal LBNL-SiC-AC-LGAD`, the current is given per RC node and read out on the four electrodes |
 | `NJU-PiN` | SiC `planar` device ($5000 \times 5000 \times 100\ \mu\text{m}$, 1D/2D) | Nanjing University (NJU) 4H-SiC PiN (component model `NJU-PiN`) | SiC example device for [`signal`](../bench/signal.md) and [`tct`](../bench/tct.md) |
 | `NJU-PiN-bmos` | SiC `planar` device ($5000 \times 5000 \times 100\ \mu\text{m}$, 1D/2D) | Nanjing University (NJU) 4H-SiC PiN (component model `NJU-PiN-bmos`) | [`bmos`](../apps/bmos.md) |
 | `pixel_ayyouby` | Si `lgadpixel` device, 3×3 array Ayyoub-style DJ-LGAD pixel (pitch $20 \times 20\ \mu\text{m}$) | `comment`: Ayyoub-style 3×3 DJ-LGAD pixel model | |

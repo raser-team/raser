@@ -5,12 +5,12 @@ from __future__ import annotations
 import argparse
 import errno
 import fcntl
-import hashlib
 import itertools
 import json
 import os
 import re
 import secrets
+import shutil
 import subprocess
 import sys
 import time
@@ -26,6 +26,7 @@ import raser
 from raser.components import load_component
 from raser.core.device.build_device import device_json
 from raser.lifecycle import jobs
+from raser.lifecycle import nodes
 from raser.lifecycle import scheduler
 from raser.lifecycle import slices
 from raser.supports.paths import REPO_ROOT
@@ -126,6 +127,24 @@ class Workflow:
     # its options at the addresses <name>.device.... One device is the one the
     # command names, in files["device"].
     devices: Mapping = field(default_factory=dict)
+    # The sections of config.json, for an experiment whose settings are
+    # written whole in sections: its keys are then addresses <section>.<key>,
+    # config.json holds every one of them, a key it lacks or does not know is
+    # an error, and each slice reads those of its stage under their bare names.
+    sections: tuple = ()
+    # Those of the sections whose settings say what is measured: a list of
+    # values for one of them is a scan, a run of the experiment for each
+    # value. A setting of the other sections says how what was measured is
+    # analysed: a list is its value, and it is not scanned.
+    scanned: tuple = ()
+    # <section>.<slot> -> the kind of file the slot names: a key inside that
+    # file is given as <section>.<slot>.<keys down to it>.
+    slots: Mapping = field(default_factory=dict)
+    # The last stage of the chain, the analysis: (the experiment folder) ->
+    # the results of its points whose jobs are all done. It works on the jobs
+    # of a point together, so it is no slice of a job: the command runs it
+    # when its jobs are done, and so does the last job on the cluster.
+    analysis: Callable | None = None
 
     def __post_init__(self):
         _one_of_each_group(self.exclusive, self.defaults, f"the defaults of {self.name}")
@@ -195,7 +214,7 @@ def execute(workflow, kwargs, register=True):
             held[0] = None
 
     try:
-        return _execute(workflow, kwargs, register, root, _read(root / "config.json"), identity, release)
+        return _execute(workflow, kwargs, register, root, read_config(workflow, root), identity, release)
     finally:
         release()
 
@@ -212,7 +231,24 @@ def _execute(workflow, kwargs, register, root, config, identity, release):
         fixed_here[address.get(key, key)] = _parse(value)
     scanned_here = {address.get(item.partition("=")[0], item.partition("=")[0]) for item in kwargs["scan"]}
     for key, value in fixed_here.items():
+        if workflow.sections and key.split(".")[0] not in workflow.scanned:
+            continue  # a setting of the analysis names no folder: any value
+        if workflow.sections and isinstance(value, list):
+            raise ValueError(f"{key}: a list of values is a scan; give it to --scan as {key}=" + ",".join(map(str, value)))
         _check_folder_names(key, [value])
+    if workflow.sections:
+        # what the command line gives is a setting or a key under a slot; anything else is told now
+        for key in sorted(scanned_here | set(fixed_here)):
+            if key not in workflow.keys:
+                in_file(workflow, key)
+    if workflow.sections:
+        for key in sorted(scanned_here):
+            if key.split(".")[0] not in workflow.scanned:
+                raise ValueError(
+                    f"{key} is not scanned: a setting of {key.split('.')[0]} says how the events that were measured "
+                    f"are analysed, not what is measured. Set another value with --set and run again: the events are "
+                    f"used as they are. Scanned are the settings of {', '.join(workflow.scanned)}"
+                )
     if both := sorted(scanned_here & set(fixed_here)):
         raise ValueError(f"{', '.join(both)}: given to --set and to --scan at once; give it to one of them")
     given = {**given, **fixed_here}
@@ -239,6 +275,8 @@ def _execute(workflow, kwargs, register, root, config, identity, release):
         # A stage whose slices are one per position, current.<position>: all of them.
         named = [piece.name for piece in workflow.slices]
         until = [k for k, name in enumerate(named) if kwargs["until"] in (name, name.split(".")[0])]
+        if kwargs["until"] == "analysis" and workflow.analysis:
+            until = list(range(len(named)))  # the last stage: every slice before it
         if not until:
             raise ValueError(f"no slice {kwargs['until']} in {named}")
         runs = set(until).union(*(slices.upstream(workflow.slices, k) for k in until))
@@ -260,9 +298,33 @@ def _execute(workflow, kwargs, register, root, config, identity, release):
             for k, piece in enumerate(workflow.slices)
             if k in runs and any(points[other][3][k] == name for other in asked)
         ]
-        record = {"seed": seed, "point": name, "same_seeds": same_seeds}
+        # The scanned options of the point that make it a measurement of its
+        # own: those a slice that measures reads, all of them without slices.
+        measured = {
+            key: options[key]
+            for key in scan
+            if not workflow.slices
+            or any(workflow.slices[j].new_events for j in slices.owners(workflow.slices, key))
+        }
+        record = {"seed": seed, "point": name, "same_seeds": same_seeds, "measured": measured}
         if not workflow.seeds:
             record = {"point": name}
+        # Whether the chain goes on to its last stage when the jobs are done.
+        analysed = bool(workflow.analysis) and kwargs.get("until") in (None, "analysis")
+        if workflow.analysis:
+            record["analysis"] = analysed
+        if workflow.slices:
+            # Its view: the scanned options with their values, every one of
+            # them; DEFAULT for an experiment that scans nothing. A point that
+            # only holds slices of the points asked has none.
+            titles = config.get("names", {})
+            view = (
+                "_".join(
+                    f"{_label(key, titles, workflow)}_{_text(options.get(key, given_here.get(key)))}" for key in scan
+                )
+                or DEFAULT
+            )
+            record["view"] = view if name in asked else None
         record.update(commit=commit, options=options, files=files)
         if workflow.settings:
             record["settings"] = workflow.settings(kwargs)
@@ -273,6 +335,8 @@ def _execute(workflow, kwargs, register, root, config, identity, release):
         record = json.loads(json.dumps(record))
         old = _read(folder / "run.json")
         why = _outdated(workflow, old, record) if old else None
+        if workflow.slices and old and old.get("commit") != commit:
+            print(f"note: {folder} was run by {old.get('commit')}, the code is {commit} now; what it wrote is used")
         # With slices: when some slice of the folder, a shared one aside, reads
         # what it read in the old run and nothing else of the record changed,
         # the old run is not out of date; the slices in `again`, those that read
@@ -350,15 +414,79 @@ def _execute(workflow, kwargs, register, root, config, identity, release):
             "cwd": os.getcwd(),
             "seed_folder": label or None,
         }
-        _make_shared({**kwargs, "_waiting": waiting} if kwargs["batch"] else kwargs, [need for *_, need in todo], root)
+        _make_shared(
+            workflow, {**kwargs, "_waiting": waiting} if kwargs["batch"] else kwargs, [need for *_, need in todo], root
+        )
         for folder, left, stale, record, run_again, before, names, (shared, options, files) in todo:
             _stamp(workflow, record, options, files)  # of what was made just now
+        # The table is of the points of the experiment: a command that runs
+        # points of its own beside them (register=False) leaves it as it is.
+        if workflow.slices and register:
+            _write_points(workflow, kwargs, root, scan, asked, todo)
         failed = _run_points(workflow, kwargs, todo, label)
     finally:
         _close(held)
     if failed:
         raise SystemExit("\n".join([f"{len(failed)} of {len(todo)} points failed:", *failed]))
+    if workflow.analysis and kwargs.get("until") in (None, "analysis"):
+        workflow.analysis(root)
     return None
+
+
+def complete_points(root) -> list[str]:
+    """The points of points.json whose jobs are all done: every node the
+    table lists for them is there, or the job was ended before it."""
+    root = Path(root)
+    done = []
+    for name, row in _read(root / "points.json").items():
+        count = max(map(len, row["nodes"].values()))
+        whole = True
+        for index in range(count):
+            states = [
+                nodes.read(place)["state"] if ((place := nodes.node_dir(root, stage_of(piece), listed[index])) / "node.json").is_file() else None
+                for piece, listed in row["nodes"].items()
+            ]
+            whole = whole and (None not in states or "ended" in states)
+        if whole:
+            done.append(name)
+    return done
+
+
+def _write_points(workflow, kwargs, root, scan, asked, todo) -> None:
+    """points.json of the experiment: per point asked, the values of the
+    scanned options and the node of each slice of each job; and the views of
+    the nodes that are there already. An experiment that scans has no point
+    DEFAULT: none of its points is the one it would run without the scan."""
+    records = {record["point"]: record for _, _, _, record, *_ in todo}
+    default = Path(root) / "points" / DEFAULT
+    if default.is_symlink():
+        default.unlink()
+    elif scan and default.is_dir():
+        shutil.rmtree(default)  # the view of the experiment before it scanned: links only
+    rows: dict = {}
+    for name in asked:
+        record = records[name]
+        table: dict = {}
+        for index in range(kwargs.get("jobs") or 1):
+            for piece, (_, node) in job_nodes(workflow, record, index).items():
+                table.setdefault(piece, []).append(node)
+                place = nodes.node_dir(root, stage_of(piece), node)
+                if (place / "node.json").is_file():
+                    nodes.link_view(root, record["view"], piece, place, job=index)
+        measures = {
+            piece: measured_thing(workflow, inputs) for piece, (inputs, _) in job_nodes(workflow, record, 0).items()
+        }
+        rows[record["view"]] = {
+            "values": {key: record["options"].get(key) for key in scan},
+            "nodes": table,
+            "measures": measures,
+        }
+    root.mkdir(parents=True, exist_ok=True)
+    nodes.write_points(root, rows)
+    # The views of points the experiment no longer has go: they hold links only.
+    for old in default.parent.iterdir() if default.parent.is_dir() else ():
+        if old.name not in rows:
+            old.unlink() if old.is_symlink() else shutil.rmtree(old)
 
 
 def _close(handles) -> None:
@@ -375,7 +503,10 @@ def _write_config(workflow, kwargs, register, root, config, identity, given, sca
         new = {**identity, "set": given if register else {}, "scan": scan if register else {}}
         if workflow.seeds:
             new["same_seeds"] = same_seeds
-        _write(root / "config.json", new)
+        if workflow.sections:
+            # written whole: what the experiment takes where nothing is given
+            new["set"] = {**workflow.defaults, **new["set"]}
+        _write(root / "config.json", written_config(workflow, new))
     elif register and (kwargs["scan"] or fixed_here):
         # A scan or a --set given to an experiment that exists joins its config,
         # under its address as _points reads it, in place of what the config
@@ -398,7 +529,14 @@ def _write_config(workflow, kwargs, register, root, config, identity, given, sca
             written[key] = [_parse(value) for value in values.split(",")]
         for key in fixed_here:
             leave_out(key)
-        _write(root / "config.json", {**config, "scan": written, "set": {**kept, **fixed_here}})
+        # Another component in a slot is another file: the keys that were set
+        # inside the one before it go, but for those this command gives.
+        now = {*fixed_here, *written} - set(config.get("scan", {}))
+        for slot in workflow.slots:
+            if slot in fixed_here or any(address.get(item.partition("=")[0], item.partition("=")[0]) == slot for item in kwargs["scan"]):
+                kept = {key: v for key, v in kept.items() if not key.startswith(slot + ".") or key in fixed_here}
+                written = {key: v for key, v in written.items() if not key.startswith(slot + ".") or key in now}
+        _write(root / "config.json", written_config(workflow, {**config, "scan": written, "set": {**kept, **fixed_here}}))
 
 
 def _run_points(workflow, kwargs, todo, label) -> list:
@@ -422,7 +560,11 @@ def _run_points(workflow, kwargs, todo, label) -> list:
             for i in range(kwargs.get("jobs") or 1):
                 if all(slices.mark(held_by[piece.name], i, piece.name).exists() for piece in workflow.slices):
                     _done(folder, i).touch()
-        unready = [piece.name for piece in shared if piece.shared.ready(options, files) is None]
+        unready = [
+            piece.name
+            for piece in shared
+            if piece.shared.ready(flat(workflow, options, stage_of(piece.name)), files) is None
+        ]
         waiting = [
             i
             for i in left
@@ -482,11 +624,14 @@ def _stamp(workflow, record, options, files) -> None:
         shared = [j for j in sorted(slices.upstream(workflow.slices, k) | {k}) if workflow.slices[j].shared]
         if shared:
             record["slices"][piece.name]["shared"] = {
-                workflow.slices[j].name: workflow.slices[j].shared.stamp(options, files) for j in shared
+                workflow.slices[j].name: workflow.slices[j].shared.stamp(
+                    flat(workflow, options, stage_of(workflow.slices[j].name)), files
+                )
+                for j in shared
             }
 
 
-def _make_shared(kwargs, needs, root) -> None:
+def _make_shared(workflow, kwargs, needs, root) -> None:
     """Make what the points share and is not ready, once for all the points
     that read the same of it. `needs` holds, per point, (its shared slices,
     its options, its files). A shared slice that another command is making
@@ -495,6 +640,7 @@ def _make_shared(kwargs, needs, root) -> None:
     for shared, options, files in needs:
         for piece in shared:
             same = json.dumps([piece.name, {key: options.get(key) for key in piece.keys}, files.get("device")])
+            options = flat(workflow, options, stage_of(piece.name))
             if same not in started and piece.shared.ready(options, files) is None:
                 started.add(same)
                 try:
@@ -514,7 +660,7 @@ def make_shared(workflow, kwargs, root) -> None:
     made as a command of the experiment makes it before its jobs start, as
     raser field <experiment> does; no job of the experiment runs. Its
     --scan and --set choose the points, for this command only."""
-    config = _read(Path(root) / "config.json")
+    config = read_config(workflow, root)
     address = {name: key for key, name in config.get("names", {}).items()}
     given = {}
     for item in kwargs.get("set") or []:
@@ -526,10 +672,11 @@ def make_shared(workflow, kwargs, root) -> None:
     if kwargs["dry_run"]:
         for _, options, files in needs:
             for piece in shared:
-                state = "ready" if piece.shared.ready(options, files) is not None else "to be made"
+                seen = flat(workflow, options, stage_of(piece.name))
+                state = "ready" if piece.shared.ready(seen, files) is not None else "to be made"
                 print(f"{root}: {piece.name} {state} for {options}")
         return
-    _make_shared(kwargs, needs, root)
+    _make_shared(workflow, kwargs, needs, root)
 
 
 def finished(workflow, kwargs, root) -> list[tuple[str, dict, list[tuple[Path, int]]]]:
@@ -539,7 +686,7 @@ def finished(workflow, kwargs, root) -> list[tuple[str, dict, list[tuple[Path, i
     A point's jobs come from all its seed folders that ran with the options and
     files the experiment has now, whatever their seed and commit. Folders kept
     aside by a rerun are left out: their name is not seed_<their seed>."""
-    _, points, asked = _points(workflow, kwargs, _read(root / "config.json"), {})
+    _, points, asked = _points(workflow, kwargs, read_config(workflow, root), {})
     result = []
     for name in asked:
         options, files = points[name][:2]
@@ -569,6 +716,158 @@ def finished_in(root) -> list[tuple[str, dict, list[tuple[Path, int]]]]:
     return finished(WORKFLOWS[config["workflow"]], kwargs, Path(root))
 
 
+def measured_thing(workflow, inputs) -> str:
+    """The fingerprint of what a node measured, from its inputs: the same
+    for nodes that differ only in how much was measured or drawn
+    (Slice.counts), in their seed and in the nodes they read. The stamps of
+    the shared slices they read, as a field, are part of it."""
+    counts = {key for piece in workflow.slices for key in piece.counts}
+    names = {piece.name for piece in workflow.slices if not piece.shared}
+    return nodes.fingerprint(
+        {
+            "slice": inputs["slice"],
+            "settings": {key: value for key, value in inputs["settings"].items() if key not in counts},
+            "components": inputs["components"],
+            "shared": {key: value for key, value in inputs["upstream"].items() if key not in names},
+            "command_line": inputs.get("command_line"),
+        }
+    )
+
+
+def jobs_of_points(root) -> list[tuple[str, dict, list[tuple[Path, dict]], list[tuple[int, dict]]]]:
+    """The points of the experiment in `root` as its last command left them
+    in points.json, each with its name, the values of its scanned options,
+    the finished jobs that measured it and, for the screen, the finished
+    jobs that measured something else: (how many, the settings they have
+    otherwise). A job is (the experiment folder, slice -> its node).
+
+    The jobs of a point are all those in the nodes of the experiment that
+    measured what the point measures (points.json: "measures"), whichever
+    run, seed or number of events they are of: running a point again with
+    another seed adds to it. A job is finished when every slice of it has
+    its node, or one of them ended it, as a job that recorded no event. The
+    events of the root of a job, its deposits, are counted once: of two
+    chains that read the same deposits, as one drawn and one not, the first
+    by the names of its nodes is taken."""
+    root = Path(root)
+    table = _read(root / "points.json")
+    if not table:
+        raise ValueError(f"{root}: no points.json; run the experiment first")
+    config = _read(root / "config.json")
+    workflow = WORKFLOWS[config["workflow"]]
+    own = [piece for piece in workflow.slices if not piece.shared]
+    names = [piece.name for piece in own]
+    counts = {key for piece in workflow.slices for key in piece.counts}
+    written: dict = {name: {} for name in names}  # slice -> node -> its node.json
+    for name in names:
+        for path in sorted((root / "nodes" / stage_of(name)).glob("*/node.json")):
+            record = nodes.read(path.parent)
+            if record["inputs"].get("slice") == name:
+                written[name][record["node"]] = record
+
+    def finished(chain) -> bool:
+        ended = any(written[name][node]["state"] == "ended" for name, node in chain.items())
+        return len(chain) == len(names) or ended
+
+    def roots(chain) -> tuple:
+        return tuple(chain[piece.name] for piece in own if not _needs(own, piece) and piece.name in chain)
+
+    def settings(chain) -> dict:
+        """What a job was set to, of what says what is measured: its last
+        slice holds the settings of those it reads."""
+        last = [name for name in names if name in chain][-1]
+        given = written[last][chain[last]]["inputs"]["settings"]
+        return {key: value for key, value in given.items() if key not in counts}
+
+    everything = [chain for chain in _chains(own, written) if roots(chain) and finished(chain)]
+    result = []
+    for point, row in table.items():
+        mine: dict = {}  # the deposits of a job -> the job: two chains on the same deposits are one
+        elsewhere = []
+        for chain in everything:
+            same = all(
+                measured_thing(workflow, written[name][node]["inputs"]) == row["measures"][name]
+                for name, node in chain.items()
+            )
+            if same:
+                mine.setdefault(roots(chain), chain)
+            else:
+                elsewhere.append(chain)
+        here = settings(next(iter(mine.values()))) if mine else {}
+        apart: dict = {}  # what they are set to otherwise -> their deposits
+        for chain in elsewhere:
+            theirs = settings(chain)
+            differ = {name: theirs.get(name) for name in sorted(set(theirs) | set(here)) if theirs.get(name) != here.get(name)}
+            apart.setdefault(json.dumps(differ if mine else {}, sort_keys=True, default=str), set()).add(roots(chain))
+        jobs = [(root, chain) for _, chain in sorted(mine.items())]
+        result.append((point, row["values"], jobs, [(len(found), json.loads(text)) for text, found in apart.items()]))
+    return result
+
+
+def _needs(own, piece) -> list[str]:
+    """The slices of `own` that `piece` reads itself."""
+    names = [other.name for other in own]
+    k = names.index(piece.name)
+    needs = piece.needs if piece.needs is not None else names[max(k - 1, 0) : k]
+    return [name for name in needs if name in names]
+
+
+def _chains(own, same) -> list[dict]:
+    """The jobs in the nodes `same` (slice -> node -> node.json): each a
+    slice -> node, from a node of a slice that no other slice reads up to
+    the nodes it reads. A slice whose node is not there is left out."""
+    read = {name for piece in own for name in _needs(own, piece)}
+    last = [piece for piece in own if piece.name not in read]
+    chains = []
+
+    def follow(piece, node, chain) -> None:
+        chain[piece.name] = node
+        for name in _needs(own, piece):
+            above = same[piece.name][node]["inputs"]["upstream"].get(name)
+            if above in same[name]:
+                follow(next(other for other in own if other.name == name), above, chain)
+
+    seen = set()
+    for piece in last:
+        for node in same[piece.name]:
+            chain: dict = {}
+            follow(piece, node, chain)
+            chains.append(chain)
+            seen.update(chain.items())
+    # A job that an early slice ended has no node of a last slice.
+    for piece in reversed(own):
+        for node in same[piece.name]:
+            if (piece.name, node) not in seen:
+                chain = {}
+                follow(piece, node, chain)
+                chains.append(chain)
+                seen.update(chain.items())
+    return chains
+
+
+def batches(jobs) -> str:
+    """The jobs of a point by the run that wrote them, for the screen: its
+    seed, or the time of a run that was given none."""
+    count: dict = {}
+    for root, chain in jobs:
+        name, node = sorted(chain.items())[0]
+        job = nodes.read(nodes.node_dir(root, stage_of(name), node))["job"]
+        run = str(job.get("run") or f"seed_{job['master_seed']}")
+        label = f"seed {run[5:]}" if run.startswith("seed_") else f"the run of {run}, without --seed"
+        count[label] = count.get(label, 0) + 1
+    return ", ".join(f"{label}: {number} job{'s' * (number != 1)}" for label, number in sorted(count.items()))
+
+
+def set_apart(others) -> list[str]:
+    """A line for each group of finished jobs a point does not count: how
+    many, and what they were set to otherwise."""
+    lines = []
+    for number, differ in others:
+        what = ", ".join(f"{key}={value}" for key, value in differ.items()) or "other files or another field"
+        lines.append(f"{number} job{'s' * (number != 1)} measured something else and {'are' if number != 1 else 'is'} not counted: {what}")
+    return lines
+
+
 def _outdated(workflow, old, record) -> str | None:
     """What makes the run that wrote `old` out of date for `record`, or None."""
     # A run recorded without its settings was made with the default ones:
@@ -578,9 +877,17 @@ def _outdated(workflow, old, record) -> str | None:
         return "other settings of the command line"
     if workflow.outdated:
         return workflow.outdated(old, record)
-    if record["commit"].endswith("+dirty"):
+    # The nodes of a run in slices are named by what they read, not by the
+    # code that wrote them: another version of the code uses them, with a note.
+    if record["commit"].endswith("+dirty") and not workflow.slices:
         return "the code has uncommitted changes"
-    changed = [key for key in record if old.get(key) != record[key]]
+    # Nor does the name of the view of a point change what its jobs wrote.
+    # Nor does whether the chain goes on to the analysis: the jobs are the same.
+    changed = [
+        key
+        for key in record
+        if old.get(key) != record[key] and not (workflow.slices and key in ("commit", "view", "analysis"))
+    ]
     return "other " + ", ".join(changed) if changed else None
 
 
@@ -589,7 +896,23 @@ def _points(workflow, kwargs, config, given) -> tuple[dict, dict]:
 
     One point for every combination of the scanned values. A point's folder is
     named by the scanned options that differ from the unscanned run."""
+    # Another component in a slot is another file: what config.json set or
+    # scanned inside the one before it is not read by this command.
+    replaced = tuple(
+        slot + "."
+        for slot in workflow.slots
+        if slot in given or any(item.partition("=")[0] == slot for item in kwargs["scan"])
+    )
+    if replaced:
+        config = {
+            **config,
+            **{part: {key: v for key, v in config.get(part, {}).items() if not key.startswith(replaced)} for part in ("set", "scan")},
+        }
     fixed = {**workflow.defaults, **config.get("set", {}), **given}
+    if workflow.sections:
+        # every setting is there, None where nothing sets it, as config.json holds them:
+        # the first command and the ones after it read the same
+        fixed = {**dict.fromkeys(workflow.keys), **fixed}
     # Of a group of keys of which one is given, the highest layer that gives
     # one decides; the others of the group from the layers below are left out.
     layers = (("the command line", given), ('the "set" of config.json', config.get("set", {})), ("the defaults", workflow.defaults))
@@ -627,7 +950,7 @@ def _points(workflow, kwargs, config, given) -> tuple[dict, dict]:
                     fixed.pop(key, None)
     for key, values in scan.items():
         _check_folder_names(key, values)
-    label = {key: _label(key, names) for key in scan}
+    label = {key: _label(key, names, workflow) for key in scan}
     for key, other in itertools.combinations(scan, 2):
         if label[key] == label[other]:
             raise ValueError(
@@ -635,7 +958,9 @@ def _points(workflow, kwargs, config, given) -> tuple[dict, dict]:
                 'give one of them a name under "names" in config.json'
             )
     # A scanned address is not given in the unscanned run: there it takes the file's value.
-    base, _ = _point(workflow, kwargs, {**dict.fromkeys(key for key in scan if "." in key), **fixed})
+    base, _ = _point(
+        workflow, kwargs, {**dict.fromkeys(key for key in scan if "." in key and key not in workflow.keys), **fixed}
+    )
     # folder inside the experiment -> (options, files, the options given, per
     # slice the folder of the point whose run holds it)
     points: dict = {}
@@ -690,7 +1015,7 @@ def _point(workflow, kwargs, options) -> tuple[dict, dict]:
     # given, it is written into the file; not given, it takes the file's value.
     # An option may also be named by its address, "afe.stages.first.R1.ohm":
     # the kind of file, then the keys down to a value the file has.
-    addresses = {key: key for key in options if "." in key}
+    addresses = {key: in_file(workflow, key) for key in options if "." in key and key not in workflow.keys}
     for key, address in {**addresses, **workflow.in_file}.items():
         *steps, last = address.split(".")
         place, walked = files, "the files of this run"
@@ -811,9 +1136,11 @@ def _own_process(workflow, kwargs, words) -> None:
 def _run_job(workflow, kwargs):
     """One job: its options, files and seed come from the run.json of its seed folder.
 
-    The job's seed is a hash of the run's seed, the point and the job index, so
-    points draw different random numbers; with same_seeds the point is left out
-    and the jobs with one index draw the same numbers in every point."""
+    The job's seed is a hash of the run's seed, the job index and the scanned
+    options of the point that measure, so points that measure something else
+    draw different random numbers, whatever their names; with same_seeds the
+    options are left out and the jobs with one index draw the same numbers in
+    every point."""
     folder, index = Path(kwargs["job_dir"]), kwargs.get("job_index") or 0
     # The same job run twice at once, as when it is submitted twice: the second stops.
     held = _lock(folder / "batch" / f"job_{index}.lock", f"job {index} of {folder}")
@@ -839,23 +1166,65 @@ def _run_one_job(workflow, kwargs, folder, index):
         wrote all have the numbers it drew there."""
         from raser.core.seeding import seed_generators  # loads ROOT
 
-        point = [] if record["same_seeds"] else [record["point"]]
-        words = [record["seed"], *point, index, *filter(None, [piece])]
-        digest = hashlib.sha256("/".join(map(str, words)).encode()).digest()
-        options["seed"] = 1 + int.from_bytes(digest[:8], "big") % (2**31 - 1)
+        job = nodes.job_seed(record["seed"], index, record["measured"], record["same_seeds"])
+        options["seed"] = job if piece is None else nodes.stage_seed(job, piece)
         seed_generators(options["seed"])
 
     if not workflow.slices:
         if workflow.seeds:
             seed()
-        workflow.job(options)
+        workflow.job(flat(workflow, options, None))
         _done(folder, index).touch()
         _submitted(folder, index, "job").unlink(missing_ok=True)
         _start_again(workflow, record, folder, progress=True)
         return
     folders = _slice_folders(workflow, record, folder)
-    options["_slice_batch_paths"] = {name: str(place / "batch") for name, place in folders.items()}
+    root = experiment_of(folder, record, workflow.seeds)
+    planned = job_nodes(workflow, record, index)
+    # Where each slice of the job writes and the later ones read: its node,
+    # <node>.part while the slice writes it.
+    options["_node_paths"] = {
+        name: str(nodes.node_dir(root, stage_of(name), node)) for name, (_, node) in planned.items()
+    }
     wanted = (kwargs.get("job_slices") or ",".join(folders)).split(",")
+    view = record["view"]
+
+    def call(piece, options):
+        """Run a slice into its node, or take the node that is there: what a
+        slice wrote for these inputs is not written twice, whichever point,
+        run or version of the code wrote it."""
+        if piece.name not in planned:
+            return piece.run(flat(workflow, options, stage_of(piece.name)))  # shared: held outside the experiment
+        inputs, node = planned[piece.name]
+        stage = stage_of(piece.name)
+        place = nodes.node_dir(root, stage, node)
+        held = None
+        try:
+            written = nodes.found(place, inputs)
+            if written is None:
+                held = nodes.lock(place)
+                written = nodes.found(place, inputs)  # written while this job waited for the lock
+            if written is None:
+                noted = {
+                    "job": {"index": index, "master_seed": record.get("seed"), "run": folder.name},
+                    "code": record["commit"],
+                }
+                part = nodes.start(place, stage, inputs, noted)
+                options["_node_paths"][piece.name] = str(part)
+                try:
+                    left, state = piece.run(flat(workflow, options, stage_of(piece.name))) or {}, "done"
+                except slices.Ended:
+                    left, state = {}, "ended"
+                finally:
+                    options["_node_paths"][piece.name] = str(place)
+                nodes.finish(part, state, left)
+                written = nodes.read(place)
+            elif note := nodes.code_differs(written, record["commit"]):
+                print(note)
+        finally:
+            if held is not None:
+                held.close()
+        return {**written["notes"], "node": node, **({"ended": True} if written["state"] == "ended" else {})}
 
     def before(piece) -> None:
         if workflow.seeds:
@@ -864,23 +1233,80 @@ def _run_one_job(workflow, kwargs, folder, index):
     read = _what_a_job_reads(record)
 
     def publish(piece) -> bool:
-        """Whether the output of `piece` is of the run.json there is now; if
-        another command changed it meanwhile, the output is set aside."""
-        if _what_a_job_reads(_read(folder / "run.json")) == read:
-            return True
-        for path in (folders[piece.name] / "batch").glob(f"{piece.name}_{index}.*"):
-            if path.suffix not in (".done", ".submitted", ".part", ".stale"):
-                path.rename(path.with_name(path.name + ".stale"))
-        return False
+        """Whether `piece` ran by the run.json there is now. If another
+        command changed it meanwhile, the node the slice wrote stays, named
+        by what it read, and the slice has no mark in this run."""
+        return _what_a_job_reads(_read(folder / "run.json")) == read
 
     marked = {name for name in wanted if slices.mark(folders[name], index, name).exists()}
-    if slices.run(workflow.slices, folders, index, options, wanted, before, publish):
+    try:
+        whole = slices.run(workflow.slices, folders, index, options, wanted, before, publish, call)
+    finally:
+        # The view of this point holds the nodes of the slices another point ran too.
+        for name, (_, node) in planned.items():
+            place = nodes.node_dir(root, stage_of(name), node)
+            if view is not None and (place / "node.json").is_file():
+                nodes.link_view(root, view, name, place, job=index)
+    if whole:
         _done(folder, index).touch()
     now = {name for name in wanted if slices.mark(folders[name], index, name).exists()}
     for name in now:
         _submitted(folder, index, name).unlink(missing_ok=True)
     print(f"{JOB_ENDED}: {','.join(wanted)}")
     _start_again(workflow, record, folder, progress=bool(now - marked))
+    if workflow.analysis and record.get("analysis") and os.environ.get("RASER_CLUSTER_JOB"):
+        # On the cluster no command waits for the jobs: the one that ends
+        # last finds the points whole. Another job that analyses now does it.
+        try:
+            workflow.analysis(root)
+        except nodes.Running as running:
+            print(running)
+
+
+DEFAULT = "default"  # the view of the point of an experiment that scans nothing
+
+
+def stage_of(name) -> str:
+    """The stage of a slice: current of current.<position>."""
+    return name.split(".")[0]
+
+
+def experiment_of(folder, record, seeds=True) -> Path:
+    """The experiment folder of the seed or point folder `folder` of a run."""
+    root = Path(folder).parent if seeds else Path(folder)
+    return root.parent if record["point"] else root
+
+
+def job_nodes(workflow, record, index) -> dict:
+    """slice -> (its inputs, its node) for job `index` of the run of `record`,
+    for the slices the experiment holds itself. The inputs of a slice: the
+    options and files it reads, the stamps of the shared slices it reads, the
+    nodes of the slices it reads, and its seed."""
+    job = None
+    if workflow.seeds:
+        job = nodes.job_seed(record["seed"], index, record["measured"], record["same_seeds"])
+    names = [piece.name for piece in workflow.slices]
+    found: dict = {}
+    for k, piece in enumerate(workflow.slices):
+        if piece.shared:
+            continue
+        reads = record["slices"][piece.name]
+        needs = piece.needs if piece.needs is not None else names[max(k - 1, 0) : k]
+        upstream = {name: found[name][1] for name in needs if name in found}
+        inputs = {
+            "slice": piece.name,
+            "settings": reads["options"],
+            "components": reads["files"],
+            "upstream": {**reads.get("shared", {}), **upstream},
+        }
+        if "settings" in record:
+            inputs["command_line"] = record["settings"]
+        if job is None:
+            inputs["job"] = index
+        else:
+            inputs["seed"] = nodes.stage_seed(job, piece.name)
+        found[piece.name] = (inputs, nodes.node_of(inputs))
+    return found
 
 
 def _what_a_job_reads(record) -> str:
@@ -1044,10 +1470,128 @@ def _done(folder, index) -> Path:
     return slices.mark(folder, index)
 
 
-def _label(key, names) -> str:
+def _label(key, names, workflow=None) -> str:
     """A scanned option in the name of a folder: the name the config gives it,
-    else the last two steps of an address, else the option itself."""
+    else the key of a setting without its section, else the last two steps of
+    an address into a file, else the option itself."""
+    if workflow is not None and workflow.sections and key in workflow.keys:
+        return names.get(key) or key.split(".", 1)[1]
     return names.get(key) or ".".join(key.split(".")[-2:])
+
+
+def in_file(workflow, key) -> str:
+    """Where the key `key`, no setting of the experiment, sits in the files
+    of a run: <kind of file>.<keys down to it>. In an experiment written in
+    sections the key is <section>.<slot>.<keys>, of a slot of Workflow.slots."""
+    for slot, kind in workflow.slots.items():
+        if key.startswith(slot + "."):
+            return kind + key[len(slot) :]
+    if workflow.sections:
+        raise ValueError(
+            f"{key}: no such setting. The settings are {', '.join(workflow.keys)}; "
+            f"a key inside a component is <section>.<slot>.<key>, with the slots {', '.join(workflow.slots) or 'none'}"
+        )
+    return key
+
+
+def flat(workflow, options, stage) -> dict:
+    """The options as a slice of `stage` reads them: the settings of the
+    sections under their bare names, those of its own section over the
+    others, so that deposit.plots and current.plots are each "plots" to
+    their stage. Without sections, the options as they are."""
+    if not workflow.sections:
+        return options
+    seen = dict(options)
+    ordered = sorted((key for key in workflow.keys if key in options), key=lambda key: key.split(".")[0] == stage)
+    for key in ordered:
+        seen[key.split(".", 1)[1]] = options[key]
+    return seen
+
+
+def _leaves(held, path=()):
+    """(keys down to it, value) of every value in the nested objects `held`."""
+    for key, value in held.items():
+        if isinstance(value, dict):
+            yield from _leaves(value, (*path, key))
+        else:
+            yield ".".join((*path, key)), value
+
+
+def read_config(workflow, root) -> dict:
+    """config.json of the experiment in `root`, {} when there is none. For
+    an experiment written in sections, its settings as "set": address ->
+    value, and as "scan": address -> values those of the sections that are
+    scanned (Workflow.scanned) whose value is a list. A setting that is not
+    there is null; nothing but its settings is in a section. A slot may hold an object: its
+    "name" is the component, its other keys are keys inside the file."""
+    raw = _read(Path(root) / "config.json")
+    if not raw or not workflow.sections:
+        return raw
+    path = Path(root) / "config.json"
+    known = {"workflow", "device", "names", "same_seeds", *workflow.sections}
+    if unknown := sorted(set(raw) - known):
+        raise ValueError(
+            f"{path}: no {', '.join(unknown)} in a config.json; it holds workflow, device, the sections "
+            f"{', '.join(workflow.sections)}, names and same_seeds"
+        )
+    settings: dict = {}
+    scan: dict = {}
+
+    def take(address, value, section) -> None:
+        (scan if isinstance(value, list) and section in workflow.scanned else settings)[address] = value
+
+    for section in workflow.sections:
+        held = raw.get(section, {})
+        if not isinstance(held, dict):
+            raise ValueError(f"{path}: {section} is a section, an object of its settings")
+        for key, value in held.items():
+            address = f"{section}.{key}"
+            if address in workflow.slots and isinstance(value, dict):
+                inside = dict(value)
+                if address in workflow.keys:
+                    if "name" not in inside:
+                        raise ValueError(f"{path}: {address} is an object without the name of its component")
+                    take(address, inside.pop("name"), section)
+                for below, leaf in _leaves(inside):
+                    take(f"{address}.{below}", leaf, section)
+            elif address in workflow.keys:
+                take(address, value, section)
+            else:
+                mine = [name.split(".", 1)[1] for name in workflow.keys if name.startswith(section + ".")]
+                raise ValueError(f"{path}: no {address}; the settings of {section} are {', '.join(mine) or 'none'}")
+    # A setting that is not written is null: the stage that needs a value of it tells.
+    settings = {**{key: None for key in workflow.keys if key not in scan}, **settings}
+    return {**{key: raw[key] for key in raw if key not in workflow.sections}, "set": settings, "scan": scan}
+
+
+def written_config(workflow, config) -> dict:
+    """`config` as config.json holds it: for an experiment written in
+    sections, each section with every setting of it, null where none is
+    set and the list of its values where it is scanned; a key inside the
+    file of a slot is in the object of the slot, beside its name."""
+    if not workflow.sections:
+        return config
+    values = {**config.get("set", {}), **config.get("scan", {})}
+    out = {key: config[key] for key in ("workflow", "device") if key in config}
+    for section in workflow.sections:
+        out[section] = {key.split(".", 1)[1]: values.get(key) for key in workflow.keys if key.startswith(section + ".")}
+    for address, value in values.items():
+        if address in workflow.keys:
+            continue
+        slot = next(slot for slot in workflow.slots if address.startswith(slot + "."))
+        section, name = slot.split(".", 1)
+        held = out[section].get(name)
+        if not isinstance(held, dict):
+            if isinstance(held, list):
+                raise ValueError(f"{address}: {slot} is scanned; a key inside it belongs to one component")
+            held = out[section][name] = {"name": held} if slot in workflow.keys else {}
+        *steps, last = address[len(slot) + 1 :].split(".")
+        for step in steps:
+            held = held.setdefault(step, {})
+        held[last] = value
+    out["names"] = config.get("names", {})
+    out["same_seeds"] = config.get("same_seeds", False)
+    return out
 
 
 def _one_of_each_group(groups, layer, where) -> bool:
@@ -1107,10 +1651,12 @@ def _write(path, content) -> None:
 
 
 def _commit() -> str:
-    """The commit of the code; +dirty when files differ from it or it is unknown.
-    Installed as a package, raser has no commit: the version of the package."""
+    """The commit of the code, +dirty when files differ from it. Where there
+    is no commit to read, in a package that is installed or in a source tree
+    that is not a git repository, the version of the package."""
+    version = f"raser {raser.__version__}"
     if REPO_ROOT is None:
-        return f"raser {raser.__version__}"
+        return version
 
     def git(*words):
         command = ["git", "-C", str(REPO_ROOT), *words]
@@ -1118,4 +1664,6 @@ def _commit() -> str:
         return result.stdout.strip() if result.returncode == 0 else None
 
     commit, changes = git("rev-parse", "HEAD"), git("status", "--short")
-    return (commit or "unknown") + ("" if commit and changes == "" else "+dirty")
+    if commit is None:
+        return version
+    return commit + ("" if changes == "" else "+dirty")

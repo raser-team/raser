@@ -8,7 +8,7 @@ import numpy as np
 
 ELEMENTARY_CHARGE = 1.602176634e-19  # C
 RESISTIVITY = 10.0  # Ohm cm, below which a node is conductive
-UNDEPLETED = 0.5  # carriers per net dopant, above which a doped node is not depleted
+UNDEPLETED = 0.5  # majority carriers per net dopant, above which a doped node is not depleted
 
 
 def conductive(electrons, holes, net_doping, mu_n, mu_p):
@@ -17,16 +17,20 @@ def conductive(electrons, holes, net_doping, mu_n, mu_p):
     `electrons`, `holes` and `net_doping` are in cm^-3 at the nodes of the
     solved field, the mobilities `mu_n` and `mu_p` in cm^2/(V s). A node is
     conductive when its resistivity 1 / (q (mu_n n + mu_p p)) is below
-    RESISTIVITY, or when it is doped and not depleted: its carriers are more
-    than UNDEPLETED of its net doping. A node without net doping is judged by
-    its resistivity alone.
+    RESISTIVITY, or when it is doped and not depleted: its majority carriers
+    (electrons where `net_doping` > 0, holes where it is < 0) are more than
+    UNDEPLETED of its net doping. Minority carriers that flow in from elsewhere
+    do not make a node undepleted; they count only through the resistivity. A
+    node without net doping is judged by its resistivity alone.
     """
     electrons = np.asarray(electrons, dtype=float)
     holes = np.asarray(holes, dtype=float)
-    doped = np.abs(np.asarray(net_doping, dtype=float))
+    net_doping = np.asarray(net_doping, dtype=float)
+    doped = np.abs(net_doping)
+    majority = np.where(net_doping > 0, electrons, holes)
     conductivity = ELEMENTARY_CHARGE * (mu_n * electrons + mu_p * holes)
     low_resistivity = conductivity * RESISTIVITY > 1.0
-    undepleted = (doped > 0) & (electrons + holes > UNDEPLETED * doped)
+    undepleted = (doped > 0) & (majority > UNDEPLETED * doped)
     return low_resistivity | undepleted
 
 
@@ -35,14 +39,17 @@ def _of_undepleted_bulk(electrons, holes, net_doping, mu_n, mu_p):
     conductivity of every node [1/(Ohm cm)].
 
     The arguments are as for `conductive`. A node is of the undepleted bulk
-    when it is doped and not depleted and its resistivity is not below
+    when it is doped and not depleted, that is, its majority carriers are more
+    than UNDEPLETED of its net doping, and its resistivity is not below
     RESISTIVITY: the heavily doped layers under the electrodes are not of it.
     """
     electrons = np.asarray(electrons, dtype=float)
     holes = np.asarray(holes, dtype=float)
-    doped = np.abs(np.asarray(net_doping, dtype=float))
+    net_doping = np.asarray(net_doping, dtype=float)
+    doped = np.abs(net_doping)
+    majority = np.where(net_doping > 0, electrons, holes)
     conductivity = ELEMENTARY_CHARGE * (mu_n * electrons + mu_p * holes)
-    of_bulk = (doped > 0) & (electrons + holes > UNDEPLETED * doped) & (conductivity * RESISTIVITY <= 1.0)
+    of_bulk = (doped > 0) & (majority > UNDEPLETED * doped) & (conductivity * RESISTIVITY <= 1.0)
     return of_bulk, conductivity
 
 

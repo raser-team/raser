@@ -13,12 +13,16 @@ WORKFLOW = Workflow(
     name="signal",
     keys=chain.KEYS,
     defaults=chain.DEFAULTS,
+    sections=chain.SECTIONS,
+    scanned=chain.SCANNED,
+    slots=chain.SLOTS,
     components=chain.COMPONENTS,
     readers=chain.READERS,
     in_file=chain.IN_FILE,
     slices=chain.SLICES,
     exclusive=chain.EXCLUSIVE,
     command=chain.job_command,
+    analysis=chain.analyse,
 )
 
 

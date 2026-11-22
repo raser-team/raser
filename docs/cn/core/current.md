@@ -109,16 +109,14 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
 
 ### 内置常数
 
-下表列出 `drift.py`、`cal_current.py` 与 `diffusion.py` 中的全部内置物理常数与数值步长参数。它们是模块常量，器件文件里没有对应的键；时间窗、步长和 `max_drift_time` 都按器件维度取表中的值：
+下表列出 `drift.py`、`cal_current.py` 与 `diffusion.py` 中的全部内置物理常数与数值步长参数。它们是模块常量，器件文件里没有对应的键；步长按器件维度取表中的值；时间窗由漂移结果定（见“感应电荷分箱”一节开头），`max_drift_time` 由器件文件的键或估计给出（见“单步推进与停止条件”第 1 步）：
 
 | 常数名 | 1D（或所选二维网格在横向 $x$-$y$ 平面） | 2D / 3D | 单位 | 定义位置与含义 |
 | --- | --- | --- | --- | --- |
-| `t_bin` | `5e-12` | `50e-12` | $\text{s}$ | current 的输出时间步：感应电流时间箱宽度（文件属性 `dt`） |
-| `t_start`（相对值） | `-1.25e-9` | `-12.5e-9` | $\text{s}$ | 相对事例最早产生时刻的起始偏移（`-0.25 * t_end`） |
-| `t_end`（相对值） | `5e-9` | `50e-9` | $\text{s}$ | 相对事例最晚产生时刻的最小结束偏移 |
-| `delta_t` | `2e-12` | `20e-12` | $\text{s}$ | 载流子单步漂移时间步长 $\Delta t$ |
+| `t_bin` | `5e-12` | `10e-12` | $\text{s}$ | current 的输出时间步：感应电流时间箱宽度（文件属性 `dt`） |
+| `delta_t` | `2e-12` | `5e-12` | $\text{s}$ | 载流子单步漂移时间步长 $\Delta t$ |
 | `min_intensity` | `1` | `1` | $\text{V/cm}$ | 停止漂移的最低场强阈值（`"low_field"`） |
-| `max_drift_time` | `100e-9` | `100e-9` | $\text{s}$ | 单团簇最大漂移时长上限（`"time_out"`） |
+| `max_drift_time` | 由键或估计给出 | 由键或估计给出 | $\text{s}$ | 单团簇最大漂移时长上限（`"time_out"`），取自器件文件的 `max_drift_time_ns`，未给时按器件估计，见“单步推进与停止条件”第 1 步 |
 | `kboltz` | `8.617333262e-5` | `8.617333262e-5` | $\text{eV/K}$ | `drift.py` 中热扩散使用的 CODATA 2018 玻尔兹曼常数（数值等于 $k_B/e$ [$\text{V/K}$]） |
 | `e0` | `1.602176634e-19` | `1.602176634e-19` | $\text{C}$ | `drift.py` 中 Shockley-Ramo 感应电荷使用的 CODATA 2018 元电荷 |
 | `edge_sampling` | `0.05` | `0.05` | $\mu\text{m}$ | `split_at_conductor_edges` 探测导电边界的默认采样间距 |
@@ -130,8 +128,8 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
 
 单个事例进入 `CalCurrent` 后按以下步骤初始化：
 
-1. **选取档位**：若 `field` 段选用的二维网格在横向 $x$-$y$ 平面，取 `t_bin[1]`、`t_end[1]`、`t_start[1]`、`delta_t[1]`；否则按 `my_d.dimension` 取对应档位。
-2. **确定时间窗与箱数**：取所有输入沉积步产生时刻 $t_m$（$\text{s}$）的最小值 $t_{\min}$ 与最大值 $t_{\max}$（无输入时均取 $0.0$）。令首个时间箱左边界 $t_{\text{start}} = t_{\min} + \text{relative\_start}$，初始箱数 $n_{\text{bin}} = \lceil (t_{\max} + \text{relative\_end} - t_{\text{start}}) / t_{\text{bin}} \rceil$。若浮点误差导致 $t_{\text{start}} + n_{\text{bin}} t_{\text{bin}} < t_{\max} + \text{relative\_end}$，则递增 $n_{\text{bin}}$ 直至满足覆盖条件，最终令 $t_{\text{end}} = t_{\text{start}} + n_{\text{bin}} t_{\text{bin}}$。
+1. **选取档位**：若 `field` 段选用的二维网格在横向 $x$-$y$ 平面，取 `t_bin[1]`、`delta_t[1]`；否则按 `my_d.dimension` 取对应档位。
+2. **窗在漂移之后确定**：此时不定时间窗。全部团簇漂移到停止之后，再按“感应电荷分箱”一节开头的式 (10)、(11) 定 $t_{\text{start}}$、$n_{\text{bin}}$ 与 $t_{\text{end}}$。
 3. **确定读出电极名**：调用 `electrode_names(read_out_contact, read_ele_num)`。若 `read_out_contact` 长度等于 `read_ele_num`，取各项 `"name"`；若长度为 `1`，生成 `"<name>1"` 至 `"<name><read_ele_num>"`；其余情况抛出 `ValueError`。
 4. **统计总对数并筛选空间位置**：将全部输入 `ionized_pairs` 之和记为 `pairs`。随后仅保留同时满足以下条件的沉积步 $(x, y, z, t)$：
    - 位于器件边界内：$0 \le x \le l_x$、$0 \le y \le l_y$、$0 \le z \le l_z$；
@@ -144,7 +142,13 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
 
 单个团簇从 $(\mathbf{r}_0, t_0)$ 出发，在 `drift` 循环中反复调用 `advance` 直至 `reason` 非空。每一步按以下严格顺序执行：
 
-1. **超时判定（`"time_out"`）**：若 $t - t_0 \ge \text{max\_drift\_time}$，立即停止并记 `reason = "time_out"`。
+1. **超时判定（`"time_out"`）**：若 $t - t_0 \ge \text{max\_drift\_time}$，立即停止并记 `reason = "time_out"`。`max_drift_time`（$\text{s}$）由器件文件的键 `max_drift_time_ns`（$\text{ns}$，乘 $10^{-9}$ 换算）给出；器件文件给了就用它，没给时按器件估计。`max_drift_time_ns` 不是正的有限数时抛出 `ValueError`：`"max_drift_time_ns of <det_name> must be a positive finite number in ns, not <value>"`。估计取电子、空穴各自走完整个厚度的漂移时间的较大者的 $10$ 倍：
+
+   $$T_c = 10^{-4}\int_{\{z \in [0,\, l_z]\,:\ E(z) > E_{\min}\}} \frac{dz}{\mu_c\bigl(T,\, N_{\text{eff}}(z),\, E(z)\bigr)\,E(z)} \tag{12}$$
+
+   $$T_{\text{est}} = 10\,\max(T_e,\, T_h) \tag{13}$$
+
+   其中 $T_c$（$\text{s}$）是载流子 $c$（电子记 $e$，空穴记 $h$）走完整个厚度的漂移时间；积分沿器件横向中心 $(l_x/2,\, l_y/2)$ 的深度方向，$z$（$\mu\text{m}$）从 $0$ 到 $l_z$，$10^{-4}$ 为 $\text{cm}/\mu\text{m}$ 换算因子；$E(z)$ 为该线上的场强模长（$\text{V/cm}$），$N_{\text{eff}}(z)$ 为局部净掺杂（$\text{cm}^{-3}$）；$E_{\min}$ 为上表的 `min_intensity`，只积 $E(z) > E_{\min}$ 的部分，低于它载流子本来就停下；$\mu_c$（$\text{cm}^2/(\text{V}\cdot\text{s})$）为该载流子在本器件迁移率模型、温度和局部掺杂下的迁移率；$T_{\text{est}}$（$\text{s}$）为估计值。系数 $10$ 用来覆盖扩散、横向路径和增益载流子的额外路程，这个系数是提议，待审。整条深度线上都没有 $E(z) > E_{\min}$ 的点时抛出 `ValueError`：`"<det_name> has no field above <min_intensity> V/cm along its depth at the bias <V> V: give max_drift_time_ns in the device file"`。估计值在每次构造 `current` 时按所用的场算一次，写进日志（`INFO` 一行，给出 $T_e$、$T_h$ 和取用值）。
 2. **导电区判定（`"collected"`）**：若 `my_f.get_conductive(x, y, z)` 为真，立即停止并记 `reason = "collected"`。哪里算导电区由场模块在该偏压下划分：所在网格单元的节点全都导电才算，见 [field.md](field.md)。
 3. **无场判定（`"no_field"`）**：调用 `my_f.get_e_field_cached(x, y, z)` 获取 $\mathbf{E} = (E_x, E_y, E_z)$（$\text{V/cm}$）。若抛出 `ValueError`，立即停止并记 `reason = "no_field"`；若任一分量非有限数（`NaN` 或 `Inf`），抛出 `ValueError`。
 4. **低场判定（`"low_field"`）**：计算场强模长 $E = \sqrt{E_x^2 + E_y^2 + E_z^2}$。若 $E \le \text{min\_intensity}$，立即停止并记 `reason = "low_field"`。
@@ -172,6 +176,14 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
 
 ### 感应电荷分箱
 
+一个事例的全部团簇（原生电子、原生空穴，以及开启雪崩时的增益电子、增益空穴）都漂移到停止之后，才定时间窗并分箱。首个时间箱的左边界 $t_{\text{start}}$（$\text{s}$）取该事例全部输入沉积步产生时刻 $t_m$ 的最小值 $t_{\min}$（无输入时取 $0.0$）；末端取所有团簇停止时刻的最大值 $t_{\text{stop}}$（$\text{s}$，无团簇时取 $t_{\text{start}}$）。箱数 $n_{\text{bin}}$（无量纲）与窗的右边界 $t_{\text{end}}$（$\text{s}$）为：
+
+$$n_{\text{bin}} = \max\!\left(1,\ \left\lceil \frac{t_{\text{stop}} - t_{\text{start}}}{t_{\text{bin}}} \right\rceil\right) \tag{10}$$
+
+$$t_{\text{end}} = t_{\text{start}} + n_{\text{bin}}\,t_{\text{bin}} \tag{11}$$
+
+其中 $t_{\text{bin}}$（$\text{s}$）为上表的时间箱宽度。窗从最早的产生时刻起、到最后一个团簇停止时止，前后都不留空白：信号前的基线段和放大器回落的长度由 [电子学读出](readout.md) 自己补。一维、二维、三维用同一条规则。窗覆盖全部停止时刻，且每一步的时刻都不早于 $t_{\min}$，所以不再有感应电荷落进上溢箱或下溢箱，两箱保留在数组里，值为零。事例的时间箱数不再固定（文件里每个事例本来就有自己的 `count`），二维、三维器件的典型文件比原来小一到两个数量级。
+
 `CalCurrent.binned` 为每个电极分配长度为 $n_{\text{bin}} + 2$ 的浮点数组 `bins`（$\text{A}$），下标 `0` 为欠流箱（$t < t_{\text{start}}$），下标 `1` 至 `n_bin` 为时间窗内各箱，下标 `n_bin + 1` 为溢流箱（$t \ge t_{\text{end}}$）。对每条点数 $\ge 2$ 的路径：
 
 1. **确定待算电极与权重势平移量（`electrodes_near`）**：
@@ -179,12 +191,13 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
    - 若 `len(read_out_contact) == 1`（单个重复电极），由路径起点 $(x_0, y_0)$ 求所在电极编号 $(i_x, i_y)$，仅计算满足 $i \in [\max(i_x - s_x, 0),\, \min(i_x + s_x, N_x - 1)]$、$j \in [\max(i_y - s_y, 0),\, \min(i_y + s_y, N_y - 1)]$ 的近邻电极，其中 $s_x = \text{my\_f.cells\_either\_side}$，$s_y = \text{read\_out\_contact}[0].\text{get}(\text{"y\_span"}, 0)$。电极序号为 $i \cdot N_y + j$，查询场中第 `0` 号权重势，平移偏移量为：
      $$\Delta x_{\text{off}} = x_{\text{first}} + (i - s_x)\,p_x, \qquad \Delta y_{\text{off}} = y_{\text{first}} + (j - s_y)\,p_y$$
      范围外的电极忽略为零。
+   - 若器件有 `resistive_layer`，读出电极是阻性层的 RC 格点，权重势只有阻性层这一个平面电极的（见 [field.md](field.md) 的“权重势”），偏移量为 $(0, 0)$。每一步按第 2 步算出这个平面电极上的感应电荷 $\Delta Q_k$，再按这一步中点的横向位置 $\bigl(\tfrac{x_k + x_{k+1}}{2}, \tfrac{y_k + y_{k+1}}{2}\bigr)$ 分给 RC 格点：第 $n$ 个格点得 $s_n\,\Delta Q_k$，份额 $s_n$ 即 [readout.md](readout.md) 式 (5)–(7) 按到相邻格点中心的距离线性分配的份额，各格点之和为 $\Delta Q_k$。中点落在格点阵列之外时抛出 `ValueError`，写明坐标和阵列的范围。
 2. **计算每步感应电荷（`induced_charges`）**：对每个待算电极，在路径各点查询 $\phi_{w,k} = \text{my\_f.get\_w\_p}(x_k - \Delta x_{\text{off}},\, y_k - \Delta y_{\text{off}},\, z_k,\, e_{\text{field}})$，计算第 $k$ 步感应电荷 $\Delta Q_k = N_k e_0 (\phi_{w,k+1} - \phi_{w,k})$（$\text{C}$），其中未开启俘获时 $N_k = N_0$，开启俘获时 $N_k = N_{k + 1/2}$。
-3. **按时间占比分配到各箱（`spread_over_bins`）**：令箱宽 $\Delta t_{\text{bin}} = (t_{\text{end}} - t_{\text{start}}) / n_{\text{bin}}$（按第 2 步的取法即等于 $t_{\text{bin}}$），等效单箱电流 $v_k = \Delta Q_k / t_{\text{bin}}$。计算该步 $[t_k, t_{k+1}]$ 覆盖的逻辑箱号范围 $m_{\text{first}} = \lfloor (t_k - t_{\text{start}}) / \Delta t_{\text{bin}} \rfloor$ 至 $m_{\text{last}} = \lfloor (t_{k+1} - t_{\text{start}}) / \Delta t_{\text{bin}} \rfloor$。对每个 $m \in [m_{\text{first}}, m_{\text{last}}]$：
+3. **按时间占比分配到各箱（`spread_over_bins`）**：令箱宽 $\Delta t_{\text{bin}} = (t_{\text{end}} - t_{\text{start}}) / n_{\text{bin}}$（按式 (10)、(11) 即等于 $t_{\text{bin}}$），等效单箱电流 $v_k = \Delta Q_k / t_{\text{bin}}$。计算该步 $[t_k, t_{k+1}]$ 覆盖的逻辑箱号范围 $m_{\text{first}} = \lfloor (t_k - t_{\text{start}}) / \Delta t_{\text{bin}} \rfloor$ 至 $m_{\text{last}} = \lfloor (t_{k+1} - t_{\text{start}}) / \Delta t_{\text{bin}} \rfloor$。对每个 $m \in [m_{\text{first}}, m_{\text{last}}]$：
    - 重叠区间为 $[a_m, b_m] = \bigl[\max(t_k,\, t_{\text{start}} + m\,\Delta t_{\text{bin}}),\, \min(t_{k+1},\, t_{\text{start}} + (m + 1)\,\Delta t_{\text{bin}})\bigr]$；
    - 时间占比 $w_m = \max(b_m - a_m,\, 0) / (t_{k+1} - t_k)$；
    - 将 $v_k w_m$ 累加到 `bins[e, clamp(m + 1, 0, n_bin + 1)]`，从而 $m < 0$ 全部计入欠流箱 `0`，$m \ge n_{\text{bin}}$ 全部计入溢流箱 `n_bin + 1`。
-4. **合成总电流与净电荷**：将原生空穴箱、原生电子箱（以及开启雪崩后的增益空穴箱与增益电子箱）逐元素相加得 `sum_bins`。时间窗内的电极电流取切片 `[:, 1:-1]`，而各电极净感应电荷 `charge = sum_bins.sum(axis=1) * t_bin`（$\text{C}$）包含欠流箱与溢流箱中的全部感应电荷。
+4. **合成总电流与净电荷**：将原生空穴箱、原生电子箱（以及开启雪崩后的增益空穴箱与增益电子箱）逐元素相加得 `sum_bins`。时间窗内的电极电流取切片 `[:, 1:-1]`，而各电极净感应电荷 `charge = sum_bins.sum(axis=1) * t_bin`（$\text{C}$）对全部箱求和，窗已覆盖全部时刻，故等于窗内各箱之和。
 
 ### 雪崩倍增算法
 
@@ -228,7 +241,7 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
 
 `CalCurrentLaser` 将瞬时产生假设下算出的时域感应电流与激光时间脉冲形状 $P(t)$（$\text{s}^{-1}$，满足 $\int P(t)\,dt = 1$）卷积：
 
-1. 调用父类 `CalCurrent` 对激光注入 `my_l` 生成的初始电子-空穴对完成漂移、倍增与分箱（`CalCurrentLaser` 默认 `diffusion=True`，而 `write_laser_currents` 显式传入 `diffusion=False`）。
+1. 调用父类 `CalCurrent` 对激光注入 `my_l` 生成的初始电子-空穴对完成漂移、倍增与分箱（`CalCurrentLaser` 默认 `diffusion=True`，而 `write_laser_currents` 显式传入 `diffusion=False`）。定窗时，式 (10) 中的 $t_{\text{stop}}$ 换成 $t_{\text{stop}} + T_{\text{ker}}$，其中 $T_{\text{ker}} = k_{\max} t_{\text{bin}}$（$\text{s}$）是卷积核的长度，$k_{\max}$ 为下一步中权重 $p_k$ 非零的最大箱偏移，使卷积后的尾部留在窗内。
 2. 调用 `pulse_in_bins(my_l.timePulse, my_l.temporal_FWHM, n_bin, bin_width)` 计算脉冲在各整数箱偏移 $k \in [-(n_{\text{bin}} - 1),\, n_{\text{bin}} - 1]$ 处的离散权重：
    - 确定单箱中点采样数 $S = \max\!\left(1,\, \lceil 20\,\Delta t_{\text{bin}} / \text{FWHM} \rceil\right)$（采样间距不大于 $\text{FWHM}/20$）；
    - 按中点矩形法则积分得：
@@ -257,10 +270,10 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
 ### 模块与函数分工
 
 - `drift.py`：实现单团簇输运与单步物理量计算。`advance` 执行单步推进与停止判定，`drift` 循环推进单团簇至停止；`induced_charges` 计算路径各步在指定电极上的 Shockley-Ramo 感应电荷；`surviving` 与 `surviving_at` 计算俘获后的存活载流子数。
-- `cal_current.py`：实现事例级输运调度、分箱、雪崩倍增、激光卷积与批处理写出。`CalCurrent` 完成时间窗设定、空间筛选、载流子漂移与分箱；`CalCurrentGain` 继承 `CalCurrent`，按 `gain_algorithm` 执行 `"planar_integral"` 或 `"local_path"` 倍增；`CalCurrentG4P` 封装 `CarrierListFromG4P` 输入；`CalCurrentLaser` 结合 `pulse_in_bins` 执行激光脉冲卷积；`spread_over_bins`、`fill_histogram`、`electrode_names`、`split_at_conductor_edges`、`deposits_in` 与 `log_ends` 为支撑函数；`write_induced_currents` 与 `write_laser_currents` 负责将事例结果写出到 HDF5 文件并触发绘图。
+- `cal_current.py`：实现事例级输运调度、分箱、雪崩倍增、激光卷积与批处理写出。`CalCurrent` 完成时间窗设定、空间筛选、载流子漂移与分箱；`CalCurrentGain` 继承 `CalCurrent`，按 `gain_algorithm` 执行 `"planar_integral"` 或 `"local_path"` 倍增；`CalCurrentLaser` 结合 `pulse_in_bins` 执行激光脉冲卷积；`spread_over_bins`、`fill_histogram`、`electrode_names`、`split_at_conductor_edges`、`deposits_in` 与 `log_ends` 为支撑函数；`write_induced_currents` 与 `write_laser_currents` 负责将事例结果写出到 HDF5 文件并触发绘图。
 - `diffusion.py`：提供 `time_bin` 与 `collect_by_diffusion`，实现无场像素传感器的二维纯扩散收集。
 - `currents.py`：定义 `EventCurrents`、`Currents` 以及 `append_currents`、`read_currents`，负责 `current.h5` 的稀疏追加写入与全电极还原读取。
-- `draw.py` 与 `draw_drift_path.py`：使用 PyROOT 绘制感应电流波形（`draw_currents`）、条形/像素收集电荷（`charge_collection_strip`、`charge_collection_pixel`）与三维/$x$-$z$ 漂移路径（`draw_drift_path`）。
+- `draw.py` 与 `draw_drift_path.py`：使用 PyROOT 并经[出图（`supports/figures`）](../supports/figures.md)取样式、存图，绘制感应电流波形（`draw_currents`）、条形/像素收集电荷（`charge_collection_strip`、`charge_collection_pixel`）与三维/$x$-$z$ 漂移路径（`draw_drift_path`）。
 
 ### 核心数据结构
 
@@ -274,7 +287,7 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
 
 ### 器件文件读取的键
 
-使用者能设的只有下表这些键；迁移率模型由器件文件按名字选用（见 [model.md](model.md)）。页内其他参数（时间窗、步长、扩散开关）都写死在代码里。
+使用者能设的只有下表这些键；迁移率模型由器件文件按名字选用（见 [model.md](model.md)）。页内其他参数（步长、扩散开关）都写死在代码里。
 
 | 键或派生属性 | 默认值 | 单位 | 含义 |
 | --- | --- | --- | --- |
@@ -283,6 +296,7 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
 | `electrodes`, `p_x`, `p_y`, `x_ele_num`, `y_ele_num`, `read_ele_num` | 见 [device.md](device.md) | $\mu\text{m}$ / 个 | 居中读出电极布局、间距与数量；`electrodes` 为 `"strip"`/`"pixel"` 时同时决定绘图类型，`"pixel"` 为 `collect_by_diffusion` 前提 |
 | `read_out_contact` | 无（必选） | 无 | 读出电极字典列表，每项含 `"name"`；单电极重复排布时可选 `"y_span"`（默认 `0`，控制 `y` 向近邻跨度；`x` 向跨度取场对象 `cells_either_side`） |
 | `det_name`, `det_model` | `det_name` 默认文件名词干；`det_model` 无（绘图必选） | 无 | 器件名称（用于报错信息）与模型标识（用于 `<det_model>_drift_path` 文件名） |
+| `max_drift_time_ns` | 无（缺省时按器件估计，见 [单步推进与停止条件](#单步推进与停止条件) 第 1 步） | $\text{ns}$ | 单团簇最大漂移时长，正的有限数 |
 | `material`, `temperature` | 无（必选） | 无, $\text{K}$ | 材料名称（传入 [model.md](model.md) 的 `Material`）与器件温度 $T$ |
 | `irradiation.irradiation_model` | 无 `irradiation` 块时为 `None` | 无 | 映射为 `irradiation_model`；非 `None` 时开启载流子俘获衰减 |
 | `enable_gain`, `avalanche_model` | `False`, `None` | 无 | 同时有效时 `has_avalanche` 为真并启用 `CalCurrentGain`；支持 `"vanOverstraeten"`、`"Okuto"`、`"Hatakeyama"` |
@@ -290,7 +304,6 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
 | `gain_max_carriers` | `50000` | 团簇 | `"local_path"` 模式下单事例允许生成的最大增益团簇数；$\le 0$ 时不设上限 |
 | `local_gain_emit_slices` | `1` | 团簇 | `"local_path"` 模式下每次发射沿步段等分生成的子团簇数（至少 `1`） |
 | `local_gain_integration_steps` | `3` | 步 | `"local_path"` 模式下单漂移步内积分电离系数的采样点数（至少 `1`） |
-| `fano_sampling`, `fano_factor` | `False`, `0.0` | 无 | 仅 `CalCurrentG4P` 传给 `CarrierListFromG4P` 的 Fano 抽样开关与因子 |
 | `e_width_x`, `e_width_y` | 无（`collect_by_diffusion` 必选） | $\mu\text{m}$ | 纯扩散收集模式下每个像素中心矩形收集区尺寸 |
 | `doping.Donors`, `doping.Acceptors` | 无（`collect_by_diffusion` 必选） | $\text{cm}^{-3}$ | 纯扩散收集模式下用于求零场电子迁移率的施主、受主浓度数值 |
 
@@ -315,20 +328,20 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
 | `pairs` | `(events,)`, `float64` | 对 | 该事例输入的电子-空穴对总数（雪崩倍增前） |
 | `sensitive_pairs` | `(events,)`, `float64`（可选） | 对 | 器件内且电极阵列上方、产生于非导电区的电子-空穴对数（求解场漂移写出时存在） |
 | `carriers_without_field` | `(events,)`, `float64`（可选） | 个 | 因 `"no_field"` 停止的团簇（含增益团簇）在停止时尚未被俘获的载流子总数（求解场漂移写出时存在） |
-| `charge` | `(events, len(electrodes))`, `float64`（gzip） | $\text{C}$ | 各读出电极的带符号净感应电荷（含时间窗前后的欠流箱与溢流箱） |
+| `charge` | `(events, len(electrodes))`, `float64`（gzip） | $\text{C}$ | 各读出电极的带符号净感应电荷（时间窗覆盖全部团簇的停止时刻） |
 | `stored` | `(events,)`, `int64` | 个 | 该事例中电流非全零而被存入 `current` 的电极数 |
 | `index` | `(sum(stored),)`, `int64` | 无 | 每个被存储电极在 `electrodes` 中的下标（从 `0` 起），按 `stored` 切分到各事例 |
 | `current` | `(sum(stored * count),)`, `float64`（gzip） | $\text{A}$ | 各被存储电极在 `count` 个时间箱内的平均感应电流，按事例与存储电极顺序首尾拼接 |
 
 ### 绘图输出
 
-`write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, plot_path=None, detector=None)` 读 `deposits_path` 的沉积文件，把电流写进 `currents_path`；缺省 `plots=0` 时不画图，`plot_path` 不用给。`plots > 0` 时为前 `plots` 个事例在 `<plot_path>/event_<event>/` 下生成漂移路径图、电流波形图及（条形/像素布局下的）收集电荷图，环节传入的 `plots` 是 `current.plots`，`plot_path` 在 `current` 自己的节点里；`write_laser_currents` 在提供 `plot_path` 时仅生成电流波形图。
+`write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, plot_path=None, detector=None)` 读 `deposits_path` 的沉积文件，把电流写进 `currents_path`；缺省 `plots=0` 时不画图，`plot_path` 不用给。`plots > 0` 时先删掉 `<plot_path>` 里以 `current_`、`drift_path_`、`charge_per_electrode_` 开头的旧图，再为前 `plots` 个事例在 `<plot_path>` 下生成漂移路径图、电流波形图及（条形/像素布局下的）收集电荷图，图名后接事例号 `<event>`，环节传入的 `plots` 是 `current.plots`，`plot_path` 在 `current` 自己的节点里；`write_laser_currents` 在提供 `plot_path` 时仅生成电流波形图，事例号为 `0`。
 
 | 文件名 | 内容 | 单位 |
 | --- | --- | --- |
-| `<det_model>_drift_path.pdf`, `.root` | 上半图为三维器件边界框与沉积点（黑）、空穴（红）、电子（蓝）、增益空穴（洋红）、增益电子（浅蓝）路径；下半图为 $x$-$z$ 平面投影 | 空间轴 $\mu\text{m}$ |
-| `<tag>No_<k>electrode_basic_infor.pdf`, `.root` | 仅对存在非零电流分量的第 $k$ 号电极（从 `1` 起）绘制 `electron`、`hole`、`total`（开启雪崩时含 `electron gain`、`hole gain`）波形；`tag` 默认为空 | `Time [s]`, `Current [A]` |
-| `cce.pdf`, `.root` | `is_strip` 为真时绘各条收集电荷折线图（`TGraph`）；`is_pixel` 为真时绘二维像素分布（`TH2I`）；数值为收集电子数（按 `charge / 1.602176634e-19` 换算），纵轴（二维像素图为色轴）标题为“收集电子数” | 电子数 |
+| `drift_path_<event>.png`, `.pdf`, `.root` | 上半图为三维器件边界框与沉积点（灰）、空穴（红）、电子（蓝）、增益空穴（橙）、增益电子（浅蓝）路径；下半图为 $x$-$z$ 平面投影 | 空间轴 $\mu\text{m}$ |
+| `current_<event>.png`, `.pdf`, `.root`（多个读出电极时为 `current_<event>_electrode_<k>`） | 仅对存在非零电流分量的第 $k$ 号电极（从 `1` 起）绘制 `electrons`、`holes`、`total`（开启雪崩时含 `gain electrons`、`gain holes`）波形 | `Time [ns]`, `Current [μA]`；时间轴只画信号所在的一段（见[出图](../supports/figures.md#坐标轴与单位)） |
+| `charge_per_electrode_<event>.png`, `.pdf`, `.root` | `is_strip` 为真时绘各条收集电荷折线图（`TGraph`）；`is_pixel` 为真时绘二维像素分布（`TH2D`）；数值为各电极的净电荷，纵轴（二维像素图为色轴）标题为 `Charge [fC]` | $\text{fC}$ |
 
 ## 参考文献
 

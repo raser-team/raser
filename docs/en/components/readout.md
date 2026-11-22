@@ -39,7 +39,7 @@ L2 8 7 2.2u
 .ends SantaCruz
 ```
 
-![SantaCruz schematic](../images/afe-schematic-SantaCruz.png)
+![SantaCruz schematic](../../images/readout/schematic-SantaCruz.png)
 
 Schematic of the `SantaCruz` amplifier stage: the signal travels from `in` through `C1` (`3.3 nF`) to the base of `x1`, and from the collector through `C5` (`3.3 nF`) to `out`; `R13` (`1 MOhm`) references the input to DC ground; `R1` (`475 Ohm`) in series with `R2` (`3 kOhm`) $\parallel$ `C2` (`3.3 nF`) connects the collector back to the base for transimpedance feedback; `VCC` (`2.25 V`) supplies power through `L2` (`2.2 uH`), `R3` (`63.7 Ohm`), and `L1` (`47 uH`), where `L1` blocks high-frequency signals from entering the supply and `C3` (`1 nF`), `C4` (`1 nF`), `C7` (`10 nF`), and `C8` (`10 nF`) provide decoupling; `x1` references the `BFR840L3RHESD` subcircuit and `.MODEL` definitions placed before the main subcircuit in the same file.
 
@@ -57,7 +57,7 @@ Rout c out 50
 .ends Gali52
 ```
 
-![Gali52 schematic](../images/afe-schematic-Gali52.png)
+![Gali52 schematic](../../images/readout/schematic-Gali52.png)
 
 Schematic of the `Gali52` amplifier stage: `E1` is a voltage-controlled voltage source with inverting gain `-27.17` (after voltage division between the `50 Ohm` output resistance `Rout` and a `50 Ohm` load, the effective gain is `-13.585`, i.e., `22.66 dB`), `Rp` (`1 Ohm`) and `Cp` (`112.9 pF`) form a single-pole low-pass filter at $1/(2\pi R_p C_p) = 1.41\ \text{GHz}$, `E2` (gain `1`) buffers the signal before outputting through `Rout`, and both the input resistance `Rin` and output resistance `Rout` are `50 Ohm`.
 
@@ -69,13 +69,21 @@ R1 in 0 50
 .ends Termination50
 ```
 
-![Termination50 schematic](../images/afe-schematic-Termination50.png)
+![Termination50 schematic](../../images/readout/schematic-Termination50.png)
 
 Schematic of the `Termination50` termination load: a `50 Ohm` resistor `R1` to ground, serving as the final stage of the readout chain with only a single input port `in`.
 
+### `Belden8259`
+
+```json
+{"impedance_ohm": 50, "velocity_factor": 0.66, "attenuation_db_per_m": {"100": 0.177, "1000": 0.748}, "source": "Belden 8259 product data sheet"}
+```
+
+Coaxial cable component `Belden8259`: a JSON file placed in the same readout component directory as `.cir` files with the filename as the component name, specifying the characteristic impedance, velocity factor, and per-unit-length attenuation at two frequencies of a `50 Ohm` RG58 coaxial cable.
+
 ## Key Meanings
 
-Front-end circuit components are `.cir` text files; users can define and modify the subcircuit ports, SPICE element lines inside the main subcircuit, auxiliary models (`.subckt` and `.MODEL`) outside the main subcircuit, and schematic layout hints following `;` at the end of a line. `readout.amplifier` is a slot composed of cascaded stages, and quantities inside components are addressed as "section.slot.stage.element": in the experiment `config.json` or via CLI `--set` / `--scan`, use `readout.amplifier.<stage_name>.<element_name>` (such as `readout.amplifier.SantaCruz.R1`) to override or scan element values inside the main subcircuit. To switch the amplifier chain, write `--set readout.amplifier=<component_name>`, and to scan amplifier chains, write `--scan readout.amplifier=<component_name1>,<component_name2>`, which replaces the entire slot with that component chain and drops any previously overridden element values.
+Front-end circuit components are `.cir` text files; users can define and modify the subcircuit ports, SPICE element lines inside the main subcircuit, auxiliary models (`.subckt` and `.MODEL`) outside the main subcircuit, and schematic layout hints following `;` at the end of a line. `readout.amplifier` is a slot composed of cascaded stages, and quantities inside components are addressed as "section.slot.stage.element": in the experiment `config.json` or via CLI `--set` / `--scan`, use `readout.amplifier.<stage_name>.<element_name>` (such as `readout.amplifier.SantaCruz.R1`) to override or scan element values inside the main subcircuit. To switch the amplifier chain, write `--set readout.amplifier=<component_name>`, and to scan amplifier chains, write `--scan readout.amplifier=<component_name1>,<component_name2>`, which replaces the entire slot with that component chain and drops any previously overridden element values. When a repeater amplifier is needed, simply cascade an additional amplifier stage component in `readout.amplifier` (for example, `SantaCruz+Gali52+Gali52+Termination50`).
 
 ### Subcircuit Ports and Element Line Syntax
 
@@ -117,6 +125,17 @@ All remaining parameters related to netlist solving, frequency-domain noise samp
 | Pulse-polarity probe parameters | probe capacitance `1e-12`, injected charge `1e-15`, `dt = 10e-12`, `2000` bins (injected at bin `5`) | `F`, `C`, `s`, bins | `src/raser/core/readout/pulse_edge.py`, fixed probe input used by `chain_sign` to test whether an amplifier chain is non-inverting or inverting |
 | `NO_ANSWER_V` | `1e-9` | `V` | `src/raser/core/readout/pulse_edge.py`, minimum output swing threshold for `chain_sign` to judge that an amplifier chain responds to a `1 fC` injection |
 | `COLLECTOR`, `EMITTER`, `dpi` | `(2, 1)`, `(2, -1)`, `160` | grid steps, grid steps, `dpi` | `src/raser/core/readout/schematic.py`, grid offsets of the NPN transistor collector and emitter relative to the base, and resolution of exported schematics |
+
+### Cable Component JSON Keys
+
+Readout cable components are JSON files placed in the same readout component directory (`components/readout/`, with the project directory taking priority over the built-in library) as `.cir` files, with the filename stem as the component name. Four keys are supported in the file (selected via `readout.cable` with per-channel lengths set in `readout.cable.length_m` in stage settings; see [`readout`](../stages/readout.md)):
+
+| Key | Default | Unit | Meaning |
+| --- | --- | --- | --- |
+| `impedance_ohm` | None (required) | $\Omega$ | Characteristic impedance $Z_0$ of the coaxial cable |
+| `velocity_factor` | None (required) | dimensionless | Velocity factor $\text{VF}$ of the cable (propagation speed $v = c \cdot \text{VF}$, where the speed of light in vacuum is $c = 299792458\ \text{m/s}$) |
+| `attenuation_db_per_m` | None (required) | Keys in $\text{MHz}$, values in $\text{dB/m}$ | Mapping from frequency strings to per-unit-length attenuation; must contain exactly two frequencies, used to solve for the skin-effect loss coefficient $a_s$ and dielectric loss coefficient $a_d$ |
+| `source` | None (required) | None | Citation or source text (such as `"Belden 8259 product data sheet"`) |
 
 ## How the Program Uses the Component
 
@@ -218,7 +237,7 @@ The depletion-layer junction capacitance `Ctop_depleted` now connects between th
 
 ## Built-in Components
 
-`raser/components/readout/` contains the following 5 SPICE circuit components:
+`raser/components/readout/` contains the following 5 SPICE circuit components and 1 cable component:
 
 | Component Name | Ports | Circuit Description | Source | Applicable Devices or Experiments |
 | --- | --- | --- | --- | --- |
@@ -227,11 +246,12 @@ The depletion-layer junction capacitance `Ctop_depleted` now connects between th
 | `Gali52` | 2 (amplifier stage: `in`, `out`) | Mini-Circuits GALI-52+ inverting gain block, low-frequency gain `22.66 dB`, pole `1.41 GHz`, `50 Ohm` input/output impedance | File header comment: Mini-Circuits GALI series datasheet (single-pole fit to `100 MHz` to `2 GHz` S-parameters in a `50 mA`, `4.4 V`, `50 Ohm` system) | Second stage of the default chain for [`readout`](../stages/readout.md), [`signal`](../bench/signal.md), [`timeres`](../bench/timeres.md), [`tct`](../bench/tct.md), [`bmos`](../apps/bmos.md), [`cflm`](../apps/cflm.md) |
 | `SantaCruz` | 2 (amplifier stage: `in`, `out`) | UC Santa Cruz single-channel LGAD readout board, `475 Ohm` feedback inverting transimpedance amplifier stage based on `BFR840L3RHESD`, `2.25 V` supply, `3.3 nF` input/output AC coupling | File header comment: SCIPP/UCSC schematic *"Prototype Beam Test Board"* (M. Wilder, 2016-02-19, `proto_beam_test_board_V1.1C.pdf`) | First stage of the default chain for [`readout`](../stages/readout.md), [`signal`](../bench/signal.md), [`timeres`](../bench/timeres.md), [`tct`](../bench/tct.md), [`bmos`](../apps/bmos.md), [`cflm`](../apps/cflm.md) |
 | `Termination50` | 1 (termination load: `in`) | `50 Ohm` termination load resistor to ground | File header comment: `50 Ohm` input termination of an oscilloscope or downstream instrument | Final termination load of the default chain for [`readout`](../stages/readout.md), [`signal`](../bench/signal.md), [`timeres`](../bench/timeres.md), [`tct`](../bench/tct.md), [`bmos`](../apps/bmos.md), [`cflm`](../apps/cflm.md) |
+| `Belden8259` | Cable JSON (no ports) | RG58 coaxial cable, `50 Ohm` characteristic impedance, velocity factor `0.66`, `0.177 dB/m` attenuation at `100 MHz` and `0.748 dB/m` at `1000 MHz` | `source` field: Belden 8259 product data sheet | Modeling transmission-line delay, impedance-mismatch reflections, and high-frequency attenuation/dispersion (`readout.cable`) |
 
-![BroadBandCividec schematic](../images/afe-schematic-BroadBandCividec.png)
+![BroadBandCividec schematic](../../images/readout/schematic-BroadBandCividec.png)
 
 Schematic of the `BroadBandCividec` amplifier stage: `Rbias` is the `1 MOhm` input DC bias resistor and `Cin` is the `1 nF` AC coupling capacitor; the `50 Ohm` input impedance is split into two parallel resistors—`Rn` (`325.4 Ohm`) generating thermal noise and noiseless `Rq` (`59.08 Ohm`, `noisy=0`)—so that the input current noise over the `2 GHz` single-pole bandwidth matches the manufacturer specification of `0.4 uA rms`; `E1` has gain `200` (halved to `100`, i.e., `40 dB`, by the `50 Ohm` output resistance `Rout` and `50 Ohm` load), and `Rp` (`1 Ohm`) with `Cp` (`79.58 pF`) sets the `2 GHz` single pole.
 
-![ChargeSensitiveCremat schematic](../images/afe-schematic-ChargeSensitiveCremat.png)
+![ChargeSensitiveCremat schematic](../../images/readout/schematic-ChargeSensitiveCremat.png)
 
 Schematic of the `ChargeSensitiveCremat` amplifier stage: `Cin` (`12.24 pF`) and the series equivalent input voltage-noise resistor `Rs` (`43.1 Ohm`) precede the first stage `E1` of inverting gain `-3000`, bridged by the `Cf` (`1.4 pF`) and `Rf` (`100 MOhm`) feedback loop and the noiseless pole `Rp` (`1 kOhm`, `noisy=0`), `Cp` (`401.3 pF`), followed by the second stage `E3` of gain `+2` and the `50 Ohm` output resistance `Rout`.

@@ -19,7 +19,7 @@ When `HPK-Si-PiN` is not present under `work/`, the first command runs in place 
 
 ### Per-Point Statistics and Distribution Plots
 
-Each scan point aggregates all jobs it uses. The program first computes charge collection efficiency across all events (drawing `efficiency.png` when the event count is at least `2`). It then extracts the timing quantities of selected events and the earliest deposit time `truth` from single-electrode reconstruction results, writes `events.h5`, and draws `amplitude.png`. Finally, it computes the core width of `time - truth` for `ToA`, `CoG`, and all `CFD*` channels, and draws `time_difference.png` and `resolution_of_fraction.png`.
+Each scan point aggregates all finished jobs that measured the same thing, whatever their seed, events per job and `plots`; the rule is in [Slices and Reruns](../lifecycle/slices.md). The program first computes charge collection efficiency across all events (drawing `efficiency.png` and `efficiency.pdf` when the event count is at least `2`). It then extracts the timing quantities of selected events and the earliest deposit time `truth` from single-electrode reconstruction results, writes `events.h5`, and draws `amplitude.png` and `amplitude.pdf`. Finally, it computes the core width of `time - truth` for `ToA`, `CoG`, and all `CFD*` channels, and draws `time_difference` and `resolution_of_fraction`, each as `.png` and `.pdf`.
 
 The job completes normally when sample sizes are insufficient: if there are fewer than `2` events for efficiency, `0` events in the entire point, or fewer than `20` valid samples in any timing channel, the reason is written into the corresponding `error` field of `result.json` and the affected plots are skipped. When a job records `0` events in `deposit`, its downstream stages are skipped accordingly and it is also skipped during analysis.
 
@@ -30,21 +30,21 @@ In the example above (`2` jobs and `400` events per point), key results in `resu
 
 The three distribution plots at `200 V` are shown below:
 
-![HPK-Si-PiN charge collection efficiency distribution](../images/analysis-efficiency-HPK-Si-PiN.png)
+![HPK-Si-PiN charge collection efficiency distribution](../../images/analysis/efficiency-HPK-Si-PiN.png)
 
 Histogram of charge collection efficiency for `400` events at `200 V`, with the dashed line marking the mean collection efficiency `0.9348`.
 
-![HPK-Si-PiN pulse amplitude distribution](../images/analysis-amplitude-HPK-Si-PiN.png)
+![HPK-Si-PiN pulse amplitude distribution](../../images/analysis/amplitude-HPK-Si-PiN.png)
 
 Histogram of pulse amplitudes for the `276` selected events (recorded by `trigger` with cluster seed amplitude at or above `10 mV`) at `200 V`, with the dashed line marking the amplitude threshold.
 
-![HPK-Si-PiN time difference distribution and truncated Gaussian fit](../images/analysis-time-difference-HPK-Si-PiN.png)
+![HPK-Si-PiN time difference distribution and truncated Gaussian fit](../../images/analysis/time-difference-HPK-Si-PiN.png)
 
 Time-difference distributions relative to `truth`, shaded fit windows, and truncated Gaussian fit curves for `ToA`, `CoG`, and `CFD10`–`CFD90` at `200 V`.
 
 ### Cross-Point Summary and Trend Plot
 
-When more than `1` scan point has results, the program writes `points.json` under `<experiment_folder>/analysis/`. It retains only the scan options whose values differ across points and gathers each point's efficiency and time resolution. When there is exactly `1` scan option with differing values and all of its values are non-boolean numbers, it also draws the side-by-side two-panel plot `points.png` sorted in ascending order of that variable.
+When more than `1` scan point has results, the program writes `points.json` under `<experiment_folder>/analysis/`. It retains only the scan options whose values differ across points and gathers each point's efficiency and time resolution. When there is exactly `1` scan option with differing values and all of its values are non-boolean numbers, it also draws the side-by-side two-panel plot `trend.png` and `trend.pdf` sorted in ascending order of that variable.
 
 An excerpt of `examples/HPK-Si-PiN/signal/analysis/points.json` written by the example above is shown below (`CoG` and `CFD10`–`CFD90` channels share the same structure as `ToA` and are omitted here):
 
@@ -79,9 +79,9 @@ An excerpt of `examples/HPK-Si-PiN/signal/analysis/points.json` written by the e
 ]
 ```
 
-The corresponding `examples/HPK-Si-PiN/signal/analysis/points.png` is:
+The corresponding `examples/HPK-Si-PiN/signal/analysis/trend.png` is:
 
-![HPK-Si-PiN charge collection efficiency and time resolution vs. bias voltage](../images/analysis-points-HPK-Si-PiN.png)
+![HPK-Si-PiN charge collection efficiency and time resolution vs. bias voltage](../../images/analysis/trend-HPK-Si-PiN.png)
 
 Comparison of charge collection efficiency (left) and time resolution of each `CFD` channel (right) across the `100 V` and `200 V` bias points.
 
@@ -162,16 +162,16 @@ For each scan point, `collect` calls `write_point(jobs, <point_output_folder>)`,
 
      Cause: the deposit file and reconstruction table of the same job do not match; clean and rerun that job.
    - Using the boolean mask `chosen = table.columns["selected"]`, extract for selected events: `job` (filled with `float(place)`), `event`, electrode `0`'s `ToA`, `ToT`, `amplitude`, `baseline`, `noise`, `CoG`, `truth` (`earliest[number]`), and `CFD<round(100 * part)>` for each constant fraction `(k, part)` (taking `rows["CFD"][chosen, 0, k]`; if two fractions round to the same integer percentage, their data are concatenated into the same-named array in order). Concatenate all jobs column-wise, compute total event count `count = sum(len(table) for *_, table in tables)`, and set polarity sign `polarity = EDGE_SIGN[tables[0][3].edges[0]]`.
-6. **Write `events.h5` and amplitude histogram**: Create `events.h5`, converting `job` and `event` to `int64` and keeping all other columns as `float64` in identically named 1D datasets. Initialize `result["timing"] = {"events": count, "selected": len(times["truth"]), "polarity": polarity}`, and call `plots.draw_amplitudes` to draw `amplitude.png` (dividing both amplitudes and `tables[0][3].amplitude_threshold` by `MILLIVOLT` to convert to `mV`, `60`-bin histogram with a dashed line at the threshold, `150 dpi`).
+6. **Write `events.h5` and amplitude histogram**: Create `events.h5`, converting `job` and `event` to `int64` and keeping all other columns as `float64` in identically named 1D datasets. Initialize `result["timing"] = {"events": count, "selected": len(times["truth"]), "polarity": polarity}`, and call `plots.draw_amplitudes` to draw `amplitude.png` and `amplitude.pdf` (dividing both amplitudes and `tables[0][3].amplitude_threshold` by `figures.UNIT["mV"]` to convert to `mV`, `60`-bin histogram with the legend `<n> of <N> events`, a black dashed line at the threshold with the legend `threshold <threshold> mV`).
 7. **Compute per-channel time resolution and draw timing plots (`time_widths`)**: Iterate channel `name` over `["ToA", "CoG"]` followed by all `CFD*` keys in `times`:
    - Compute time difference `difference = times[name] - times["truth"]` (`s`), set `found = ~np.isnan(difference)`, call `core_width(difference[found])` (see `core/analysis` for the algorithm), and attach `"missing": int(np.sum(~found))`.
-   - If any channel raises `TooFewValues` (`<len> values, fewer than 20` or `<inside> of <len> values are inside [<low>, <high>], fewer than 20`), `write_point` catches it, writes `result["timing"]["error"] = str(too_few)`, appends `no time resolution: <too_few>` to `missing`, and skips `time_difference.png` and `resolution_of_fraction.png`.
+   - If any channel raises `TooFewValues` (`<len> values, fewer than 20` or `<inside> of <len> values are inside [<low>, <high>], fewer than 20`), `write_point` catches it, writes `result["timing"]["error"] = str(too_few)`, appends `no time resolution: <too_few>` to `missing`, and skips the `time_difference` and `resolution_of_fraction` figures.
    - If there are at least `20` samples but the fitting layer raises another exception (such as `ValueError: all values in the window are equal`, `ValueError: the window [<low>, <high>] is empty`, or non-convergence `ArithmeticError: the fit in [<low>, <high>] did not converge: <message>`), the exception propagates directly and aborts the job; inspect the waveforms and reconstruction thresholds at that point or increase statistics and rerun.
    - When all channels fit successfully, write `result["timing"]["times"] = widths` and draw two plots:
-     - `plots.draw_differences` writes `time_difference.png`: plots up to the first `12` channels (`ToA`, `CoG`, and the first `10` `CFD*` channels, hiding unused axes) on a `3 × 4` grid. For each channel, non-`NaN` `difference` values are divided by `PICOSECOND` to convert to `ps`, binned into `64` uniform bins (`65` edges) over `[mean - 8 * sigma, mean + 8 * sigma]`, shaded in light gray across the final-round window `[low, high]`, and overlaid with the normalized truncated Gaussian curve evaluated at `200` evenly spaced points over `[low, high]`:
+     - `plots.draw_differences` writes `time_difference.png` and `time_difference.pdf`: with `figures.new(3, 4)`, plots up to the first `12` channels (`ToA`, `CoG`, and the first `10` `CFD*` channels, hiding unused axes) on a `3 × 4` grid. For each channel, non-`NaN` `difference` values are divided by `figures.UNIT["ps"]` to convert to `ps`, binned into `64` uniform bins (`65` edges, filled with `figures.HISTOGRAM`) over `[mean - 8 * sigma, mean + 8 * sigma]`, shaded in light gray across the final-round window `[low, high]`, and overlaid with the normalized truncated Gaussian curve as a black solid line evaluated at `200` evenly spaced points over `[low, high]`. The horizontal axis reads `<channel> - truth [ps]`, the vertical axis `Events`, the subplot title only the channel name, and the upper left corner of each subplot (`fontsize` `9`) shows `sigma68`, `sigma ± sigma_error` and the in-window count `<window_events> of <events> events in the window`:
        $$y(x) = N_{\text{win}}\,\Delta x_{\text{bin}}\,\frac{\exp\!\left(-\frac{(x - \mu)^2}{2\sigma^2}\right)}{\sqrt{2\pi}\,\sigma \cdot \frac{1}{2}\left[\operatorname{erf}\!\left(\frac{\text{high} - \mu}{\sqrt{2}\,\sigma}\right) - \operatorname{erf}\!\left(\frac{\text{low} - \mu}{\sqrt{2}\,\sigma}\right)\right]}$$
        where $x$ is the time difference ($\text{ps}$), $\mu$ and $\sigma$ are the channel's final-round fitted `mean` and `sigma` ($\text{ps}$), $N_{\text{win}}$ is the number of events inside the final-round window `window_events` (events), $\Delta x_{\text{bin}}$ is the histogram bin width ($\text{ps}$), and $y(x)$ is the expected number of events per bin (events). The plot is saved at `130 dpi`.
-     - `plots.draw_fractions` writes `resolution_of_fraction.png`: selects all `CFD*` channels, recovers each constant fraction via `int(name[3:]) / 100`, plots `sigma ± sigma_error` (`ps`) with error bars and `sigma68` (`ps`) with open square markers, sets the lower y-axis limit to `0`, and saves at `150 dpi`.
+     - `plots.draw_fractions` writes `resolution_of_fraction.png` and `resolution_of_fraction.pdf`: selects all `CFD*` channels, recovers each constant fraction via `int(name[3:]) / 100`, plots `sigma ± sigma_error` (`ps`) as black filled circles with error bars (legend `sigma of the Gaussian`) and `sigma68` (`ps`) as black open squares (legend `sigma68`), labels the axes `CFD fraction` and `Time resolution [ps]`, and sets the lower y-axis limit to `0`.
 8. **Persist per-point result and print summary**: Write `result.json` with 2-space indentation and return `"; ".join(missing) or None`. Back in `collect`, if the return value is not `None`, print `<point_output_folder>: <error>` first, then print the path to `result.json`, and retain that point's options and parsed `result.json` for the cross-point summary.
 
 ### Cross-Point Summary
@@ -181,7 +181,7 @@ After all scan points are processed, if more than `1` point has results, `collec
 - Call `scanned_options(done)`: take the sorted union of `options` keys across all points and keep the list `scanned` of keys satisfying `len({json.dumps(options.get(key)) for _, options in done}) > 1`.
 - Build one record row per point containing `"point"`, the current value of each varying scan option, `"events"`, `"efficiency"` (`None` if `mean` is absent), `"efficiency_error"` (`None` if `mean_error` is absent), `"selected"`, and `{"sigma68", "sigma", "sigma_error"}` (in `s`) for every channel in `timing.times` (written only when `times` exists); write `points.json` with 2-space indentation.
 - Decide whether to plot: check `len(scanned) == 1` and `isinstance(row[scanned[0]], (int, float)) and not isinstance(row[scanned[0]], bool)` for every row. Return immediately if not satisfied.
-- When satisfied, sort rows in ascending order of `key = scanned[0]` and create a `1 × 2` figure (`(11, 4)` in): the left panel filters rows with `row["efficiency"] is not None` and plots efficiency with error bars; the right panel filters rows with `"ToA" in row` as `timed`, and when `timed` is non-empty takes all `CFD*` channel names from `timed[0]`, plotting `sigma / PICOSECOND` with error bars `sigma_error / PICOSECOND` (`ps`) per channel, sets the lower y-axis limit to `0`, and saves `points.png` at `150 dpi`.
+- When satisfied, sort rows in ascending order of `key = scanned[0]` and create a `1 × 2` figure with `figures.new(1, 2)`: the left panel filters rows with `row["efficiency"] is not None` and plots efficiency as black dots joined by a line with error bars, vertical axis `Charge collection efficiency`; the right panel filters rows with `"ToA" in row` as `timed`, and when `timed` is non-empty takes all `CFD*` channel names from `timed[0]`, plotting `sigma / figures.UNIT["ps"]` with error bars `sigma_error / figures.UNIT["ps"]` (`ps`) per channel in the colours of `figures.series(number of channels, True)`, vertical axis `Time resolution [ps]`, and sets the lower y-axis limit to `0`; both horizontal axes carry the scan key itself. The figure is saved as `trend.png` and `trend.pdf`.
 
 ## Software Implementation
 
@@ -193,7 +193,7 @@ After all scan points are processed, if more than `1` point has results, `collec
 - `src/raser/stages/analysis/timing.py`: Provides `table_setting`, `point_tables`, `event_times`, `time_widths`, and the standalone summary interface `point_resolution`, handling per-point reconstruction parameter consistency checks, single-electrode checks, earliest deposit time `truth` extraction, and core-width fitting per timing channel.
 - `src/raser/stages/analysis/point.py`: Provides `write_point`, chaining single-point table loading, efficiency calculation, time extraction, writing `events.h5` and `result.json`, and drawing the four single-point plots, while catching `TooFewValues` into result `error` fields.
 - `src/raser/stages/analysis/plots.py`: Encapsulates `matplotlib` plotting functions for the four single-point distribution plots: `draw_efficiencies`, `draw_amplitudes`, `draw_differences`, and `draw_fractions`.
-- `src/raser/stages/analysis/across_points.py`: Provides `scanned_options` and `write_points` to extract varying options across points, write `points.json`, and draw `points.png` for a single numeric scan variable.
+- `src/raser/stages/analysis/across_points.py`: Provides `scanned_options` and `write_points` to extract varying options across points, write `points.json`, and draw `trend` for a single numeric scan variable.
 - Job scheduling, node reuse, and locking are handled by `src/raser/lifecycle/`.
 
 ### Core Data Structures
@@ -286,8 +286,8 @@ Written when more than `1` scan point has results (2-space indented JSON array, 
 
 | File path | Generation condition | Content | Axis units |
 | --- | --- | --- | --- |
-| `points/<point>/analysis/efficiency.png` | Event count $\ge 2$ | `60`-bin histogram of charge collection efficiency for all events with a dashed mean line; title reports event count and mean | Horizontal dimensionless, vertical events |
-| `points/<point>/analysis/amplitude.png` | Event count $\ge 1$ | `60`-bin histogram of maximum pulse amplitude above baseline for selected events with a dashed line at `amplitude_threshold`; title reports selected count, total count, and threshold | Horizontal $\text{mV}$, vertical events |
-| `points/<point>/analysis/time_difference.png` | All `timing.times` computed | Up to `3 × 4` subplots showing time-difference distributions relative to `truth` (`64` bins over `mean ± 8 * sigma`), shaded final-round fit window, and truncated Gaussian fit curve for `ToA`, `CoG`, and the first `10` `CFD*` channels | Horizontal $\text{ps}$, vertical events |
-| `points/<point>/analysis/resolution_of_fraction.png` | All `timing.times` computed | Truncated Gaussian fit `sigma` (with error bars) and `sigma68` versus constant fraction across all `CFD*` channels | Horizontal constant fraction (dimensionless), vertical $\text{ps}$ |
-| `<experiment_folder>/analysis/points.png` | More than `1` scan point with results, exactly `1` varying option, and all its values are non-boolean numbers | Side-by-side two-panel plot sorted ascending by the scan variable: left panel shows collection efficiency with error bars; right panel shows `sigma` with error bars for each `CFD*` channel | Horizontal original scan-option unit; left vertical dimensionless, right vertical $\text{ps}$ |
+| `points/<point>/analysis/plots/efficiency.png`, `.pdf` | Event count $\ge 2$ | `60`-bin histogram of charge collection efficiency for all events with a black dashed mean line; the legend reports the event count `<N> events` and the mean `mean <mean>` | Horizontal `Charge collection efficiency` (dimensionless), vertical `Events` |
+| `points/<point>/analysis/plots/amplitude.png`, `.pdf` | Event count $\ge 1$ | `60`-bin histogram of maximum pulse amplitude above baseline for selected events with a black dashed line at `amplitude_threshold`; the legend reports the selected and total counts `<n> of <N> events` and the threshold `threshold <threshold> mV` | Horizontal `Amplitude [mV]`, vertical `Events` |
+| `points/<point>/analysis/plots/time_difference.png`, `.pdf` | All `timing.times` computed | Up to `3 × 4` subplots showing time-difference distributions relative to `truth` (`64` bins over `mean ± 8 * sigma`), shaded final-round fit window, and black truncated Gaussian fit curve for `ToA`, `CoG`, and the first `10` `CFD*` channels; each subplot title is the channel name and its upper left corner shows `sigma68`, `sigma` and the in-window count | Horizontal `<channel> - truth [ps]`, vertical `Events` |
+| `points/<point>/analysis/plots/resolution_of_fraction.png`, `.pdf` | All `timing.times` computed | Truncated Gaussian fit `sigma` (black filled circles with error bars) and `sigma68` (black open squares) versus constant fraction across all `CFD*` channels | Horizontal `CFD fraction` (dimensionless), vertical `Time resolution [ps]` |
+| `<experiment_folder>/analysis/trend.png`, `.pdf` | More than `1` scan point with results, exactly `1` varying option, and all its values are non-boolean numbers | Side-by-side two-panel plot sorted ascending by the scan variable: left panel shows collection efficiency with error bars; right panel shows `sigma` with error bars for each `CFD*` channel, one line per channel | Horizontal the scan-option name; left vertical `Charge collection efficiency`, right vertical `Time resolution [ps]` |

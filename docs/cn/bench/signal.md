@@ -46,11 +46,11 @@ $$\Delta t = t_{\text{reco}} - t_{\text{truth}}, \qquad t_{\text{truth}} = \min_
 
 - **束流**：单能粒子束（`"kind": "beam"`），例如质子束 `beam/proton`（`raser/components/deposit/beam/proton.json`，`par_type = "proton"`，动能 `par_energy = 1000.0` $\text{MeV}$，横向随机偏移半宽 `par_randx = par_randy = 0` $\mu\text{m}$）。一个事例里可以发射单个粒子，也可以通过 `particles` 列表同时发射多个粒子（见 [`../apps/bmos.md`](../apps/bmos.md)）。
 
-![HPK-Si-PiN 单事例载流子漂移路径](../images/current-drift-path-HPK-Si-PiN.png)
+![HPK-Si-PiN 单事例载流子漂移路径](../../images/current/drift-path-HPK-Si-PiN.png)
 
 `HPK-Si-PiN` 在 `device_alone` 写的 `decay/Sr90` 源下一个事例的电子和空穴漂移路径：$\beta$ 电子穿透整个器件，沿径迹产生的载流子分别向两极漂移。
 
-![HPK-Si-PiN 单事例感应电流](../images/current-event-HPK-Si-PiN.png)
+![HPK-Si-PiN 单事例感应电流](../../images/current/event-HPK-Si-PiN.png)
 
 同一个 Sr90 $\beta$ 电子事例在读出电极上的感应电流：电子分量、空穴分量和总电流。
 
@@ -64,7 +64,7 @@ $$\Delta t = t_{\text{reco}} - t_{\text{truth}}, \qquad t_{\text{truth}} = \min_
 4. **等效电路与前端放大器读出（`readout`）**：`stages/readout.py` 构建器件等效电路 `DeviceCircuit` 并按 `+` 拆分加载 `amplifier` 指定的 SPICE 子电路链，调用 `ngspice` 求解瞬态响应与频域热噪声谱（以由作业种子派生的 `readout` 噪声种子独立合成时域高斯热噪声叠入波形），仅保存最大电压摆幅 $\ge 10^{-3} V_{\max}$ 的通道写入 `readout` 节点的 `readout.h5`。
 5. **数字化与触发（`digitizer`、`trigger`）**：`digitizer` 按数字化器组件（默认 `MXR608A`）的模拟带宽、采样和量化（时钟相位与孔径抖动由作业种子派生的 `digitizer` 种子抽取）把模拟波形转为量化码写入 `digitizer` 节点的 `digitizer.h5`；`trigger` 按触发条件判定记录哪些事例，将被记录事例的事例号数据集 `event`（`int64`）写入 `trigger` 节点的 `trigger.h5`。
 6. **波形特征提取与成簇（`reconstruction`）**：`stages/reconstruction.py` 读取 `digitizer.h5` 中被 `trigger.h5` 记录的事例，按 `lsb_V`、`offset_V` 把量化码换回电压（$\text{V}$），采样时刻为 `t0 + k·sampling_period`；将 `threshold` 与 `amplitude_threshold` 从 $\text{mV}$ 乘以 $10^{-3}$ 换为 $\text{V}$，扣除波形开头 `BASELINE_POINTS = 200` 个采样点的均值基线并按脉冲边沿 `edge` 翻正，提取幅度、`ToA`、`ToT`、`CoG`、`area` 及各 `fractions` 对应的 `CFD` 时刻，以幅度不低于 `amplitude_threshold` 的电极为种子跨电极成簇并将找到种子的事例记为 `selected`，写入 `reconstruction` 节点的 `reconstruction.h5`。
-7. **收集效率与时间分辨统计（`analysis`）**：`stages/analysis` 汇总各扫描点所有已完成作业，用 `current` 节点里的全部事例按式 (1) 计算收集效率分布，用 `selected` 事例按式 (2) 计算时间分辨，在各扫描点的 `analysis` 节点（`nodes/analysis/<节点号>/`，视图 `points/<点名>/analysis/`）写出单点 `result.json`、`events.h5` 与分布图，并在 `<实验>/analysis/` 下写出多扫描点对比文件 `points.json`、`points.png`。
+7. **收集效率与时间分辨统计（`analysis`）**：`stages/analysis` 汇总各扫描点所有已完成作业，用 `current` 节点里的全部事例按式 (1) 计算收集效率分布，用 `selected` 事例按式 (2) 计算时间分辨，在各扫描点的 `analysis` 节点（`nodes/analysis/<节点号>/`，视图 `points/<点名>/analysis/`）写出单点 `result.json`、`events.h5` 与分布图，并在 `<实验>/analysis/` 下写出多扫描点对比文件 `points.json`、`trend.png`、`trend.pdf`。
 
 全链路涉及的内置常数如下表：
 
@@ -201,12 +201,12 @@ raser signal HPK-Si-PiN --scan field.voltage=100,200
 
 | 路径 | 写出环节 | 内容 | 坐标与物理量单位 |
 | --- | --- | --- | --- |
-| `nodes/deposit/<节点号>/g4_geometry.png` | [`deposit`](../stages/deposit.md) | `deposit.plots > 0` 且使用 Geant4 源时离屏绘出的装置几何与前 `deposit.plots` 个记录事例径迹图 | 空间尺寸 $\mu\text{m}$ |
-| `nodes/current/<节点号>/event_<event>/<det_model>_drift_path.pdf`, `.root` | [`current`](../stages/current.md) | 前 `current.plots` 个记录事例的三维器件边界与载流子漂移轨迹图（上）及 $x$-$z$ 平面投影图（下） | 空间轴 $\mu\text{m}$ |
-| `nodes/current/<节点号>/event_<event>/No_<k>electrode_basic_infor.pdf`, `.root` | [`current`](../stages/current.md) | 前 `current.plots` 个记录事例中非零电流电极 $k$ 的 `electron`、`hole`、`total`（及雪崩增益）感应电流波形 | 横轴 `Time [s]`，纵轴 `Current [A]` |
-| `nodes/current/<节点号>/event_<event>/cce.pdf`, `.root` | [`current`](../stages/current.md) | 条形（`strip`）或像素（`pixel`）器件在前 `current.plots` 个记录事例中各电极收集到的电子数分布 | 电极编号（无量纲），收集电子数（个） |
-| `nodes/analysis/<节点号>/efficiency.png`（视图 `points/<点名>/analysis/efficiency.png`） | [`analysis`](../stages/analysis.md) | 扫描点 `current` 节点全部事例（事例数 $\ge 2$）的电荷收集效率 `60` 箱直方图，虚线标出均值 | 横轴无量纲效率，纵轴 `events` |
-| `nodes/analysis/<节点号>/amplitude.png`（视图 `points/<点名>/analysis/amplitude.png`） | [`analysis`](../stages/analysis.md) | 扫描点全部 `selected` 事例基线以上脉冲幅度的 `60` 箱直方图，虚线标出 `amplitude_threshold` | 横轴 `amplitude above the baseline [mV]`，纵轴 `events` |
-| `nodes/analysis/<节点号>/time_difference.png`（视图 `points/<点名>/analysis/time_difference.png`） | [`analysis`](../stages/analysis.md) | `3 × 4` 子图展示 `ToA`、`CoG` 与各 `CFD*` 通道的 `time - truth` 分布（`mean ± 8 * sigma` 内 `64` 箱）、末轮拟合窗口阴影与截断高斯拟合曲线 | 横轴 `<通道> - truth [ps]`，纵轴事例数 |
-| `nodes/analysis/<节点号>/resolution_of_fraction.png`（视图 `points/<点名>/analysis/resolution_of_fraction.png`） | [`analysis`](../stages/analysis.md) | 各 `CFD*` 通道的时间分辨 `sigma`（带误差棒）与 `sigma68` 随恒比分数变化的曲线 | 横轴 `fraction of the CFD`（无量纲），纵轴 `width of time - truth [ps]` |
-| `analysis/points.png` | [`analysis`](../stages/analysis.md) | 单一数值扫描轴下多扫描点的电荷收集效率（左）与各 `CFD*` 通道时间分辨 `sigma`（右）随扫描变量的变化曲线 | 横轴为扫描变量，左纵轴无量纲效率，右纵轴 `sigma of time - truth [ps]` |
+| `nodes/deposit/<节点号>/plots/g4_geometry.png` | [`deposit`](../stages/deposit.md) | `deposit.plots > 0` 且使用 Geant4 源时离屏绘出的装置几何与前 `deposit.plots` 个记录事例径迹图 | 空间尺寸 $\mu\text{m}$ |
+| `nodes/current/<节点号>/plots/drift_path_<event>.png`, `.pdf`, `.root` | [`current`](../stages/current.md) | 前 `current.plots` 个记录事例的三维器件边界与载流子漂移轨迹图（上）及 $x$-$z$ 平面投影图（下） | 空间轴 $\mu\text{m}$ |
+| `nodes/current/<节点号>/plots/current_<event>.png`, `.pdf`, `.root`（多个读出电极时为 `current_<event>_electrode_<k>`） | [`current`](../stages/current.md) | 前 `current.plots` 个记录事例中非零电流电极 $k$ 的 `electrons`、`holes`、`total`（及雪崩增益）感应电流波形 | 横轴 `Time [ns]`，纵轴 `Current [μA]` |
+| `nodes/current/<节点号>/plots/charge_per_electrode_<event>.png`, `.pdf`, `.root` | [`current`](../stages/current.md) | 条形（`strip`）或像素（`pixel`）器件在前 `current.plots` 个记录事例中各电极收集到的电荷分布 | 电极编号（无量纲），电荷 `Charge [fC]` |
+| `nodes/analysis/<节点号>/plots/efficiency.png`、`.pdf`（视图 `points/<点名>/analysis/plots/efficiency.png`、`.pdf`） | [`analysis`](../stages/analysis.md) | 扫描点 `current` 节点全部事例（事例数 $\ge 2$）的电荷收集效率 `60` 箱直方图，黑色虚线标出均值；图例写事例数 `<N> events` 与均值 `mean <均值>` | 横轴 `Charge collection efficiency`（无量纲），纵轴 `Events` |
+| `nodes/analysis/<节点号>/plots/amplitude.png`、`.pdf`（视图 `points/<点名>/analysis/plots/amplitude.png`、`.pdf`） | [`analysis`](../stages/analysis.md) | 扫描点全部 `selected` 事例基线以上脉冲幅度的 `60` 箱直方图，黑色虚线标出 `amplitude_threshold`；图例写 `<n> of <N> events` 与 `threshold <阈值> mV` | 横轴 `Amplitude [mV]`，纵轴 `Events` |
+| `nodes/analysis/<节点号>/plots/time_difference.png`、`.pdf`（视图 `points/<点名>/analysis/plots/time_difference.png`、`.pdf`） | [`analysis`](../stages/analysis.md) | `3 × 4` 子图展示 `ToA`、`CoG` 与各 `CFD*` 通道的 `time - truth` 分布（`mean ± 8 * sigma` 内 `64` 箱）、末轮拟合窗口阴影与黑色截断高斯拟合曲线；每幅小标题写通道名，左上角写 `sigma68`、`sigma` 与窗内事例数 | 横轴 `<通道> - truth [ps]`，纵轴 `Events` |
+| `nodes/analysis/<节点号>/plots/resolution_of_fraction.png`、`.pdf`（视图 `points/<点名>/analysis/plots/resolution_of_fraction.png`、`.pdf`） | [`analysis`](../stages/analysis.md) | 各 `CFD*` 通道的时间分辨 `sigma`（黑色实心圆，带误差棒）与 `sigma68`（黑色空心方块）随恒比分数变化的曲线 | 横轴 `CFD fraction`（无量纲），纵轴 `Time resolution [ps]` |
+| `analysis/trend.png`、`.pdf` | [`analysis`](../stages/analysis.md) | 单一数值扫描轴下多扫描点的电荷收集效率（左）与各 `CFD*` 通道时间分辨 `sigma`（右）随扫描变量的变化曲线，右幅每个 `CFD*` 通道一条线 | 横轴为扫描变量名，左纵轴 `Charge collection efficiency`（无量纲），右纵轴 `Time resolution [ps]` |

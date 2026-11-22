@@ -17,7 +17,7 @@ def _options(tmp_path, **counts):
     return {
         "det_name": "HPK-Si-PiN",
         "_files": {"source": SOURCE, "device": device},
-        "_slice_batch_paths": {"deposit": str(tmp_path)},
+        "_node_paths": {"deposit": str(tmp_path)},
         "seed": 1,
         "fano": False,
         "edep_min": 0.0185,
@@ -26,7 +26,7 @@ def _options(tmp_path, **counts):
 
 
 def _attributes(tmp_path):
-    with h5py.File(tmp_path / "deposit_0.h5") as file:
+    with h5py.File(tmp_path / "deposit.h5") as file:
         return int(file.attrs["generated_events"]), int(file.attrs["recorded_events"])
 
 

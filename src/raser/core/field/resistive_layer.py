@@ -1,12 +1,14 @@
 """Circuit of a resistive layer with electrodes on it: the strips of a row,
 or the pads of a grid, read out through the layer."""
 
+import numpy as np
+
 from .device_circuit import DeviceCircuit
 
 
 def resistive_row(
-    cells,
-    cell_width_m,
+    rc_nodes,
+    rc_node_width_m,
     length_m,
     sheet_resistance_ohm,
     capacitance_per_area_f_m2,
@@ -17,67 +19,68 @@ def resistive_row(
     """DeviceCircuit of a resistive layer with strips in contact with it, the
     back of its depleted layer on the node `back`.
 
-    The layer is cut across the strips into cells of one width, each a node
-    with the capacitance of the depleted layer under it to the back; the
-    layer between two neighbours is a resistor. The cells under a strip are
-    one node, that of the strip, which is read out itself.
+    The layer is cut across the strips into RC nodes of one width, each a
+    node of the netlist with the capacitance of the depleted layer under it to
+    the back; the layer between two neighbours is a resistor. The RC nodes
+    under a strip are one node of the netlist, that of the strip, which is read
+    out itself.
 
-    cells : names of the cells, in their order along the row. The current
-        induced on a cell flows into its node.
-    cell_width_m : width of a cell, across the strips [m].
+    rc_nodes : names of the RC nodes, in their order along the row. The current
+        induced on an RC node flows into its node.
+    rc_node_width_m : width of an RC node, across the strips [m].
     length_m : length of the strips and of the layer along them [m].
     sheet_resistance_ohm : resistance of a square of the layer [Ohm].
     capacitance_per_area_f_m2 : capacitance of the depleted layer per area
         [F / m^2].
     strips : for each strip, by its name, the numbers (from 0) of the first
-        and of the last cell under it.
+        and of the last RC node under it.
     grounded : the same for each contact on the layer that is held on ground
         and not read out; none if not given.
     back : node at the back of the depleted layer, as planar_circuit takes
         it: ground "0", or "undepleted", shared with the undepleted layer.
 
     The layer ends open at both ends of the row. A positive current flows
-    into the cell.
+    into the RC node.
     """
-    cells = list(cells)
-    if len(set(cells)) != len(cells):
-        raise ValueError("Two cells of the row have one name")
-    node = [f"layer_{name}" for name in cells]
+    rc_nodes = list(rc_nodes)
+    if len(set(rc_nodes)) != len(rc_nodes):
+        raise ValueError("Two RC nodes of the row have one name")
+    node = [f"layer_{name}" for name in rc_nodes]
     for strip, (first, last) in strips.items():
-        if not 0 <= first <= last < len(cells):
+        if not 0 <= first <= last < len(rc_nodes):
             raise ValueError(
-                f"The strip {strip} lies on the cells {first} to {last}, and "
-                f"the row has the cells 0 to {len(cells) - 1}"
+                f"The strip {strip} lies on the RC nodes {first} to {last}, and "
+                f"the row has the RC nodes 0 to {len(rc_nodes) - 1}"
             )
         for number in range(first, last + 1):
             if not node[number].startswith("layer_"):
-                raise ValueError(f"Two strips lie on the cell {cells[number]}")
+                raise ValueError(f"Two strips lie on the RC node {rc_nodes[number]}")
             node[number] = f"{strip}_pad"
     for contact, (first, last) in (grounded or {}).items():
-        if not 0 <= first <= last < len(cells):
+        if not 0 <= first <= last < len(rc_nodes):
             raise ValueError(
-                f"The contact {contact} lies on the cells {first} to {last}, and "
-                f"the row has the cells 0 to {len(cells) - 1}"
+                f"The contact {contact} lies on the RC nodes {first} to {last}, and "
+                f"the row has the RC nodes 0 to {len(rc_nodes) - 1}"
             )
         for number in range(first, last + 1):
             if not node[number].startswith("layer_"):
-                raise ValueError(f"Two contacts lie on the cell {cells[number]}")
+                raise ValueError(f"Two contacts lie on the RC node {rc_nodes[number]}")
             node[number] = "0"
 
-    capacitance_f = capacitance_per_area_f_m2 * cell_width_m * length_m
-    # from the middle of a cell to the middle of the next one; a strip begins
-    # at the edge of its first cell, half a cell from the middle of a neighbour
+    capacitance_f = capacitance_per_area_f_m2 * rc_node_width_m * length_m
+    # from the middle of an RC node to the middle of the next one; a strip begins
+    # at the edge of its first RC node, half an RC node from the middle of a neighbour
     square_ohm = sheet_resistance_ohm / length_m
     lines = []
-    for number, name in enumerate(cells):
+    for number, name in enumerate(rc_nodes):
         if node[number] != "0":
             lines.append(f"Clayer_{name} {node[number]} {back} {capacitance_f:.9g}")
-        if number + 1 == len(cells) or node[number] == node[number + 1]:
+        if number + 1 == len(rc_nodes) or node[number] == node[number + 1]:
             continue
         on_strips = sum(
             not here.startswith("layer_") for here in node[number : number + 2]
         )
-        width_m = cell_width_m * (1 - on_strips / 2)
+        width_m = rc_node_width_m * (1 - on_strips / 2)
         if width_m > 0:
             lines.append(
                 f"Rlayer_{name} {node[number]} {node[number + 1]} "
@@ -85,40 +88,40 @@ def resistive_row(
             )
         else:
             raise ValueError(
-                f"The strips on the cells {name} and {cells[number + 1]} touch"
+                f"The strips on the RC nodes {name} and {rc_nodes[number + 1]} touch"
             )
     return DeviceCircuit(
         lines=tuple(lines),
-        sources={name: (back, node[number]) for number, name in enumerate(cells)},
+        sources={name: (back, node[number]) for number, name in enumerate(rc_nodes)},
         outputs={strip: f"{strip}_pad" for strip in strips},
     )
 
 
 def _inside(span, counts):
     """Refuse a span (x_first, x_last, y_first, y_last) not wholly on the
-    cells of the layer."""
+    RC nodes of the layer."""
     x_first, x_last, y_first, y_last = span
     if not (0 <= x_first <= x_last < counts[0] and 0 <= y_first <= y_last < counts[1]):
         raise ValueError(
-            f"A contact lies on the cells {x_first} to {x_last} by {y_first} to "
-            f"{y_last}, and the layer has {counts[0]} by {counts[1]} cells"
+            f"A contact lies on the RC nodes {x_first} to {x_last} by {y_first} to "
+            f"{y_last}, and the layer has {counts[0]} by {counts[1]} RC nodes"
         )
 
 
 def _on(node, spans, name, counts):
-    """Give the cells inside each span (x_first, x_last, y_first, y_last) the
-    node `name`; a cell may lie under one contact only."""
+    """Give the RC nodes inside each span (x_first, x_last, y_first, y_last) the
+    node `name`; an RC node may lie under one contact only."""
     for x_first, x_last, y_first, y_last in spans:
         _inside((x_first, x_last, y_first, y_last), counts)
         for i in range(x_first, x_last + 1):
             for j in range(y_first, y_last + 1):
                 if not node[i][j].startswith("layer_"):
-                    raise ValueError(f"Two contacts lie on the cell {i}, {j}")
+                    raise ValueError(f"Two contacts lie on the RC node {i}, {j}")
                 node[i][j] = name
 
 
 def resistive_grid(
-    cells,
+    rc_nodes,
     counts,
     widths_m,
     sheet_resistance_ohm,
@@ -128,22 +131,22 @@ def resistive_grid(
     grounded=None,
     back="0",
 ):
-    """DeviceCircuit of a resistive layer cut into a grid of cells, with pads
+    """DeviceCircuit of a resistive layer cut into a grid of RC nodes, with pads
     that are read out, the back of its depleted layer on the node `back`.
 
-    cells : names of the cells; the cell number i along x and j along y is
-        cells[i * counts[1] + j]. The current induced on a cell flows into
+    rc_nodes : names of the RC nodes; the RC node number i along x and j along y is
+        rc_nodes[i * counts[1] + j]. The current induced on an RC node flows into
         its node.
-    counts : numbers of cells along x and along y.
-    widths_m : widths of a cell along x and along y [m].
+    counts : numbers of RC nodes along x and along y.
+    widths_m : widths of an RC node along x and along y [m].
     sheet_resistance_ohm : resistance of a square of the layer [Ohm].
     capacitance_per_area_f_m2 : capacitance of the depleted layer per area
         [F / m^2].
     pads : for each pad, by its name, the numbers (from 0) of its first and
-        last cell along x and of its first and last cell along y.
+        last RC node along x and of its first and last RC node along y.
     coupling_per_area_f_m2 : capacitance per area [F / m^2] between the layer
         and a pad that lies on a dielectric; the layer goes on under the pad.
-        Not given, the pads are in contact with the layer, and the cells
+        Not given, the pads are in contact with the layer, and the RC nodes
         under a pad are one node.
     grounded : for each contact on the layer that is held on ground and not
         read out, by its name, the list of its rectangles, each as a pad.
@@ -151,15 +154,15 @@ def resistive_grid(
         it: ground "0", or "undepleted", shared with the undepleted layer.
 
     The layer ends open at its four sides. A positive current flows into the
-    cell.
+    RC node.
     """
-    cells = list(cells)
-    if len(cells) != counts[0] * counts[1] or len(set(cells)) != len(cells):
+    rc_nodes = list(rc_nodes)
+    if len(rc_nodes) != counts[0] * counts[1] or len(set(rc_nodes)) != len(rc_nodes):
         raise ValueError(
-            f"{len(set(cells))} names for the {counts[0]} by {counts[1]} cells of the layer"
+            f"{len(set(rc_nodes))} names for the {counts[0]} by {counts[1]} RC nodes of the layer"
         )
     node = [
-        [f"layer_{cells[i * counts[1] + j]}" for j in range(counts[1])]
+        [f"layer_{rc_nodes[i * counts[1] + j]}" for j in range(counts[1])]
         for i in range(counts[0])
     ]
     for spans in (grounded or {}).values():
@@ -174,14 +177,14 @@ def resistive_grid(
             for i in range(x_first, x_last + 1):
                 for j in range(y_first, y_last + 1):
                     if (i, j) in under:
-                        raise ValueError(f"Two pads lie over the cell {i}, {j}")
+                        raise ValueError(f"Two pads lie over the RC node {i}, {j}")
                     under[i, j] = pad
 
     area_m2 = widths_m[0] * widths_m[1]
     lines = []
     for i in range(counts[0]):
         for j in range(counts[1]):
-            name = cells[i * counts[1] + j]
+            name = rc_nodes[i * counts[1] + j]
             here = node[i][j]
             if here != "0":
                 lines.append(
@@ -189,12 +192,12 @@ def resistive_grid(
                 )
             if (i, j) in under:
                 if here == "0":
-                    raise ValueError(f"A pad lies over the grounded cell {i}, {j}")
+                    raise ValueError(f"A pad lies over the grounded RC node {i}, {j}")
                 lines.append(
                     f"Cpad_{name} {here} {under[i, j]}_pad "
                     f"{coupling_per_area_f_m2 * area_m2:.9g}"
                 )
-            # to the next cell along x, then along y: squares in series
+            # to the next RC node along x, then along y: squares in series
             for axis, (k, m) in enumerate(((i + 1, j), (i, j + 1))):
                 if k == counts[0] or m == counts[1] or node[k][m] == here:
                     continue
@@ -202,7 +205,7 @@ def resistive_grid(
                 on_contacts = sum(not end.startswith("layer_") for end in (here, there))
                 if on_contacts == 2:
                     raise ValueError(
-                        f"The contacts on the cells {i}, {j} and {k}, {m} touch"
+                        f"The contacts on the RC nodes {i}, {j} and {k}, {m} touch"
                     )
                 squares = widths_m[axis] / widths_m[1 - axis] * (1 - on_contacts / 2)
                 lines.append(
@@ -212,9 +215,61 @@ def resistive_grid(
     return DeviceCircuit(
         lines=tuple(lines),
         sources={
-            cells[i * counts[1] + j]: (back, node[i][j])
+            rc_nodes[i * counts[1] + j]: (back, node[i][j])
             for i in range(counts[0])
             for j in range(counts[1])
         },
         outputs={pad: f"{pad}_pad" for pad in pads},
     )
+
+
+def _along(here_um, length_um, pitch_um, count, axis):
+    """Parts of a charge at here_um that go to the RC nodes of one axis, by the
+    number of the RC node: `count` RC nodes at pitch_um, centred on length_um."""
+    first_edge = (length_um - count * pitch_um) / 2
+    last_edge = first_edge + count * pitch_um
+    if not first_edge <= here_um <= last_edge:
+        raise ValueError(
+            f"The point lies at {axis} = {here_um} um, and the RC nodes of the "
+            f"layer reach from {first_edge} to {last_edge} um"
+        )
+    # in RC node widths, from the middle of the first RC node
+    place = (here_um - first_edge) / pitch_um - 0.5
+    if place <= 0:
+        return {0: 1.0}
+    if place >= count - 1:
+        return {count - 1: 1.0}
+    number = int(np.floor(place))
+    to_next = place - number
+    if to_next == 0:
+        return {number: 1.0}
+    return {number: 1 - to_next, number + 1: to_next}
+
+
+def shares(my_d, point_um):
+    """Parts of a charge on the point (x, y) [um] that go to the RC nodes of the
+    resistive layer of the device.
+
+    my_d : the Detector. Its electrodes are the RC nodes: x_ele_num of them at
+        p_x along x and y_ele_num at p_y along y, centred on the device.
+    point_um : x and y [um], 0 <= x <= l_x and 0 <= y <= l_y; x alone for a
+        point on the middle line, y = l_y / 2.
+
+    Returns the parts, which add up to 1, by the number of the RC node,
+    i * y_ele_num + j for the RC node number i along x and j along y, from 0, as
+    electrode_names orders them. Along each axis a point between the middles
+    of two RC nodes is shared between them linearly, the nearer one taking more;
+    one beyond the middle of the outermost RC node goes to that RC node alone. The
+    parts of the two axes are multiplied. An RC node that takes nothing is left
+    out. A point off the RC nodes raises ValueError.
+    """
+    point = np.atleast_1d(np.asarray(point_um, dtype=np.float64))
+    x_um = float(point[0])
+    y_um = float(point[1]) if len(point) > 1 else float(my_d.l_y) / 2
+    along_x = _along(x_um, float(my_d.l_x), float(my_d.p_x), int(my_d.x_ele_num), "x")
+    along_y = _along(y_um, float(my_d.l_y), float(my_d.p_y), int(my_d.y_ele_num), "y")
+    return {
+        i * int(my_d.y_ele_num) + j: part_x * part_y
+        for i, part_x in along_x.items()
+        for j, part_y in along_y.items()
+    }

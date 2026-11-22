@@ -112,6 +112,21 @@ where:
 
 Clustering in the job-level event table is computed by `cluster(amplitudes, threshold, amplitude_threshold)` in `event_table.py`, which outputs only $N_{\text{clu}}$ and the amplitude-weighted $x_{\text{clu}}$; in the example `config.json`, both `reconstruction.amplitude_threshold` and `reconstruction.threshold` are set to `10.0` $\text{mV}$ (see [../stages/reconstruction.md](../stages/reconstruction.md)). The single-event class `InputWaveform` calls `get_total_amp` and `get_gravity_center_and_cluster_size` in `event.py` to evaluate Eq. (13), computes position errors via Eq. (14) in `get_total_data`, and obtains `ToA` and `CFD50` via `get_conjoined_time`; its `data` dictionary is passed to `WaveformStatistics.fill_data` in [statistical analysis](analysis.md), with keys matching those read by `fill_data` and `draw`. For charge sharing and centroid position reconstruction in microstrip detectors, see Ref. [4].
 
+### Pixel Clusters
+
+On a pixel device, clusters are found on the 2D pixel array: pixels above threshold are grouped by eight-neighbor connectivity, and only a group holding a seed pixel (amplitude reaching the seed threshold $V_{\text{amp}}$) counts as a cluster; the cluster position is the arithmetic mean of the geometric centers of its pixels, and the hit time of this layer is the timing of the pixel with the largest amplitude in the cluster (the seed):
+
+$$(x_p, y_p) = \bigl((i_x + 0.5)\,p_x,\ (i_y + 0.5)\,p_y\bigr), \qquad (\bar{x}_c, \bar{y}_c) = \frac{1}{n_c}\sum_{m=1}^{n_c}(x_{p,m}, y_{p,m}) \tag{15}$$
+
+where:
+
+- $i_x, i_y$: pixel column and row indices (starting from $0$); the electrode list index is $k = i_x\,n_y + i_y$, where $n_y$ is the device's `y_ele_num`;
+- $p_x, p_y$: device pixel pitches `p_x` and `p_y`, $\mu\text{m}$;
+- $n_c$: number of pixels in the cluster, count;
+- $(\bar{x}_c, \bar{y}_c)$: cluster position in device coordinates, $\mu\text{m}$.
+
+Implemented in `pixel_clusters.py`. The seed, the cluster position, and the hit time are quantities of this device alone; joining the clusters of several devices into a track is done in [statistical analysis](analysis.md).
+
 ## Algorithm
 
 ### Built-in Constants
@@ -210,12 +225,26 @@ After computing all electrode rows for an event, `event_table` extracts `amplitu
 
 `InputWaveform` targets 1D spatial-resolution strip detectors (code comments: `only available for strip detector`, `assume strip, one dimensional spacial resolution`); multi-electrode `ToA` and `CFD50` take the timing of the maximum-amplitude channel via `get_conjoined_time`; the clustering seed thresholds for `ToT` and `charge` are hard-coded to `10e-9` $\text{s}$ and `0.0` $\text{V}$; `threshold`, `amplitude_threshold`, and `CFD` are supplied as constructor arguments.
 
+### Pixel Clustering (`pixel_clusters.py`)
+
+When the device's `electrodes` is `"pixel"`, the event table carries five more columns of pixel-cluster quantities, given by `pixel_cluster_columns(fired, weight, seed_threshold, p_x, p_y)`: `fired` is the boolean array of pixels above threshold per event and `weight` is the quantity used to find the seed, both of shape `(events, n_x, n_y)`; `seed_threshold` is the seed threshold:
+
+1. **Obtain pixels above threshold and the seed quantity**, from either of two sources:
+   - `fired_from_table(table, n_x, n_y)`: `fired` takes `above` from the event table and `weight` takes `amplitude` ($\text{V}$), reshaped to `(events, n_x, n_y)` according to $k = i_x\,n_y + i_y$, and `seed_threshold` takes `amplitude_threshold`; raises `ValueError` if the number of electrodes does not equal $n_x n_y$.
+   - `fired_from_deposits(deposits, slot, device)`: for deposit steps in the deposit file whose detector name equals `slot`, marks the pixel $(\lfloor x/p_x \rfloor, \lfloor y/p_y \rfloor)$ of each step with `pairs > 0` inside the device as above threshold, `weight` takes the sum of electron-hole pairs inside that pixel, and `seed_threshold` takes `0`; one row per recorded event, with the entire row `False` for events with no deposits in that slot.
+2. **Clustering and seeding** (`pixel_clusters(fired_event, weight_event, seed_threshold, p_x, p_y)`): finds eight-neighbor connected components in an event's `(n_x, n_y)` boolean array and keeps only components holding a pixel with `weight >= seed_threshold`; computes $(\bar{x}_c, \bar{y}_c, n_c)$ for each component via Eq. (15), takes as seed the pixel with the largest `weight` in the component (the smaller electrode index on a tie), and sorts components in ascending order of the seed's electrode index $k$.
+3. **Write the columns**: `clusters` is the number of clusters; with exactly `1` cluster, `cluster_x`, `cluster_y`, `cluster_pixels`, and `cluster_seed` take that cluster's $\bar{x}_c$, $\bar{y}_c$, $n_c$, and the seed's electrode index $k$, otherwise they are `NaN`, `NaN`, `0`, and `-1`. The hit time of this layer is the timing in the seed's column: `ToA[:, cluster_seed]`, `CFD[:, cluster_seed, :]`, and so on.
+
+`table_from_deposits(deposits, slot, device)` uses `fired_from_deposits` to give an event table that holds only `event`, `selected` (`clusters > 0`), and these five columns, without waveform and timing quantities.
+
 ## Software Implementation
 
 ### Module and Function Responsibilities
 
 - `event.py`: implements single-electrode baseline subtraction, linearly interpolated threshold crossings, constant-fraction timing, center-of-gravity time calculation, and the standalone single-event reconstruction class. `net_pulse` computes and subtracts the leading 200-sample baseline and returns baseline noise; `get_amplitude`, `crossing`, `get_ToA`, `get_ToT`, `get_CFD50`, `get_CoG`, and `get_charge` extract features from a single positive waveform; `InputWaveform`, together with `get_conjoined_time`, `get_total_amp`, `get_gravity_center_and_cluster_size`, and `remove_none`, aggregates single-event features across multiple strip channels.
+- `pixel_clusters.py`: implements 2D clustering for pixel devices. `pixel_clusters` clusters using eight-neighbor connectivity; `fired_from_table` and `fired_from_deposits` give the pixels above threshold; `pixel_cluster_columns` gives the five event-table columns; `table_from_deposits` gives an event table directly from the deposit file; `draw_hitmap` draws the hit map.
 - `event_table.py`: implements job-level multi-event feature extraction, multi-electrode clustering, and `reconstruction.h5` file I/O. `lobe_area` computes the positive main-lobe integral area containing the peak; `electrode_row` assembles the threshold check and all feature columns for one electrode; `cluster` performs 1D multi-electrode clustering and computes the amplitude-weighted center; `chosen_edges` resolves and validates per-electrode trigger edges; `event_table` reconstructs an entire job's `Waveforms` into an `EventTable`; `write_event_table` and `read_event_table` perform one-shot writing and reading of the HDF5 event table file.
+- `draw.py`: provides `draw_features`, calling `raser.supports.figures` to mark the baseline, amplitude, `ToA` on the threshold line, and `CFD` times for each fraction in `reconstruction.fractions` on the rising-edge segment of the digital waveform, saving them as `.png` and `.pdf`.
 
 ### Core Data Structures
 
@@ -304,6 +333,10 @@ The file is written to `nodes/reconstruction/<node>/reconstruction.h5` (`reconst
 | `selected` | `(events,)`, `bool` | none | Whether a cluster seed is found in the event recorded by `trigger` (i.e., `cluster_size > 0`, at least one electrode with `amplitude >= amplitude_threshold`) |
 | `cluster_size` | `(events,)`, `int64` | count | Number of electrodes in the cluster (`0` when no cluster exists) |
 | `cluster_center` | `(events,)`, `float64` | electrode index (0-based) | Amplitude-weighted electrode-index center of the cluster (`NaN` when no cluster exists) |
+| `clusters` | `(events,)`, `int64` | count | Pixel devices only: number of 2D clusters (Eq. (15)) |
+| `cluster_x`, `cluster_y` | `(events,)`, `float64` | $\mu\text{m}$ | Pixel devices only: cluster position in device coordinates; `NaN` when the number of clusters is not `1` |
+| `cluster_pixels` | `(events,)`, `int64` | count | Pixel devices only: number of pixels in the cluster; `0` when the number of clusters is not `1` |
+| `cluster_seed` | `(events,)`, `int64` | none | Pixel devices only: electrode index of the pixel with the largest amplitude in the cluster; the hit time of this layer is taken from that electrode's `ToA`, `CFD`, and other columns; `-1` when the number of clusters is not `1` |
 | `traced` | `(events, len(electrodes))`, `bool` | none | Whether the input `digitizer.h5` stores a waveform for that electrode in the event; when `False`, all numeric columns of that electrode are `NaN` and `above` is `False` |
 | `baseline` | `(events, len(electrodes))`, `float64` | $\text{V}$ | Arithmetic mean of the leading `200` samples of the raw waveform |
 | `noise` | `(events, len(electrodes))`, `float64` | $\text{V}$ | Population standard deviation of the leading `200` samples of the raw waveform |
@@ -318,6 +351,21 @@ The file is written to `nodes/reconstruction/<node>/reconstruction.h5` (`reconst
 The constant-fraction timestamp at fraction $f$ for the $k$-th electrode (0-based in the order of attribute `electrodes`) is `CFD[:, k, j]`, where $j$ is the index of $f$ in attribute `fractions`. `ToA`, `CoG`, and `CFD` lie on the same time axis as the input event's `t0` (Eq. (1)), while `t0` stays in the input waveform file.
 
 ### Plot Output
+
+`event_table` takes two required arguments `plots` (`int`, maximum number of events for which feature plots are drawn per job, count) and `plot_path` (`str | Path`, output image directory path, unitless; passed by the [event reconstruction stage](../stages/reconstruction.md) as `reconstruction.plots` and the node's `plots/` directory). When `plots <= 0`, no plots are drawn and `plot_path` is unused; when `plots > 0`, for the first `plots` events in each job the program calls `draw_features` in `core/reconstruction/draw.py` to plot each electrode with a stored digital waveform in that event and saves them via `raser.supports.figures` under `plot_path` as both `.png` (200 dpi) and `.pdf` files: when a single electrode has a stored waveform, the filename is `features_<event>` (`<event>` is `record.event`, unitless); when multiple electrodes have stored waveforms, one plot is drawn per electrode with `_electrode_<number>` appended (`<number>` is the `1`-based index of that electrode in `waveforms.electrodes`, dimensionless).
+
+Each plot uses the sample time `Time [ns]` as the horizontal axis (computed from $t_0$ [$\text{s}$] and the sampling period $\Delta t$ [$\text{s}$] via Eq. (1) and converted to $\text{ns}$) and voltage `Amplitude [mV]` as the vertical axis (converted from $\text{V}$ to $\text{mV}$). Only the rising-edge segment of the pulse is shown—from before the threshold crossing to after the peak—plotting the voltage converted back from the `digitizer` quantized codes in its original polarity without inversion or baseline subtraction (solid black line). The following reconstructed quantities are marked on this waveform segment (quantities that were not computed and equal `NaN` are omitted):
+
+- **Baseline**: the baseline mean (`baseline` in Eq. (2)) is drawn as a horizontal gray dotted line, labeled `baseline` in the legend;
+- **Amplitude**: the voltage at the peak (baseline plus `amplitude` with the original polarity, Eq. (4)) is drawn as a horizontal gray dashed line, labeled `amplitude` in the legend;
+- **Threshold and `ToA`**: the timing threshold `threshold` (see [Peak Amplitude and Fixed-Threshold Crossing Timing (ToA and ToT)](#peak-amplitude-and-fixed-threshold-crossing-timing-toa-and-tot)) is drawn as a horizontal red dashed line; the leading-edge threshold-crossing time $t_{\text{ToA}}$ (`ToA` in Eq. (6)) is marked with a red square on the threshold line, labeled `ToA` in the legend;
+- **Constant-fraction discrimination (`CFD`)**: one point is plotted for each fraction $f$ in `reconstruction.fractions`, placed on the rising edge at time $t_{\text{CFD}}(f)$ (`CFD` in Eqs. (8)–(9), see [Constant-Fraction Discrimination (CFD)](#constant-fraction-discrimination-cfd)) and voltage equal to baseline plus $f$ times the amplitude; the percentage (e.g., `30%`) is annotated beside each point without vertical lines, and the legend shows `CFD` with the range of fractions.
+
+| Filename | Content | Unit |
+| --- | --- | --- |
+| `features_<event>.png`, `.pdf` (or with `_electrode_<number>`) | Rising-edge segment of the digital waveform (original polarity), marking baseline, amplitude, `ToA` square on the threshold line, and `CFD` points for each fraction in `reconstruction.fractions` (`NaN` omitted); one plot per stored-waveform electrode when multiple are stored, with `<number>` starting from `1` | `Time [ns]`, `Amplitude [mV]` |
+
+`draw_hitmap(table, device, path)` in `pixel_clusters.py` draws `hitmap` (`hitmap_<slot>` in a multi-slot experiment): the 2D distribution of $(\bar{x}_c, \bar{y}_c)$ over all events with `1` cluster, one cell per pixel.
 
 After aggregation, `InputWaveform.data` is plotted by `WaveformStatistics.draw` in [statistical analysis](analysis.md): Gaussian-fitted timing resolution plots, Landau-fitted amplitude and charge plots, cluster-size distributions, spatial center-of-gravity error plots, and $\eta$ calibration plots.
 

@@ -219,7 +219,7 @@ def import_field(tdr, my_d, folder, asked=None, flip=False):
     read_out = [electrode["name"] for electrode in my_d.device_dict["read_out_contact"]]
     try:
         device = import_tdr(tdr, os.path.join(folder, "converted.devsim"))
-        save_milestone(device, bias, str(folder), dimension, None, False, is_tcad=True, is_flip=flip)
+        save_milestone(device, bias, str(folder), dimension, None, False, is_tcad=True, is_flip=flip, axes=mesh_axes(my_d))
         regions = devsim.get_region_list(device=device)
         is_conductive = {region: conductive_nodes(device, region) for region in regions}
         points = [

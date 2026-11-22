@@ -12,13 +12,23 @@ DEFAULTS = json.loads((Path(__file__).parent / "time_resolution.json").read_text
 WORKFLOW = Workflow(
     name="timeres",
     keys=chain.KEYS,
-    defaults={**chain.DEFAULTS, **DEFAULTS, "events_per_job": 10000, "plots": 0},
+    defaults={
+        **chain.DEFAULTS,
+        **{f"deposit.{key}": value for key, value in DEFAULTS.items()},
+        "deposit.events_per_job": 10000,
+        "deposit.plots": 0,
+        "current.plots": 0,
+    },
+    sections=chain.SECTIONS,
+    scanned=chain.SCANNED,
+    slots=chain.SLOTS,
     components=chain.COMPONENTS,
     readers=chain.READERS,
     in_file=chain.IN_FILE,
     slices=chain.SLICES,
     exclusive=chain.EXCLUSIVE,
     command=chain.job_command,
+    analysis=chain.analyse,
 )
 
 

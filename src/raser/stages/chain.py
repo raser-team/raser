@@ -11,54 +11,58 @@ from raser.lifecycle.slices import Shared
 from raser.lifecycle.slices import Slice
 from raser.stages import field
 
+SECTIONS = ("field", "deposit", "current", "readout", "digitizer", "trigger", "reconstruction", "analysis")
+# What is measured is set up to the readout; from the digitizer on the events are analysed.
+SCANNED = ("field", "deposit", "current", "readout")
 KEYS = (
-    "source",
-    "g4setup",
-    "events_per_job",
-    "generated_per_job",
-    "generated_limit",
-    "edep_min",
-    "edep_max",
-    "fano",
-    "plots",
-    "voltage",
-    "irradiation",
-    "amplifier",
-    "sheet_resistance",
-    "threshold",
-    "amplitude_threshold",
-    "fractions",
-    "edge",
+    "field.voltage",
+    "field.irradiation_flux",
+    "deposit.source",
+    "deposit.g4setup",
+    "deposit.events_per_job",
+    "deposit.generated_per_job",
+    "deposit.generated_limit",
+    "deposit.edep_min",
+    "deposit.edep_max",
+    "deposit.fano",
+    "deposit.plots",
+    "current.plots",
+    "readout.amplifier",
+    "readout.sheet_resistance",
+    "reconstruction.threshold",
+    "reconstruction.amplitude_threshold",
+    "reconstruction.fractions",
+    "reconstruction.edge",
 )
-COMPONENTS = {"source": "source", "g4setup": "g4setup"}  # kind of file -> option
-READERS = {"g4setup": read_g4setup}  # kind of file -> what reads the file its option names
-IN_FILE = {"voltage": "device.bias.voltage"}  # option -> where it sits in a file
+COMPONENTS = {"source": "deposit.source", "g4setup": "deposit.g4setup"}  # kind of file -> the setting naming it
+READERS = {"g4setup": read_g4setup}  # kind of file -> what reads the file its setting names
+# <section>.<slot> -> the kind of file: a key inside it is <section>.<slot>.<key>
+SLOTS = {"field.device": "device", "deposit.source": "source", "deposit.g4setup": "g4setup"}
+IN_FILE = {"field.voltage": "device.bias.voltage"}  # setting -> where it sits in a file
 
 
-# The defaults of the options of each stage; an experiment declares only
-# those it sets otherwise.
-DEPOSIT_DEFAULTS = {"source": "decay/Sr90", "g4setup": "device_alone", "events_per_job": 1, "fano": True}
+# What an experiment of the chain takes where its command gives nothing, until
+# the examples hold these values; an experiment declares only those it sets
+# otherwise. The edge of the pulses the thresholds are set on is as on a
+# scope; None: the one the readout wrote its pulses with.
+DEFAULTS = {
+    "deposit.source": "decay/Sr90",
+    "deposit.g4setup": "device_alone",
+    "deposit.events_per_job": 1,
+    "deposit.fano": True,
+    "deposit.plots": 100,
+    "current.plots": 100,
+    "readout.amplifier": "SantaCruz+Gali52+Termination50",
+    "readout.sheet_resistance": None,
+    "reconstruction.threshold": 10.0,
+    "reconstruction.amplitude_threshold": 10.0,
+    "reconstruction.fractions": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+    "reconstruction.edge": None,
+}
 
 
-def deposit_arguments(parser):
-    parser.add_argument("--plots", type=int, help="draw the first N recorded events of each job")
-    parser.add_argument(
-        "source",
-        nargs="?",
-        help="signal source or beam configuration",
-    )
-    parser.add_argument("--g4setup", help="what surrounds the device in Geant4")
-    parser.add_argument("-evt", "--events-per-job", type=int, help="events a job records")
-    parser.add_argument("-gen", "--generated-per-job", type=int, help="events a job generates, in place of -evt")
-    parser.add_argument(
-        "--generated-limit", type=int, help="the most events a job generates to record its -evt"
-    )
-    parser.add_argument(
-        "--edep-min", type=float, help="least energy deposited in the device [MeV]"
-    )
-    parser.add_argument(
-        "--edep-max", type=float, help="most energy deposited in the device [MeV]"
-    )
+def run_arguments(parser):
+    """What holds for one run only and is no setting of config.json."""
     parser.add_argument(
         "-g4_vis", help="open a window to turn the Geant4 geometry and tracks in", action="store_true"
     )
@@ -69,55 +73,22 @@ def deposit_arguments(parser):
     )
 
 
-CURRENT_DEFAULTS = {"plots": 100}
-
-
-def current_arguments(parser):
-    parser.add_argument("-vol", "--voltage", type=float, help="bias voltage")
-    parser.add_argument("-irr", "--irradiation", type=float, help="irradiation flux")
-
-
-READOUT_DEFAULTS = {"amplifier": "SantaCruz+Gali52+Termination50", "sheet_resistance": None}
-
-
-def readout_arguments(parser):
-    parser.add_argument("-amp", "--amplifier", type=str, help="amplifier")
-    parser.add_argument(
-        "--sheet-resistance", type=float, help="of the resistive layer of the device, in place of its file's [Ohm]"
-    )
-
-
-# The edge of the pulses the thresholds are set on, as on a scope; None:
-# the one the readout wrote its pulses with.
-RECONSTRUCTION_DEFAULTS = {
-    "threshold": 10.0,
-    "amplitude_threshold": 10.0,
-    "fractions": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
-    "edge": None,
-}
-
-
-def reconstruction_arguments(parser):
-    parser.add_argument("-threshold", type=float, help="of the times and the area of the pulses [mV]")
-    parser.add_argument("-amplitude_threshold", type=float, help="of the selected events [mV]")
-    parser.add_argument("--edge", choices=("rising", "falling"), help="the edge of the pulses the thresholds are set on; by default that of the readout")
-
-
-DEFAULTS = {**DEPOSIT_DEFAULTS, **CURRENT_DEFAULTS, **READOUT_DEFAULTS, **RECONSTRUCTION_DEFAULTS}
-
-
 def add_arguments(parser):
     parser.add_argument("det_name", help="Device project")
-    deposit_arguments(parser)
-    current_arguments(parser)
-    readout_arguments(parser)
-    reconstruction_arguments(parser)
+    run_arguments(parser)
 
 
 def job_command(kwargs):
     if kwargs.get("g4_vis"):
         return ["-g4_vis", "--g4-vis-driver", kwargs["g4_vis_driver"]]
     return []
+
+
+def analyse(root):
+    """The last stage, for the experiments whose chain ends in an analysis."""
+    from . import analysis
+
+    return analysis.collect(root)
 
 
 def _deposits(kwargs):
@@ -181,12 +152,9 @@ def _shared_field(device):
     )
 
 
-DEPOSIT_KEYS = (
-    "source", "g4setup", "events_per_job", "generated_per_job", "generated_limit", "edep_min", "edep_max", "fano",
-    "plots",
-)
+DEPOSIT_KEYS = tuple(key for key in KEYS if key.startswith("deposit."))
 # A job records a number of events or generates one: one of the two is given.
-EXCLUSIVE = (("events_per_job", "generated_per_job"),)
+EXCLUSIVE = (("deposit.events_per_job", "deposit.generated_per_job"),)
 
 
 def expand(devices=None, deposit=_deposits) -> tuple:
@@ -210,12 +178,13 @@ def expand(devices=None, deposit=_deposits) -> tuple:
             "deposit",
             deposit,
             keys=DEPOSIT_KEYS,
-            kinds=("source", "g4setup"),
+            counts=("deposit.events_per_job", "deposit.generated_per_job", "deposit.plots"),
+            kinds=("deposit.source", "deposit.g4setup"),
             needs=(),
         )
     ]
     for device, (_, positions) in devices.items():
-        prefix = f"{device}." if several else ""
+        prefix = f"field.{device}." if several else "field."
         name = f"field.{device}" if several else "field"
         # The field is shared by the experiments of a device, in work/<device>/field;
         # it and the deposits do not read each other.
@@ -223,7 +192,7 @@ def expand(devices=None, deposit=_deposits) -> tuple:
             Slice(
                 name,
                 partial(_field, device=device) if several else _field,
-                keys=(f"{prefix}voltage", f"{prefix}irradiation"),
+                keys=(f"{prefix}voltage", f"{prefix}irradiation_flux"),
                 shared=_shared_field(device) if several else field.SHARED,
                 needs=(),
             )
@@ -235,7 +204,8 @@ def expand(devices=None, deposit=_deposits) -> tuple:
                 Slice(
                     current,
                     partial(_currents, device=device if several else None, position=at) if at or several else _currents,
-                    keys=("plots",),
+                    keys=("current.plots",),
+                    counts=("current.plots",),
                     needs=("deposit", name),
                 )
             )
@@ -246,7 +216,7 @@ def expand(devices=None, deposit=_deposits) -> tuple:
                 Slice(
                     readout,
                     partial(_waveforms, device=device if several else None, position=at) if at or several else _waveforms,
-                    keys=("amplifier", "sheet_resistance"),
+                    keys=("readout.amplifier", "readout.sheet_resistance"),
                     new_events=False,
                     needs=(current, name),
                 )
@@ -257,7 +227,7 @@ def expand(devices=None, deposit=_deposits) -> tuple:
                     partial(_reconstruction, device=device if several else None, position=at)
                     if at or several
                     else _reconstruction,
-                    keys=("threshold", "amplitude_threshold", "fractions", "edge"),
+                    keys=tuple(key for key in KEYS if key.startswith("reconstruction.")),
                     new_events=False,
                     needs=(readout,),
                 )
@@ -269,15 +239,18 @@ def keys_of(devices) -> tuple:
     """The options of the chain for the devices: those of each device under its name."""
     if len(devices) < 2:
         return KEYS
-    own = ("voltage", "irradiation")
-    return (*(key for key in KEYS if key not in own), *(f"{device}.{key}" for device in devices for key in own))
+    own = ("field.voltage", "field.irradiation_flux")
+    return (
+        *(key for key in KEYS if key not in own),
+        *(f"field.{device}.{key.split('.', 1)[1]}" for device in devices for key in own),
+    )
 
 
 def in_file_of(devices) -> dict:
     """Where the options of the devices sit in their files."""
     if len(devices) < 2:
         return IN_FILE
-    return {f"{device}.voltage": f"{device}.device.bias.voltage" for device in devices}
+    return {f"field.{device}.voltage": f"{device}.device.bias.voltage" for device in devices}
 
 
 # A slice is named by the file it writes; its keys and kinds of file are what

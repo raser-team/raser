@@ -12,26 +12,26 @@ from raser.stages import readout
 
 
 def _job(tmp_path: Path) -> dict:
-    batch = tmp_path / "batch"
-    batch.mkdir()
+    node = tmp_path / "node"
+    node.mkdir()
     names = ("deposit", "current.A", "current.B", "readout.A", "readout.B")
-    return {"job_index": 0, "_slice_batch_paths": dict.fromkeys(names, str(batch))}
+    return {"job_index": 0, "_node_paths": dict.fromkeys(names, str(node))}
 
 
 def test_a_position_with_no_deposit_in_the_job_leaves_no_currents(tmp_path: Path) -> None:
     kwargs = _job(tmp_path)
     in_a = EventDeposits(0, ["A"], [1.0], [1.0], [1.0], [0.0], [0.1], pairs=[10.0])
-    write_deposits(str(tmp_path / "batch" / "deposit_0.h5"), Deposits(1, {}, "any", None, [in_a]))
+    write_deposits(str(tmp_path / "node" / "deposit.h5"), Deposits(1, {}, "any", None, [in_a]))
 
     assert current.currents(kwargs, "B") == {"events": 0}
-    assert not (tmp_path / "batch" / "current.B_0.h5").exists()
+    assert not (tmp_path / "node" / "current.B.h5").exists()
 
 
 def test_a_position_that_left_no_currents_leaves_no_readout(tmp_path: Path) -> None:
     kwargs = _job(tmp_path)
 
     assert readout.waveforms(kwargs, "B") == {"events": 0}
-    assert not (tmp_path / "batch" / "readout.B_0.h5").exists()
+    assert not (tmp_path / "node" / "readout.B.h5").exists()
 
 
 def test_a_position_with_a_deposit_drifts_its_own_and_its_readout_reads_its_currents(
@@ -39,7 +39,7 @@ def test_a_position_with_a_deposit_drifts_its_own_and_its_readout_reads_its_curr
 ) -> None:
     kwargs = {**_job(tmp_path), "det_name": "D", "_files": {"device": {}}, "plots": 0, "amplifier": "amp"}
     in_a = EventDeposits(0, ["A"], [1.0], [1.0], [1.0], [0.0], [0.1], pairs=[10.0])
-    write_deposits(str(tmp_path / "batch" / "deposit_0.h5"), Deposits(1, {}, "any", None, [in_a]))
+    write_deposits(str(tmp_path / "node" / "deposit.h5"), Deposits(1, {}, "any", None, [in_a]))
     drifted: list[tuple[str, str, object]] = []
     read: list[tuple[str, str]] = []
     device = type("Device", (), {"read_out_contact": [], "read_ele_num": 1, "device_dict": {}, "irradiation_flux": 0, "voltage": 1})()
@@ -59,10 +59,10 @@ def test_a_position_with_a_deposit_drifts_its_own_and_its_readout_reads_its_curr
     monkeypatch.setattr(readout, "pulse_edges", lambda my_d, chain, outputs: [])
     monkeypatch.setattr(readout, "named_chain", lambda name: None)
     monkeypatch.setattr(readout, "write_waveforms", lambda currents, out, *args, **options: read.append((currents, out)))
-    batch = tmp_path / "batch"
+    node = tmp_path / "node"
 
     assert current.currents(kwargs, "A") is None
     assert readout.waveforms(kwargs, "A") is None
 
-    assert drifted == [(str(batch / "deposit_0.h5"), str(batch / "current.A_0.h5"), "A")]
-    assert read == [(str(batch / "current.A_0.h5"), str(batch / "readout.A_0.h5"))]
+    assert drifted == [(str(node / "deposit.h5"), str(node / "current.A.h5"), "A")]
+    assert read == [(str(node / "current.A.h5"), str(node / "readout.A.h5"))]

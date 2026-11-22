@@ -7,30 +7,34 @@ from raser.core.deposit.deposits import read_deposits
 from raser.core.device import build_device as bdv
 from raser.core.field import devsim_field as devfield
 from raser.core.field.solved import solved_field
-from raser.stages.files import _job
 from raser.stages.files import output
+from raser.stages.files import plots
 
 
 def solved(my_d, kwargs):
     """The solved field of the device at its bias; the flux is of the field
     the run takes, not of the device."""
     flux = my_d.irradiation_flux
-    if kwargs.get("irradiation") is not None:
-        flux = float(kwargs["irradiation"])
+    if kwargs.get("irradiation_flux") is not None:
+        flux = float(kwargs["irradiation_flux"])
+    electrodes = my_d.read_out_contact
+    if "resistive_layer" in my_d.device_dict:
+        electrodes = [{"name": my_d.device_dict["resistive_layer"]["contact"]}]
     return devfield.DevsimField(
         my_d.device,
         my_d.voltage,
-        my_d.read_out_contact,
+        electrodes,
         irradiation_flux=flux,
         bounds=my_d.bound,
         field_directory=solved_field(my_d, my_d.voltage, flux),
         interpolation_bins=my_d.device_dict.get("field_interpolation_bins"),
+        pitch={"x": my_d.p_x, "y": my_d.p_y},
     )
 
 
 def currents(kwargs, position=None):
     """The deposits drifted in the solved field of the device: current_<job>.h5,
-    and the pictures of the first `plots` events in plots/job_<job>.
+    and the pictures of the first `plots` events in plots/ of its node.
 
     With a position, the deposits of that position of the device: the slice
     current.<position>, its file and pictures named so; a position with no
@@ -45,11 +49,7 @@ def currents(kwargs, position=None):
         my_d,
         solved(my_d, kwargs),
         int(kwargs["plots"]),
-        os.path.join(
-            os.path.dirname(kwargs["_slice_batch_paths"][name]),
-            "plots",
-            "job_%s" % _job(kwargs) + ("" if position is None else "_%s" % position),
-        ),
+        plots(kwargs, name),
         **({} if position is None else {"detector": position}),
     )
     return None

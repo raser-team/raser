@@ -59,12 +59,12 @@ $$P(t) = \frac{2\sqrt{\ln 2}}{\sqrt{\pi}\,\text{FWHM}_t}\exp\!\left(-\frac{4\ln 
 单个 `tct` 扫描点的作业按以下顺序走完八个环节：
 
 1. **检查与求解共享场（`field`）**：主命令在作业开始前检查 `<project>/field/` 下是否存在匹配当前器件、偏压 `voltage`（$\text{V}$）与辐照注量 `irradiation_flux`（$\text{cm}^{-2}$，$1\ \text{MeV}$ 中子等效注量）的场节点；未就绪则在作业开始前补算，存进 `<project>/field/<节点号>/`（写入期间带 `.part` 后缀，含 `node.json`）。
-2. **生成激光载流子群（`deposit`）**：`deposit` 环节按器件文件构造 `Detector`，按激光组件构造 `LaserInjection`。对生效的每种吸收机制（$\alpha \ne 0$ 时算单光子，`tech == "TPA"` 时加双光子），沿光路总长 $L$ 取 $\lceil 50 L / \min(L, l_R, 10^6/\alpha) \rceil + 1$ 个采样点梯形积分求出总对数 $N_{\text{tot}}$；将横截面按 `4` 个等份额同心环（归一化半径 $\rho_r = \sqrt{-\ln(1 - (r + 0.5)/4)/k}$，$r = 0, 1, 2, 3$，单光子 $k = 2$、双光子 $k = 4$）和 `8` 个等角扇区（$\phi_m = (m + 0.5)\pi/4$，$m = 0, \dots, 7$）切分为 `32` 个单元，沿光路按等份额切分为 $N_{\text{slab}} = \lceil \max(N_{\text{tot}} / \text{pairs\_per\_group},\, \text{groups}) / 32 \rceil$ 层，在每个位于器件横向边界内的单元中心放置一个携带 $N_{\text{tot}} / (32 N_{\text{slab}})$ 对电子-空穴、时刻为 `central_time`（$\text{s}$）的载流子群，经 `laser_deposits` 写入 `deposit` 节点的 `deposit.h5`，并在节点内绘制 `draw_nocarrier3D`、`draw_nocarrier2D` 初始载流子分布图。
+2. **生成激光载流子群（`deposit`）**：`deposit` 环节按器件文件构造 `Detector`，按激光组件构造 `LaserInjection`，并打印一行所用激光的组件名、入射方向、波长和焦点位置（绝对坐标 $\mu\text{m}$ 与 `fx_rel`、`fy_rel`、`fz_rel`）。对生效的每种吸收机制（$\alpha \ne 0$ 时算单光子，`tech == "TPA"` 时加双光子），沿光路总长 $L$ 取 $\lceil 50 L / \min(L, l_R, 10^6/\alpha) \rceil + 1$ 个采样点梯形积分求出总对数 $N_{\text{tot}}$；将横截面按 `4` 个等份额同心环（归一化半径 $\rho_r = \sqrt{-\ln(1 - (r + 0.5)/4)/k}$，$r = 0, 1, 2, 3$，单光子 $k = 2$、双光子 $k = 4$）和 `8` 个等角扇区（$\phi_m = (m + 0.5)\pi/4$，$m = 0, \dots, 7$）切分为 `32` 个单元，沿光路按等份额切分为 $N_{\text{slab}} = \lceil \max(N_{\text{tot}} / \text{pairs\_per\_group},\, \text{groups}) / 32 \rceil$ 层，在每个位于器件横向边界内的单元中心放置一个携带 $N_{\text{tot}} / (32 N_{\text{slab}})$ 对电子-空穴、时刻为 `central_time`（$\text{s}$）的载流子群，经 `laser_deposits` 写入 `deposit` 节点的 `deposit.h5`，并在节点内绘制 `draw_nocarrier3D`、`draw_nocarrier2D` 初始载流子分布图。
 3. **无扩散漂移、脉冲卷积与画图（`current`）**：`current` 环节读取 `deposit` 节点的 `deposit.h5` 并加载共享场 `DevsimField`，在 `CalCurrentLaser`（`diffusion=False`）中完成全部载流子群的漂移、雪崩倍增与 Shockley-Ramo 感应电流分箱，再按单箱采样数 $S = \max(1, \lceil 20\,\Delta t_{\text{bin}} / \text{FWHM}_t \rceil)$ 算出式 (5) 的脉冲权重矩阵右乘电流波形，写入 `current` 节点的 `current.h5`，并在节点内绘制非零电极感应电流波形图。
 4. **前端电路读出（`readout`）**：`readout` 环节读取 `current` 节点的 `current.h5`，组装器件等效电路与 `amplifier` 子电路链，调用 `ngspice` 求解输出电压波形并按由作业种子派生的 `readout` 噪声种子叠加频域热噪声，写入 `readout` 节点的 `readout.h5`。
 5. **数字化与触发（`digitizer`、`trigger`）**：`digitizer` 按数字化器组件（默认 `MXR608A`）的模拟带宽、采样和量化（时钟相位与孔径抖动由作业种子派生的 `digitizer` 种子抽取）把模拟波形转为量化码写入 `digitizer` 节点的 `digitizer.h5`；`trigger` 按触发条件判定记录哪些事例，将被记录事例的事例号数据集 `event`（`int64`）写入 `trigger` 节点的 `trigger.h5`。
 6. **波形特征提取（`reconstruction`）**：`reconstruction` 环节读取 `digitizer.h5` 中被 `trigger.h5` 记录的事例，按 `lsb_V`、`offset_V` 把量化码换回电压（$\text{V}$），采样时刻为 `t0 + k·sampling_period`，扣除基线、翻正脉冲并提取幅度、定时量、面积与团簇特征，将找到种子的事例记为 `selected`，写入 `reconstruction` 节点的 `reconstruction.h5`。
-7. **单点与位置扫描汇总（`analysis`）**：`analysis` 环节汇总每个焦点扫描点的结果，在各扫描点的 `analysis` 节点（`nodes/analysis/<节点号>/`，视图 `points/<点名>/analysis/`）写出单点 `result.json`、`events.h5` 与分布图，并在 `<project>/tct/analysis/` 下写出跨焦点位置的汇总表 `points.json` 和收集电荷、信号随焦点位置变化的趋势图 `points.png`。
+7. **单点与位置扫描汇总（`analysis`）**：`analysis` 环节汇总每个焦点扫描点的结果，在各扫描点的 `analysis` 节点（`nodes/analysis/<节点号>/`，视图 `points/<点名>/analysis/`）写出单点 `result.json`、`events.h5` 与分布图，并在 `<project>/tct/analysis/` 下写出跨焦点位置的汇总表 `points.json` 和收集电荷、信号随焦点位置变化的趋势图 `trend.png`、`trend.pdf`。
 
 `tct` 涉及的内置常数如下表：
 
@@ -73,7 +73,7 @@ $$P(t) = \frac{2\sqrt{\ln 2}}{\sqrt{\pi}\,\text{FWHM}_t}\exp\!\left(-\frac{4\ln 
 | 光子能量常数 $h$, $c$ | `6.626e-34`, `2.998e8` | $\text{J}\cdot\text{s}$, $\text{m/s}$ | `src/raser/core/deposit/laser.py`，计算单光子能量 $E_{\text{ph}} = h c / \lambda$ 使用的普朗克常数与光速 |
 | 光路积分细分倍数 | `50` | 步 | `src/raser/core/deposit/laser.py`，光路总长除以最小特征尺度 $\min(L, l_R, 10^6/\alpha)$ 后的积分采样倍数 |
 | `rings`, `sectors` | `4`, `8` | 环, 扇区 | `src/raser/core/deposit/laser.py`，激光横截面等份额切分的同心环数与扇区数（每层 `32` 群） |
-| 载流子分布图箱数 | `50 × 50 × 50`（3D） | 箱 | `src/raser/core/deposit/laser.py`，`draw_nocarrier3D` 直方图分箱数 |
+| 载流子分布图箱数 | `50 × 50 × 50`（3D） | 箱 | `src/raser/core/deposit/laser.py`，`draw_nocarrier3D` 计算体密度的箱数 |
 | 载流子密度图网格与横向范围 | `200 × 200`，光轴两侧各 `2` 倍最大光斑半径 | 点, 无量纲 | `src/raser/core/deposit/laser.py`，`draw_nocarrier2D` 计算体密度的网格点数与横向画图范围 |
 | 脉冲卷积单箱采样倍数 | `20` | 点 | `src/raser/core/current/cal_current.py`，`pulse_in_bins` 要求单箱内中点矩形积分采样间距不超过 $\text{FWHM}_t / 20$ |
 | `t_bin`, `delta_t` | 1D: `5e-12`, `2e-12`；2D/3D: `50e-12`, `20e-12` | $\text{s}$ | `src/raser/core/current/cal_current.py`，感应电流时间箱宽与单步漂移步长 |
@@ -171,15 +171,15 @@ raser tct NJU-PiN --set deposit.laser=PIL037_top_SiC --scan deposit.laser.fz_rel
 
 | 路径 | 写出环节 / 函数 | 内容 | 坐标与物理量单位 |
 | --- | --- | --- | --- |
-| `nodes/deposit/<节点号>/nocarrier_<fx_rel>_<fy_rel>_<fz_rel>.pdf` | [`deposit`](../stages/deposit.md)（`LaserInjection.draw_nocarrier3D`） | 激光脉冲在器件内生成的初始载流子群三维对数分布直方图（`TH3D`，`50 × 50 × 50` 箱，文件名中相对坐标四舍五入至 `5` 位小数） | 三轴 `Depth [um]`、`Width [um]`、`Thick [um]`，箱权重为电子-空穴对数 |
-| `nodes/deposit/<节点号>/nocarrier2D_<fx_rel>_<fy_rel>_<fz_rel>.pdf` | [`deposit`](../stages/deposit.md)（`LaserInjection.draw_nocarrier2D`） | $y = \text{fy\_rel}\cdot l_y$ 的 $x$-$z$ 面（过光轴）上初始电子-空穴对的体密度，按吸收公式在 `200 × 200` 网格上算出（`TH2D`，`COLZ` 色标） | 横轴 `x axis [um]`，纵轴 `z axis [um]`，色标 `Pairs [um^-3]` |
-| `nodes/current/<节点号>/No_<k>electrode_basic_infor.pdf`, `.root` | [`current`](../stages/current.md)（`draw_currents`） | 第 $k$ 号非零电流电极（从 `1` 起）经激光时间脉冲卷积后的 `electron`、`hole`、`total`（开启雪崩时含 `electron gain`、`hole gain`）感应电流波形 | 横轴 `Time [s]`，纵轴 `Current [A]` |
-| `analysis/points.png` | [`analysis`](../stages/analysis.md) | 跨焦点位置扫描的收集电荷与信号随焦点位置变化曲线 | 横轴相对焦点位置（无量纲），纵轴按对应物理量标注单位 |
+| `nodes/deposit/<节点号>/plots/pair_density_3d.png`、`.pdf`、`.root` | [`deposit`](../stages/deposit.md)（`LaserInjection.draw_nocarrier3D`） | 激光脉冲在器件内生成的初始电子-空穴对的三维体密度（`TH3D`，`50 × 50 × 50` 箱，按吸收公式在各箱中心算出，低于最大值 `10%` 的箱留空） | 三轴 `x [μm]`、`y [μm]`、`z [μm]`，箱内容为对每 $\mu\text{m}^3$ |
+| `nodes/deposit/<节点号>/plots/pair_density.png`、`.pdf`、`.root` | [`deposit`](../stages/deposit.md)（`LaserInjection.draw_nocarrier2D`） | $y = \text{fy\_rel}\cdot l_y$ 的 $x$-$z$ 面（过光轴）上初始电子-空穴对的体密度，按吸收公式在 `200 × 200` 网格上算出（`TH2D`，`COLZ` 色标） | 横轴 `x [μm]`，纵轴 `z [μm]`，色标 `Pair density [μm⁻³]` |
+| `nodes/current/<节点号>/plots/current_0.png`, `.pdf`, `.root`（多个读出电极时为 `current_0_electrode_<k>`） | [`current`](../stages/current.md)（`draw_currents`） | 第 $k$ 号非零电流电极（从 `1` 起）经激光时间脉冲卷积后的 `electrons`、`holes`、`total`（开启雪崩时含 `gain electrons`、`gain holes`）感应电流波形 | 横轴 `Time [ns]`，纵轴 `Current [μA]` |
+| `analysis/trend.png`、`.pdf` | [`analysis`](../stages/analysis.md) | 跨焦点位置扫描的收集电荷与信号随焦点位置变化曲线 | 横轴相对焦点位置（无量纲），纵轴按对应物理量标注单位 |
 
-![NJU-PiN 激光注入二维载流子分布](../images/tct-carriers-2d-NJU-PiN.png)
+![NJU-PiN 激光注入二维载流子分布](../../images/tct/carriers-2d-NJU-PiN.png)
 
 `NJU-PiN` 在顶面紫外激光 `PIL037_top_SiC` 照射下由 `draw_nocarrier2D` 输出的过光轴 $x$-$z$ 面上初始电子-空穴对的体密度。
 
-![NJU-PiN TCT 感应电流波形](../images/tct-current-NJU-PiN.png)
+![NJU-PiN TCT 感应电流波形](../../images/tct/current-NJU-PiN.png)
 
 `NJU-PiN` 在 `tct` 测试中由 `write_laser_currents` 输出的读出电极电子分量、空穴分量与总感应电流波形。

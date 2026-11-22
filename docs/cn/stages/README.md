@@ -122,7 +122,7 @@ raser readout examples/HPK-Si-PiN/signal
 
 ### 设置
 
-`config.json` 按八个环节分段，链上的设置按下表归段。用 `--set <段>.<键>=<值>` 改一个设置，用 `--scan <段>.<键>=<值1>,<值2>` 扫描；公共运行参数（`-s`、`--seed`、`--same-seeds`、`--set`、`--scan`、`--dry-run`）见[命令行接口（`raser`）](../cli.md)。`digitizer`、`trigger` 段的设置见各自的页面。代码不留默认值：表里“示例里的值”是 `examples/HPK-Si-PiN/signal/config.json` 写的值，括号里是别的示例写的不同值；`config.json` 缺了要用的键时报错，指出缺的“段.键”，例如 `ValueError: examples/HPK-Si-PiN/signal/config.json has no deposit.generated_limit`；用不到的键（例如 `deposit.generated_per_job` 为 `null` 时）缺了不报错。
+`config.json` 按八个环节分段，链上的设置按下表归段。用 `--set <段>.<键>=<值>` 改一个设置，用 `--scan <段>.<键>=<值1>,<值2>` 扫描（只有 `field`、`deposit`、`current`、`readout` 四段的设置能扫描，其余四段是分析参数，只用 `--set` 改）；公共运行参数（`-s`、`--seed`、`--same-seeds`、`--set`、`--scan`、`--dry-run`）见[命令行接口（`raser`）](../cli.md)。`digitizer`、`trigger` 段的设置见各自的页面。代码不留默认值：表里“示例里的值”是 `examples/HPK-Si-PiN/signal/config.json` 写的值，括号里是别的示例写的不同值；`config.json` 缺了要用的键时报错，指出缺的“段.键”，例如 `ValueError: examples/HPK-Si-PiN/signal/config.json has no deposit.generated_limit`；用不到的键（例如 `deposit.generated_per_job` 为 `null` 时）缺了不报错。
 
 | 段.键 | 示例里的值 | 单位 | 含义 |
 | --- | --- | --- | --- |

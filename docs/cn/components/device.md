@@ -98,7 +98,7 @@ flowchart LR
 | `bias_resistance_ohm` | `None` | `Ohm` | 单个读出电极到信号地的偏置电阻 |
 | `coupling_capacitance_pF` | `None` | `pF` | 单个读出电极到放大器输入端的交流耦合电容，给出时须同时提供 `bias_resistance_ohm` |
 | `undepleted_resistance_ohm`, `undepleted_capacitance_pF` | `None` | `Ohm`, `pF` | 偏压未耗尽体区的等效并联电阻与电容；未给定时由一维 `field` 按运行时偏压从场解算出，两个键须同时给出或同时省略 |
-| `resistive_layer` | 无（可选） | `sheet_resistance` 为 `Ohm`，`implanted` 为 `cm^-2`，`thickness` 为 `um`，`anneal` 为 `°C` | 阻性电荷共享层定义对象，含方阻 `"sheet_resistance"`（或铝注入参数 `"implanted"`、`"thickness"`、`"anneal"`）、单元跨度（`"strips"` 或 `"pads"`）及可选接地接触 `"grounded"`、介电耦合层 `"coupling"`（含 `"thickness"` [`um`] 与无量纲 `"permittivity"`） |
+| `resistive_layer` | 无（可选） | `sheet_resistance` 为 `Ohm`，`implanted` 为 `cm^-2`，`thickness` 为 `um`，`anneal` 为 `°C` | 阻性电荷共享层定义对象，含方阻 `"sheet_resistance"`（或铝注入参数 `"implanted"`、`"thickness"`、`"anneal"`）、RC 格点跨度（`"strips"` 或 `"pads"`）、层所在的网格接触名 `"contact"` 及可选接地接触 `"grounded"`、介电耦合层 `"coupling"`（含 `"thickness"` [`um`] 与无量纲 `"permittivity"`） |
 
 ### 物理模型与求解维度
 
@@ -151,7 +151,7 @@ flowchart LR
 2. **求解电势、电场、权重势与俘获率（`create_parameter.py`、`solver_section.py`、`loop_section.py`）**：`bias` 和 `temperature` 定出接触边界条件与半导体参数（热电压、禁带宽度、本征载流子浓度），在 `dimension` 维网格上求出电势和电场，并按 `read_out_contact` 求出各读出电极的权重势；给定 `irradiation` 时同时求出缺陷空间电荷与电子、空穴俘获率。`area_factor` 将一维（乘以面积 $l_x l_y$，单位 `cm^2`）或二维（乘以垂直于求解平面的长度，单位 `cm`）网格求出的比电流、比电容换算为整块器件的 IV、CV 值。
 3. **未耗尽体区阻抗提取（`conductive.py`、`save_milestone.py`）**：一维 DEVSIM 求解在偏压未耗尽整块器件时，将满足 $|N_{\text{net}}| > 0$、$n + p > 0.5|N_{\text{net}}|$ 且电阻率 $\rho = [e(\mu_n n + \mu_p p)]^{-1} \ge 10.0\ \Omega\cdot\text{cm}$ 的相邻节点区间积分为未耗尽层厚度 $w_{\text{undep}}$（`cm`）、比电阻 $r_{\text{undep}} = \sum \bar{\rho}\,\Delta x$（`Ohm cm^2`）和比电容 $c_{\text{undep}} = 10^{12}\varepsilon / w_{\text{undep}}$（`pF/cm^2`），其中 $e$ 为元电荷（C），$\mu_n$、$\mu_p$ 为电子、空穴迁移率（$\text{cm}^2/(\text{V}\cdot\text{s})$），$n$、$p$ 为电子、空穴浓度（$\text{cm}^{-3}$），$\varepsilon$ 为材料介电常数（F/cm），存入 `<V>V.undepleted.json`，并在读出环节通过 `area_factor` 换算为整块器件的未耗尽层电阻和电容。
 
-![HPK-Si-PiN 掺杂沿深度分布](../images/field-doping-HPK-Si-PiN.png)
+![HPK-Si-PiN 掺杂沿深度分布](../../images/field/doping-HPK-Si-PiN.png)
 
 `HPK-Si-PiN` 沿深度分布的三段掺杂：表面 `0–1 um` 为 `Donors` 的 $1.0\times 10^{19}\ \text{cm}^{-3}$ $n^+$ 层，`1–50 um` 为 `Acceptors` 的 $5\times 10^{12}\ \text{cm}^{-3}$ 灵敏体区，`50–151 um` 为 $1.0\times 10^{18}\ \text{cm}^{-3}$ $p^+$ 衬底（`l_z = 50` `um` 为灵敏层厚度，`field` 网格延伸到衬底底部的背电极）。
 
@@ -183,7 +183,7 @@ flowchart LR
 
 ## 库里有哪些组件
 
-`components/device/` 包含以下 23 个探测器组件：
+`components/device/` 包含以下 24 个探测器组件：
 
 | 组件名 | 说明 | 出处 | 适用的器件或实验 |
 | --- | --- | --- | --- |
@@ -202,6 +202,7 @@ flowchart LR
 | `iLGAD` | Si `ilgad_planar` 器件（$10000 \times 10000 \times 285\ \mu\text{m}$，1D） | 未注明 | |
 | `ITk-md8` | Si `planar` 器件（$8000 \times 8000 \times 50\ \mu\text{m}$，1D，配 `"Schwandt"` 辐照模型） | ATLAS ITk MD8 硅平面二极管（组件型号 `ITk-md8`） | |
 | `ITk-Si-strip` | Si `strip` 器件（$96791 \times 48000 \times 305\ \mu\text{m}$，$1282$ 条，间距 $75.5\ \mu\text{m}$，配 `"XingChen"` 辐照模型） | ATLAS ITk 硅微条探测器（组件型号 `ITk-Si-strip`） | |
+| `LBNL-SiC-AC-LGAD` | SiC `lgad_pixel` 器件（$1000 \times 1000 \times 75.8\ \mu\text{m}$，1D 场；阻性层切成 $20 \times 20$ 个 $50\ \mu\text{m}$ 的 RC 格点，4 个 $100\ \mu\text{m}$ 电极经 $0.3\ \mu\text{m}$ 氧化层交流耦合，间距 $500\ \mu\text{m}$，外圈接地） | T. Yang et al., `arXiv:2610.27535`；层结构见 IEEE Electron Device Lett. 46 (2025) 845, doi:10.1109/LED.2025.3548509；阻性层方阻 $630\ \Omega$ 为按掺杂估算，未有实测 | [`signal`](../bench/signal.md)：`raser signal LBNL-SiC-AC-LGAD`，电流按 RC 格点给出，读出在四个电极上 |
 | `NJU-PiN` | SiC `planar` 器件（$5000 \times 5000 \times 100\ \mu\text{m}$，1D/2D） | 南京大学（NJU）4H-SiC PiN（组件型号 `NJU-PiN`） | [`signal`](../bench/signal.md)、[`tct`](../bench/tct.md) 碳化硅示例器件 |
 | `NJU-PiN-bmos` | SiC `planar` 器件（$5000 \times 5000 \times 100\ \mu\text{m}$，1D/2D） | 南京大学（NJU）4H-SiC PiN（组件型号 `NJU-PiN-bmos`） | [`bmos`](../apps/bmos.md) |
 | `pixel_ayyouby` | Si `lgadpixel` 器件，3×3 阵列 Ayyoub 风格 DJ-LGAD 像素（间距 $20 \times 20\ \mu\text{m}$） | `comment`：Ayyoub 风格 3×3 DJ-LGAD 像素模型 | |

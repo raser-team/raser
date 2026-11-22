@@ -363,7 +363,7 @@ GDML 导入模式按 `material` 为 `"Si"`（`G4_Si`）和 `"SiC"`（Si、C 原�
 - `geant4/detector_construction.py`、`geant4/g4_gdml_import.py`：几何与材料；后者导入外部 GDML。
 - `geant4/action_initialization.py`、`primary_generator_action.py`、`nuclide_source.py`、`event_action.py`、`stepping_action.py`、`run_action.py`：Geant4 用户动作，分别负责组装、束流发射、核素与衰变产物、事例记录、步记录和运行设置。
 - `geant4/drivers.py`：为 g4ppyy 注册可视化驱动。`geant4/g4ppyy_runtime.py`：导入 g4ppyy，进程结束时先释放可视化管理器再释放运行管理器。
-- `toy_mip.py`：`ToyMIPLineSource`、`ToyMIPInteraction`，供算法测试用的直线 toy MIP 载流子团。`energy_loss.py`：Fano 抽样 `sample_fano_pairs` 与 Landau 抽样 `sample_landau_energy_loss`。`carrier_list.py`：`CarrierListFromG4P`、`PixelCarrierListFromG4P`，把 Geant4 的步换成载流子列表，交给 [载流子漂移与感应电流](current.md) 的 `CalCurrentG4P`。
+- `toy_mip.py`：`ToyMIPLineSource`、`ToyMIPInteraction`，供算法测试用的直线 toy MIP 载流子团。`energy_loss.py`：Fano 抽样 `sample_fano_pairs` 与 Landau 抽样 `sample_landau_energy_loss`。`carrier_list.py`：`PixelCarrierListFromG4P`，把 Geant4 的步换成像素器件的载流子列表。
 
 ### 核心数据结构
 
@@ -660,8 +660,8 @@ GDML 文件中含字符串 `RASER_GDML_WRAPPER_WORLD` 时，GDML 的世界体直
 | `<picture>.png` | `simulate_deposits`（`picture` 非空且 `drawn > 0`，仅 Geant4 源） | `TSG_OFFSCREEN` 画的几何（`vis.mac`：体积、坐标轴、按电荷着色的径迹与步点）与前 `drawn` 个记录事例；环节写作 `deposit` 节点里的 `g4_geometry.png` | Geant4 坐标 |
 | `<output>.png` | `view_geometry`（TSG 驱动） | 几何与生成事例的径迹 | Geant4 坐标 |
 | `<output>` 矢量图 | `view_geometry`（OGL 驱动） | 同上，`2000 × 2000`，白底 | Geant4 坐标 |
-| `nocarrier_<fx>_<fy>_<fz>.pdf` | `LaserInjection.draw_nocarrier3D` | 载流子群按对数加权的 `TH3D`，$50^3$ 箱，范围为各群的包围盒；轴标题 `Depth`、`Width`、`Thick`（即 $x$、$y$、$z$）；文件名中的相对坐标保留 5 位小数 | $\mu\text{m}$ |
-| `nocarrier2D_<fx>_<fy>_<fz>.pdf` | `LaserInjection.draw_nocarrier2D` | $y = f_y l_y$ 的 $x$-$z$ 面上（三种入射方向下这个面都过光轴）电子-空穴对的体密度，`TH2D`（`COLZ`），由式 (10)、(11) 的 $dN/ds$ 乘横向分布 $\frac{k}{\pi w^2}\exp(-k r^2/w^2)$ 在 $200 \times 200$ 的网格上直接算出，颜色为对每 $\mu\text{m}^3$（`Pairs [μm⁻³]`）；沿光路从入射面画到累积对数 $M(s)$ 达到 $0.99\,N_{\text{tot}}$ 处，横向画到光轴两侧 $2 w_{\max}$（$w_{\max}$ 为这段光路上光斑半径的最大值，超出器件处截掉） | $\mu\text{m}$ |
+| `pair_density_3d.png`, `.pdf`, `.root` | `LaserInjection.draw_nocarrier3D` | 电子-空穴对的体密度（对每 $\mu\text{m}^3$）的 `TH3D`，$50^3$ 箱，每箱取箱中心处由式 (10)、(11) 的 $dN/ds$ 乘横向分布 $\frac{k}{\pi w^2}\exp(-k r^2/w^2)$ 算出的值，低于最大值 $10\%$ 的箱留空，只画出光束；沿光路和横向的范围同 `nocarrier2D`，两个横向各画到光轴两侧 $2 w_{\max}$；轴标题 `x [μm]`、`y [μm]`、`z [μm]`；画布与格式按[出图](../supports/figures.md) | $\mu\text{m}$ |
+| `pair_density.png`, `.pdf`, `.root` | `LaserInjection.draw_nocarrier2D` | $y = f_y l_y$ 的 $x$-$z$ 面上（三种入射方向下这个面都过光轴）电子-空穴对的体密度，`TH2D`（`COLZ`），由式 (10)、(11) 的 $dN/ds$ 乘横向分布 $\frac{k}{\pi w^2}\exp(-k r^2/w^2)$ 在 $200 \times 200$ 的网格上直接算出，颜色为对每 $\mu\text{m}^3$（`Pair density [μm⁻³]`），轴标题 `x [μm]`、`z [μm]`；画布与格式按[出图](../supports/figures.md)；沿光路从入射面画到累积对数 $M(s)$ 达到 $0.99\,N_{\text{tot}}$ 处，横向画到光轴两侧 $2 w_{\max}$（$w_{\max}$ 为这段光路上光斑半径的最大值，超出器件处截掉） | $\mu\text{m}$ |
 
 ### 实验脚本的入口
 

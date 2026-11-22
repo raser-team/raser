@@ -1,34 +1,30 @@
 """The files a finished job left behind."""
 
-import json
-from pathlib import Path
-
 from raser.core.deposit.deposits import read_deposits
+from raser.lifecycle.nodes import node_dir
 
 
-def slice_file(folder, index, name):
+def slice_file(experiment, nodes, name):
     """Path of the file of the slice `name` ("deposit", "current",
-    "readout") of a job of the seed folder `folder`.
+    "readout") of a job: in the node of the slice.
 
-    The file is in the seed folder of the same name in the point that holds
-    the slice; run.json of the seed folder names that point for each slice.
+    experiment, nodes : a job as lifecycle hands it out, the experiment
+        folder and the node of each of its slices.
     """
-    folder = Path(folder)
-    record = json.loads((folder / "run.json").read_text())
-    experiment = folder.parent.parent if record["point"] else folder.parent
-    return experiment / record["held_in"][name] / folder.name / "batch" / f"{name}_{index}.h5"
+    # a slice after one that ended the job has no node: its file is not there
+    return node_dir(experiment, name.split(".")[0], nodes.get(name, "none")) / f"{name}.h5"
 
 
-def job_file(folder, index, name):
+def job_file(experiment, nodes, name):
     """Path of the file `name` ("current", "readout") of a job, or None for
     a job that recorded no event: it has a deposits file without events and
     nothing after it."""
-    path = slice_file(folder, index, name)
+    path = slice_file(experiment, nodes, name)
     if path.exists():
         return path
-    recorded = len(read_deposits(str(slice_file(folder, index, "deposit"))).events)
+    recorded = len(read_deposits(str(slice_file(experiment, nodes, "deposit"))).events)
     if recorded:
         raise FileNotFoundError(
-            f"{path}: job {index} recorded {recorded} events but left no {name} file"
+            f"{path}: the job recorded {recorded} events but left no {name} file"
         )
     return None

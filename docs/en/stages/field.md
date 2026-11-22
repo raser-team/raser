@@ -50,7 +50,7 @@ Behavior of the three solving paths:
 
 | Subtask enabled in `field` section | What it does | `solved` keys checked and recorded |
 | --- | --- | --- |
-| None of the three enabled (full solve) | Sweeps from `0 V` to the target bias (including CV curve along the sweep), then solves weighting fields for all readout electrodes | `"potential"`, `"undepleted"`, `"weighting"` |
+| None of the three enabled (full solve) | Sweeps from `0 V` to the target bias (including CV curve along the sweep), solves the single-point capacitance at the target bias, then solves weighting fields for all readout electrodes | `"potential"`, `"undepleted"`, `"capacitance"`, `"weighting"` |
 | IV sweep | Sweeps from `0 V` to the target bias and plots the IV curve | `"potential"`, `"undepleted"` |
 | Single-point capacitance | Loads the saved `<V>V.devsim`, solves single-point small-signal capacitance, and writes `<V>V.cv.json` | `"capacitance"` |
 | Weighting field | Reads `Conductive_<V>V.pkl` at the same bias and solves weighting fields for all readout electrodes (single-unit-cell strip electrodes also compute inter-strip mutual capacitance) | `"weighting"` |
@@ -73,7 +73,7 @@ Cause: weighting-field solving requires `Conductive_<V>V.pkl` at the same bias t
 
 ### Shared Field Completion, Waiting, and Handoff in the Simulation Chain
 
-In benchmark, application, or downstream stage commands (such as `raser signal`, `raser current`, `raser readout`, `raser digitizer`, `raser trigger`, `raser reconstruction`, `raser analysis`), each experiment is a Python class inheriting from the `raser` experiment base class that declares its stages, devices, and device roles. Before launching experiment jobs, the main command deduplicates shared field requirements across scan points and checks each with `ready`; for any unready field, it prints `the field is not ready: raser field <device> --set field.voltage=<V> ...` and solves it first in an isolated single-job process (running locally or submitted to the cluster with `-b` following the main command, leaving existing `field` configurations intact).
+In benchmark, application, or downstream stage commands (such as `raser signal`, `raser current`, `raser readout`, `raser digitizer`, `raser trigger`, `raser reconstruction`, `raser analysis`), each experiment is a Python class inheriting from the `raser` experiment base class that declares its stages, devices, and device roles. Before launching experiment jobs, the main command deduplicates shared field requirements across scan points and checks each with `ready`; for any unready field, it prints `solving the field first: raser field <device> --set field.voltage=<V> ...` and solves it first in an isolated single-job process (running locally or submitted to the cluster with `-b` following the main command, leaving existing `field` configurations intact).
 
 If another process is currently solving the same shared field node (node lock contention), the main command prints `<stage>: <locked_target> is run by another process now; run the command again when it is done`, and downstream experiment jobs enter a waiting state (downstream jobs likewise wait when a cluster `-b` shared field job has not yet completed):
 
@@ -108,26 +108,26 @@ raser signal HPK-Si-PiN --scan field.voltage=100,200 -s 2 --set deposit.events_p
 causes the main command to print before launching signal jobs:
 
 ```text
-the field is not ready: raser field HPK-Si-PiN --set field.voltage=100.0
-the field is not ready: raser field HPK-Si-PiN --set field.voltage=200.0
+solving the field first: raser field HPK-Si-PiN --set field.voltage=100.0
+solving the field first: raser field HPK-Si-PiN --set field.voltage=200.0
 ```
 
 The program launches two single-job processes sequentially to solve the `100 V` and `200 V` fields, storing the results under `field/` of the `HPK-Si-PiN` project, with each target bias as its own field node:
 
 - Each field node's `node.json` records its inputs (setting values of the `field` stage and the parts of the device read), code version, runtime environment, and run status.
-- Together, the two nodes write bulk-field `.pkl` files (`Potential`, `Electrons`, `Holes`, `TrappingRate_n`, `TrappingRate_p`, `Conductive`, and `NetDoping_0V.pkl`), `.devsim` and `.dd` archives for `0V`/`100.0V`/`200.0V`, `HPK-Si-PiN.dat`, `0.0V`/`100.0V`/`200.0V.undepleted.json` (both `100.0 V` and `200.0 V` are fully depleted, so `undepleted_width_um` and `specific_resistance_ohm_cm2` are `0.0` and `specific_capacitance_pF` is `null`), `weightingfield/top/Potential_100V.pkl` and `Potential_200V.pkl` with their weighting-field plots, and device parameter circuit diagram assets annotated with junction capacitance, coupling capacitance, and undepleted-layer values.
-- Curves and 1D profile plots include `HPK-Si-PiN_iv.png`, `HPK-Si-PiN_cv.png`, `HPK-Si-PiN_c^-2v.png`, `Doping.png`, `simIV0to100.0.root` / `_picture.root` / `_picture.pdf`, `simIV0to200.0.root` / `_picture.root` / `_picture.pdf`, `simCV0to100.0.root` / `_picture.root` / `_picture.pdf`, `simCV0to200.0.root` / `_picture.root` / `_picture.pdf`, and `Electric Field0/100.0/200.0_1d.png`, `Potential0/100.0/200.0_1d.png`, `Electron Trapping Rate0/100.0/200.0_1d.png`, and `Hole Trapping Rate0/100.0/200.0_1d.png`.
+- Together, the two nodes write bulk-field `.pkl` files (`Potential`, `Electrons`, `Holes`, `TrappingRate_n`, `TrappingRate_p`, `Conductive`, and `NetDoping_0V.pkl`), `.devsim` and `.dd` archives for `0V`/`100.0V`/`200.0V`, `HPK-Si-PiN.dat`, `0.0V`/`100.0V`/`200.0V.undepleted.json` (both `100.0 V` and `200.0 V` are fully depleted, so `undepleted_width_um` and `specific_resistance_ohm_cm2` are `0.0` and `specific_capacitance_pF` is `null`), `weightingfield/top/Potential_100V.pkl` and `Potential_200V.pkl` with the weighting-field plots in `plots/`, and device parameter circuit diagram assets annotated with junction capacitance, coupling capacitance, and undepleted-layer values.
+- The curve data are `simIV0to100.0.root`, `simIV0to200.0.root`, `simCV0to100.0.root`, `simCV0to200.0.root`; the 1D profile plots are all in `plots/`, each with `.png` and `.pdf`: `iv`, `cv`, `doping`, and `electric_field_0V`, `electric_field_100V`, `electric_field_200V`, `potential_0V`, `potential_100V`, `potential_200V`, `weighting_potential_top_100V`, `weighting_potential_top_200V`, `weighting_field_top_100V`, `weighting_field_top_200V` (no irradiation, so no trapping-rate plots).
 - The experiment records the `field` node IDs for the `voltage_100` and `voltage_200` scan points in `points.json`, and points the symlinks `points/voltage_100/field` and `points/voltage_200/field` to their corresponding field nodes (use `raser status` to inspect the status and node ID of each stage at each point in the parameter table).
 
-![HPK-Si-PiN IV curve](../images/field-iv-HPK-Si-PiN.png)
+![HPK-Si-PiN IV curve](../../images/field/iv-HPK-Si-PiN.png)
 
 Dark current (IV) curve of `HPK-Si-PiN` from the reverse bias sweep.
 
-![HPK-Si-PiN CV curve](../images/field-cv-HPK-Si-PiN.png)
+![HPK-Si-PiN CV curve](../../images/field/cv-HPK-Si-PiN.png)
 
 CV curve of `HPK-Si-PiN` capacitance versus reverse bias voltage.
 
-![HPK-Si-PiN 200 V 1D electric field profile](../images/field-efield-HPK-Si-PiN-200V.png)
+![HPK-Si-PiN 200 V 1D electric field profile](../../images/field/efield-HPK-Si-PiN-200V.png)
 
 1D electric field profile of `HPK-Si-PiN` along depth at `200 V` bias.
 
@@ -211,7 +211,7 @@ Holding the node lock, a field-solving job enters `solve(kwargs)` and executes i
      - `have["iv"] = _bias(kwargs) in solved.get("potential", [])`;
      - `have["cv"] = cv_at in solved.get("capacitance", [])`;
      - `have["wf"] = _bias(kwargs) in solved.get("weighting", [])`.
-   - Set `left = [part for part in (named or ["iv", "wf"]) if not have[part]]`. If `left` is empty, print `f"{kwargs['_run_path']}: already solved"` and return.
+   - Set `left = [part for part in (named or ["iv", "cv", "wf"]) if not have[part]]`. If `left` is empty, print `f"{kwargs['_run_path']}: already solved"` and return.
 6. **Solve remaining subtasks sequentially and reset DEVSIM state**: Iterate `done, part in enumerate(left)`:
    - When `done > 0`, call `_empty_devsim()`: read `"direct_solver"` and `"solver_callback"` if present in `devsim.get_parameter_list()`, call `devsim.reset_devsim()`, and restore those two parameters in DEVSIM.
    - When `part == "cv"`, call `_capacitance(kwargs)`:
@@ -236,7 +236,7 @@ The eight-stage simulation chain and multi-device experiments interact with shar
    - The main command iterates over the shared fields required by all pending scan points, deduplicating by device and `field`-section settings; whenever a requirement has not been started in this invocation and `ready(options, files) is None`, it calls `start(kwargs, options, files)`:
      1. Builds `raser field <device> --set field.voltage=<bias>` arguments (also passing irradiation fluence if it differs from the device file, or any device-file keys other than bias modified by the scan point).
      2. Sets `batch=kwargs["batch"]`, `mem=kwargs["mem"]`, `jobs=1` (ensuring execution in an isolated subprocess or cluster job where DEVSIM loads exclusively), `_argv=words`, `_entry_command_prefix=("field",)`, and `_waiting=kwargs.get("_waiting")` (non-empty only under `-b`).
-     3. Prints `"the field is not ready: " + " ".join(["raser", *words])` and launches the field solve.
+     3. Prints `"solving the field first: " + " ".join(["raser", *words])` and launches the field solve.
    - If `start` raises `Running` because another process holds the node lock, `_make_shared` prints `f"{piece.name}: {running}"` and skips it; the main command subsequently sees `ready` return `None`, moves the corresponding downstream jobs into the waiting state, and prints the waiting message.
    - When neither `-b` nor `--dry-run` is active, `ready(options, files)` is rechecked after `start` returns; if still `None`, raises `RuntimeError(f"{piece.name} was made in this process and is still not ready for a point of {root}: waiting would not help")`.
 5. **Parameter table recording, view symlinking, and in-job verification (`chain._field`)**:
@@ -281,7 +281,7 @@ Settings in the `field` section are read from the experiment's `config.json` and
 The `field` section also has the following categories of settings, which do the following:
 
 - **Mesh**: A single device can have multiple meshes, and which one is used is specified by settings in the `field` section.
-- **Subtasks**: IV sweep ramps from `0 V` to the target bias to solve electric potential and electric field and output IV curves; single-point capacitance reloads that bias from an existing `<V>V.devsim` to perform a small-signal capacitance solve and write `<V>V.cv.json`; weighting field reads `Conductive_<V>V.pkl` at the same bias to solve weighting fields for all readout electrodes (single-unit-cell periodic strip electrodes also compute inter-strip mutual capacitance). When none of the three is enabled, a full solve is run: a bias sweep with CV along the sweep, followed by weighting fields.
+- **Subtasks**: IV sweep ramps from `0 V` to the target bias to solve electric potential and electric field and output IV curves; single-point capacitance reloads that bias from an existing `<V>V.devsim` to perform a small-signal capacitance solve and write `<V>V.cv.json`; weighting field reads `Conductive_<V>V.pkl` at the same bias to solve weighting fields for all readout electrodes (single-unit-cell periodic strip electrodes also compute inter-strip mutual capacitance). When none of the three is enabled, a full solve is run: a bias sweep with CV along the sweep, the single-point capacitance at the target bias, then weighting fields.
 - **Noise**: Additionally solves and plots device noise current at each bias-sweep curve sample point (dropped under the HEMT `drift_diffusion_v1` branch).
 - **UMFPACK**: Loads `devsim.umfpack.umfshim` before solving to switch to the UMFPACK linear solver.
 - **TCAD import**: Given a Sentaurus TDR file, skips the DEVSIM bias sweep, imports bulk fields, and solves weighting fields on its mesh; coordinate flip is used only with TCAD import, reversing node coordinate column order and swapping the `x` and `y` axes in 2D plots.
@@ -314,4 +314,4 @@ The shared field node files below reside inside `<field_node_dir>` (i.e., `work/
 
 #### Field Data, Archives, and Plots Written by `core/field`
 
-Inside `<field_node_dir>`, `.pkl` files and `Capacitance_<V>V.json` drop the decimal point for integer biases (such as `Potential_200V.pkl`), whereas nonzero `.devsim`, `.dd`, and all `.undepleted.json` and `.cv.json` files retain float formatting (such as `200.0V.undepleted.json`), and zero-bias archives are named `0V.devsim` and `0V.dd`. Bulk-field `.pkl` files (`Potential`, `Electrons`, `Holes`, `TrappingRate_n`, `TrappingRate_p`, `Conductive`, and `NetDoping_0V.pkl`, or `NetDoping_<V>V.pkl` under TCAD), undepleted-layer files `<V>V.undepleted.json`, DEVSIM and Tecplot archives (`0V`/`<V>V.devsim`, `0V`/`<V>V.dd`, `last_solvable.dd`, `<det_name>.dat`, `converted.devsim`) written during DEVSIM bias sweeps (at `0 V`, every `saved_voltage_interval` checkpoint, and target bias) or TCAD imports; weighting fields `weightingfield/<electrode>/Potential_<V>V.pkl`, `weightingfield/weightingfield.dat`, and single-unit-cell strip mutual capacitances `weightingfield/<electrode>/Capacitance_<V>V.json` written by the weighting-field subtask (including full solves) or TCAD imports; IV/CV/noise curves and multi-dimensional field profile plots (`<det_name>_iv.png`, `simIV*`, `<det_name>_cv.png`, `<det_name>_c^-2v.png`, `simCV*`, `<det_name>_noise.png`, `simnoise*`, `Doping.png`, etc.); and `HEMT_TRANSPORT_*` outputs (`IdVg.csv`, `final_profile.csv`, `final.devsim`, `IdVg.png`/`.pdf`, `summary.json`) written by the HEMT `drift_diffusion_v1` branch—their internal formats, keys, shapes, types, and units, as well as physical solving and interpolation details, are documented in [Field Solving and Loading (`core/field`)](../core/field.md).
+Inside `<field_node_dir>`, `.pkl` files and `Capacitance_<V>V.json` drop the decimal point for integer biases (such as `Potential_200V.pkl`), whereas nonzero `.devsim`, `.dd`, and all `.undepleted.json` and `.cv.json` files retain float formatting (such as `200.0V.undepleted.json`), and zero-bias archives are named `0V.devsim` and `0V.dd`. Bulk-field `.pkl` files (`Potential`, `Electrons`, `Holes`, `TrappingRate_n`, `TrappingRate_p`, `Conductive`, and `NetDoping_0V.pkl`, or `NetDoping_<V>V.pkl` under TCAD), undepleted-layer files `<V>V.undepleted.json`, DEVSIM and Tecplot archives (`0V`/`<V>V.devsim`, `0V`/`<V>V.dd`, `last_solvable.dd`, `<det_name>.dat`, `converted.devsim`) written during DEVSIM bias sweeps (at `0 V`, every `saved_voltage_interval` checkpoint, and target bias) or TCAD imports; weighting fields `weightingfield/<electrode>/Potential_<V>V.pkl`, `weightingfield/weightingfield.dat`, and single-unit-cell strip mutual capacitances `weightingfield/<electrode>/Capacitance_<V>V.json` written by the weighting-field subtask (including full solves) or TCAD imports; IV/CV/noise curve data (`simIV*`, `simCV*`, `simnoise*`) and multi-dimensional field profile plots (1D ones are stored in `plots/`: `iv`, `cv`, `noise`, `doping`, `potential_<V>V`, `electric_field_<V>V`, `trapping_rate_<V>V`, `weighting_potential_<electrode>_<V>V`, `weighting_field_<electrode>_<V>V`, each with `.png` and `.pdf`); and `HEMT_TRANSPORT_*` outputs (`IdVg.csv`, `final_profile.csv`, `final.devsim`, `IdVg.png`/`.pdf`, `summary.json`) written by the HEMT `drift_diffusion_v1` branch—their internal formats, keys, shapes, types, and units, as well as physical solving and interpolation details, are documented in [Field Solving and Loading (`core/field`)](../core/field.md).

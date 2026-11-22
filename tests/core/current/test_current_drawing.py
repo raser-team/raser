@@ -25,23 +25,23 @@ def test_only_the_electrodes_with_current_are_drawn_those_whose_parts_cancel_inc
     # electrode 4: a bipolar hole current whose integral is zero
     holes[3, 2:4], holes[3, 4:6] = 1e-6, -1e-6
 
-    draw_currents(str(tmp_path), 0.0, 5e-12, holes + electrons, holes, electrons)
+    draw_currents(str(tmp_path), 4, 0.0, 5e-12, holes + electrons, holes, electrons)
 
     assert sorted(path.name for path in tmp_path.glob("*.pdf")) == [
-        "No_2electrode_basic_infor.pdf",
-        "No_3electrode_basic_infor.pdf",
-        "No_4electrode_basic_infor.pdf",
+        "current_4_electrode_2.pdf",
+        "current_4_electrode_3.pdf",
+        "current_4_electrode_4.pdf",
     ]
 
 
-def test_the_pictures_of_an_event_drawn_again_are_those_of_this_run_only(tmp_path) -> None:
-    # a picture an earlier run left for a strip this run does not hit goes
+def test_the_pictures_drawn_again_are_those_of_this_run_only(tmp_path) -> None:
+    # a picture an earlier run left for an electrode this run does not hit goes
     deposits = tmp_path / "deposit.h5"
     write_deposits(
         str(deposits),
         Deposits(1, {}, "any", None, [EventDeposits(4, ["d"], [50.0], [50.0], [25.0], [0.0], [0.01], pairs=[100.0])]),
     )
-    stale = tmp_path / "plots" / "event_4" / "No_7electrode_basic_infor.pdf"
+    stale = tmp_path / "plots" / "current_4_electrode_7.pdf"
     stale.parent.mkdir(parents=True)
     stale.write_text("from an earlier run")
     device = SimpleNamespace(**{**vars(_lgad()), "has_avalanche": False, "is_strip": False, "is_pixel": False})
@@ -49,7 +49,7 @@ def test_the_pictures_of_an_event_drawn_again_are_those_of_this_run_only(tmp_pat
     write_induced_currents(str(deposits), str(tmp_path / "current.h5"), device, _UniformField(), 1, str(tmp_path / "plots"))
 
     assert not stale.exists()
-    assert (stale.parent / "No_1electrode_basic_infor.pdf").exists()
+    assert (stale.parent / "current_4.pdf").exists()
 
 
 

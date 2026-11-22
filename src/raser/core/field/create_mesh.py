@@ -8,12 +8,13 @@ import os
 from pathlib import Path
 
 import devsim
-import matplotlib.pyplot as plt
 import numpy as np
 
 from ..device.build_device import Detector
+from raser.supports import figures
 from raser.supports.output import create_path
 from raser.supports.output import output
+from . import devsim_draw
 from . import model_create
 
 
@@ -249,18 +250,22 @@ class DevsimMesh:
 
     def drawDoping(self, path):
         if self.dimension == 1:
-            fig1=plt.figure(num=1,figsize=(4,4))
-            x=devsim.get_node_model_values(device=self.device, region=self.region, name="x")
-            fields = ("Donors", "Acceptors")
-
-            for i in fields:
-                y=devsim.get_node_model_values(device=self.device, region=self.region, name=i)
-                plt.semilogy(x, y)
-            
-            plt.xlabel('x (cm)')
-            plt.ylabel('Density (#/cm^3)')
-            plt.legend(fields)
-            plt.savefig(os.path.join(path, "Doping"))
+            x = np.array(devsim.get_node_model_values(device=self.device, region=self.region, name="x"))
+            depth = x * 1e-2 / figures.UNIT["um"]  # cm to um
+            figure, axis = figures.new()
+            colors = figures.series(2, False)
+            values = {}
+            for field, text, color in zip(("Donors", "Acceptors"), ("donors", "acceptors"), colors):
+                y = devsim.get_node_model_values(device=self.device, region=self.region, name=field)
+                values[field] = np.array(y)
+                axis.plot(depth, values[field] * 1e6 / figures.UNIT["cm-3"], color=color, label=text)
+            for boundary in devsim_draw.doping_boundaries(depth, values["Donors"] - values["Acceptors"]):
+                axis.axvline(boundary, color="0.5", linestyle="--", linewidth=0.8)
+            axis.set_yscale("log")
+            axis.set_xlabel(figures.label("Depth", "um"))
+            axis.set_ylabel(figures.label("Doping", "cm-3"))
+            axis.legend()
+            figures.save(figure, os.path.join(path, "plots"), "doping")
         elif self.dimension == 2:
             pass
         elif self.dimension == 3:

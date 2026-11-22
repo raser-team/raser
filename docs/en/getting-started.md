@@ -36,15 +36,15 @@ This command runs through all eight stages of the chain in order. Below we inspe
 
 The first time this device is used, its electric field, IV, and CV are computed and stored in `examples/HPK-Si-PiN/field/`; other experiments on this device share the same field.
 
-![HPK-Si-PiN IV curve](images/field-iv-HPK-Si-PiN.png)
+![HPK-Si-PiN IV curve](../images/field/iv-HPK-Si-PiN.png)
 
 Dark current under reverse bias.
 
-![HPK-Si-PiN CV curve](images/field-cv-HPK-Si-PiN.png)
+![HPK-Si-PiN CV curve](../images/field/cv-HPK-Si-PiN.png)
 
 Capacitance decreases with bias voltage and flattens out once the device is fully depleted.
 
-![HPK-Si-PiN 200 V 1D electric field profile](images/field-efield-HPK-Si-PiN-200V.png)
+![HPK-Si-PiN 200 V 1D electric field profile](../images/field/efield-HPK-Si-PiN-200V.png)
 
 Electric field along the depth of the device at `200 V`.
 
@@ -52,11 +52,11 @@ Electric field along the depth of the device at `200 V`.
 
 `deposit` uses Geant4 to compute how much energy the electrons leave in the device and where; `current` drifts those charges in the electric field and computes the induced current on the electrodes.
 
-![HPK-Si-PiN single-event carrier drift path](images/current-drift-path-HPK-Si-PiN.png)
+![HPK-Si-PiN single-event carrier drift path](../images/current/drift-path-HPK-Si-PiN.png)
 
 Drift trajectories of electrons and holes in a single event.
 
-![HPK-Si-PiN single-event induced current](images/current-event-HPK-Si-PiN.png)
+![HPK-Si-PiN single-event induced current](../images/current/event-HPK-Si-PiN.png)
 
 Induced current on the readout electrode for the same event: electron component, hole component, and total current.
 
@@ -64,7 +64,7 @@ Induced current on the readout electrode for the same event: electron component,
 
 `readout` feeds the induced current into the device equivalent circuit and then through the front-end amplifier to compute the voltage waveform at the amplifier output. The amplifier used in this example is the SantaCruz board plus Gali52, terminated in 50 Ω:
 
-![SantaCruz amplifier schematic](images/afe-schematic-SantaCruz.png)
+![SantaCruz amplifier schematic](../images/readout/schematic-SantaCruz.png)
 
 Amplifier noise is also computed in this step and superimposed on the output waveform.
 
@@ -84,19 +84,19 @@ For each recorded event, `reconstruction` extracts these quantities from the wav
 
 `analysis` summarizes all events.
 
-![HPK-Si-PiN charge collection efficiency distribution](images/analysis-efficiency-HPK-Si-PiN.png)
+![HPK-Si-PiN charge collection efficiency distribution](../images/analysis/efficiency-HPK-Si-PiN.png)
 
 Distribution of charge collection efficiency; the dashed line is the mean.
 
-![HPK-Si-PiN pulse amplitude distribution](images/analysis-amplitude-HPK-Si-PiN.png)
+![HPK-Si-PiN pulse amplitude distribution](../images/analysis/amplitude-HPK-Si-PiN.png)
 
 Pulse amplitude of recorded events; the dashed line is the amplitude threshold.
 
-![HPK-Si-PiN time difference distribution and truncated Gaussian fit](images/analysis-time-difference-HPK-Si-PiN.png)
+![HPK-Si-PiN time difference distribution and truncated Gaussian fit](../images/analysis/time-difference-HPK-Si-PiN.png)
 
 Difference between the times given by various timing methods and the true deposition time. Because simulation knows each event's true deposition time, time resolution can be computed this way; in an experiment the true time is unavailable, so measuring time resolution requires a reference device—see `timeres`.
 
-The results of each step are organized by scan point under `examples/HPK-Si-PiN/signal/points/<point>/<stage>/`, and statistics and trend plots are placed under `examples/HPK-Si-PiN/signal/analysis/`; see [architecture.md](architecture.md#results) for how they are stored.
+The results of each step are organized by scan point under `examples/HPK-Si-PiN/signal/points/<point>/<stage>/`, the statistics of each point and the three distributions above are in `points/<point>/analysis/` (the figures in `plots/` there; the point is named `default` when nothing is scanned), and the trend plots across points are placed under `examples/HPK-Si-PiN/signal/analysis/`; see [architecture.md](architecture.md#results) for how they are stored.
 
 ## 5. Creating Your Own Project
 
@@ -123,7 +123,7 @@ Scan multiple bias voltages, inspect each stage's results per point under `work/
 raser signal my-PiN --scan field.voltage=100,200
 ```
 
-![HPK-Si-PiN charge collection efficiency and time resolution vs. bias](images/analysis-points-HPK-Si-PiN.png)
+![HPK-Si-PiN charge collection efficiency and time resolution vs. bias](../images/analysis/trend-HPK-Si-PiN.png)
 
 Print the parameter table of `work/my-PiN` (status and node ID of each experiment, scan point, and stage):
 

@@ -1,1 +1,1 @@
-"""The digitizer: sampling, quantisation and the digital circuits behind them."""
+"""Digitizer: band limit, asynchronous sampling with aperture jitter, quantisation and noise-only channels."""
