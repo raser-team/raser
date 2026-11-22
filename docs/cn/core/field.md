@@ -320,15 +320,15 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 
 网格里有几个区域就解几个区域，每个区域按自己的 `material` 处理，求解器不挑出其中一个。
 
-1. **区域的类别**：`material` 为 `"Silicon"`、`"SiliconCarbide"`、`"Diamond"` 的是半导体区域；`"air"`、`"gas"`、`"SiO2"` 的是绝缘区域。别的材料名在建网格后抛出 `ValueError`，写明器件名、区域名和材料名。
+1. **区域的类别**：`material` 为 `"Silicon"`、`"SiliconCarbide"`、`"Diamond"` 的是半导体区域；`"air"`、`"SiO2"` 的是绝缘区域。`"gas"` 不是网格里写的材料：它是求权重场时代码给半导体区域换上的电介质替身（第 8 条），器件文件的网格不写它。别的材料名在建网格后抛出 `ValueError`，写明器件名、区域名和材料名。
 2. **参数**：`create_parameter` 对每个区域各调用一次，按该区域的材料写常数。
 3. **掺杂**：`doping` 的表达式是坐标的函数，建在每个半导体区域上；绝缘区域没有掺杂。
 4. **方程**：半导体区域解电势、电子、空穴，即式 (1)–(6)，辐照项、雪崩项、缺陷参数各区域各建一份；绝缘区域只解电势，$\nabla\cdot(\varepsilon\nabla\psi) = 0$。
 5. **界面**：两个区域相接处由网格的 `interface` 列表（内置网格）或物理组（Gmsh 网格）给出。每个界面上电势连续、电位移法向分量连续。半导体与绝缘区域的界面上载流子没有通量；两个半导体区域的界面上电子、空穴浓度连续（同一种材料）。两种不同半导体之间的界面本页不处理，建方程时抛出 `ValueError`。
 6. **电极**：电极属于它的 `region` 键所写的区域。半导体区域上的电极按接触类型（欧姆、肖特基）设电势和载流子；绝缘区域上的电极只设电势 $\psi = V$。
 7. **不与任何东西相连的绝缘区域**：既没有界面也没有电极的绝缘区域，电势没有定解，建方程时抛出 `ValueError`，写明区域名。
-8. **权重场**：每个区域都换成电介质，介电常数取该区域材料自己的值，界面条件同第 5 条；电极一律设 $\psi_w$ 为 $1$ 或 $0$。
-9. **存盘与读取**：存盘遍历所有区域；未耗尽层、导电节点只在半导体区域里找。读回 `<V>V.devsim` 后对每个区域重建参数。
+8. **权重场**：半导体区域的材料换成 `"gas"`，只解电势，介电常数取原来那种半导体的值；`"air"`、`"SiO2"` 区域保持原样，用自己的介电常数；界面条件同第 5 条；电极一律设 $\psi_w$ 为 $1$ 或 $0$。
+9. **存盘与读取**：存盘遍历所有区域；未耗尽层、导电节点只在半导体区域里找。读回 `<V>V.devsim` 后照同名的 `<V>V.parameters.json` 把参数设回去。
 
 只有一个半导体区域、没有别的区域的网格，结果与此前逐点相同。带 `"air"` 区域的二维网格（`ITk-Si-strip`、`strip_ayyouby`、`SiC_LGAD_strip`、`NJU-PiN` 的二维网格、`MIM-Diamond`）此前不解空气里的电势，空气区域只用来放电极；现在空气里也解，表面附近的电场会变，这些网格要补上 `interface`。
 
@@ -343,11 +343,11 @@ HEMT 器件仍由 `run_hemt_transport` 自己处理它的区域和异质结界�
 3. **辐照与雪崩**：有 `irradiation` 块且不求权重场时启用辐照项；注量取 `field.irradiation_flux`，为 `null` 时取 `irradiation.irradiation_flux`。雪崩模型取 `avalanche_model`（`has_avalanche` 为假时为 `None`）。
 4. **电路**：在 `bias.electrode` 上接电压源 `V1`（直流 `0`，交流幅值 `ac.real`、`ac.imaginary`）。
 5. **初值**（`loop_section.initial_solver`）：先只解泊松方程，载流子取本征分布 $n = n_i e^{\psi/V_T}$、$p = n_i^2/n$，用 `initial` 的容差直流求解；再以本征浓度为初值建立式 (1)–(6) 并求解；然后删去本征载流子模型。启用辐照项时，式 (1)–(6) 先在注量为 $0$ 下求解，再把注量逐步升到目标值 $\Phi$：各缺陷的浓度参数 `N_t_irr_<缺陷>` 取 $g_{\text{int}}\Phi_k$，每步以上一步的解为初值，用 `initial` 的容差直流求解。初始步长为 $\Phi\times$ `flux_step.initial`；一步成功，步长乘 `flux_step.increase_factor`，下一步超过 $\Phi$ 时截到 $\Phi$；一步报 `"Convergence failure"`，退回上一步的解，步长乘 `flux_step.decrease_factor` 后重试；步长小于 $10^{-7}\,\Phi$ 时抛出 `RuntimeError`，写明器件名和停下时的注量。
-6. **零偏压**：在 $0\ \text{V}$ 求解并存盘，写 `0V.dd`、`0V.devsim`，在 `node.json` 的 `solved.potential` 记 `0.0`。
+6. **零偏压**：在 $0\ \text{V}$ 求解并存盘，写 `0V.dd`、`0V.devsim`、`0V.parameters.json`，在 `node.json` 的 `solved.potential` 记 `0.0`。
 7. **目标与停点**：目标偏压 $V_g$ 取 `field.voltage`，为 `null` 时取 `bias.voltage`。一个场节点对应一个目标偏压；节点里存的中间偏压文件是升压到 $V_g$ 途中的存盘点。存盘点为 $\pm k\Delta_s$（$k = 1, \dots, \lfloor |V_g|/\Delta_s\rfloor$，$\Delta_s$ = `saved_voltage_interval`），末点不足 $|V_g|$ 时补上 $V_g$；曲线点同样按 `curve_voltage_interval` 生成。正负号随 $V_g$。间隔为 `0` 时抛出 `ValueError`。
 8. **步进**：初始步长 $\Delta$ = `voltage_step.initial`，符号随 $V_g$。每步试探 $V_t = V_c + \Delta$；若 $|V_t|$ 超过最近的停点（$V_g$、下一个存盘点、下一个曲线点中绝对值最小者），把 $V_t$ 截到该停点。
 9. **单步求解**（`loop_solver`）：初值取上一个解，电子、空穴浓度不低于最小正浮点数；已有两个解时电势按两点线性外推到 $V_t$。设偏压后用 `voltage_step` 的容差直流求解。
-10. **成功**：$\Delta \leftarrow \Delta \times$ `increase_factor`。$V_t$ 是曲线点时记录电压、电流 $(I_n + I_p)\times$ `area_factor`（A），以及下节的电容、噪声。$V_t$ 是存盘点或 $V_g$ 时存盘，写 `<V_t>V.dd`、`<V_t>V.devsim`，记入 `solved.potential`；到达 $V_g$ 即结束。
+10. **成功**：$\Delta \leftarrow \Delta \times$ `increase_factor`。$V_t$ 是曲线点时记录电压、电流 $(I_n + I_p)\times$ `area_factor`（A），以及下节的电容、噪声。$V_t$ 是存盘点或 $V_g$ 时存盘，写 `<V_t>V.dd`、`<V_t>V.devsim`、`<V_t>V.parameters.json`，记入 `solved.potential`；到达 $V_g$ 即结束。
 11. **失败**：单步求解出任何 DEVSIM 错误时先写 `last_solvable.dd`。报错信息含 `"Convergence failure"` 或 `"negative or zero value before update"` 时令 $\Delta \leftarrow (V_t - V_c)\times$ `decrease_factor` 后重试；其他 DEVSIM 错误原样抛出。$|\Delta| < 10^{-7}\ \text{V}$ 时停止并抛出 `RuntimeError("Step size too small (less than 1e-7). Exiting loop.")`。
 12. **收尾**：在 `node.json` 写 `read`，画 IV 曲线；CV 模式画 CV 与 $1/C^2$ 曲线；打开噪声开关时画噪声曲线。
 
@@ -358,7 +358,7 @@ HEMT 器件仍由 `run_hemt_transport` 自己处理它的区域和异质结界�
 
    其中 $I_{V1}$ 为偏压电路节点 `V1` 上的交流小信号电流（1D 为 $\text{A/cm}^2$，2D 为 $\text{A/cm}$，3D 为 A），$V_{\text{ac}} = 1\ \text{V}$ 为交流激励的幅值，$f$ 为频率（Hz）。
    结果画进 CV 图；`cv.json` 由下一步的单点电容写出。
-2. **单点电容**（`saved_point.capacitance`，单点电容子任务）：读 `<V>V.devsim`（文件名用浮点格式，如 `200.0V.devsim`；不存在时抛出 `FileNotFoundError`，列出已有文件），重建参数（材料参数；器件带缺陷模型时还有各缺陷的俘获截面、能级和在该注量下的浓度，注量由调用方传入，缺省取器件文件的 `irradiation_flux`；金刚石区域的 `CarrierFloor`），偏压电极置 $V$、其余置 $0$，用 `voltage_step` 的容差直流求解，再做交流求解得比电容 $10^{12}\operatorname{Im} I_{V1}/(-2\pi f)$：1D 为 $\text{pF/cm}^2$，2D 为 $\text{pF/cm}$，3D 为 pF。只有存盘点（`saved_voltage_interval` 的倍数与目标偏压）有 `.devsim` 文件。
+2. **单点电容**（`saved_point.capacitance`，单点电容子任务）：读 `<V>V.devsim`（文件名用浮点格式，如 `200.0V.devsim`；不存在时抛出 `FileNotFoundError`，列出已有文件）。`.devsim` 只存网格、模型和解，不存参数，所以存盘时把 DEVSIM 里当时的全部参数另写进 `<V>V.parameters.json`：全局参数、器件参数、各区域参数三组，值是数、字符串或布尔的都写，别的类型（回调之类）不写。读回时先设全局参数，载入器件，再设器件参数和各区域参数；`<V>V.parameters.json` 不存在时抛出 `FileNotFoundError`，写明这个存点要重解。然后偏压电极置 $V$、其余置 $0$，用 `voltage_step` 的容差直流求解，再做交流求解得比电容 $10^{12}\operatorname{Im} I_{V1}/(-2\pi f)$：1D 为 $\text{pF/cm}^2$，2D 为 $\text{pF/cm}$，3D 为 pF。只有存盘点（`saved_voltage_interval` 的倍数与目标偏压）有 `.devsim` 文件。
 3. **噪声**：打开噪声开关时在每个曲线点做 DEVSIM 噪声求解（输出节点 `V1.I`），记录电路节点 `V1.I` 的网格值。
 
 ### 权重场求解
@@ -535,6 +535,7 @@ HEMT 器件仍由 `run_hemt_transport` 自己处理它的区域和异质结界�
 | `weightingfield/<contact>/Potential_<V>V.pkl` | 权重势 | cm；无 |
 | `weightingfield/<contact>/Capacitance_<V>V.json` | 拼接行：`unit`（`"F/cm"`）、`of`、`total`、`to`（`neighbour<k>` 及不读出的电极）、`neighbours_coupled` | F/cm |
 | `<V>V.devsim`, `<V>V.dd`, `0V.devsim`, `0V.dd` | DEVSIM 状态（供单点电容重载）与 Tecplot 数据 | cm, V |
+| `<V>V.parameters.json`, `0V.parameters.json` | 存 `.devsim` 时 DEVSIM 里的全部参数：`global`、`device`、`regions.<区域名>` 三组，各是参数名到值的表；`.devsim` 不存参数，读回时靠它 | 各参数自己的单位 |
 | `<det_name>.dat`, `weightingfield/weightingfield.dat`, `last_solvable.dd`, `converted.devsim` | 网格、权重场、收敛失败前一状态、TCAD 转换结果 | cm, V |
 | `simIV<min>to<max>.root` | TTree `SicarTestIV`，分支 `voltage`、`Current` | V, A |
 | `simCV<min>to<max>.root` | TTree `SicarTestCV`，分支 `voltage`、`CAP` | V, pF |

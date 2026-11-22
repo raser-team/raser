@@ -85,9 +85,7 @@ def _capacitance(kwargs):
     my_d = Detector(kwargs["det_name"], kwargs["_files"]["device"])
     voltage = _bias(kwargs) if kwargs["cv"] is None or kwargs["cv"] is True else float(kwargs["cv"])
     folder = Path(kwargs["_run_path"])
-    value, frequency = saved_point.capacitance(
-        my_d, folder, voltage, _solver(kwargs), kwargs.get("irradiation_flux")
-    )
+    value, frequency = saved_point.capacitance(my_d, folder, voltage, _solver(kwargs))
     point = {
         "voltage_V": voltage,
         "specific_capacitance_pF": value,
