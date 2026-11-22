@@ -47,6 +47,8 @@ SOLVER = {
         "increase_factor": 2.0,
         "decrease_factor": 0.5,
     },
+    # Raising the fluence in the initial solution; "initial" is the first step as a fraction of the target fluence.
+    "flux_step": {"initial": 0.01, "increase_factor": 2.0, "decrease_factor": 0.5},
     "saved_voltage_interval": 100.0,
     "curve_voltage_interval": 10.0,  # between two points of the IV and CV curves
     "ac": {"real": 1.0, "imaginary": 0.0, "frequency": 1000.0},
@@ -83,6 +85,7 @@ def _legacy_solver_parameters(configuration, *, weightfield):
     solver = configuration["solver"]
     initial = solver["initial"]
     voltage_step = solver["voltage_step"]
+    flux_step = solver["flux_step"]
     ac = solver["ac"]
     return {
         "absolute_error_Initial": float(initial["absolute_error"]),
@@ -99,6 +102,9 @@ def _legacy_solver_parameters(configuration, *, weightfield):
         "increase_factor": float(voltage_step["increase_factor"]),
         "decrease_factor": float(voltage_step["decrease_factor"]),
         "voltage_step": float(voltage_step["initial"]),
+        "flux_step_initial": float(flux_step["initial"]),
+        "flux_step_increase": float(flux_step["increase_factor"]),
+        "flux_step_decrease": float(flux_step["decrease_factor"]),
         "acreal": float(ac["real"]),
         "acimag": float(ac["imaginary"]),
         "frequency": float(ac["frequency"]),
