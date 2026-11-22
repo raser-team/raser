@@ -35,11 +35,11 @@ def test_fronts_of_the_time_resolution_setup_add_up_along_the_beam() -> None:
 
     fronts = {item.name: item.z for item in (*layout.objects, *layout.slots)}
     assert fronts == {
-        "Al": 1995,
-        "ref": 6983.5,
-        "pcb1": 7033.5,
-        "dut": 16717,
-        "pcb2": 16767,
+        "Al": 1990,
+        "ref": 2000,
+        "pcb1": 2050,
+        "dut": 4050,
+        "pcb2": 4100,
     }
 
 

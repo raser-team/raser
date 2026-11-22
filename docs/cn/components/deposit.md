@@ -145,10 +145,10 @@ G4SETUP = {
 ```python
 "along_beam": [
     "source",
-    {"gap": 1995}, "Al",
-    {"gap": 4978.5},
+    {"gap": 1990}, "Al",
+    {"gap": 0},
     {"slot": "ref"}, "pcb1",
-    {"gap": 8183.5},
+    {"gap": 500},
     {"slot": "dut"}, "pcb2",
 ]
 ```
@@ -337,7 +337,7 @@ G4SETUP = {
 | `pcb_readout_gdml` | 导入外部 `pcb_readout.gdml` 的 PCB 读出板装置（`"geant4_model": "gdml_import"`），源 `decay/Sr90`，`angle = 0` | 文件文档字符串：`The readout board of the PCB, imported from pcb_readout.gdml` | [`signal`](../bench/signal.md) |
 | `mim_diamond_gold` | 真空中 Am-241 α 正入射到 MIM 金刚石，器件前后两面各 `0.2 um` 金（`"G4_Au"`），`maxstep = 2 um`；入射角由 `source.angle` 给 | peiyao 的 V8 草稿（金电极 200 nm） | `MIM-Diamond` 的 [`signal`](../bench/signal.md) |
 | `telescope` | 真空（`"G4_Galactic"`）中沿束流排布 8 个槽位 `ref1`、`ref2`、`ref3`、`dut1`、`dut2`、`ref4`、`ref5`、`ref6`，源后隔 `260 mm` 是第一层，此后每层与前一层背面相隔 `40 mm`，`rotation_z` 都为 `0`，`maxstep = 2 um` | 文件文档字符串 | [`telescope`](../bench/telescope.md) 默认装置 |
-| `time_resolution` | `along_beam` 沿束流依次放置 `Al`（`10 um`）、参考硅器件（槽位 `ref`）、上层开孔板 `pcb1`（`1500 um`）、被测器件（槽位 `dut`）与下层开孔板 `pcb2`（`1500 um`），间隔依次为 `1995`、`4978.5`、`8183.5 um`（见 [`timeres`](../bench/timeres.md)），源 `decay/Sr90`，`angle = 0` | 文件文档字符串：`The setup of the time-resolution experiment: a reference silicon device and boards` | [`timeres`](../bench/timeres.md) 默认装置 |
+| `time_resolution` | `along_beam` 沿束流依次放置 `Al`（`10 um`）、参考硅器件（槽位 `ref`）、上层开孔板 `pcb1`（`1500 um`）、被测器件（槽位 `dut`）与下层开孔板 `pcb2`（`1500 um`），间隔依次为 `1990`、`0`、`500 um`（见 [`timeres`](../bench/timeres.md)），源 `decay/Sr90`，`angle = 0` | 文件文档字符串：`The setup of the time-resolution experiment: a reference silicon device and boards` | [`timeres`](../bench/timeres.md) 默认装置 |
 
 ### 库中放射源和束流
 

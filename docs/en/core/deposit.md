@@ -411,10 +411,10 @@ In Geant4 world coordinates, the origin $(0, 0, 0)$ sits on the source (at the c
 ```python
 "along_beam": [
     "source",
-    {"gap": 1995}, "Al",
-    {"gap": 4978.5},
+    {"gap": 1990}, "Al",
+    {"gap": 0},
     {"slot": "ref"}, "pcb1",
-    {"gap": 8183.5},
+    {"gap": 500},
     {"slot": "dut"}, "pcb2",
 ]
 ```

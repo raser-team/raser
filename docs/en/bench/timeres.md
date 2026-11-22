@@ -42,10 +42,10 @@ The setup uses `along_beam` to arrange, starting from the source along $+z$, an 
 ```python
 "along_beam": [
     "source",
-    {"gap": 1995}, "Al",
-    {"gap": 4978.5},
+    {"gap": 1990}, "Al",
+    {"gap": 0},
     {"slot": "ref"}, "pcb1",
-    {"gap": 8183.5},
+    {"gap": 500},
     {"slot": "dut"}, "pcb2",
 ]
 ```
@@ -57,10 +57,10 @@ Geant4 fully simulates energy deposition, multiple scattering, and secondary par
 | Item (in Order Along Beam) | Type | Material and Density | Gap to Preceding Item `gap` ($\mu\text{m}$) | Transverse Size `size[0] × size[1]` ($\mu\text{m}$) | Thickness `size[2]` or $l_z + t$ ($\mu\text{m}$) | Centered Hole `hole` ($\mu\text{m}$) |
 | --- | --- | --- | --- | --- | --- | --- |
 | `"source"` (`decay/Sr90`) | Source | — | — | Collimator exit plane (`par_radius = 0` in source) | `0` | None |
-| `Al` | Surrounding object (`box`) | `"G4_Al"` | `1995` (measured from collimator exit) | $5000 \times 5000$ | `10` | None |
-| Reference device (slot `ref`, default `HPK-Si-LGAD`) | Device (active layer and other layers) | From device file | `4978.5` | From device file ($l_{x,\text{ref}} \times l_{y,\text{ref}}$) | From device file (active layer $l_{z,\text{ref}}$ plus other layers $t_{\text{ref}}$) | None |
+| `Al` | Surrounding object (`box`) | `"G4_Al"` | `1990` (measured from collimator exit) | $5000 \times 5000$ | `10` | None |
+| Reference device (slot `ref`, default `HPK-Si-LGAD`) | Device (active layer and other layers) | From device file | `0` (flush) | From device file ($l_{x,\text{ref}} \times l_{y,\text{ref}}$) | From device file (active layer $l_{z,\text{ref}}$ plus other layers $t_{\text{ref}}$) | None |
 | `pcb1` | Surrounding object (`box`) | `"SiO2"` (`Si:O = 1:2`, `2.2 g/cm^3`) | `0` (flush) | $20000 \times 20000$ | `1500` | `500` |
-| DUT (slot `dut`, given on CLI) | Device (active layer and other layers) | From device file | `8183.5` | From device file ($l_x \times l_y$) | From device file (active layer $l_z$ plus other layers $t$) | None |
+| DUT (slot `dut`, given on CLI) | Device (active layer and other layers) | From device file | `500` | From device file ($l_x \times l_y$) | From device file (active layer $l_z$ plus other layers $t$) | None |
 | `pcb2` | Surrounding object (`box`) | `"SiO2"` (`Si:O = 1:2`, `2.2 g/cm^3`) | `0` (flush) | $20000 \times 20000$ | `1500` | `500` |
 
 ### Three Devices
