@@ -2256,3 +2256,11 @@ def test_a_key_inside_a_component_is_given_through_its_slot_and_no_other_address
     with pytest.raises(ValueError, match="plots: no such setting"):  # a key without its section
         execute(workflow, _chain_kwargs(scan=["plots=0,5"], seed=9))
 
+
+
+# Deliberate change: the check dropped, so that the loader is given None and ends in a TypeError.
+def test_a_component_that_no_setting_names_is_told_by_its_address() -> None:
+    workflow = Workflow(name="toy", job=print, keys=("deposit.source",), components={"source": "deposit.source"}, device=False)
+
+    with pytest.raises(ValueError, match="config.json has no deposit.source: it names the source"):
+        workflow_module._point(workflow, {}, {"deposit.source": None})

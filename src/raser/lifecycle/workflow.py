@@ -1012,6 +1012,8 @@ def _point(workflow, kwargs, options) -> tuple[dict, dict]:
     elif workflow.device:
         files["device"] = device_json(kwargs["det_name"])
     for kind, key in workflow.components.items():
+        if options.get(key) is None:
+            raise ValueError(f"config.json has no {key}: it names the {kind} of the experiment")
         read = workflow.readers.get(kind)
         files[kind] = read(options[key]) if read else load_component(kind, options[key])[1]
 
