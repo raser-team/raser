@@ -59,6 +59,8 @@ raser rdo examples/HPK-Si-PiN/signal --scan field.voltage=100,200 --scan readout
 
 `raser readout --draw <对象>` 画本环节的对象：前端电路的原理图和冲击响应。前端电路图和冲击响应只取决于电路和它的参数，是资产，放在 `work/<电路名>/` 下，被各实验的 `readout` 引用。
 
+阻性层器件（器件文件有 `resistive_layer`）另有一个对象 `network`：`raser readout --draw network [路径]` 只解器件电路与 `readout.amplifier` 的放大器链，不读 `deposit` 和 `current` 的结果。冲击的位置是器件上的一个点，用几何坐标 $(x, y)$ 给出，单位 $\mu\text{m}$，坐标系与 `current` 相同（$0 \le x \le l_x$，$0 \le y \le l_y$）；条形器件只用 $x$。$1\ \text{fC}$ 的电荷在第一个时间箱里以矩形电流脉冲注入这一点，按它到相邻晶胞中心的距离线性分给这些晶胞的节点；时间箱宽 $10\ \text{ps}$、共 $2000$ 箱；方阻取 `readout.sheet_resistance`，没有时取器件文件。给出 `--at <x>,<y>` 时冲击这一点，`network_waveforms.png` 画每个读出电极（条或焊盘）的输出波形；不给时沿 $x$ 以晶胞宽度为步长扫过器件中线（$y = l_y/2$），另画 `network_sharing.png`：各读出电极的波形幅度和波形积分随冲击点 $x$ 的曲线。
+
 ## 规则
 
 ### 内置常数
@@ -237,3 +239,4 @@ FileNotFoundError: no field of <det_name> ready for this run: solve it with `ras
 
 - **写：`nodes/readout/<节点号>/node.json`**。记下本节点的输入，以及代码版本、运行环境和运行状态。
 - **写：`points.json` 与 `points/<点名>/readout/<作业号>`**。参数表记各点 `readout` 用的节点号；视图软链接指向该节点。
+- **写：`<器件 project>/network/<节点号>/`**（只在 `--draw network` 时）。`network.h5`、`node.json`，以及 `plots/` 下的 `network_waveforms.png` 和扫描时的 `network_sharing.png`；`network.h5` 的属性 `dt`（$\text{s}$）、`charge`（$\text{C}$）、`electrodes` 与 `device_circuit`，数据集 `point` 形状为 `(points, 2)`，单位 $\mu\text{m}$，是各冲击点的 $(x, y)$，数据集 `voltage` 形状为 `(points, outputs, bins)`，单位 $\text{V}$，是冲击各点时各读出电极在时间箱中心的输出电压。
