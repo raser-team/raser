@@ -135,7 +135,7 @@ $$\nabla\cdot\bigl(\varepsilon_0\,[1 + 10^{10}\,c_0 c_1]\,\nabla\phi_w\bigr) = 0
 其中：
 
 - $\phi_w$：无量纲权重势；
-- $c_0$、$c_1$：一条网格边两端节点的导电标志（`Conductive`，`1.0` 或 `0.0`），来自该偏压的 `Conductive_<V>V.pkl`，判据见式 (19)；两端都导电的边的介电常数放大 `CONDUCTOR_PERMITTIVITY` $= 10^{10}$ 倍，导体内残留的权重势量级为 $10^{-10}$；不接触任何电极的导电区浮空；
+- $c_0$、$c_1$：一条网格边两端节点的导电标志（`Conductive`，`1.0` 或 `0.0`），来自该偏压的 `Conductive_<V>V.pkl`，判据见式 (19)；两端都导电的边的介电常数放大 `CONDUCTOR_PERMITTIVITY` $= 10^{10}$ 倍，导体内残留的权重势量级为 $10^{-10}$；不接触任何电极的导电区浮空，同时接触两个电极的导电区报错（见“权重场求解”第 4 步）；
 - 介质部分一律取真空介电常数 $\varepsilon_0$：`DevsimMesh._regions` 把所有区域材料换成 `"gas"`（`n_i = 1e-9`），掺杂换成 `Acceptors = "0"`、`Donors = "1"`，权重势与材料无关。
 
 所以“按电阻率换材料”在代码里的做法是：低电阻率或未耗尽的节点当作导体并入电极，其余（包括耗尽的半导体）当作介电常数为 $\varepsilon_0$ 的介质。`weighting.take_conductors_into_electrodes` 实现这一步。
@@ -338,7 +338,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 1. **前提**：`Conductive_<V_g>V.pkl` 不存在时抛出 `FileNotFoundError`，提示先求该偏压的场。
 2. **电极**：读出电极取 `read_out_contact` 的 `name`（所选二维网格的 `ac_contact` 非空时取它的 `name`），每个电极接一个电压源。
 3. **行晶胞数**：`read_out_contact` 只有一项且 `read_ele_num > 1` 时，$s$ 取式 (17)。
-4. **逐个电极**：只解泊松方程（材料 `"gas"`）；`take_conductors_into_electrodes` 读 `Conductive_<V_g>V.pkl`，每个区域节点按最近邻匹配到文件中的点（拼接行先把横向坐标对晶胞宽度取模），距离超过 $10^{-9}$ 倍网格跨度的节点视为不在网格上，抛出 `ValueError`；然后按式 (16) 改写 `PotentialEdgeFlux` 与 `contactcharge_edge`；读出电极置 $1\ \text{V}$ 求解。
+4. **逐个电极**：只解泊松方程（材料 `"gas"`）；`take_conductors_into_electrodes` 读 `Conductive_<V_g>V.pkl`，每个区域节点按最近邻匹配到文件中的点（拼接行先把横向坐标对晶胞宽度取模），距离超过 $10^{-9}$ 倍网格跨度的节点视为不在网格上，抛出 `ValueError`；然后沿两端都导电的网格边把导电节点连成片，一片里有两个电极的接触节点时抛出 `ValueError`，写明这两个电极、偏压 $V_g$、该片的节点数与坐标范围：这片导电区把两个电极连成一块导体，式 (18) 的互容会被放大约 `CONDUCTOR_PERMITTIVITY` 倍；最后按式 (16) 改写 `PotentialEdgeFlux` 与 `contactcharge_edge`，读出电极置 $1\ \text{V}$ 求解。
 5. **行端检查**（$s > 0$）：取两端各一个晶胞内 $|\phi_w|$ 的最大值 $r$，按式 (18) 求互容，`neighbours_coupled` 从 `neighbour1` 起数满足 $C_{\text{neighbour}k} \ge$ `crosstalk_tolerance` $\times\sum_j C_j$ 的连续个数 $c$。若 $r >$ `weighting_tolerance` 或 $c = s$：令 $s' = \lceil 1.5\,s\rceil$；$s' > 2s_0$ 时抛出 `ValueError`（行上权重势不衰减，通常是接触读出电极的导电区所致）；否则清空 DEVSIM（保留 `direct_solver`、`solver_callback`）后以 $s'$ 从头重解。
 6. **存盘**：权重势存为 `weightingfield/<contact>/Potential_<V_g>V.pkl`；$s > 0$ 时另写 `Capacitance_<V_g>V.json`；在 `solved.weighting` 记 $V_g$；写 `weightingfield/weightingfield.dat`。
 
