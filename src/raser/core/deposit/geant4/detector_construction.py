@@ -7,6 +7,7 @@ Description:  detector_construction.py
 
 from raser.core.deposit.geant4.g4ppyy_runtime import g4b
 
+from ..along_beam import objects_of
 from ..simulate_deposits import world_half_side
 
 g4b.include("G4VUserDetectorConstruction.hh")
@@ -16,86 +17,100 @@ g4b.include("G4UserLimits.hh")
 class GeneralDetectorConstruction(g4b.G4VUserDetectorConstruction):
     "My Detector Construction"
 
-    def __init__(self, my_d, g4_dic, detector_material, maxStep=0.5):
+    def __init__(self, devices, layout, g4_dic, maxStep=0.5):
+        """The world, the objects and one logical volume for each slot, laid
+        out as `layout` says (raser.core.deposit.along_beam): the slot is
+        named as its logical volume and holds the active layer of its device,
+        whose step is limited to maxStep [um]."""
         super().__init__()
         self.solid = {}
         self.logical = {}
         self.physical = {}
         self.compound_materials = {}
+        self.diamond_built = False
+        # a placement keeps a pointer to its rotation
+        self.rotations = []
         # Geant4 keeps only a pointer to each G4VisAttributes; they live as
         # long as the geometry does.
         self.visuals = []
         self.checkOverlaps = True
-        self.create_world(g4_dic["world"], world_half_side(my_d, g4_dic))
+        self.create_world(g4_dic["world"], world_half_side(layout, g4_dic))
         self.geant4_model = g4_dic["geant4_model"]
-
-        if detector_material == "Si":
-            detector = {
-                "name": "Device",
-                "material": "G4_Si",
-                "side_x": my_d.l_x,
-                "side_y": my_d.l_y,
-                "side_z": my_d.l_z,
-                "colour": [1, 0, 0],
-                "position_x": 0,
-                "position_y": 0,
-                "position_z": my_d.l_z / 2.0,
-            }
-            self.create_elemental(detector)
-
-        if detector_material == "Diamond":
-            # Diamond is carbon at 3.52 g/cm3; NIST's G4_C is graphite (2.0 g/cm3).
-            self.nist.BuildMaterialWithNewDensity("Diamond", "G4_C", 3.52 * g4b.g / g4b.cm3)
-            detector = {
-                "name": "Device",
-                "material": "Diamond",
-                "side_x": my_d.l_x,
-                "side_y": my_d.l_y,
-                "side_z": my_d.l_z,
-                "colour": [1, 0, 0],
-                "position_x": 0,
-                "position_y": 0,
-                "position_z": my_d.l_z / 2.0,
-            }
-            self.create_elemental(detector)
-
-        if detector_material == "SiC":
-            detector = {
-                "name": "Device",
-                "material_1": "Si",
-                "material_2": "C",
-                "compound_name": "SiC",
-                "density": 3.2,
-                "natoms_1": 50,
-                "natoms_2": 50,
-                "side_x": my_d.l_x,
-                "side_y": my_d.l_y,
-                "side_z": my_d.l_z,
-                "colour": [1, 0, 0],
-                "position_x": 0,
-                "position_y": 0,
-                "position_z": my_d.l_z / 2.0,
-                "tub": {},
-            }
-            self.create_binary_compounds(detector)
-
-        if g4_dic["object"]:
-            for object_type in g4_dic["object"]:
-                if object_type == "elemental":
-                    for every_object in g4_dic["object"][object_type]:
-                        self.create_elemental(
-                            g4_dic["object"][object_type][every_object]
-                        )
-                if object_type == "binary_compounds":
-                    for every_object in g4_dic["object"][object_type]:
-                        self.create_binary_compounds(
-                            g4_dic["object"][object_type][every_object]
-                        )
-
         self.maxStep = maxStep * g4b.um
         self.fStepLimit = g4b.G4UserLimits(self.maxStep)
 
-        self.logical["Device"].SetUserLimits(self.fStepLimit)
+        for slot in layout.slots:
+            self.create_slot(slot, devices[slot.name])
+            self.logical[slot.name].SetUserLimits(self.fStepLimit)
+
+        table = objects_of(g4_dic)
+        for placed in layout.objects:
+            body = {
+                **table[placed.name],
+                "position_x": placed.offset[0],
+                "position_y": placed.offset[1],
+                "position_z": placed.z + placed.thickness / 2.0,
+            }
+            if "compound_name" in body:
+                self.create_binary_compounds(body)
+            else:
+                self.create_elemental(body)
+
+    def create_slot(self, slot, my_d):
+        """The active layer of the device of `slot`: a box l_x x l_y x l_z
+        of the material of the device, its front face z = 0 at the front
+        point of the slot, turned as the slot is (equation (18))."""
+        material = my_d.material
+        # the centre of the layer in the world: half a thickness behind the
+        # front face along the +z of the device, which faces downstream or
+        # upstream
+        sign = 1 if slot.facing == "upstream" else -1
+        centre = (slot.front[0], slot.front[1], slot.front[2] + sign * slot.l_z / 2.0)
+        body = {
+            "name": slot.name,
+            "side_x": slot.l_x,
+            "side_y": slot.l_y,
+            "side_z": slot.l_z,
+            "colour": list(slot.colour),
+            "position_x": centre[0],
+            "position_y": centre[1],
+            "position_z": centre[2],
+        }
+        # the active rotation of the device is Rz(rotation_z) * Ry(180 deg
+        # if downstream); a placement takes the rotation of the frame, its inverse
+        rotation = g4b.G4RotationMatrix()
+        if slot.facing == "downstream":
+            rotation.rotateY(180 * g4b.deg)
+        rotation.rotateZ(slot.rotation_z * g4b.deg)
+        rotation.invert()
+        self.rotations.append(rotation)
+        if material == "Si":
+            self.create_elemental({**body, "material": "G4_Si"}, rotation)
+        elif material == "Diamond":
+            # Diamond is carbon at 3.52 g/cm3; NIST's G4_C is graphite (2.0 g/cm3).
+            if not self.diamond_built:
+                self.nist.BuildMaterialWithNewDensity("Diamond", "G4_C", 3.52 * g4b.g / g4b.cm3)
+                self.diamond_built = True
+            self.create_elemental({**body, "material": "Diamond"}, rotation)
+        elif material == "SiC":
+            self.create_binary_compounds(
+                {
+                    **body,
+                    "material_1": "Si",
+                    "material_2": "C",
+                    "compound_name": "SiC",
+                    "density": 3.2,
+                    "natoms_1": 50,
+                    "natoms_2": 50,
+                    "tub": {},
+                },
+                rotation,
+            )
+        else:
+            raise ValueError(
+                f"no Geant4 material for the device of slot {slot.name!r}: "
+                f"its material is {material!r}; known: ['Diamond', 'Si', 'SiC']"
+            )
 
     def create_world(self, world_type, half_side):
         """The world: a cube of world_type, half_side [um] from the centre."""
@@ -121,7 +136,7 @@ class GeneralDetectorConstruction(g4b.G4VUserDetectorConstruction):
 
         self.logical["world"].SetVisAttributes(g4b.G4VisAttributes.GetInvisible())
 
-    def create_elemental(self, object):
+    def create_elemental(self, object, rotation=None):
         name = object["name"]
         material_type = self.nist.FindOrBuildMaterial(object["material"], False)
         translation = g4b.G4ThreeVector(
@@ -154,7 +169,7 @@ class GeneralDetectorConstruction(g4b.G4VUserDetectorConstruction):
 
         self.logical[name] = g4b.G4LogicalVolume(self.solid[name], material_type, name)
         self.physical[name] = g4b.G4PVPlacement(
-            g4b.cppyy.nullptr,
+            g4b.cppyy.nullptr if rotation is None else rotation,
             translation,
             name,
             self.logical[name],
@@ -166,7 +181,7 @@ class GeneralDetectorConstruction(g4b.G4VUserDetectorConstruction):
         self.visuals.append(visual)
         self.logical[name].SetVisAttributes(visual)
 
-    def create_binary_compounds(self, object):
+    def create_binary_compounds(self, object, rotation=None):
         name = object["name"]
         material_1 = self.nist.FindOrBuildElement(object["material_1"], False)
         material_2 = self.nist.FindOrBuildElement(object["material_2"], False)
@@ -226,7 +241,7 @@ class GeneralDetectorConstruction(g4b.G4VUserDetectorConstruction):
 
         self.logical[name] = g4b.G4LogicalVolume(self.solid[name], compound, name)
         self.physical[name] = g4b.G4PVPlacement(
-            g4b.cppyy.nullptr,
+            g4b.cppyy.nullptr if rotation is None else rotation,
             translation,
             name,
             self.logical[name],

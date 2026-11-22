@@ -17,7 +17,13 @@ def test_view_geometry_writes_an_offscreen_picture(tmp_path, monkeypatch) -> Non
     # TSG_OFFSCREEN is one of Geant4's own drivers, which g4ppyy does not
     # register: the picture exists only when RASER registers them
     view_geometry(
-        Detector("HPK-Si-PiN"), source, None, 1, 3, "TSG_OFFSCREEN", str(picture)
+        {"Device": Detector("HPK-Si-PiN")},
+        source,
+        None,
+        1,
+        3,
+        "TSG_OFFSCREEN",
+        str(picture),
     )
 
     written = tmp_path / "g4_geometry.png"

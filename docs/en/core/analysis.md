@@ -101,6 +101,23 @@ where:
 
 Eqs. (8) and (10) are fitted by `fit_data_normal` and `fit_data_landau` in `waveform_stats.py` using `ROOT.TF1` built-in models `'gaus'` and `'landau'` (with `TH1.Fit` option `"ROQ+"`); Eqs. (9) and (11) are implemented by `WaveformStatistics.time_resolution_fit` and `WaveformStatistics.ita_calibration`, respectively. For the Landau distribution of ionization energy loss in thin layers, see Ref. [6]; for charge-sharing centroids and $\eta$ position calibration in semiconductor strip detectors, see Ref. [7]; for the ROOT data analysis and fitting framework, see Ref. [8].
 
+### Energy Resolution Estimators
+
+The width of the distribution of the collected charge and of the read-out amplitude of the events of a scan point, over its mean, estimates the energy resolution. The code gives two: the FWHM of a Gaussian of the sample's standard deviation over the mean, taken over all samples; and the same ratio taken over the core samples only, after the samples far from the centre of the distribution are dropped, so that a few outliers do not decide the result.
+
+$$R = \frac{2\sqrt{2\ln 2}\,s}{|\bar{x}|} \approx \frac{2.3548\,s}{|\bar{x}|}, \qquad \bar{x} = \frac{1}{n}\sum_{i=1}^{n} x_i, \qquad s = \sqrt{\frac{1}{n}\sum_{i=1}^{n}(x_i - \bar{x})^2} \tag{15}$$
+
+$$m = \operatorname{median}(X), \qquad \sigma_{\text{MAD}} = 1.4826\,\operatorname{median}\bigl(|x_i - m|\bigr), \qquad \mathcal{C} = \bigl\{x_i : |x_i - m| \le 5\,\sigma_{\text{MAD}}\bigr\} \tag{16}$$
+
+$$R_{\text{core}} = R(\mathcal{C}) \tag{17}$$
+
+- $x_i$, $n$: the one-dimensional input samples (collected charge in $\text{C}$ or read-out amplitude in $\text{V}$) and their number (dimensionless); $X$ is the whole sample;
+- $\bar{x}$, $s$: sample mean and population standard deviation (`ddof=0`), in the unit of the samples; $R$ is FWHM/mean of the whole sample (dimensionless, key `resolution`); $2\sqrt{2\ln 2}$ is the ratio of FWHM to standard deviation of a Gaussian, so for a non-Gaussian distribution $R$ is an equivalent Gaussian width only;
+- $m$, $\sigma_{\text{MAD}}$: median of the whole sample and the standard deviation converted from its median absolute deviation (keys `median`, `mad_sigma`), in the unit of the samples; $1.4826 = 1/\Phi^{-1}(3/4)$ ($\Phi$ the standard normal distribution function), which makes $\sigma_{\text{MAD}}$ of a Gaussian equal to its standard deviation;
+- $\mathcal{C}$: the set of core samples, and $R_{\text{core}}$ is FWHM/mean of the core samples (key `core_resolution`); the factor $5$ of the core criterion has no source.
+
+Equation (15) is computed by `fwhm_over_mean(values)` in `resolution.py`, equations (16)–(17) by `mad_core_resolution(values)`. Equation (15) uses $s$ rather than $\sigma$ because it does not depend on a fit; it is a different width from the truncated-Gaussian $\sigma$ of `core_width` (equations (3)–(6)) and the two are not interchangeable.
+
 ## Algorithm
 
 ### Built-in Constants
@@ -118,6 +135,9 @@ The table below lists all built-in physical constants and hard-coded algorithmic
 | Window-shrinking tolerance | `1e-3` | dimensionless | Relative width reduction threshold ($0.1\%$) below which `core_width` stops shrinking the window |
 | Quantile interval | `[0.16, 0.84]` | dimensionless | Quantile endpoints used by `core_width` to compute `sigma68` from in-window samples |
 | `step` | `1e-4` | dimensionless | Dimensionless parameter step used by `truncated_gaussian` for the second-order central-difference Hessian of the negative log-likelihood |
+| `FWHM_OVER_SIGMA` | $2\sqrt{2\ln 2}$ | dimensionless | `resolution.py`; ratio of FWHM to standard deviation of a Gaussian, equation (15) |
+| `MAD_TO_SIGMA` | `1.4826` | dimensionless | `resolution.py`; factor $1/\Phi^{-1}(3/4)$ that converts the median absolute deviation to a standard deviation, equation (16) |
+| `CORE_SIGMAS` | `5` | dimensionless | `resolution.py`; multiple in the core criterion $\lvert x - m\rvert \le 5\,\sigma_{\text{MAD}}$, equation (16); no source |
 | `CFD_LABEL` | `"CFD50"` | none | Constant-fraction timing channel key name imported into `waveform_stats.py` from `raser.core.reconstruction.event` |
 | Waveform plot cap | `100` (`count > 100`) | waveforms | Maximum number of overlaid waveforms plotted per readout electrode by `WaveformStatistics.draw(vis=True)` (at most `101` added) |
 | `n2_bin` (standard / `CFD50`) | `100` / `30` | bins | `TH1F` bin counts in `time_resolution_fit` (`100` bins by default; `30` bins over the sorted `[2%, 98%]` quantile interval when `model == "CFD50"` and sample count $\ge 20$), `amplitude_fit` (`100` bins), and `gravity_center_error_fit` (`100` bins) |
@@ -168,6 +188,16 @@ The table below lists all built-in physical constants and hard-coded algorithmic
    - **Update the window**: Set `low, high = new_low, new_high` and proceed to the next round.
 4. **Return and downstream exception handling**: Return `fit` after the loop ends. In `time_widths` and `write_point` of [../stages/analysis.md](../stages/analysis.md), `NaN` samples are dropped from each timing channel before calling `core_width`: if `TooFewValues` is raised, `write_point` catches it, records the reason in `timing.error` of `result.json`, and skips drawing timing distribution plots; if at least `20` samples exist but `truncated_gaussian` raises `ArithmeticError` or `ValueError`, or if the sample MAD is `0` causing `core_width` itself to raise `ValueError: the window [...] is empty`, the exception propagates upward and aborts the job. A MAD of `0` means more than half of the `time - truth` values on that channel are identical, and both bounds shown in the error message equal that value; `events.h5` and `amplitude.png` have already been written at that point, so those identical differences between that channel and `truth` can be inspected in `events.h5`, and `core_width(values, window=(low, high))` can then be called in Python with an explicit initial window.
 
+### Energy Resolution Calculation and Small-Sample Handling
+
+`mad_core_resolution(values)` (`resolution.py`) runs the following steps; step 1 is `fwhm_over_mean(values)`:
+
+1. **FWHM/mean of the whole sample**: convert `values` to a `float64` array. `values.ndim != 1` raises `ValueError: values have shape <values.shape>, expected (events,)`; fewer than `2` values raises `TooFewValues: <n> values, a mean and a width need at least 2` (the same lower limit as `efficiency_spread`, a statistical-outcome state); a non-finite value raises `ValueError: values <indices> are not finite` and is not dropped silently; a mean of `0` raises `ValueError: the mean of the values is 0, FWHM / mean is not defined`. Otherwise it returns `events`, `mean`, `sigma`, `resolution` from equation (15).
+2. **Core criterion**: take `median = np.median(values)` and `mad_sigma = 1.4826 * np.median(np.abs(values - median))`. `mad_sigma == 0` (more than half of the values equal the median) raises `NoSpread: <n> values, more than half of them equal <median>`; the whole sample does not stand in for the core.
+3. **FWHM/mean of the core samples**: take the samples with `np.abs(values - median) <= 5 * mad_sigma` and run step 1 on them, which gives `core_events`, `core_mean`, `core_sigma`, `core_resolution` by equation (17); these are returned in one dict with the keys of step 1 and `median`, `mad_sigma`.
+
+`energy_resolution(values)` of [../stages/analysis.md](../stages/analysis.md) catches only `TooFewValues` and `NoSpread` and turns them into `events` and `error` in the result; any other `ValueError` propagates.
+
 ### Track Fitting and DUT Residual Widths (`tracking.py`)
 
 `track_events(hits, placements, roles)` joins the reconstruction results of all slots of one job into tracks. All three arguments are dictionaries keyed by slot name, with slot order taken from `placements`; the function uses only the passed-in data. `hits[slot]` is `SlotHits(event, clusters, cluster_x, cluster_y)`, taken from the columns of the same names in that slot's event table. `placements[slot]` is `Placement(front, facing, rotation_z, l_x, l_y, l_z, p_x, p_y)`, where `front` is $\mathbf{P}$ of Eq. (12) (`[x, y, z]`, $\mu\text{m}$), worked out by the caller from the setup's `along_beam`. `roles[slot]` is `"reference"` or `"dut"`.
@@ -211,7 +241,7 @@ The table below lists all built-in physical constants and hard-coded algorithmic
 ### Module and Function Responsibilities
 
 - `collection.py`: defines the elementary charge constant `ELEMENTARY_CHARGE` and implements the per-event charge collection efficiency function `collection_efficiency`.
-- `resolution.py`: defines the constants `ROUNDS`, `MINIMUM_EVENTS`, and the insufficient-sample exception class `TooFewValues`, and implements single-window unbinned truncated-Gaussian maximum-likelihood fitting `truncated_gaussian` and multi-round window-shrinking core-width estimation `core_width`.
+- `resolution.py`: defines the constants `ROUNDS`, `MINIMUM_EVENTS`, and the insufficient-sample exception class `TooFewValues`, and implements single-window unbinned truncated-Gaussian maximum-likelihood fitting `truncated_gaussian` and multi-round window-shrinking core-width estimation `core_width`. `fwhm_over_mean` and `mad_core_resolution` compute FWHM/mean of the whole sample and of the core samples, and `NoSpread` means a median absolute deviation of `0`.
 - `tracking.py`: implements the experiment-level statistics of the telescope. `track_events` transforms the clusters of each slot into global coordinates, fits straight tracks, and computes residuals; `residual_widths` gives the core width of each DUT's residuals; `draw_track` and `draw_residual` draw the plots.
 - `waveform_stats.py`: implements the PyROOT binned Gaussian fit `fit_data_normal`, the binned Landau fit `fit_data_landau`, and the statistical plotting class `WaveformStatistics` for single-event reconstruction dictionaries.
 
@@ -219,6 +249,8 @@ The table below lists all built-in physical constants and hard-coded algorithmic
 
 - Return dictionary of `core_width` (`resolution.py`): fit result dictionary for the core width of a single channel's distribution, containing total input sample count `"events"` (count), final-round fitting window `"window"` (two-element float tuple `(low, high)`, in the same units as input `values`), in-window sample count of the final round `"window_events"` (count), number of rounds actually performed `"rounds"` (rounds), truncated-Gaussian fitted mean `"mean"` and standard error `"mean_error"` (same units as input), truncated-Gaussian fitted standard deviation `"sigma"` and standard error `"sigma_error"` (same units as input), and half the $16\%$–$84\%$ quantile span of the final-round in-window samples `"sigma68"` (same units as input).
 - `TooFewValues` (`resolution.py`): exception class inheriting from `ValueError`, indicating that the total sample count or first-round in-window sample count is below the statistical minimum (`< 20` in `core_width`, `< 2` in `efficiency_spread` of `stages/analysis`), representing a statistical-outcome state rather than a fitting-algorithm crash.
+- `NoSpread` (`resolution.py`): exception class inheriting from `ValueError`; more than half of the samples equal the median, the median absolute deviation is `0` and there is no core to take; like `TooFewValues` it is a statistical-outcome state.
+- `mad_core_resolution` return dict (`resolution.py`): `"events"` (count), `"mean"`, `"sigma"` (in the unit of the samples), `"resolution"` (dimensionless) are `fwhm_over_mean` of the whole sample; `"median"`, `"mad_sigma"` (in the unit of the samples); `"core_events"` (count), `"core_mean"`, `"core_sigma"` (in the unit of the samples), `"core_resolution"` (dimensionless) are `fwhm_over_mean` of the core samples.
 - `WaveformStatistics` (`waveform_stats.py`): multi-event waveform feature accumulator and ROOT plotting instance containing the device object `detector` (`Detector`), effective readout electrode pitches `pitch_x` and `pitch_y` ($\mu\text{m}$), crossing threshold `threshold` and amplitude threshold `amplitude_threshold` (same voltage units as `InputWaveform`), output directory path string `output_path` (populated after calling `draw`), feature dictionary `data` collecting per-event values by name (`"ToA"`, `"CFD50"`, `"ToT"` [$\text{s}$]; `"amplitude"`, `"charge"` [same voltage units as input]; `"gravity_center_*"`, `"gravity_center_*_error"` [multiples of electrode pitch, dimensionless]; `"cluster_size_*"`, `"cluster_charge"` [count]; `"original_x"` [$\mu\text{m}$]), and per-electrode list `waveforms` storing `(t, v)` traces (time in $\text{s}$, voltage in the input waveform's units).
 
 ## Interface
@@ -244,7 +276,7 @@ When [../stages/analysis.md](../stages/analysis.md) invokes `collection_efficien
 | Source File | Name and Category | Shape and Type | Unit | Purpose |
 | --- | --- | --- | --- | --- |
 | `current.h5` ([current.md](current.md)) | Dataset `event` | `(events,)`, `int64` | none | Verified to match the event ID set of `reconstruction.h5` exactly |
-| `current.h5` ([current.md](current.md)) | Dataset `charge` | `(events, len(electrodes))`, `float64` | $\text{C}$ | Passed as `charge` to `collection_efficiency(charge, pairs)` |
+| `current.h5` ([current.md](current.md)) | Dataset `charge` | `(events, len(electrodes))`, `float64` | $\text{C}$ | Passed as `charge` to `collection_efficiency(charge, pairs)`; the absolute value of its sum over the electrodes is also the collected charge of the event, passed to `mad_core_resolution` |
 | `current.h5` ([current.md](current.md)) | Dataset `pairs` | `(events,)`, `float64` | pairs | Passed as `pairs` to `collection_efficiency(charge, pairs)` |
 | `reconstruction.h5` ([reconstruction.md](reconstruction.md)) | Attribute `electrodes` | string array | none | Checks the single-electrode constraint (`len(electrodes) == 1`) |
 | `reconstruction.h5` ([reconstruction.md](reconstruction.md)) | Attributes `threshold`, `amplitude_threshold`, `fractions`, `edge` | `float64`, `float64`, `float64[]`, string array | $\text{V}$, $\text{V}$, dimensionless, none | Verifies that reconstruction parameters agree across all jobs of the scan point, and divides both thresholds by `1e-3` to write them in $\text{mV}$ to `result.json` |
@@ -289,6 +321,9 @@ In the table below, `result.json` refers to `points/<point>/analysis/result.json
 | `result.json`: `timing.polarity` | `float` | dimensionless | Pulse-edge polarity sign: `1.0` for `"rising"`, `-1.0` for `"falling"` (written when recorded events exist) |
 | `result.json`: `timing.times.<channel>` | `dict` | see right | `<channel>` is `"ToA"`, `"CoG"`, or each `"CFD<percent>"`; contains `"events"` (count), `"window"` (`[low, high]`, $\text{s}$), `"window_events"` (count), `"rounds"` (rounds), `"mean"`, `"mean_error"`, `"sigma"`, `"sigma_error"`, `"sigma68"` (all $\text{s}$) computed by `core_width` on non-`NaN` `time - truth` values, plus `"missing"` (count of selected events where the channel is `NaN`) |
 | `result.json`: `timing.error` | `str` | none | Explanation written in place of `timing.times` when the point has `0` events or any timing channel triggers `TooFewValues` |
+| `result.json`: `energy_resolution.charge` | `dict` | see right | Always written; `mad_core_resolution` of the collected charge of all recorded events: `events`, `mean`, `sigma`, `median`, `mad_sigma`, `core_mean`, `core_sigma` ($\text{C}$), `core_events` (count), `resolution`, `core_resolution` (dimensionless); only `events` and `error` when the sample is too small or has no core |
+| `result.json`: `energy_resolution.amplitude` | `dict` | see right | Written when the point has at least `1` recorded event; `mad_core_resolution` of the read-out amplitude of the selected events, keys as `charge`, with quantities that carry a unit in $\text{V}$; only `events` and `error` when the sample is too small or has no core |
+| `points.json`: `[i].energy_resolution` | `dict` | dimensionless | Always written; keys `charge`, `amplitude`, each `{"resolution", "core_resolution"}`; a quantity without a result is omitted, and `{}` when neither has one |
 | `points.json`: `[i].point`, `[i].<scanned_key>` | `str`, depends on option | none, depends on option | Written when more than `1` scan point has results; point name and values of scan options that vary across points |
 | `points.json`: `[i].events`, `efficiency`, `efficiency_error`, `selected` | `int`, `float \| null` | count, dimensionless | Total recorded events, mean charge collection efficiency and standard error (`null` when unavailable), and selected event count at that point |
 | `points.json`: `[i].<channel>` | `dict` | $\text{s}$ | `{"sigma68", "sigma", "sigma_error"}` for each timing channel at that point (omitted when timing resolution is unavailable at that point) |
@@ -313,6 +348,7 @@ The table below lists the ROOT statistical plots generated directly by `Waveform
 | `time_difference.png`, `.pdf` | `3 × 4` grid of `64`-bin time-difference histograms within `mean ± 8 * sigma` for `ToA`, `CoG`, and the first `10` `CFD*` channels, showing the final-round window shading and black truncated-Gaussian curve, drawn by `stages/analysis` when timing fits succeed; each subplot title is the channel name and its upper left corner shows `sigma68`, `sigma` and the in-window count | Horizontal axis `<channel> - truth [ps]`, vertical axis `Events` |
 | `resolution_of_fraction.png`, `.pdf` | Truncated-Gaussian `sigma` (black filled circles with error bars) and `sigma68` (black open squares) versus constant fraction across all `CFD*` channels, drawn by `stages/analysis` | Horizontal axis `CFD fraction` (dimensionless), vertical axis `Time resolution [ps]` |
 | `trend.png`, `.pdf` | Collection efficiency (left) and `sigma` of each `CFD*` channel (right) versus the scan variable, drawn by `stages/analysis` when multiple scan points exist and the sole varying scan parameter is numeric, one line per `CFD*` channel in the right panel | Horizontal axis `<scanned_key>`, left vertical axis `Charge collection efficiency` (dimensionless), right vertical axis `Time resolution [ps]` |
+| `energy_resolution.png`, `.pdf` | `stages/analysis`, under the same conditions as `trend`: in ascending order of the scanned variable, two curves in each panel, the collected charge on the left and the read-out amplitude on the right: FWHM/mean of the whole sample (black circles, solid line) and FWHM/mean of the core samples (blue squares, dashed line); a point without a result for the quantity is left out of its panel | Horizontal axis `<scanned_key>`, vertical axis `Energy resolution of the charge`, `Energy resolution of the amplitude` (dimensionless, lower limit `0`) |
 
 ## References
 

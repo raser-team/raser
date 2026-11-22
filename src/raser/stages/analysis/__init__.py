@@ -13,6 +13,7 @@ from raser.lifecycle.workflow import set_apart
 
 from .point import write_point
 from .across_points import write_points
+from .across_points import write_signals
 
 
 def collect(root):
@@ -27,7 +28,7 @@ def collect(root):
     settings. One that is there is used as it is."""
     root = Path(root)
     whole = complete_points(root)
-    done, results = [], []
+    done, results, done_jobs = [], [], []
     for name, values, jobs, others in jobs_of_points(root):
         if name not in whole:
             print(f"{root}: {name}: no analysis yet, its jobs are not all done")
@@ -62,6 +63,8 @@ def collect(root):
             print(f"{place}: {error}")
         print(f"{place / 'result.json'}")
         done.append((name, values))
+        done_jobs.append(jobs)
         results.append(result)
     if len(done) > 1:
         write_points(done, results, root / "analysis")
+        write_signals(done, done_jobs, root / "analysis")

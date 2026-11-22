@@ -54,7 +54,7 @@ The fingerprint of this stage's node is composed of the setting values in the `d
 
 ## Software Implementation
 
-- `src/raser/stages/digitizer.py`: Module for this stage; reads waveforms from the `readout` node, the `digitizer` section, and the component, calls `core/digitizer` for sampling and quantization according to the flow above, and writes the digital waveform file and plots.
+- `src/raser/stages/digitizer.py`: Module for this stage; reads waveforms from the `readout` node, the `digitizer` section, and the component, calls `core/digitizer` for sampling and quantization according to the flow above, and writes the digital waveform file and plots. The function `digitized(kwargs, position=None)` takes the device name from `device`, the number of events to draw from `plots`, the seed from `seed`, and the content of the component as lifecycle hands it over (with the overrides of `--set digitizer.device.<key>=…` merged in); an error naming the missing one is raised if any of them is absent. In multi-position experiments there is one slice per position; when upstream left no `readout.<position>.h5` at a position, the slice writes no file and records 0 events. The list of noise-only channels is not connected yet: for now no event has noise-only channels.
 - `src/raser/core/digitizer/`: Bandwidth filtering, sampling, and quantization computations; see [Digitizer (`core/digitizer`)](../core/digitizer.md).
 
 ## Interface

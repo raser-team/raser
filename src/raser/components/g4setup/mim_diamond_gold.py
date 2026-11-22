@@ -1,0 +1,27 @@
+"""Am-241 alphas on the MIM diamond pad, 0.2 um of gold on both faces, in vacuum.
+
+What surrounds the device in Geant4; reading it imports no Geant4."""
+
+G4SETUP = {
+    "name": "mim_diamond_gold",
+    "description": "Alphas on the MIM diamond pad with 0.2 um of gold on both faces, in vacuum",
+    "geant4_model": "device",
+    "world": "G4_Galactic",
+    "object": {
+        "elemental": {
+            "FrontAu": {
+                "name": "FrontAu", "material": "G4_Au", "side_x": 4500.0, "side_y": 4500.0, "side_z": 0.2,
+                "colour": [1.0, 0.8, 0.0],
+            },
+            "BackAu": {
+                "name": "BackAu", "material": "G4_Au", "side_x": 4500.0, "side_y": 4500.0, "side_z": 0.2,
+                "colour": [1.0, 0.8, 0.0],
+            },
+        }
+    },
+    "source": {"angle": 0},
+    # the alphas enter through the face z = l_z of the device, its top electrode
+    "along_beam": ["source", {"gap": 0.3}, "FrontAu", {"slot": "Device", "facing": "downstream"}, "BackAu"],
+    "maxstep": 2,
+    "g4_vis": False,
+}

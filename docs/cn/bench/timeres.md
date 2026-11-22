@@ -31,7 +31,7 @@ $$\mathcal{L}(\tilde{\mu}, \ln\tilde{\sigma}) = \frac{1}{2}\sum_{i=1}^{n}\left(\
 
 ### `time_resolution` 装置几何
 
-`timeres` 默认加载 Geant4 装置 `time_resolution`（`src/raser_bench/timeres/components/deposit/time_resolution.py`，见 [能量沉积组件（`components/deposit`）](../components/deposit.md)）。世界体材料为真空 `"G4_Galactic"`，以 `along_beam` 一列的中点为中心，半边长不小于 `WORLD_HALF_SIDE = 25000` $\mu\text{m}$。世界坐标原点 $(0, 0, 0)$ 在源上，$z$ 轴沿束流指向下游；默认 $\beta$ 源 `decay/Sr90` 圆盘中心位于原点，圆盘半径 `par_radius = 2500` $\mu\text{m}$，出射半顶角 `par_cone = 15` $\text{degree}$，沿 $+z$ 发射，入射倾角 `angle = 0` $\text{degree}$。
+`timeres` 默认加载 Geant4 装置 `time_resolution`（`src/raser_bench/timeres/components/deposit/time_resolution.py`，见 [能量沉积组件（`components/deposit`）](../components/deposit.md)）。世界体材料为真空 `"G4_Galactic"`，以 `along_beam` 一列的中点为中心，半边长不小于 `WORLD_HALF_SIDE = 25000` $\mu\text{m}$。装置的 `source` 块写 `{"name": "decay/Sr90", "angle": 0}`，这个 $\beta$ 源带铜准直孔（`par_radius = 0`，见 [`../components/deposit.md`](../components/deposit.md)），世界坐标原点 $(0, 0, 0)$ 在准直孔出口面中心，$z$ 轴沿孔轴指向下游，准直孔本体在 $z < 0$ 一侧，入射倾角 `angle = 0` $\text{degree}$。
 
 装置用 `along_beam` 从源开始沿 $+z$ 依次排布铝片 `Al`、参考器件（槽位 `ref`）、中心开圆孔的上层 PCB 板 `pcb1`、被测器件（槽位 `dut`）和中心开圆孔的下层 PCB 板 `pcb2`：
 
@@ -50,14 +50,14 @@ $$\mathcal{L}(\tilde{\mu}, \ln\tilde{\sigma}) = \frac{1}{2}\sum_{i=1}^{n}\left(\
 
 Geant4 完整模拟 $\beta$ 电子穿过铝片、参考器件（含衬底）、上层 PCB 板、被测器件（含衬底）和下层 PCB 板时的能量沉积、多次散射与次级粒子产生，同时记录参考器件与被测器件有源层内的能量沉积步。装置沿 $+z$ 方向各项的尺寸、厚度与到前一项的间隔如下表：
 
-| 项（按沿束流顺序） | 类型 | 材料与密度 | 到前一项的间隔 `gap`（$\mu\text{m}$） | 横向尺寸 `side_x × side_y`（$\mu\text{m}$） | 厚度 `side_z` 或 $l_z + t$（$\mu\text{m}$） | 中心圆孔 `tub_radius`, `tub_depth`（$\mu\text{m}$） |
+| 项（按沿束流顺序） | 类型 | 材料与密度 | 到前一项的间隔 `gap`（$\mu\text{m}$） | 横向尺寸 `size[0] × size[1]`（$\mu\text{m}$） | 厚度 `size[2]` 或 $l_z + t$（$\mu\text{m}$） | 中心圆孔 `hole`（$\mu\text{m}$） |
 | --- | --- | --- | --- | --- | --- | --- |
-| `"source"`（`decay/Sr90`） | 源 | — | — | 圆盘半径 `2500` | `0` | 无 |
-| `Al` | 周边物体（`elemental`） | `"G4_Al"` | `1995` | $5000 \times 5000$ | `10` | 无 |
+| `"source"`（`decay/Sr90`） | 源 | — | — | 准直孔出口面（源内 `par_radius = 0`） | `0` | 无 |
+| `Al` | 周边物体（`box`） | `"G4_Al"` | `1995`（从准直孔出口算起） | $5000 \times 5000$ | `10` | 无 |
 | 参考器件（槽位 `ref`，默认 `HPK-Si-LGAD`） | 器件（含灵敏层与以外各层） | 取器件文件 | `4978.5` | 取器件文件（$l_{x,\text{ref}} \times l_{y,\text{ref}}$） | 取器件文件（有源层 $l_{z,\text{ref}}$ 加以外各层 $t_{\text{ref}}$） | 无 |
-| `pcb1` | 周边物体（`binary_compounds`） | `"SiO2"`（Si/O 原子比 `33.4:66.6`，`2.2 g/cm^3`） | `0`（紧贴） | $20000 \times 20000$ | `1500` | `500`, `1500` |
+| `pcb1` | 周边物体（`box`） | `"SiO2"`（`Si:O = 1:2`，`2.2 g/cm^3`） | `0`（紧贴） | $20000 \times 20000$ | `1500` | `500` |
 | 被测器件（槽位 `dut`，命令行给定） | 器件（含灵敏层与以外各层） | 取器件文件 | `8183.5` | 取器件文件（$l_x \times l_y$） | 取器件文件（有源层 $l_z$ 加以外各层 $t$） | 无 |
-| `pcb2` | 周边物体（`binary_compounds`） | `"SiO2"`（Si/O 原子比 `33.4:66.6`，`2.2 g/cm^3`） | `0`（紧贴） | $20000 \times 20000$ | `1500` | `500`, `1500` |
+| `pcb2` | 周边物体（`box`） | `"SiO2"`（`Si:O = 1:2`，`2.2 g/cm^3`） | `0`（紧贴） | $20000 \times 20000$ | `1500` | `500` |
 
 ### 三块器件
 
@@ -121,7 +121,7 @@ $$\sigma_1^2 = \frac{\sigma_{12}^2 + \sigma_{13}^2 - \sigma_{23}^2}{2}, \qquad \
 ### 组件
 
 - [探测器组件（`components/device`）](../components/device.md)：提供被测器件和参考器件的几何、材料、掺杂、偏压、温度、辐照与雪崩倍增参数。参考器件默认使用 `HPK-Si-LGAD`（`HPK-Si-LGAD.json`），被测器件由命令行给定（如 `HPK-Si-PiN`、`NJU-PiN`、`SICAR-1`）。
-- [能量沉积组件（`components/deposit`）](../components/deposit.md)：提供默认 Geant4 装置 `time_resolution`（`src/raser_bench/timeres/components/deposit/time_resolution.py`）和默认 $\beta$ 放射源 `decay/Sr90`（`raser/components/deposit/decay/Sr90.json`）。
+- [能量沉积组件（`components/deposit`）](../components/deposit.md)：提供默认 Geant4 装置 `time_resolution`（`src/raser_bench/timeres/components/deposit/time_resolution.py`）和装置写明的 $\beta$ 放射源 `decay/Sr90`（`raser/components/deposit/decay/Sr90.json`）。
 - [前端读出电路组件（`components/readout`）](../components/readout.md)：提供以 `+` 串联的 SPICE 放大器级与终端负载子电路（默认 `SantaCruz+Gali52+Termination50`）。
 - [数字化器组件（`components/digitizer`）](../components/digitizer.md)：提供示波器或数字化板的采样与量化设置（如 `MXR608A`）。
 - [触发组件（`components/trigger`）](../components/trigger.md)：触发条件定义；`timeres` 的触发要求两块（或三块）器件在同一事例里都过幅度阈值。
@@ -142,8 +142,8 @@ raser timeres NJU-PiN --scan field.voltage=-300,-500
 | --- | --- | --- | --- |
 | `field.voltage` | `200.0`（写 `null` 时取被测器件文件里的偏压） | $\text{V}$ | 被测器件偏置电压 |
 | `field.irradiation_flux` | `null`（取器件文件里的辐照注量，器件文件没有辐照块时为 `0`） | $\text{cm}^{-2}$ | 被测器件辐照注量（$1\ \text{MeV}$ 中子等效注量） |
-| `deposit.source` | `"decay/Sr90"` | 无 | 放射源或束流组件名称或路径 |
-| `deposit.g4setup` | `"time_resolution"` | 无 | Geant4 装置组件名称或路径 |
+| `deposit.g4setup` | `"time_resolution"` | 无 | Geant4 装置组件名称或路径；装置的 `source` 块写明它用的源 |
+| `deposit.g4setup.source` | 不写（取 `time_resolution` 的 `"decay/Sr90"`） | 无 | 整套换源：放射源或束流组件名称或路径；装置里的 `angle` 沿用 |
 | `deposit.events_per_job` | `10000` | 事例 | 每作业需记录的有效沉积事例数（与 `deposit.generated_per_job` 互斥） |
 | `deposit.generated_per_job` | `null`（不用） | 事例 | 每作业由源生成的总事例数（与 `deposit.events_per_job` 互斥） |
 | `deposit.generated_limit` | `10000000` | 事例 | 为录满 `events_per_job` 允许生成的最大源事例数上限 |

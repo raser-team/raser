@@ -24,10 +24,12 @@ Attributes of the file: generated_events, the events the source generated;
 recorded_events, those of them the file holds; generated_fraction, the part
 of what the source emits that was generated, such as the directions within
 the cone of a radioactive source (1 for a beam or a toy MIP, which emit
-nothing else); and edep_min, edep_max [MeV] where the window has that bound.
-The share of the generated events that was recorded is not
-generated_fraction but recorded_events / generated_events; the events
-recorded per emission of the source are recorded_events / generated_events
+nothing else); require, the logic expression over the slots that an event
+satisfies to be recorded; coincidence_window_ns, its window in time [ns],
+where there is one; and edep_min.<slot>, edep_max.<slot> [MeV], the window
+of the energy deposited in the slot, where it has that bound. The share of
+the generated events that was recorded is not generated_fraction but
+recorded_events / generated_events; the events recorded per emission of the source are recorded_events / generated_events
 * generated_fraction.
 """
 
@@ -64,8 +66,12 @@ class EventDeposits:
 @dataclass
 class Deposits:
     generated_events: int
-    edep_min: float | None
-    edep_max: float | None
+    # slot -> (edep_min, edep_max) [MeV] of the energy deposited in the slot;
+    # None: that side is not checked
+    windows: dict[str, tuple[float | None, float | None]]
+    # logic expression over the slots, and its window in time [ns]; None: any time
+    require: str
+    coincidence_window_ns: float | None
     events: list[EventDeposits]
     # the part of what the source emits that was generated
     generated_fraction: float = 1.0
@@ -77,11 +83,8 @@ def deposits_of_steps(
     positions,
     energies,
     times,
-    generated_events: int,
-    edep_min: float | None,
-    edep_max: float | None,
     starts=None,
-) -> Deposits:
+) -> list[EventDeposits]:
     """Deposits of one detector from the steps recorded event by event.
 
     positions[i][k] is the (x, y, z) [um] of step k of event i in the
@@ -119,7 +122,27 @@ def deposits_of_steps(
                 **begun,
             )
         )
-    return Deposits(generated_events, edep_min, edep_max, events)
+    return events
+
+
+def joined(per_detector: list[list[EventDeposits]]) -> list[EventDeposits]:
+    """The events of several detectors as one list: an event that more than
+    one detector has takes the deposits of the detectors one after another,
+    in the order of `per_detector`. The events are in the order of their
+    numbers."""
+    by_number: dict[int, EventDeposits] = {}
+    for events in per_detector:
+        for event in events:
+            if event.event not in by_number:
+                by_number[event.event] = event
+                continue
+            into = by_number[event.event]
+            for name in ("detector", *_NUMBERS):
+                getattr(into, name).extend(getattr(event, name))
+            for name in _STARTS:
+                if getattr(into, name) is not None:
+                    getattr(into, name).extend(getattr(event, name))
+    return [by_number[number] for number in sorted(by_number)]
 
 
 def write_deposits(path: str, deposits: Deposits) -> None:
@@ -153,9 +176,13 @@ def write_deposits(path: str, deposits: Deposits) -> None:
         file.attrs["generated_events"] = deposits.generated_events
         file.attrs["recorded_events"] = len(events)
         file.attrs["generated_fraction"] = deposits.generated_fraction
-        for bound in ("edep_min", "edep_max"):
-            if getattr(deposits, bound) is not None:
-                file.attrs[bound] = getattr(deposits, bound)
+        file.attrs["require"] = deposits.require
+        if deposits.coincidence_window_ns is not None:
+            file.attrs["coincidence_window_ns"] = deposits.coincidence_window_ns
+        for slot, bounds in deposits.windows.items():
+            for name, bound in zip(("edep_min", "edep_max"), bounds):
+                if bound is not None:
+                    file.attrs[f"{name}.{slot}"] = bound
         file["event"] = np.array([record.event for record in events], dtype="int64")
         file["count"] = np.array([len(record.e) for record in events], dtype="int64")
         file.create_dataset(
@@ -174,10 +201,14 @@ def read_deposits(path: str) -> Deposits:
     with h5py.File(str(path), "r") as file:
         generated_events = int(file.attrs["generated_events"])
         generated_fraction = float(file.attrs["generated_fraction"])
-        edep_min, edep_max = (
-            float(file.attrs[bound]) if bound in file.attrs else None
-            for bound in ("edep_min", "edep_max")
-        )
+        require = str(file.attrs["require"])
+        window = file.attrs.get("coincidence_window_ns")
+        coincidence_window_ns = None if window is None else float(window)
+        windows: dict[str, list[float | None]] = {}
+        for key in file.attrs:
+            name, _, slot = key.partition(".")
+            if name in ("edep_min", "edep_max"):
+                windows.setdefault(slot, [None, None])[name == "edep_max"] = float(file.attrs[key])
         numbers = file["event"][()]
         counts = file["count"][()]
         detector = file["detector"].asstr()[()]
@@ -196,4 +227,11 @@ def read_deposits(path: str) -> Deposits:
             )
         )
         first = last
-    return Deposits(generated_events, edep_min, edep_max, events, generated_fraction)
+    return Deposits(
+        generated_events,
+        {slot: (bounds[0], bounds[1]) for slot, bounds in windows.items()},
+        require,
+        coincidence_window_ns,
+        events,
+        generated_fraction,
+    )

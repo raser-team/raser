@@ -76,7 +76,7 @@ def _job(folder, index, scale, count, seed, amplitude_threshold=5, jitter=3.0e-1
             EventWaveforms(number, starts[number] - BEFORE * DT, np.array([samples])),
             pulse_edge=["falling"],
         )
-    write_deposits(str(_slice(folder, index, "deposit")), Deposits(50, None, None, deposits))
+    write_deposits(str(_slice(folder, index, "deposit")), Deposits(50, {}, "any", None, deposits))
     if count:
         reconstruct(
             _slice(folder, index, "readout"), _slice(folder, index, "reconstruction"), 3, amplitude_threshold, (0.2, 0.5, 0.8), "falling"
@@ -252,6 +252,11 @@ def test_analysis_holds_the_results_of_the_points_whose_jobs_are_done(tmp_path, 
     assert views["voltage_300"].resolve() != views["voltage_100"].resolve()  # a node for each point
     assert (views["voltage_100"] / "plots" / "time_difference.png").is_file()
     assert not (root / "points" / "voltage_200").exists()
+    assert {name: result["deposited_energy"] for name, result in results.items()} == {
+        name: {"events": 100, "mean": pytest.approx(0.1), "std": pytest.approx(0.0, abs=1e-12)} for name in ("voltage_300", "voltage_100")
+    }
+    assert (place / "currents.png").exists()
+    assert (place / "deposited_energy.png").exists()
     # one row per point that ran, with the option that differs between them
     rows = json.loads((place / "points.json").read_text())
     assert [(row["point"], row["voltage"], row["events"]) for row in rows] == [

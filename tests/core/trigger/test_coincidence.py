@@ -471,3 +471,27 @@ def test_write_coincidence_draws_nothing_when_no_event_has_a_waveform(tmp_path):
     assert result["dut"].events_seen == 2
     assert result["dut"].event.size == 0
     assert not (tmp_path / "plots").exists()
+
+
+# Deliberate change: a slot with no file counted as hit in every event, or
+# read as a file path.
+def test_a_slot_without_a_file_is_hit_in_no_event(tmp_path):
+    dut = tmp_path / "dut.h5"
+    _write_events(dut, ["a"], {1: {"a": (FALL_AT_0, 0.0)}, 2: {"a": (FLAT, 0.0)}})
+    paths = {"dut": dut, "ref": None}
+    outputs = {slot: tmp_path / f"trigger_{slot}.h5" for slot in paths}
+    for require, expected in (("all", []), ("any", [1])):
+        settings = CoincidenceSettings.from_component(
+            {
+                "level_V": 0.0,
+                "slope": "falling",
+                "require": require,
+                "coincidence_window_ns": None,
+            },
+            ["dut", "ref"],
+        )
+        write_coincidence(paths, outputs, settings, plot_path=tmp_path / "plots")
+        for output in outputs.values():
+            result = read_triggered(output)
+            assert result.event.tolist() == expected
+            assert result.events_seen == 2

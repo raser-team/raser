@@ -14,6 +14,16 @@ class TooFewValues(ValueError):
     not a failure of the fit."""
 
 
+class NoSpread(ValueError):
+    """More than half of the values equal their median: the median absolute
+    deviation is 0 and has no core to cut."""
+
+
+FWHM_OVER_SIGMA = 2 * math.sqrt(2 * math.log(2))
+MAD_TO_SIGMA = 1.4826
+CORE_SIGMAS = 5
+
+
 def truncated_gaussian(values, low, high):
     """Unbinned maximum likelihood of a Gaussian seen only inside [low, high]:
     the density is the Gaussian over the part of it inside the window, so the
@@ -139,3 +149,63 @@ def core_width(values, window=None):
         low, high = new_low, new_high
     assert fit is not None
     return fit
+
+
+def fwhm_over_mean(values):
+    """Standard deviation of the values, and FWHM of a Gaussian of that
+    sigma over the absolute mean: 2 sqrt(2 ln 2) sigma / |mean|.
+
+    values : (events,), finite, of a quantity that is not 0 on average
+
+    Returns a dict:
+      events      number of values
+      mean, sigma  mean and population standard deviation (ddof=0), in the
+                  unit of the values
+      resolution  FWHM / mean, no unit
+    """
+    values = np.asarray(values, dtype="float64")
+    if values.ndim != 1:
+        raise ValueError(f"values have shape {values.shape}, expected (events,)")
+    if len(values) < 2:
+        raise TooFewValues(f"{len(values)} values, a mean and a width need at least 2")
+    if not np.all(np.isfinite(values)):
+        raise ValueError(f"values {np.flatnonzero(~np.isfinite(values)).tolist()} are not finite")
+    mean, sigma = float(np.mean(values)), float(np.std(values))
+    if mean == 0.0:
+        raise ValueError("the mean of the values is 0, FWHM / mean is not defined")
+    return {
+        "events": len(values),
+        "mean": mean,
+        "sigma": sigma,
+        "resolution": FWHM_OVER_SIGMA * sigma / abs(mean),
+    }
+
+
+def mad_core_resolution(values):
+    """FWHM / mean of the core of the values: those within
+    CORE_SIGMAS * sigma_MAD of the median, sigma_MAD = 1.4826 MAD, which
+    equals sigma of a Gaussian. Together with `fwhm_over_mean` of all values.
+
+    values : (events,), finite
+
+    Returns the dict of `fwhm_over_mean` of all values, and
+      median, mad_sigma    median and sigma_MAD of all values
+      core_events          number of values in the core
+      core_mean, core_sigma, core_resolution   `fwhm_over_mean` of the core
+    """
+    result = fwhm_over_mean(values)
+    values = np.asarray(values, dtype="float64")
+    median = float(np.median(values))
+    mad_sigma = MAD_TO_SIGMA * float(np.median(np.abs(values - median)))
+    if mad_sigma == 0.0:
+        raise NoSpread(f"{len(values)} values, more than half of them equal {median}")
+    core = fwhm_over_mean(values[np.abs(values - median) <= CORE_SIGMAS * mad_sigma])
+    return {
+        **result,
+        "median": median,
+        "mad_sigma": mad_sigma,
+        "core_events": core["events"],
+        "core_mean": core["mean"],
+        "core_sigma": core["sigma"],
+        "core_resolution": core["resolution"],
+    }

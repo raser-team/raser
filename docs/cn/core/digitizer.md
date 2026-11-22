@@ -165,6 +165,13 @@ $\varphi$、$\delta_k$ 和纯噪声由 `digitizer` 自己的种子抽取。这�
 
 码按式 (5) 换回电压；电极第 $k$ 点的时刻为该电极的 `t0` $+ k\cdot$`sampling_period`。
 
+### 绘图输出
+
+样式、文件名和存放位置见[出图](../supports/figures.md)。
+
+- `samples_<事例号>`：前 `plots` 个存了波形的事例各一张。每个走 `readout` 的电极一条线（限带宽后的模拟波形，画在 `readout` 的时间箱中心）和同色的点（码按式 (5) 换回的电压，画在各自的采样时刻）；横轴时间（$\text{ns}$），纵轴电压（$\text{mV}$），图例写电极名。纯噪声道没有模拟波形，不画在这张图上。
+- `codes`：`plots` 大于 `0` 时每个节点一张。本节点全部采样点的码的直方图，每个码一格（$0$ 至 $2^N - 1$），纯噪声道的码也算在内；横轴是码，计数轴按出图规范写 `Events`：各格计数相差悬殊时是对数轴，否则是只有整数刻度的线性轴。一个事例贡献它存了的每个电极的 $K$ 个点，所以一格里数的是采样点。被截的点堆在码 $0$ 或码 $2^N - 1$ 上。
+
 ## 参考文献
 
 - [1] Keysight Technologies, “Infiniium MXR-Series Oscilloscopes (A-Series)”, Data Sheet 7120-1115.EN, https://www.keysight.com/us/en/assets/7120-1115/data-sheets/Infiniium-MXR-Series.pdf

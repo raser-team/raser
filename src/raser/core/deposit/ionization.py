@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 
 from raser.core.seeding import stream
 
@@ -26,9 +27,13 @@ FANO_FACTOR = {
 
 
 def ionized_pairs(
-    event: EventDeposits, material: str, fano: bool = True
+    event: EventDeposits, material: str | Mapping[str, str], fano: bool = True
 ) -> tuple[list[float], list[list[float]]]:
     """Number of pairs of every deposit and where and when they appear.
+
+    material is the material of the deposits of the event, or, for deposits
+    in several detectors, the material of each detector by its name; a
+    deposit takes the material of the detector it lies in.
 
     With fano, the number is drawn around the mean E / pair energy with the
     variance Fano factor * mean, from the stream of this event number; without, it is the mean itself, and the
@@ -36,27 +41,35 @@ def ionized_pairs(
     every deposit: position [um] in the coordinates of the detector and
     time [s].
     """
-    if material not in PAIR_ENERGY_EV:
-        raise ValueError(
-            f"no pair energy for the material {material!r}; known: {sorted(PAIR_ENERGY_EV)}"
-        )
-    pair_energy_mev = PAIR_ENERGY_EV[material] * 1.0e-6
+    materials = (
+        [material] * len(event.e)
+        if isinstance(material, str)
+        else [material[name] for name in event.detector]
+    )
+    for one in set(materials):
+        if one not in PAIR_ENERGY_EV:
+            raise ValueError(
+                f"no pair energy for the material {one!r}; known: {sorted(PAIR_ENERGY_EV)}"
+            )
     if not fano:
-        pairs = [energy / pair_energy_mev for energy in event.e]
+        pairs = [
+            energy / (PAIR_ENERGY_EV[one] * 1.0e-6)
+            for energy, one in zip(event.e, materials)
+        ]
         positions = [list(point) for point in zip(event.x, event.y, event.z, event.t)]
         return pairs, positions
-    if material not in FANO_FACTOR:
-        raise ValueError(
-            f"no Fano factor for the material {material!r}; known: {sorted(FANO_FACTOR)}"
-        )
-    fano_factor = FANO_FACTOR[material]
+    for one in set(materials):
+        if one not in FANO_FACTOR:
+            raise ValueError(
+                f"no Fano factor for the material {one!r}; known: {sorted(FANO_FACTOR)}"
+            )
     # each event draws from its own stream: the pairs of an event do not
     # depend on which other events were recorded before it
     generator = stream(f"ionization/{event.event}")
     pairs = []
-    for energy in event.e:
-        mean = energy / pair_energy_mev
-        sigma = math.sqrt(fano_factor * mean)
+    for energy, one in zip(event.e, materials):
+        mean = energy / (PAIR_ENERGY_EV[one] * 1.0e-6)
+        sigma = math.sqrt(FANO_FACTOR[one] * mean)
         pairs.append(max(0.0, generator.Gaus(mean, sigma)))
     positions = [list(point) for point in zip(event.x, event.y, event.z, event.t)]
     return pairs, positions

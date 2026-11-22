@@ -64,3 +64,20 @@ def test_without_fano_a_material_needs_no_fano_factor(
     assert pairs == pytest.approx([1000.0])
     with pytest.raises(ValueError, match="no Fano factor"):
         ionized_pairs(_deposits([0.01]), "Unmeasured")
+
+
+def test_a_deposit_takes_the_material_of_the_detector_it_lies_in() -> None:
+    event = _deposits([0.036, 0.084, 0.036, 0.084])
+    event.detector = ["ref", "dut", "dut", "ref"]
+
+    pairs, _ = ionized_pairs(event, {"ref": "Si", "dut": "SiC"}, fano=False)
+
+    # Si: 3.6 eV a pair, SiC: 8.4 eV a pair, whatever the order of the deposits
+    assert pairs == pytest.approx([10000.0, 10000.0, 0.036e6 / 8.4, 0.084e6 / 3.6])
+    # with Fano, each deposit draws around the mean of its own material
+    event = _deposits([0.036] * 4000 + [0.084] * 4000)
+    event.detector = ["ref"] * 4000 + ["dut"] * 4000
+    seeding.seed_generators(3)
+    drawn, _ = ionized_pairs(event, {"ref": "Si", "dut": "SiC"})
+    assert np.var(drawn[:4000]) == pytest.approx(1150.0, rel=0.1)
+    assert np.var(drawn[4000:]) == pytest.approx(1280.0, rel=0.1)

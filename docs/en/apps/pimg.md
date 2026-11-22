@@ -43,7 +43,7 @@ Run the `pimg` application directly, or use `--set` and `--scan` to scan trackin
 raser pimg
 ```
 
-Experiment configuration is written in `work/pimg/config.json`, sectioned by stage. This scenario requires two energy deposition components—a proton beam source `beam/proton` and a setup `head_phantom` placing a toy head phantom between upstream and downstream telescope layers—selected in the `deposit` section; the default tracking-layer device is `TAICHU3`. Only the sections relevant to this page are excerpted below; `examples/pimg/config.json` specifies all eight sections in full.
+Experiment configuration is written in `work/pimg/config.json`, sectioned by stage. This scenario requires two energy deposition components—a proton beam source `beam/proton` and a setup `head_phantom` placing a toy head phantom between upstream and downstream telescope layers—the setup `head_phantom` is selected in the `deposit` section, and its `source` block is `{"name": "beam/proton", "angle": 0}`; the default tracking-layer device is `TAICHU3`. Only the sections relevant to this page are excerpted below; `examples/pimg/config.json` specifies all eight sections in full.
 
 ```json
 {
@@ -52,7 +52,6 @@ Experiment configuration is written in `work/pimg/config.json`, sectioned by sta
     "voltage": null
   },
   "deposit": {
-    "source": "beam/proton",
     "g4setup": "head_phantom"
   },
   "readout": {
