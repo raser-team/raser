@@ -8,7 +8,7 @@ from raser.core.device.build_device import Detector
 from raser.core.device.build_device import device_file
 from raser.core.field.circuit_parameters import device_row
 from raser.core.readout.network import impulse_response
-from raser.core.readout.network import shares
+from raser.core.field.resistive_layer import shares
 
 pytestmark = pytest.mark.ngspice
 
@@ -28,14 +28,14 @@ SHEET_OHM, LENGTH_UM = 1000.0, 1000.0
 
 
 def _device(**layer):
-    """A device of 20 cells 10 um wide and 1000 um long on 200 um, 12.3 fF
-    each, with strips on the cells 2 to 4 (20 to 50 um) and 15 to 17 (150 to
+    """A device of 20 RC nodes 10 um wide and 1000 um long on 200 um, 12.3 fF
+    each, with strips on the RC nodes 2 to 4 (20 to 50 um) and 15 to 17 (150 to
     180 um) of its resistive layer. Over keys of the device file give the
-    halved cells, as 40 cells of 5 um with 6.15 fF each."""
+    halved RC nodes, as 40 RC nodes of 5 um with 6.15 fF each."""
     return _build({}, layer)
 
 
-def _half_cells(**layer):
+def _half_rc_nodes(**layer):
     return _build(
         {
             "read_ele_num": 40,
@@ -54,7 +54,7 @@ def _build(over, layer, strips=None):
         {
             **content,
             "read_ele_num": 20,
-            "read_out_contact": [{"x_span": 0, "y_span": 0, "name": "cell"}],
+            "read_out_contact": [{"x_span": 0, "y_span": 0, "name": "node"}],
             "p_x": 10,
             "l_x": 200,
             "l_y": 1000,
@@ -71,8 +71,8 @@ def _build(over, layer, strips=None):
 def _response(my_d, points_um):
     """Voltage [V] of the strips, shape (points, strips, bins), for 1 fC on
     each point."""
-    cells = electrode_names(my_d.read_out_contact, my_d.read_ele_num)
-    circuit, _ = device_row(my_d, cells)
+    rc_nodes = electrode_names(my_d.read_out_contact, my_d.read_ele_num)
+    circuit, _ = device_row(my_d, rc_nodes)
     return impulse_response(my_d, circuit, ON_THE_LOAD, points_um, dt=DT_S)
 
 
@@ -106,13 +106,13 @@ def test_charge_between_two_strips_is_shared_by_the_distances_to_them():
         assert to_right == pytest.approx(1 - _share_to_left(x_um), rel=0.01)
 
 
-def test_charge_shared_is_the_same_for_cells_of_half_the_width():
+def test_charge_shared_is_the_same_for_rc_nodes_of_half_the_width():
     # the same coordinates, the same strips at 20 to 50 um and 150 to 180 um,
-    # on cells of 10 um and of 5 um
+    # on RC nodes of 10 um and of 5 um
     points = [75.0, 120.0]
 
     coarse = _charges(_response(_device(sheet_resistance=1000.0), points))
-    fine = _charges(_response(_half_cells(sheet_resistance=1000.0), points))
+    fine = _charges(_response(_half_rc_nodes(sheet_resistance=1000.0), points))
 
     assert fine == pytest.approx(coarse, rel=0.01)
 
@@ -132,7 +132,7 @@ def test_response_of_a_point_mirrored_across_the_device_swaps_the_strips():
 
 
 def test_strips_on_a_dielectric_over_a_grounded_layer_see_no_net_charge():
-    # the layer held on ground at the cell 19, the strips over 0.5 um of
+    # the layer held on ground at the RC node 19, the strips over 0.5 um of
     # oxide: the charge leaves through the ground and the strips see it pass
     my_d = _device(
         sheet_resistance=1000.0,
@@ -150,7 +150,7 @@ def test_strips_on_a_dielectric_over_a_grounded_layer_see_no_net_charge():
 def test_higher_sheet_resistance_keeps_more_of_the_signal_on_the_nearer_strip():
     # the wide strips of HPK in table 1 of arXiv:2407.09928: 500 um pitch,
     # 50 um of metal, 10 mm long, 50 um thick, 600 pF/mm^2 under the strips,
-    # the layer of 400 or of 1600 Ohm a square. Cells of 50 um, 1.036 pF
+    # the layer of 400 or of 1600 Ohm a square. RC nodes of 50 um, 1.036 pF
     # each over 50 um of silicon; seven strips, the layer on ground at both
     # ends. A point 100 um from the middle of the strip s3, towards s4: the
     # more resistive the layer, the more of the amplitude stays on s3
@@ -180,8 +180,8 @@ def test_higher_sheet_resistance_keeps_more_of_the_signal_on_the_nearer_strip():
 
 
 @pytest.mark.parametrize("x_um", [201.0, -1.0])
-def test_point_off_the_cells_of_the_layer_is_refused(x_um):
+def test_point_off_the_rc_nodes_of_the_layer_is_refused(x_um):
     my_d = _device(sheet_resistance=1000.0)
 
-    with pytest.raises(ValueError, match="cells of the layer"):
+    with pytest.raises(ValueError, match="RC nodes of the layer"):
         shares(my_d, [x_um])

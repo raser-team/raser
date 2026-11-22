@@ -152,6 +152,8 @@ $$C_j = \frac{\varepsilon_r\,|Q_j|}{V_1} \tag{18}$$
 
 where $Q_j$ is the contact charge on electrode $j$ ($\text{C/cm}$), $V_1 = 1\ \text{V}$ is the voltage applied to the readout electrode, $\varepsilon_r$ is the relative permittivity of the device material (solved in $\varepsilon_0$ and then multiplied back), and $C_j$ is in $\text{F/cm}$. The left and right strips at distance $k$ from the readout strip are merged into a single electrode `neighbour<k>`.
 
+The resistive charge-sharing layer (a device file with `resistive_layer`) is one continuous conductor and, for the drifting carriers, one planar electrode: only one weighting potential is solved, the solution with the contact `resistive_layer.contact` on which the layer sits set to $1$ and the other electrodes set to $0$, obtained by Eq. (16) on the device's own mesh, which on a 1D mesh is the weighting potential of a slab. The RC nodes do not each get a weighting potential; which RC nodes the total induced current falls on is distributed by [current.md](current.md) according to the lateral position of the carrier.
+
 ### Conductive Region Classification
 
 After solving, the code determines whether each node is conductive at that bias voltage from its resistivity and depletion state:
@@ -186,11 +188,11 @@ The lumped model is exact in 1D. In 2D and 3D, the shared node retains only the 
 
 In a row of strip electrodes (when `field_circuit` reads `Capacitance_<V>V.json`), two strips separated by $k$ positions are connected by a capacitance $C_k = \tfrac12 C_{\text{neighbour}k}\,L$ for $k \le$ `neighbours_coupled`, where $L$ is the strip length `l_y` (converted to cm); each strip's capacitance to `undepleted` is $C_{\text{total}}L$ (or `capacitance_pF`) minus the sum of its mutual capacitances to all other strips in the row. When building the circuit only for a section of strips near the hit strip (`part_of_row`), the $n$ strips outside the section are at virtual ground, so their corresponding capacitance is lumped into $n$ times the value of a central strip in the row and connected between `undepleted` and ground (`C_undepleted_rest`).
 
-A resistive charge-sharing layer (`resistive_layer`) divides the layer into cells of width equal to the pitch; each cell is a node connected via a depletion-layer capacitance to `undepleted`, and adjacent cells are connected by layer resistances:
+A resistive charge-sharing layer (`resistive_layer`) divides the layer into RC nodes of width equal to the pitch; each RC node is a node connected via a depletion-layer capacitance to `undepleted`, and adjacent RC nodes are connected by layer resistances:
 
-$$C_{\text{cell}} = c_A\,w\,l, \qquad R_{\text{row}} = \frac{R_\square}{l}\,w\,\Bigl(1 - \frac{m}{2}\Bigr), \qquad R_{\text{grid}} = R_\square\,\frac{w_\parallel}{w_\perp}\Bigl(1 - \frac{m}{2}\Bigr) \tag{21}$$
+$$C_{\text{node}} = c_A\,w\,l, \qquad R_{\text{row}} = \frac{R_\square}{l}\,w\,\Bigl(1 - \frac{m}{2}\Bigr), \qquad R_{\text{grid}} = R_\square\,\frac{w_\parallel}{w_\perp}\Bigl(1 - \frac{m}{2}\Bigr) \tag{21}$$
 
-where $c_A = C_{\text{dep}}/(w\,l)$ is the depletion-layer capacitance per unit area ($\text{F/m}^2$, with $C_{\text{dep}}$ the junction capacitance of one cell); $w$, $l$ are the cell width (`p_x`) and strip length (`l_y`), in $\text{m}$ (`p_x`, `p_y` in a grid); $R_\square$ is the sheet resistance, $\Omega$; $m \in \{0, 1\}$ is the number of cells in the pair lying beneath an electrode (the electrode starts at the cell edge, half a cell from the neighboring cell center); in a grid, $w_\parallel$ and $w_\perp$ are the cell widths parallel and perpendicular to the resistor direction. Cells under an electrode are merged into a single node; when `coupling` is given, the electrode couples capacitively to the layer through a dielectric, the layer remains continuous beneath the electrode, and each cell connects to the electrode via a capacitance $\varepsilon_0\varepsilon_r w l / t$ (where $t$ is `coupling.thickness`, given in $\mu\text{m}$ in the device file and converted to m in code).
+where $c_A = C_{\text{dep}}/(w\,l)$ is the depletion-layer capacitance per unit area ($\text{F/m}^2$, with $C_{\text{dep}}$ the junction capacitance of one RC node); $w$, $l$ are the RC node width (`p_x`) and strip length (`l_y`), in $\text{m}$ (`p_x`, `p_y` in a grid); $R_\square$ is the sheet resistance, $\Omega$; $m \in \{0, 1\}$ is the number of RC nodes in the pair lying beneath an electrode (the electrode starts at the RC node edge, half an RC node from the neighboring RC node center); in a grid, $w_\parallel$ and $w_\perp$ are the RC node widths parallel and perpendicular to the resistor direction. RC nodes under an electrode are merged into a single node; when `coupling` is given, the electrode couples capacitively to the layer through a dielectric, the layer remains continuous beneath the electrode, and each RC node connects to the electrode via a capacitance $\varepsilon_0\varepsilon_r w l / t$ (where $t$ is `coupling.thickness`, given in $\mu\text{m}$ in the device file and converted to m in code).
 
 The sheet resistance $R_\square$ is taken from `resistive_layer.sheet_resistance` in the device file; when omitted, it is computed from the Al-implanted 4H-SiC layer model [11]:
 
@@ -337,7 +339,7 @@ When solving for the electric field, `solver_section.main` executes in the follo
 
 1. **Prerequisite**: raises `FileNotFoundError` if `Conductive_<V_g>V.pkl` is missing, instructing to solve the field at that bias first.
 2. **Electrodes**: readout electrodes are taken from `name` in `read_out_contact` (or from `name` in `ac_contact` of the selected 2D mesh if non-empty); one voltage source is attached to each electrode.
-3. **Row cell count**: when `read_out_contact` has only one entry and `read_ele_num > 1`, $s$ is set by Eq. (17).
+3. **Row cell count**: when `read_out_contact` has only one entry and `read_ele_num > 1`, $s$ is set by Eq. (17). When the device has a `resistive_layer`, $s = 0$ and only `resistive_layer.contact` is taken as the readout electrode.
 4. **Per electrode**: solves only the Poisson equation (material `"gas"`); `take_conductors_into_electrodes` reads `Conductive_<V_g>V.pkl` and matches every region node to its nearest point in the file (for a stitched row, lateral coordinates are first taken modulo the cell width), raising `ValueError` for any node farther than $10^{-9}$ times the mesh span; then joins the conductive nodes into pieces along the mesh edges whose two ends are both conductive, raising `ValueError` when a piece holds contact nodes of two electrodes, naming the two electrodes, the bias $V_g$, the number of nodes of the piece and its coordinate range: such a piece makes the two electrodes one conductor and inflates the capacitances of Eq. (18) by about `CONDUCTOR_PERMITTIVITY`; finally rewrites `PotentialEdgeFlux` and `contactcharge_edge` according to Eq. (16), sets the readout electrode to $1\ \text{V}$ and solves.
 5. **Row-end check** ($s > 0$): takes the maximum $r$ of $|\phi_w|$ within one unit cell at each end, computes mutual capacitances by Eq. (18), and counts `neighbours_coupled` as the number $c$ of consecutive neighbors starting from `neighbour1` satisfying $C_{\text{neighbour}k} \ge$ `crosstalk_tolerance` $\times\sum_j C_j$. If $r >$ `weighting_tolerance` or $c = s$: sets $s' = \lceil 1.5\,s\rceil$; raises `ValueError` if $s' > 2s_0$ (the weighting potential does not decay along the row, typically caused by a conductive region touching the readout electrode); otherwise clears DEVSIM (preserving `direct_solver` and `solver_callback`) and re-solves from scratch with $s'$.
 6. **Saving**: saves the weighting potential to `weightingfield/<contact>/Potential_<V_g>V.pkl`; when $s > 0$, also writes `Capacitance_<V_g>V.json`; records $V_g$ in `solved.weighting`; writes `weightingfield/weightingfield.dat`.
@@ -412,7 +414,7 @@ On constructing `DevsimField(device_name, voltage, read_out_contact, bounds, res
 - `gradient.py`: central-difference gradient bounded to the mesh range.
 - `device_circuit.py`: `DeviceCircuit`, `planar_circuit`, `side_by_side`, `row_of_electrodes`.
 - `circuit_parameters.py`: lookup of junction capacitance, bias and coupling elements, undepleted layer, and sheet resistance; `field_circuit`, `device_circuit`, `part_of_row`, `device_row`, `device_grid`; `undepleted_layer` computes $R$ and $C$ of the undepleted layer by Riegler's planar formula from area, thickness, depleted width, permittivity, and resistivity.
-- `resistive_layer.py`: resistive-layer row circuit `resistive_row` and grid circuit `resistive_grid`.
+- `resistive_layer.py`: resistive-layer row circuit `resistive_row` and grid circuit `resistive_grid`, and `shares(my_d, point_um)`: the shares of the charge of a point among the RC nodes.
 - `implanted_aluminium.py`: sheet resistance of Al-implanted 4H-SiC layers.
 - `simple.py`: analytic toy fields.
 - `tcad.py`: TDR field import and weighting field solving.
@@ -462,9 +464,10 @@ Users can configure the device file keys in the table below and the solver setti
 | `undepleted_resistance_ohm`, `undepleted_capacitance_pF` | `None` | $\Omega$, pF | Undepleted layer; must be given as a pair |
 | `resistive_layer.sheet_resistance` | None | $\Omega$ | Sheet resistance |
 | `resistive_layer.implanted`, `.thickness`, `.anneal` | None | $\text{cm}^{-2}$, $\mu\text{m}$, $^\circ\text{C}$ | Computed via Eq. (22) when `sheet_resistance` is absent |
-| `resistive_layer.strips` | None | cell index | Row circuit: mapping strip name to first and last cell indices `[first, last]` |
-| `resistive_layer.pads` | None | cell index | Grid circuit: mapping electrode name to `[x_first, x_last, y_first, y_last]` |
-| `resistive_layer.grounded` | `{}` | cell index | Grounded contacts; `[first, last]` for a row, list of rectangles for a grid |
+| `resistive_layer.strips` | None | RC node index | Row circuit: mapping strip name to first and last RC node indices `[first, last]` |
+| `resistive_layer.pads` | None | RC node index | Grid circuit: mapping electrode name to `[x_first, x_last, y_first, y_last]` |
+| `resistive_layer.grounded` | `{}` | RC node index | Grounded contacts; `[first, last]` for a row, list of rectangles for a grid |
+| `resistive_layer.contact` | None (required when there is a `resistive_layer`) | None | Name of the mesh contact the resistive layer sits on; the weighting potential is solved for this contact and stored as `weightingfield/<contact>/Potential_<V>V.pkl` |
 | `resistive_layer.coupling.thickness`, `.permittivity` | None | $\mu\text{m}$, None | Dielectric layer beneath electrodes |
 | `det_model` | None | None | Selects analytic field type; if it contains `"3d"`, `Detector.capacitance` is `None` when `capacitance_pF` is absent |
 | `depletion_voltage`, `input_doping` | `|bias.voltage|`, `1e12` | V, $\text{cm}^{-3}$ | Analytic fields |

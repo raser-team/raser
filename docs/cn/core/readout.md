@@ -43,9 +43,9 @@ $$V_{r,m} = V_r(t_j) + \frac{t_m - t_j}{t_{j+1} - t_j}\bigl[V_r(t_{j+1}) - V_r(t
 
 ### 阻性层网络对一点冲击的响应
 
-电荷 $q$（缺省 $1\ \text{fC}$）落在有阻性电荷共享层的器件上一点 $(x, y)$（单位 $\mu\text{m}$，$0 \le x \le l_x$、$0 \le y \le l_y$；只给 $x$ 一个坐标时 $y$ 取器件中线 $l_y / 2$），按这一点到相邻晶胞中心的距离线性分给晶胞；晶胞沿 $x$ 有 $N_x$（`x_ele_num`）个、间距 $p_x$（`p_x`），沿 $y$ 有 $N_y$（`y_ele_num`）个、间距 $p_y$（`p_y`），整体在器件上居中（晶胞网络的电路参数见 [器件场](field.md)）。
+电荷 $q$（缺省 $1\ \text{fC}$）落在有阻性电荷共享层的器件上一点 $(x, y)$（单位 $\mu\text{m}$，$0 \le x \le l_x$、$0 \le y \le l_y$；只给 $x$ 一个坐标时 $y$ 取器件中线 $l_y / 2$），按这一点到相邻 RC 格点中心的距离线性分给 RC 格点； RC 格点沿 $x$ 有 $N_x$（`x_ele_num`）个、间距 $p_x$（`p_x`），沿 $y$ 有 $N_y$（`y_ele_num`）个、间距 $p_y$（`p_y`），整体在器件上居中（ RC 格点网络的电路参数见 [器件场](field.md)）。
 
-沿单个轴（以 $x$ 为例），位置换算为以晶胞宽度为单位、相对首晶胞中心的坐标 $u$，落在两相邻晶胞中心之间时按距离线性分给第 $i$ 个与第 $i+1$ 个晶胞，超出首晶胞中心或末晶胞中心时全部分给边缘晶胞；两轴的份额相乘得到各二维晶胞的份额 $s_{ij}$，并在第一个时间箱内作为矩形电流脉冲 $\bar{I}_{n,0} = s_{ij}\, q / \Delta t$ 注入对应晶胞电流源，其余时间箱置零，交给上一节的瞬态求解：
+沿单个轴（以 $x$ 为例），位置换算为以 RC 格点宽度为单位、相对首 RC 格点中心的坐标 $u$，落在两相邻 RC 格点中心之间时按距离线性分给第 $i$ 个与第 $i+1$ 个 RC 格点，超出首 RC 格点中心或末 RC 格点中心时全部分给边缘 RC 格点；两轴的份额相乘得到各二维 RC 格点的份额 $s_{ij}$，并在第一个时间箱内作为矩形电流脉冲 $\bar{I}_{n,0} = s_{ij}\, q / \Delta t$ 注入对应 RC 格点电流源，其余时间箱置零，交给上一节的瞬态求解：
 
 $$x_0 = \frac{l_x - N_x p_x}{2}, \qquad u = \frac{x - x_0}{p_x} - \frac{1}{2} \tag{5}$$
 
@@ -58,20 +58,20 @@ $$s_{ij} = s_i^{(x)} s_j^{(y)}, \qquad n = i N_y + j, \qquad \bar{I}_{n,m} = \be
 - $q$：注入的点电荷量（代码变量 `charge`，缺省 $10^{-15}\ \text{C}$），$\text{C}$；
 - $(x, y)$：冲击点的器件平面坐标（代码变量 `point_um` 解析为 `x_um`、`y_um`），$\mu\text{m}$；
 - $l_x, l_y$：器件在 $x$、$y$ 方向的尺寸（代码属性 `my_d.l_x`、`my_d.l_y`），$\mu\text{m}$；
-- $N_x, N_y$：晶胞沿 $x$、$y$ 方向的个数（代码属性 `my_d.x_ele_num`、`my_d.y_ele_num`），个；
-- $p_x, p_y$：晶胞沿 $x$、$y$ 方向的间距（代码属性 `my_d.p_x`、`my_d.p_y`），$\mu\text{m}$；
-- $x_0$：居中晶胞阵列在 $x$ 轴上的左边界坐标（代码变量 `first_edge`，右边界为 `last_edge` $= x_0 + N_x p_x$），$\mu\text{m}$；$y$ 轴对应边界 $y_0$ 定义相同；
-- $u$：以晶胞宽度为单位、相对首晶胞中心的归一化位置（代码变量 `place`），无量纲；
-- $i, j$：晶胞沿 $x$、$y$ 轴的 `0` 起下标（代码变量 `number = int(np.floor(place))`），无量纲；
-- $s_k^{(x)}, s_k^{(y)}$：单轴第 $k$ 个晶胞分得的电荷份额（`_along` 返回字典，仅保留非零项，在 $u = i$ 时仅返回 `{i: 1.0}`），无量纲；$y$ 轴用 $l_y, N_y, p_y, y_0$ 按同一公式求得；
-- $s_{ij}$：二维晶胞 $(i, j)$ 分得的总电荷份额（代码表达式 `part_x * part_y`），无量纲；
-- $n$：二维晶胞在 `circuit.sources` 中的 `0` 起序号（代码变量 `number = i * y_ele_num + j`），无量纲；
+- $N_x, N_y$： RC 格点沿 $x$、$y$ 方向的个数（代码属性 `my_d.x_ele_num`、`my_d.y_ele_num`），个；
+- $p_x, p_y$： RC 格点沿 $x$、$y$ 方向的间距（代码属性 `my_d.p_x`、`my_d.p_y`），$\mu\text{m}$；
+- $x_0$：居中 RC 格点阵列在 $x$ 轴上的左边界坐标（代码变量 `first_edge`，右边界为 `last_edge` $= x_0 + N_x p_x$），$\mu\text{m}$；$y$ 轴对应边界 $y_0$ 定义相同；
+- $u$：以 RC 格点宽度为单位、相对首 RC 格点中心的归一化位置（代码变量 `place`），无量纲；
+- $i, j$： RC 格点沿 $x$、$y$ 轴的 `0` 起下标（代码变量 `number = int(np.floor(place))`），无量纲；
+- $s_k^{(x)}, s_k^{(y)}$：单轴第 $k$ 个 RC 格点分得的电荷份额（`_along` 返回字典，仅保留非零项，在 $u = i$ 时仅返回 `{i: 1.0}`），无量纲；$y$ 轴用 $l_y, N_y, p_y, y_0$ 按同一公式求得；
+- $s_{ij}$：二维 RC 格点 $(i, j)$ 分得的总电荷份额（代码表达式 `part_x * part_y`），无量纲；
+- $n$：二维 RC 格点在 `circuit.sources` 中的 `0` 起序号（代码变量 `number = i * y_ele_num + j`），无量纲；
 - $\Delta t$：时间箱宽度（代码变量 `dt`，缺省 $10^{-11}\ \text{s}$），$\text{s}$；
-- $\bar{I}_{n,m}$：第 $n$ 个晶胞在第 $m$ 个时间箱内的平均注入电流（代码变量 `currents[n, m]`；总时间箱数 `bins` 缺省 $2000$），$\text{A}$。
+- $\bar{I}_{n,m}$：第 $n$ 个 RC 格点在第 $m$ 个时间箱内的平均注入电流（代码变量 `currents[n, m]`；总时间箱数 `bins` 缺省 $2000$），$\text{A}$。
 
-若冲击点落在晶胞阵列范围之外（不满足 `first_edge <= here_um <= last_edge`），`shares` 抛出 `ValueError("The point lies at <axis> = <here_um> um, and the cells of the layer reach from <first_edge> to <last_edge> um")`，写明越界坐标与阵列在该轴上的范围；若电路的电流源数 `len(circuit.sources)` 与器件晶胞总数 `x_ele_num * y_ele_num` 不等，`impulse_response` 抛出 `ValueError("The circuit has the currents of <len(cells)> cells, and <det_name> has <count>")`。
+若冲击点落在 RC 格点阵列范围之外（不满足 `first_edge <= here_um <= last_edge`），`shares` 抛出 `ValueError("The point lies at <axis> = <here_um> um, and the RC nodes of the layer reach from <first_edge> to <last_edge> um")`，写明越界坐标与阵列在该轴上的范围；若电路的电流源数 `len(circuit.sources)` 与器件 RC 格点总数 `x_ele_num * y_ele_num` 不等，`impulse_response` 抛出 `ValueError("The circuit has the currents of <len(rc_nodes)> RC nodes, and <det_name> has <count>")`。
 
-多点脉冲响应注入与晶胞份额分配由 `network.py` 的 `shares` 与 `impulse_response` 实现。
+多点脉冲响应注入与 RC 格点份额分配分别由 `core/field` 的 `resistive_layer.py` 中的 `shares` 与 `network.py` 的 `impulse_response` 实现。
 
 ### 给定谱的频域热噪声与时域合成
 
@@ -274,7 +274,7 @@ $$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 
 - `waveforms.py`：定义 `EventWaveforms`、`Waveforms` 数据类及 `_check_layout`、`append_waveforms`、`read_waveforms`、`read_circuit_values`，负责 `readout.h5` 的稀疏追加写入与读取。
 - `schematic.py`：提供 `read_hints`、`arrange`、`layout`、`value_text` 与 `draw`，将 `.cir` 子电路文件绘制为原理图图像。
 - `draw.py`：提供 `draw_waveform`，使用 `raser.supports.figures` 绘制单事例的输入感应电流与放大器输出电压波形图并保存为 `.png` 与 `.pdf`。
-- `network.py`：计算阻性层网络对点冲击的响应。`shares(my_d, point_um)` 给出落在 `(x, y)` 的单位电荷分到各晶胞的份额字典；`impulse_response(my_d, circuit, chain, points_um, dt=10e-12, bins=2000, charge=1e-15)` 逐点将各晶胞份额作为首箱矩形脉冲电流调用 `spice.solve`，按 `circuit.outputs` 顺序返回形状 `(points, outputs, bins)` 的输出电压（$\text{V}$）。
+- `network.py`：计算阻性层网络对点冲击的响应。`impulse_response(my_d, circuit, chain, points_um, dt=10e-12, bins=2000, charge=1e-15)` 逐点将各 RC 格点份额作为首箱矩形脉冲电流调用 `spice.solve`，按 `circuit.outputs` 顺序返回形状 `(points, outputs, bins)` 的输出电压（$\text{V}$）。
 - `draw_network.py`：绘制阻性层网络冲击响应图与器件网络电路图。`sharing` 绘制各读出电极波形最大绝对值及积分随冲击点 $x$ 的变化，经 `raser.supports.figures.save` 在 `folder` 下存为 `network_sharing.png` 与 `.pdf`；`waveforms` 绘制单个冲击点上各读出电极的输出波形，经 `raser.supports.figures.save` 存为 `network_waveforms.png` 与 `.pdf`；`schematic` 以 `circuit.outputs` 前两个读出节点为端口生成临时 `.cir` 子电路，按元件名前缀添加布局提示（`Rxlayer_`、`Rlayer_` 标 `; right`，`Rylayer_`、`Cpad_` 标 `; up`，`Clayer_` 标 `; down`），调用 `schematic.draw` 绘成 `network_schematic.png`。
 
 ### 核心数据结构
