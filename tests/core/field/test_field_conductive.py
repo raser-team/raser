@@ -4,6 +4,7 @@ import pytest
 from raser.core.field.conductive import ELEMENTARY_CHARGE
 from raser.core.field.conductive import conductive
 from raser.core.field.conductive import undepleted_bulk
+from raser.core.field.conductive import undepleted_layer_of_mesh
 
 MU_N, MU_P = 1400.0, 450.0  # cm^2/(V s), silicon
 
@@ -59,3 +60,42 @@ def test_the_undepleted_bulk_is_what_lies_between_the_depletion_and_the_contact_
 
 def test_a_fully_depleted_device_has_no_undepleted_bulk() -> None:
     assert undepleted_bulk(*_planar(depleted_to_um=100), MU_N, MU_P) == (0.0, 0.0)
+
+
+def test_the_undepleted_layer_of_a_mesh_is_that_of_its_columns_along_the_depth() -> None:
+    # 5 columns 2 um wide, each 11 nodes 1 um apart along the depth with the
+    # same profile: depleted down to 3 um, undepleted from 4 um to 10 um,
+    # n-type 1e12 cm^-3 with all its electrons there: 4.6 kOhm cm.
+    step_cm, column_cm, columns = 1e-4, 2e-4, 5
+    depth = np.arange(11) * step_cm
+    net_doping = np.full(11, 1.0e12)
+    electrons = np.where(np.arange(11) >= 4, 1.0e12, 0.0)
+    holes = np.zeros(11)
+    mu_n, mu_p = 1350.0, 480.0
+    # Volume of a node along the depth: its own cell, half a step on either
+    # side, half a step at the two ends of the column. The sum along the
+    # depth adds the intervals whose two nodes are both undepleted, 4 to 10
+    # um; the sum over nodes adds the cells of the undepleted nodes, which
+    # reach half a step beyond the first of them, 3.5 to 10 um. The first
+    # undepleted node is given only the half of its cell towards the bulk,
+    # as if it were an end: both sums then cover 4 to 10 um, with one
+    # resistivity, and are the same.
+    cell = np.full(11, step_cm)
+    cell[[0, 10]] = step_cm / 2
+    cell[4] = step_cm / 2
+    volumes = np.tile(cell * column_cm, columns)
+
+    width, resistance = undepleted_layer_of_mesh(
+        volumes,
+        columns * column_cm,
+        np.tile(electrons, columns),
+        np.tile(holes, columns),
+        np.tile(net_doping, columns),
+        mu_n,
+        mu_p,
+    )
+
+    along_depth = undepleted_bulk(depth, electrons, holes, net_doping, mu_n, mu_p)
+    assert along_depth[0] == pytest.approx(6e-4, rel=1e-12, abs=0)
+    assert width == pytest.approx(along_depth[0], rel=1e-12, abs=0)
+    assert resistance == pytest.approx(along_depth[1], rel=1e-12, abs=0)

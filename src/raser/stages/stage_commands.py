@@ -41,7 +41,7 @@ def _experiment(target):
     except FileNotFoundError:
         raise SystemExit(
             f"{target}: neither an experiment folder (a folder with a config.json) "
-            "nor a device; give one of them, e.g. work/<device>/cce or HPK-Si-PiN"
+            "nor a device; give one of them, e.g. work/<device>/signal or HPK-Si-PiN"
         ) from None
     return work_root() / target / "signal", ["signal"], target
 

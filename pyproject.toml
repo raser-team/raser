@@ -49,6 +49,16 @@ Repository = "https://github.com/raser-team/raser"
 [project.scripts]
 raser = "raser.cli.raser:main"
 
+# The experiments: command -> the module that registers it. A package of its
+# own registers its experiments in the same group.
+[project.entry-points."raser.experiments"]
+signal = "raser_bench.signal"
+timeres = "raser_bench.timeres"
+tct = "raser_bench.tct"
+telescope = "raser_bench.telescope"
+bmos = "raser_app.bmos"
+cflm = "raser_app.cflm"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 include-package-data = true
@@ -60,13 +70,9 @@ version = {attr = "raser.__version__"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-raser = [
-  "components/**/*",
-  "apps/*/*.json",
-  "apps/*/components/**/*",
-  "bench/*/*.json",
-  "bench/*/components/**/*",
-]
+raser = ["components/**/*"]
+raser_bench = ["*/*.json", "*/components/**/*"]
+raser_app = ["*/*.json", "*/components/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -85,7 +91,13 @@ markers = [
 ]
 
 [tool.importlinter]
-root_package = "raser"
+root_packages = ["raser", "raser_bench", "raser_app"]
+
+[[tool.importlinter.contracts]]
+name = "The library knows no bench and no app"
+type = "forbidden"
+source_modules = ["raser"]
+forbidden_modules = ["raser_bench", "raser_app"]
 
 [[tool.importlinter.contracts]]
 name = "The chain: a stage may use the stages before it, not those after it"
@@ -103,7 +115,7 @@ layers = [
 ]
 
 [[tool.importlinter.contracts]]
-name = "Below the stages nothing knows a stage, a bench or an app"
+name = "Below the stages nothing knows a stage"
 type = "forbidden"
 source_modules = [
   "raser.core",
@@ -111,7 +123,7 @@ source_modules = [
   "raser.supports",
   "raser.lifecycle",
 ]
-forbidden_modules = ["raser.stages", "raser.bench", "raser.apps"]
+forbidden_modules = ["raser.stages"]
 
 [[tool.importlinter.contracts]]
 name = "Nothing below the command line imports it"
@@ -122,16 +134,10 @@ source_modules = [
   "raser.supports",
   "raser.lifecycle",
   "raser.stages",
-  "raser.bench",
-  "raser.apps",
+  "raser_bench",
+  "raser_app",
 ]
 forbidden_modules = ["raser.cli"]
-
-[[tool.importlinter.contracts]]
-name = "A stage knows no bench or app"
-type = "forbidden"
-source_modules = ["raser.stages"]
-forbidden_modules = ["raser.bench", "raser.apps"]
 
 [[tool.importlinter.contracts]]
 name = "The core does not know how it is run"
@@ -143,13 +149,12 @@ forbidden_modules = ["raser.lifecycle", "raser.cli"]
 name = "No experiment imports another"
 type = "independence"
 modules = [
-  "raser.bench.cce",
-  "raser.bench.signal",
-  "raser.bench.tct",
-  "raser.bench.telescope",
-  "raser.bench.timeres",
-  "raser.apps.bmos",
-  "raser.apps.cflm",
+  "raser_bench.signal",
+  "raser_bench.tct",
+  "raser_bench.telescope",
+  "raser_bench.timeres",
+  "raser_app.bmos",
+  "raser_app.cflm",
 ]
 
 [tool.mypy]

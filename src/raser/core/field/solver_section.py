@@ -333,7 +333,7 @@ def main (kwargs):
         loop.initial_solver(contact=bias_contact, set_contact_type=None, impact_model=impact_model, irradiation_model=irradiation_model, irradiation_flux=irradiation_flux,)
         v_current = 0
         loop.loop_solver(circuit_contact=bias_contact, v_trial=0, area_factor=paras["area_factor"])
-        save_milestone.save_milestone(device=device, v=0, path=path, dimension=default_dimension, contact_name=bias_contact, is_wf=is_wf,)
+        save_milestone.save_milestone(device=device, v=0, path=path, dimension=default_dimension, contact_name=bias_contact, is_wf=is_wf, axes=mesh_axes(MyDetector),)
         save_milestone.save_solved(path, "potential", 0.0)
         dd = os.path.join(path, '0V.dd')
         devsim_device = os.path.join(path, '0V.devsim')
@@ -370,7 +370,7 @@ def main (kwargs):
                     curve_points.pop(0)
                 print("=========RASER info===========\nConvergence success, voltage = {}, increased voltage step = {}\n================".format(v_trial, voltage_step))
                 if (paras['milestone_mode']) and (milestone_flag or goal_flag):
-                    save_milestone.save_milestone(device=device, v=v_trial, path=path, dimension=default_dimension, contact_name=bias_contact, is_wf=is_wf,)
+                    save_milestone.save_milestone(device=device, v=v_trial, path=path, dimension=default_dimension, contact_name=bias_contact, is_wf=is_wf, axes=mesh_axes(MyDetector),)
                     save_milestone.save_solved(path, "potential", float(v_trial))
                     dd = os.path.join(path, str(v_trial) + 'V.dd')
                     devsim_device = os.path.join(path, str(v_trial) + 'V.devsim')

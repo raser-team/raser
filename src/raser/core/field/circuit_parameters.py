@@ -2,8 +2,11 @@
 
 import dataclasses
 import json
+import logging
+import math
 from pathlib import Path
 
+from ..model.material import Material
 from . import implanted_aluminium
 from .assets import field_pickle_path
 from .resistive_layer import resistive_grid
@@ -15,6 +18,33 @@ from .solved import solved_capacitance
 from .solved import solved_undepleted
 
 VACUUM_PERMITTIVITY_F_M = 8.8541878128e-12
+VACUUM_PERMITTIVITY_F_CM = 8.8541878128e-14
+
+logger = logging.getLogger(__name__)
+
+
+def _mesh_axes(my_d):
+    """The device axis that each coordinate of the device's mesh runs along.
+
+    A copy of create_mesh.mesh_axes, which this module cannot import: the
+    module of create_mesh needs devsim, and the circuit of a run does not.
+    The two must stay the same.
+    """
+    if my_d.dimension == 1:
+        return ("z",)
+    if my_d.dimension == 2:
+        plugin = my_d.device_dict.get("mesh", {}).get("plugin", False)
+        return ("x", "y") if plugin else ("z", "x")
+    return ("x", "y", "z") if my_d.mesher == "sde" else ("z", "x", "y")
+
+
+def undepleted_area_cm2(my_d):
+    """Area [cm^2] the undepleted layer of the field is taken over: the area
+    factor of a device of one dimension, l_x l_y of one of two or three."""
+    if int(my_d.dimension) == 1:
+        return float(my_d.device_dict.get("area_factor", 1.0))
+    # l_x and l_y are in um
+    return float(my_d.l_x) * float(my_d.l_y) * 1e-8
 
 
 def junction_capacitance(my_d, solved_f=None):
@@ -111,10 +141,11 @@ def field_circuit(folder, my_d):
     solved_f : for a device that is not such a row, the capacitance [F] the
         field solved at the bias, as solved.solved_capacitance gives it; None
         where it solved none there, and the device keeps its estimate.
-    solved_undepleted : for a device of one dimension, the resistance and
-        capacitance of the bulk the bias leaves undepleted, as
-        solved.solved_undepleted gives them, None when it depletes all; None
-        for devices of more dimensions, whose undepleted bulk is not a slab.
+    solved_undepleted : for a device whose mesh runs along its depth z, the
+        resistance and capacitance of the bulk the bias leaves undepleted
+        over the area undepleted_area_cm2 gives, as solved.solved_undepleted
+        gives them, None when it depletes all; None for a mesh that does not
+        run along z, which stores no undepleted bulk.
     """
     row = None
     if my_d.is_strip and len(my_d.read_out_contact) == 1 and my_d.read_ele_num > 1:
@@ -139,12 +170,12 @@ def field_circuit(folder, my_d):
         if float(my_d.voltage) in solved:
             capacitance = solved_capacitance(Path(folder), my_d.voltage)
     undepleted = None
-    if int(my_d.dimension) == 1:
-        undepleted = solved_undepleted(Path(folder), my_d.voltage)
+    if "z" in _mesh_axes(my_d):
+        undepleted = solved_undepleted(Path(folder), my_d.voltage, undepleted_area_cm2(my_d))
     return row, capacitance, undepleted
 
 
-def part_of_row(my_d, electrodes, hit, margin, solved_f=None, row=None):
+def part_of_row(my_d, electrodes, hit, margin, solved_f=None, row=None, solved_undepleted=None):
     """The circuit of a part of a row of strips around the strips `hit`, as
     device_circuit builds it for those strips alone: from the first to the
     last strip hit, by their names among electrodes, the strips of the row
@@ -152,17 +183,27 @@ def part_of_row(my_d, electrodes, hit, margin, solved_f=None, row=None):
     as the row goes.
 
     The strips at the ends of the part lack their neighbours outside it,
-    whose capacitance is on ground.
+    whose capacitance is on ground. The undepleted layer is that of the whole
+    device: the strips of the row outside the part are on virtual ground,
+    and their depleted layers lie between the shared node and ground, as
+    device_circuit takes them with `rest`.
     """
     places = [list(electrodes).index(name) for name in hit]
     first = max(min(places) - margin, 0)
     last = min(max(places) + margin, len(electrodes) - 1)
     names = list(electrodes[first : last + 1])
-    circuit, _ = device_circuit(my_d, names, solved_f, row=row)
+    circuit, _ = device_circuit(
+        my_d,
+        names,
+        solved_f,
+        row=row,
+        solved_undepleted=solved_undepleted,
+        rest=len(electrodes) - len(names),
+    )
     return circuit
 
 
-def device_circuit(my_d, electrodes, solved_f=None, row=None, solved_undepleted=None):
+def device_circuit(my_d, electrodes, solved_f=None, row=None, solved_undepleted=None, rest=0):
     """DeviceCircuit of the read-out electrodes of a device, and the values it
     is made of, for the record of the run.
 
@@ -177,15 +218,20 @@ def device_circuit(my_d, electrodes, solved_f=None, row=None, solved_undepleted=
         of places up to which strips are coupled. It takes the place of
         solved_f.
     solved_undepleted : as undepleted_layer_of takes it.
+    rest : with row, the number of strips of the row that are not in this
+        circuit, all on virtual ground.
 
-    Without row every electrode has the junction capacitance to the back, on
-    ground, and no capacitance to another. With row the strips up to
+    Without row every electrode has the junction capacitance to the back of
+    its depleted layer, and no capacitance to another. With row the strips up to
     neighbours_coupled places apart have theirs between them, and the rest of
     the capacitance of a strip is on ground: the back, the strips further
     away and those beyond the ends of the row, which are not read out.
-    Without row a device that is not fully depleted has its undepleted layer
-    behind the depleted one of every electrode. A row has none: the layer
-    under strips is not a slab under each of them.
+    The back of the depleted layer is ground for a fully depleted device;
+    otherwise it is the node "undepleted", which all electrodes share, with
+    the resistance and the capacitance of the undepleted layer of the whole
+    device between it and ground. With row and rest, the strips not in the
+    circuit add rest times the capacitance of a strip in the middle of the
+    row to the back between that node and ground.
     Every electrode has the bias resistance and the coupling capacitance of
     the device file, as bias_and_coupling gives them. Without row every
     electrode has the same circuit, alike for its noise. In a row the strips
@@ -196,6 +242,7 @@ def device_circuit(my_d, electrodes, solved_f=None, row=None, solved_undepleted=
     """
     bias_ohm, coupling_f = bias_and_coupling(my_d)
     undepleted, undepleted_from = undepleted_layer_of(my_d, solved_undepleted)
+    back = "0" if undepleted is None else "undepleted"
     if row is None:
         farad, source = junction_capacitance(my_d, solved_f)
         circuit = side_by_side(
@@ -203,7 +250,7 @@ def device_circuit(my_d, electrodes, solved_f=None, row=None, solved_undepleted=
                 planar_circuit(
                     electrode,
                     farad,
-                    undepleted=undepleted,
+                    back=back,
                     bias_resistance_ohm=bias_ohm,
                     coupling_capacitance_f=coupling_f,
                 )
@@ -216,12 +263,6 @@ def device_circuit(my_d, electrodes, solved_f=None, row=None, solved_undepleted=
             raise ValueError(
                 f"{my_d.det_name} is not a row of strips: the capacitances "
                 "between its electrodes are not taken from a row"
-            )
-        if undepleted is not None:
-            raise ValueError(
-                f"{my_d.det_name} is a row of strips and has an undepleted "
-                f"layer, from the {undepleted_from}: the circuit of a row "
-                "has none"
             )
         if row["unit"] != "F/cm":
             raise ValueError(f"The capacitances of the row are in {row['unit']}")
@@ -249,6 +290,7 @@ def device_circuit(my_d, electrodes, solved_f=None, row=None, solved_undepleted=
                 planar_circuit(
                     electrode,
                     farad - to_others,
+                    back=back,
                     bias_resistance_ohm=bias_ohm,
                     coupling_capacitance_f=coupling_f,
                 )
@@ -270,16 +312,72 @@ def device_circuit(my_d, electrodes, solved_f=None, row=None, solved_undepleted=
             for group in sorted(set(place_class))
         )
     circuit = dataclasses.replace(circuit, alike=alike)
+    if undepleted is not None:
+        lines = _undepleted_lines(undepleted)
+        if row is not None and rest > 0:
+            # a strip at least neighbours_coupled places from both ends
+            middle_f = farad - 2 * sum(between_f)
+            lines.append(f"C_undepleted_rest undepleted 0 {rest * middle_f:.9g}")
+        circuit = dataclasses.replace(circuit, lines=circuit.lines + tuple(lines))
+        if not rest:  # once for the device, not for every part of its row
+            _warn_undepleted(my_d, undepleted)
     values = {
         "junction_capacitance": {"farad": farad, "from": source},
         "between_electrodes": between,
         "bias_resistance": None if bias_ohm is None else {"ohm": bias_ohm},
         "coupling_capacitance": None if coupling_f is None else {"farad": coupling_f},
-        "undepleted_layer": None
-        if undepleted is None
-        else {"ohm": undepleted[0], "farad": undepleted[1], "from": undepleted_from},
+        "undepleted_layer": _undepleted_value(undepleted, undepleted_from),
     }
     return circuit, values
+
+
+def _undepleted_lines(undepleted):
+    """SPICE lines of the undepleted layer of the whole device, its
+    resistance [Ohm] and capacitance [F] between the node "undepleted" and
+    ground."""
+    resistance_ohm, capacitance_f = undepleted
+    return [
+        f"R_undepleted undepleted 0 {resistance_ohm:.9g}",
+        f"C_undepleted undepleted 0 {capacitance_f:.9g}",
+    ]
+
+
+def _warn_undepleted(my_d, undepleted):
+    """Warn that a device of two or three dimensions is not fully depleted:
+    its undepleted layer, lumped on one node, is not right for the signals
+    of the neighbours of the hit electrode."""
+    if int(my_d.dimension) <= 1:
+        return
+    resistance_ohm, capacitance_f = undepleted
+    tau_r_s = resistance_ohm * capacitance_f
+    width_cm = (
+        VACUUM_PERMITTIVITY_F_CM
+        * Material(my_d.material).permittivity
+        * undepleted_area_cm2(my_d)
+        / capacitance_f
+    )
+    # l_z is in um
+    thickness_cm = float(my_d.l_z) * 1e-4
+    depleted_cm = thickness_cm - width_cm
+    tau_0_s = tau_r_s * thickness_cm / depleted_cm if depleted_cm > 0 else math.inf
+    logger.warning(
+        "%s at %s V: depleted depth d0 = %.4g um, tau_r = %.4g ns, tau_0 = %.4g ns. "
+        "The bias is low: the lumped undepleted layer is exact for the sum of all "
+        "electrodes and for slow shaping on the hit electrode, not for the signals "
+        "of the neighbours",
+        my_d.det_name,
+        my_d.voltage,
+        depleted_cm * 1e4,
+        tau_r_s * 1e9,
+        tau_0_s * 1e9,
+    )
+
+
+def _undepleted_value(undepleted, undepleted_from):
+    """The record of the undepleted layer of a run."""
+    if undepleted is None:
+        return None
+    return {"ohm": undepleted[0], "farad": undepleted[1], "from": undepleted_from}
 
 
 def sheet_resistance(my_d, chosen_ohm=None):
@@ -310,7 +408,7 @@ def sheet_resistance(my_d, chosen_ohm=None):
     )
 
 
-def device_row(my_d, cells, solved_f=None, sheet_ohm=None):
+def device_row(my_d, cells, solved_f=None, sheet_ohm=None, solved_undepleted=None):
     """DeviceCircuit of the row of strips on the resistive layer of a device,
     and the values it is made of, for the record of the run.
 
@@ -320,6 +418,10 @@ def device_row(my_d, cells, solved_f=None, sheet_ohm=None):
         junction_capacitance takes it.
     sheet_ohm : resistance of a square of the layer [Ohm] in place of that
         of the device, as sheet_resistance takes it.
+    solved_undepleted : as undepleted_layer_of takes it. A device that is
+        not fully depleted has the back of the depleted layer of every cell
+        on the node "undepleted", with its undepleted layer between that node
+        and ground, as device_circuit has it.
 
     The strips are those of resistive_layer in the device file: for each its
     name with the numbers (from 0) of its first and last cell. Its grounded
@@ -330,6 +432,8 @@ def device_row(my_d, cells, solved_f=None, sheet_ohm=None):
     """
     farad, capacitance_from = junction_capacitance(my_d, solved_f)
     ohm, resistance_from = sheet_resistance(my_d, sheet_ohm)
+    undepleted, undepleted_from = undepleted_layer_of(my_d, solved_undepleted)
+    back = "0" if undepleted is None else "undepleted"
     width_m = float(my_d.p_x) * 1e-6
     length_m = float(my_d.l_y) * 1e-6
     strips = {
@@ -356,16 +460,23 @@ def device_row(my_d, cells, solved_f=None, sheet_ohm=None):
             {name: (first, last, 0, 0) for name, (first, last) in strips.items()},
             coupling,
             {name: [(first, last, 0, 0)] for name, (first, last) in grounded.items()},
+            back=back,
         )
     else:
         coupling = None
         circuit = resistive_row(
-            cells, width_m, length_m, ohm, per_area, strips, grounded
+            cells, width_m, length_m, ohm, per_area, strips, grounded, back=back
         )
+    if undepleted is not None:
+        circuit = dataclasses.replace(
+            circuit, lines=circuit.lines + tuple(_undepleted_lines(undepleted))
+        )
+        _warn_undepleted(my_d, undepleted)
     values = {
         "cell_capacitance": {"farad": farad, "from": capacitance_from},
         "sheet_resistance": {"ohm": ohm, "from": resistance_from},
         "coupling_per_area_f_m2": coupling,
+        "undepleted_layer": _undepleted_value(undepleted, undepleted_from),
     }
     return circuit, values
 
@@ -380,7 +491,7 @@ def _coupling_per_area(layer):
     )
 
 
-def device_grid(my_d, cells, solved_f=None, sheet_ohm=None):
+def device_grid(my_d, cells, solved_f=None, sheet_ohm=None, solved_undepleted=None):
     """DeviceCircuit of the pads on the resistive layer of a device, and the
     values it is made of, for the record of the run.
 
@@ -389,6 +500,7 @@ def device_grid(my_d, cells, solved_f=None, sheet_ohm=None):
     solved_f : capacitance [F] of one cell to the back, as
         junction_capacitance takes it.
     sheet_ohm : as device_row takes it.
+    solved_undepleted : as device_row takes it.
 
     The pads and the grounded contacts are those of resistive_layer in the
     device file. With coupling there, thickness [um] and permittivity of the
@@ -399,6 +511,8 @@ def device_grid(my_d, cells, solved_f=None, sheet_ohm=None):
     ohm, resistance_from = sheet_resistance(my_d, sheet_ohm)
     widths_m = (float(my_d.p_x) * 1e-6, float(my_d.p_y) * 1e-6)
     coupling = _coupling_per_area(layer) if "coupling" in layer else None
+    undepleted, undepleted_from = undepleted_layer_of(my_d, solved_undepleted)
+    back = "0" if undepleted is None else "undepleted"
     circuit = resistive_grid(
         cells,
         (my_d.x_ele_num, my_d.y_ele_num),
@@ -411,10 +525,17 @@ def device_grid(my_d, cells, solved_f=None, sheet_ohm=None):
             name: [tuple(span) for span in spans]
             for name, spans in layer.get("grounded", {}).items()
         },
+        back=back,
     )
+    if undepleted is not None:
+        circuit = dataclasses.replace(
+            circuit, lines=circuit.lines + tuple(_undepleted_lines(undepleted))
+        )
+        _warn_undepleted(my_d, undepleted)
     values = {
         "cell_capacitance": {"farad": farad, "from": capacitance_from},
         "sheet_resistance": {"ohm": ohm, "from": resistance_from},
         "coupling_per_area_f_m2": coupling,
+        "undepleted_layer": _undepleted_value(undepleted, undepleted_from),
     }
     return circuit, values
