@@ -1,5 +1,5 @@
 {
-    "det_name": "pixel_test",
+    "det_name": "general_pixel",
     "det_model": "pixel",  
     "electrodes": "pixel",
     "material": "Si",
