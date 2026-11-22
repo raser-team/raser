@@ -156,9 +156,9 @@ where $Q_j$ is the contact charge on electrode $j$ ($\text{C/cm}$), $V_1 = 1\ \t
 
 After solving, the code determines whether each node is conductive at that bias voltage from its resistivity and depletion state:
 
-$$\text{conductive} \iff \rho < \rho_0 \ \ \text{or}\ \ \bigl(|N_{\text{net}}| > 0 \ \text{and}\ n + p > 0.5\,|N_{\text{net}}|\bigr), \qquad \rho = \frac{1}{q(\mu_n n + \mu_p p)} \tag{19}$$
+$$\text{conductive} \iff \rho < \rho_0 \ \ \text{or}\ \ \bigl(|N_{\text{net}}| > 0 \ \text{and}\ n_{\text{maj}} > 0.5\,|N_{\text{net}}|\bigr), \qquad \rho = \frac{1}{q(\mu_n n + \mu_p p)} \tag{19}$$
 
-where $\rho$ is the resistivity ($\Omega\cdot\text{cm}$), $\rho_0$ = `RESISTIVITY` $= 10\ \Omega\cdot\text{cm}$, `UNDEPLETED` $= 0.5$ is the carrier-count threshold per net dopant ion, and $q$ is taken as `1.602176634e-19` C. Nodes with zero net doping are judged by resistivity alone. Fields solved by DEVSIM use the mobility selected for the region (defaulting to the constant mobility parameters `mu_n`, `mu_p`); fields imported from TCAD use each node's `eMobility`, `hMobility` from the file. This is implemented in `conductive.conductive`, and the classification is written to `Conductive_<V>V.pkl`, used both in Eq. (16) and for the "collected" criterion in [current.md](current.md) (`DevsimField.get_conductive`).
+where $\rho$ is the resistivity ($\Omega\cdot\text{cm}$), $\rho_0$ = `RESISTIVITY` $= 10\ \Omega\cdot\text{cm}$, $n_{\text{maj}}$ is the majority-carrier concentration ($n$ at n-type nodes, $N_{\text{net}} > 0$; $p$ at p-type nodes, $N_{\text{net}} < 0$), `UNDEPLETED` $= 0.5$ is the majority-carrier-count threshold per net dopant ion: the second condition asks whether the majority carriers are still there, not depleted, and minority carriers that spill in from elsewhere do not count, entering only through the resistivity of the first condition, and $q$ is taken as `1.602176634e-19` C. Nodes with zero net doping are judged by resistivity alone. Fields solved by DEVSIM use the mobility selected for the region (defaulting to the constant mobility parameters `mu_n`, `mu_p`); fields imported from TCAD use each node's `eMobility`, `hMobility` from the file. This is implemented in `conductive.conductive`, and the classification is written to `Conductive_<V>V.pkl`, used both in Eq. (16) and for the "collected" criterion in [current.md](current.md) (`DevsimField.get_conductive`).
 
 ### Device Circuit Parameters
 
@@ -174,7 +174,7 @@ $$\text{1D:}\quad r = \sum_{k} w_k\,\bar\rho_k, \quad W_{\text{und}} = \sum_k w_
 
 where:
 
-- a bulk node must have non-zero net doping, $n + p > 0.5|N_{\text{net}}|$, and $\rho \ge 10\ \Omega\cdot\text{cm}$ (heavily doped layers beneath electrodes are excluded);
+- a bulk node must have non-zero net doping, $n_{\text{maj}} > 0.5|N_{\text{net}}|$ (majority carriers as in Eq. (19)), and $\rho \ge 10\ \Omega\cdot\text{cm}$ (heavily doped layers beneath electrodes are excluded);
 - 1D: the sum runs over mesh intervals $k$ whose two adjacent nodes both belong to the undepleted bulk; $w_k$ is the interval width (cm), and $\bar\rho_k$ is the average resistivity of the two endpoint nodes ($\Omega\cdot\text{cm}$);
 - 2D, 3D: the sum runs over undepleted bulk nodes $i$; $V_i$ is the node volume (DEVSIM's `NodeVolume`, in $\text{cm}^2$ for 2D and $\text{cm}^3$ for 3D), and $\rho_i$ is the node resistivity; $S$ is the mesh span in the electrode plane (lateral width in cm for 2D, lateral area in $\text{cm}^2$ for 3D); $W_{\text{und}}$ is the average thickness of the undepleted layer;
 - $r$: $\Omega\cdot\text{cm}^2$; $c$: $\text{F/cm}^2$; $\varepsilon$: region parameter `Permittivity`, $\text{F/cm}$;
