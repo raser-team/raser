@@ -516,7 +516,7 @@ Figures of 1D devices are stored in `plots/` of the field node directory, with t
 
 | File | Content | Axis Units |
 | --- | --- | --- |
-| `plots/iv.png/.pdf` | IV curve: absolute reverse bias versus absolute leakage current, log vertical axis; points whose current is $1\ \text{fA}$ or less are numerical results rather than device currents and are not drawn (the `simIV` file keeps them); axes `Reverse bias [V]`, `Leakage current [A]` | V, A |
+| `plots/iv.png/.pdf` | IV curve: absolute reverse bias versus absolute leakage current, log vertical axis; outlying points more than 6 orders of magnitude below the median of the whole curve (for example the point at 0 V on a curve of pA) are not drawn, while the `simIV` file keeps them; a curve that is small as a whole is drawn as it is; axes `Reverse bias [V]`, `Leakage current [A]` | V, A |
 | `plots/cv.png/.pdf` | Left: capacitance versus reverse bias, axis `Capacitance [pF]`; right: $1/C^2$ versus reverse bias, axis `1/C² [pF⁻²]`; horizontal axis `Reverse bias [V]` | V, pF, $\text{pF}^{-2}$ |
 | `plots/noise.png/.pdf` | Noise current versus reverse bias, log vertical axis `Noise current [A]` | V, A |
 | `plots/doping.png/.pdf` | 1D donor and acceptor concentrations along depth, log vertical axis; axes `Depth [μm]`, `Doping [cm⁻³]` | μm, $\text{cm}^{-3}$ |

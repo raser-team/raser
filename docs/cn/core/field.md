@@ -516,7 +516,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 
 | 文件 | 内容 | 坐标单位 |
 | --- | --- | --- |
-| `plots/iv.png/.pdf` | IV 曲线：反向偏压（取绝对值）对漏电流（取绝对值），对数纵轴；电流不超过 $1\ \text{fA}$ 的点是数值结果而非器件的电流，图上不画（`simIV` 文件里照旧保留）；轴 `Reverse bias [V]`、`Leakage current [A]` | V, A |
+| `plots/iv.png/.pdf` | IV 曲线：反向偏压（取绝对值）对漏电流（取绝对值），对数纵轴；比整条曲线的中位数低 6 个数量级以上的离群点（例如 pA 量级曲线上 0 V 的那一点）图上不画，`simIV` 文件里照旧保留；整条曲线都很小时照原样画；轴 `Reverse bias [V]`、`Leakage current [A]` | V, A |
 | `plots/cv.png/.pdf` | 左：电容随反向偏压，轴 `Capacitance [pF]`；右：$1/C^2$ 随反向偏压，轴 `1/C² [pF⁻²]`；横轴 `Reverse bias [V]` | V, pF, $\text{pF}^{-2}$ |
 | `plots/noise.png/.pdf` | 噪声电流随反向偏压，对数纵轴 `Noise current [A]` | V, A |
 | `plots/doping.png/.pdf` | 1D 施主、受主浓度沿深度，对数纵轴；轴 `Depth [μm]`、`Doping [cm⁻³]` | μm, $\text{cm}^{-3}$ |

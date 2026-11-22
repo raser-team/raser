@@ -20,7 +20,7 @@ import matplotlib.pyplot
 
 from raser.supports.output import output
 
-LEAST_CURRENT = 1e-15  # A, currents of 1 fA and less are not drawn
+OUTLIER_DECADES = 6  # a point this far below the median of its curve is not drawn
 
 
 def draw_iv(V, I, path):
@@ -44,11 +44,13 @@ def draw_iv(V, I, path):
     file.Close()
 
     figure, axis = figures.new()
-    # a device has no current of 1 fA or less: such a point is numerical, as
-    # the one at 0 V, and is left out of the figure (the file keeps it)
+    # a point far below the rest of its curve, as the one at 0 V beside
+    # currents of pA, hides the curve on the log axis: it is left out of the
+    # figure (the file keeps it). A curve that is small as a whole is drawn
+    # as it is
     bias, current = np.abs(V), np.abs(I)
-    physical = current > LEAST_CURRENT
-    axis.plot(bias[physical], current[physical], color=figures.TOTAL, marker="o", markersize=3)
+    kept = current > np.median(current) / 10**OUTLIER_DECADES
+    axis.plot(bias[kept], current[kept], color=figures.TOTAL, marker="o", markersize=3)
     axis.set_yscale("log")
     axis.set_xlabel(figures.label("Reverse bias", "V"))
     axis.set_ylabel(figures.label("Leakage current", "A"))
