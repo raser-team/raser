@@ -321,7 +321,7 @@ For a multi-slot setup, the track traverses all slots in Geant4 world coordinate
 - `geant4/detector_construction.py`, `geant4/g4_gdml_import.py`: geometry and materials; the latter imports external GDML.
 - `geant4/action_initialization.py`, `primary_generator_action.py`, `nuclide_source.py`, `event_action.py`, `stepping_action.py`, `run_action.py`: Geant4 user actions handling respectively action assembly, beam emission, nuclides and decay products, event recording, step recording, and run setup.
 - `geant4/drivers.py`: registers visualization drivers for g4ppyy. `geant4/g4ppyy_runtime.py`: imports g4ppyy and releases the visualization manager before the run manager on process exit.
-- `toy_mip.py`: `ToyMIPLineSource` and `ToyMIPInteraction`, straight-line toy MIP carrier packets for algorithm testing. `energy_loss.py`: Fano sampling `sample_fano_pairs` and Landau sampling `sample_landau_energy_loss`. `carrier_list.py`: `CarrierListFromG4P` and `PixelCarrierListFromG4P`, converting Geant4 steps into carrier lists for `CalCurrentG4P` in [carrier drift and induced current](current.md).
+- `toy_mip.py`: `ToyMIPLineSource` and `ToyMIPInteraction`, straight-line toy MIP carrier packets for algorithm testing. `energy_loss.py`: Fano sampling `sample_fano_pairs` and Landau sampling `sample_landau_energy_loss`. `carrier_list.py`: `PixelCarrierListFromG4P`, converting Geant4 steps into the carrier list of a pixel device.
 
 ### Core Data Structures
 

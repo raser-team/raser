@@ -257,7 +257,7 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
 ### 模块与函数分工
 
 - `drift.py`：实现单团簇输运与单步物理量计算。`advance` 执行单步推进与停止判定，`drift` 循环推进单团簇至停止；`induced_charges` 计算路径各步在指定电极上的 Shockley-Ramo 感应电荷；`surviving` 与 `surviving_at` 计算俘获后的存活载流子数。
-- `cal_current.py`：实现事例级输运调度、分箱、雪崩倍增、激光卷积与批处理写出。`CalCurrent` 完成时间窗设定、空间筛选、载流子漂移与分箱；`CalCurrentGain` 继承 `CalCurrent`，按 `gain_algorithm` 执行 `"planar_integral"` 或 `"local_path"` 倍增；`CalCurrentG4P` 封装 `CarrierListFromG4P` 输入；`CalCurrentLaser` 结合 `pulse_in_bins` 执行激光脉冲卷积；`spread_over_bins`、`fill_histogram`、`electrode_names`、`split_at_conductor_edges`、`deposits_in` 与 `log_ends` 为支撑函数；`write_induced_currents` 与 `write_laser_currents` 负责将事例结果写出到 HDF5 文件并触发绘图。
+- `cal_current.py`：实现事例级输运调度、分箱、雪崩倍增、激光卷积与批处理写出。`CalCurrent` 完成时间窗设定、空间筛选、载流子漂移与分箱；`CalCurrentGain` 继承 `CalCurrent`，按 `gain_algorithm` 执行 `"planar_integral"` 或 `"local_path"` 倍增；`CalCurrentLaser` 结合 `pulse_in_bins` 执行激光脉冲卷积；`spread_over_bins`、`fill_histogram`、`electrode_names`、`split_at_conductor_edges`、`deposits_in` 与 `log_ends` 为支撑函数；`write_induced_currents` 与 `write_laser_currents` 负责将事例结果写出到 HDF5 文件并触发绘图。
 - `diffusion.py`：提供 `time_bin` 与 `collect_by_diffusion`，实现无场像素传感器的二维纯扩散收集。
 - `currents.py`：定义 `EventCurrents`、`Currents` 以及 `append_currents`、`read_currents`，负责 `current.h5` 的稀疏追加写入与全电极还原读取。
 - `draw.py` 与 `draw_drift_path.py`：使用 PyROOT 并经[出图（`supports/figures`）](../supports/figures.md)取样式、存图，绘制感应电流波形（`draw_currents`）、条形/像素收集电荷（`charge_collection_strip`、`charge_collection_pixel`）与三维/$x$-$z$ 漂移路径（`draw_drift_path`）。
@@ -290,7 +290,6 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
 | `gain_max_carriers` | `50000` | 团簇 | `"local_path"` 模式下单事例允许生成的最大增益团簇数；$\le 0$ 时不设上限 |
 | `local_gain_emit_slices` | `1` | 团簇 | `"local_path"` 模式下每次发射沿步段等分生成的子团簇数（至少 `1`） |
 | `local_gain_integration_steps` | `3` | 步 | `"local_path"` 模式下单漂移步内积分电离系数的采样点数（至少 `1`） |
-| `fano_sampling`, `fano_factor` | `False`, `0.0` | 无 | 仅 `CalCurrentG4P` 传给 `CarrierListFromG4P` 的 Fano 抽样开关与因子 |
 | `e_width_x`, `e_width_y` | 无（`collect_by_diffusion` 必选） | $\mu\text{m}$ | 纯扩散收集模式下每个像素中心矩形收集区尺寸 |
 | `doping.Donors`, `doping.Acceptors` | 无（`collect_by_diffusion` 必选） | $\text{cm}^{-3}$ | 纯扩散收集模式下用于求零场电子迁移率的施主、受主浓度数值 |
 
