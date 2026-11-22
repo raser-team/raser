@@ -2,7 +2,9 @@
 
 Lengths are in um, angles in degrees. A slot is a device placed in the
 telescope; its clusters come from its event table (`SlotHits`) and its place
-from the experiment (`Placement`).
+from the experiment (`Placement`): the centre of its front face, the side of
+the beam that face looks to, and a rotation about z. A device that faces
+downstream is flipped about its y axis, so its device x runs against global x.
 
 `TrackEvents.columns`, one row per event of any slot, in ascending event
 number; `slots` is the order of the columns of the 2D arrays:
@@ -33,6 +35,8 @@ from .resolution import core_width
 
 # cos and sin of the rotations about z that keep the pixels on the axes
 ROTATIONS = {0: (1.0, 0.0), 90: (0.0, 1.0), 180: (-1.0, 0.0), 270: (0.0, -1.0)}
+# the sign of the device x axis along global x, and of the thickness direction
+FACINGS = {"upstream": 1.0, "downstream": -1.0}
 ROLES = ("reference", "dut")
 BINS = 64
 
@@ -49,7 +53,8 @@ class SlotHits:
 
 @dataclass
 class Placement:
-    position: list[float]  # [x, y, z] [um]
+    front: list[float]  # [x, y, z] [um]: centre of the front face
+    facing: str  # "upstream" or "downstream": the side of the beam the front looks to
     rotation_z: float  # degrees
     l_x: float  # [um]
     l_y: float
@@ -79,17 +84,24 @@ def track_events(
     for slot in slots:
         if roles[slot] not in ROLES:
             raise ValueError(f"role {roles[slot]!r} of slot {slot}: one of {ROLES}")
-    z = np.array(
-        [placements[slot].position[2] + placements[slot].l_z / 2 for slot in slots]
-    )
-    reference = np.array([roles[slot] == "reference" for slot in slots])
-    if reference.sum() < 2 or np.ptp(z[reference]) == 0:
-        raise ValueError("a track needs reference layers at two or more z")
-    for slot in slots:
+        if placements[slot].facing not in FACINGS:
+            raise ValueError(
+                f"facing {placements[slot].facing!r} of slot {slot}: one of {tuple(FACINGS)}"
+            )
         if placements[slot].rotation_z not in ROTATIONS:
             raise ValueError(
                 f"rotation_z {placements[slot].rotation_z} of slot {slot}: one of 0, 90, 180, 270"
             )
+    z = np.array(
+        [
+            placements[slot].front[2]
+            + FACINGS[placements[slot].facing] * placements[slot].l_z / 2
+            for slot in slots
+        ]
+    )
+    reference = np.array([roles[slot] == "reference" for slot in slots])
+    if reference.sum() < 2 or np.ptp(z[reference]) == 0:
+        raise ValueError("a track needs reference layers at two or more z")
 
     events = np.unique(np.concatenate([hits[slot].event for slot in slots])).astype(
         "int64"
@@ -103,10 +115,11 @@ def track_events(
         row = np.searchsorted(events, hit.event)
         clusters[row, s] = hit.clusters
         cos, sin = ROTATIONS[int(place.rotation_z)]
-        local_x = np.asarray(hit.cluster_x, dtype="float64") - place.l_x / 2
+        side = FACINGS[place.facing]
+        local_x = side * (np.asarray(hit.cluster_x, dtype="float64") - place.l_x / 2)
         local_y = np.asarray(hit.cluster_y, dtype="float64") - place.l_y / 2
-        x[row, s] = place.position[0] + cos * local_x - sin * local_y
-        y[row, s] = place.position[1] + sin * local_x + cos * local_y
+        x[row, s] = place.front[0] + cos * local_x - sin * local_y
+        y[row, s] = place.front[1] + sin * local_x + cos * local_y
     # a slot without one cluster has no position, whatever its columns hold
     x[clusters != 1] = np.nan
     y[clusters != 1] = np.nan

@@ -17,7 +17,7 @@ KX, BX, KY, BY = 0.01, 100.0, -0.02, 50.0
 
 
 def place(z, rotation=0, l_z=100.0, p_x=10.0, p_y=10.0, xy=(0.0, 0.0)):
-    return Placement([xy[0], xy[1], z], rotation, L, L, l_z, p_x, p_y)
+    return Placement([xy[0], xy[1], z], "upstream", rotation, L, L, l_z, p_x, p_y)
 
 
 def hits_at(x, y, events=(1,), clusters=1):
@@ -98,7 +98,14 @@ def test_cluster_of_a_rotated_layer_lies_where_the_quarter_turns_put_it(
         "r0": place(0.0),
         "r1": place(10000.0),
         "turned": Placement(
-            [1000.0, 2000.0, 20000.0], rotation, 400.0, 600.0, 100.0, 10.0, 10.0
+            [1000.0, 2000.0, 20000.0],
+            "upstream",
+            rotation,
+            400.0,
+            600.0,
+            100.0,
+            10.0,
+            10.0,
         ),
     }
     hits = {
@@ -115,6 +122,50 @@ def test_cluster_of_a_rotated_layer_lies_where_the_quarter_turns_put_it(
     assert (tracks.columns["x"][0, 2], tracks.columns["y"][0, 2]) == pytest.approx(
         expected(a, b), abs=1e-9
     )
+
+
+def test_cluster_of_a_downstream_facing_layer_is_mirrored_along_x() -> None:
+    a, b = 30.0, 70.0
+    placements = {
+        "r0": place(0.0),
+        "r1": place(10000.0),
+        "flipped": Placement(
+            [1000.0, 2000.0, 20000.0], "downstream", 0, 400.0, 600.0, 100.0, 10.0, 10.0
+        ),
+    }
+    hits = {
+        "r0": hits_at(0.0, 0.0),
+        "r1": hits_at(0.0, 0.0),
+        "flipped": SlotHits(
+            np.array([1]), np.array([1]), np.array([200.0 + a]), np.array([300.0 + b])
+        ),
+    }
+    roles = {"r0": "reference", "r1": "reference", "flipped": "dut"}
+
+    tracks = track_events(hits, placements, roles)
+
+    assert (tracks.columns["x"][0, 2], tracks.columns["y"][0, 2]) == pytest.approx(
+        (1000.0 - a, 2000.0 + b), abs=1e-9
+    )
+
+
+def test_z_of_a_downstream_facing_layer_is_front_minus_half_thickness() -> None:
+    # the DUT looks downstream, 100 um thick, front at 30100: its middle plane is
+    # Z = 30050, where the line puts it; Z = 30150 would leave KX * 100 = 1 um
+    hits, placements, roles = telescope()
+    placements["dut"] = Placement(
+        [0.0, 0.0, 30100.0], "downstream", 0, L, L, 100.0, 10.0, 10.0
+    )
+    x, y = KX * 30050.0 + BX, KY * 30050.0 + BY
+    hits["dut"] = SlotHits(
+        np.array([1]), np.array([1]), np.array([L / 2 - x]), np.array([L / 2 + y])
+    )
+
+    tracks = track_events(hits, placements, roles)
+
+    assert tracks.z[3] == pytest.approx(30050.0, abs=1e-9)
+    assert tracks.columns["residual_x"][0, 3] == pytest.approx(0.0, abs=1e-9)
+    assert tracks.columns["residual_y"][0, 3] == pytest.approx(0.0, abs=1e-9)
 
 
 def test_track_table_z_is_the_middle_of_the_device_so_residuals_are_taken_there() -> (
@@ -168,7 +219,9 @@ def three_references(local_xy, rotations=(0, 0, 0)):
     positions the clusters are given for."""
     z_middle = (-1000.0, 0.0, 1000.0)
     placements = {
-        f"r{j}": Placement([0.0, 0.0, z], rotations[j], L, L, 0.0, 10.0, 20.0)
+        f"r{j}": Placement(
+            [0.0, 0.0, z], "upstream", rotations[j], L, L, 0.0, 10.0, 20.0
+        )
         for j, z in enumerate(z_middle)
     }
     hits = {}
@@ -188,7 +241,9 @@ def test_chi2_is_the_residuals_over_the_uniform_spread_of_the_pitch() -> None:
     hits["dut"] = SlotHits(
         np.array([1]), np.array([1]), np.array([L / 2 + 900.0]), np.array([L / 2])
     )
-    placements["dut"] = Placement([0.0, 0.0, 2000.0], 0, L, L, 0.0, 10.0, 20.0)
+    placements["dut"] = Placement(
+        [0.0, 0.0, 2000.0], "upstream", 0, L, L, 0.0, 10.0, 20.0
+    )
     roles["dut"] = "dut"
 
     chi2 = track_events(hits, placements, roles).columns["chi2"][0]
@@ -245,8 +300,17 @@ def test_slot_names_that_differ_between_the_three_dictionaries_are_refused() -> 
 
 def test_rotation_that_is_not_a_quarter_turn_is_refused() -> None:
     hits, placements, roles = telescope()
-    placements["dut"] = Placement([0.0, 0.0, 30000.0], 45, L, L, 100.0, 10.0, 10.0)
+    placements["dut"] = Placement(
+        [0.0, 0.0, 30000.0], "upstream", 45, L, L, 100.0, 10.0, 10.0
+    )
     with pytest.raises(ValueError, match="rotation_z 45"):
+        track_events(hits, placements, roles)
+
+
+def test_facing_that_is_not_upstream_or_downstream_is_refused() -> None:
+    hits, placements, roles = telescope()
+    placements["dut"].facing = "sideways"
+    with pytest.raises(ValueError, match="facing 'sideways' of slot dut"):
         track_events(hits, placements, roles)
 
 
