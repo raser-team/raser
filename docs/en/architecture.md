@@ -75,8 +75,11 @@ The results of an experiment are stored in two layers: content-addressed nodes u
 
 ```text
 work/HPK-Si-PiN/                      # device project
-├── field/                            # field nodes for this device, shared across experiments
-│   └── <node_id>/
+├── field/                            # the fields of this device, shared across experiments
+│   ├── points.json                   # parameter table: point name -> bias, irradiation flux, field mode, and node ID
+│   ├── points/                       # views, all symlinks
+│   │   └── voltage_200 -> ../nodes/<node_id>
+│   └── nodes/<node_id>/              # nodes
 └── signal/                           # an experiment
     ├── config.json                   # settings, sectioned by stage
     ├── points.json                   # parameter table
@@ -86,7 +89,7 @@ work/HPK-Si-PiN/                      # device project
     │   └── …
     ├── points/                       # views, all symlinks
     │   ├── voltage_100/
-    │   │   ├── field -> ../../../field/<node_id>
+    │   │   ├── field -> ../../../field/nodes/<node_id>
     │   │   ├── deposit/              #   one symlink per job
     │   │   │   ├── 0 -> ../../../nodes/deposit/<node_id>
     │   │   │   └── 1 -> ../../../nodes/deposit/<node_id>
@@ -105,7 +108,7 @@ One result computed by a stage for a given set of inputs is a node. `deposit` th
 - the node IDs of its upstream nodes; the upstream nodes of `analysis` are the per-job nodes of that scan point, so its fingerprint records which jobs it aggregated;
 - the seeds of the measurement stages (deposit, current), as well as the own seeds of readout (NGspice noise) and digitizer (clock phase, aperture jitter). All of these seeds are derived from the job seed, which is derived from the master seed (`--seed`), the job index, and the values of the measurement-related scan axes at that point, without using the point name; see [lifecycle/experiments.md](lifecycle/experiments.md#seeds) for the rules.
 
-A fingerprint is computed from these inputs, and that fingerprint is the node ID. `node.json` inside the node folder records the inputs verbatim; the code version, runtime environment, and run status are also recorded there, but do not enter the fingerprint. A device's field is likewise a node, stored under `work/<device>/field/` and referenced by all experiments on that device.
+A fingerprint is computed from these inputs, and that fingerprint is the node ID. `node.json` inside the node folder records the inputs verbatim; the code version, runtime environment, and run status are also recorded there, but do not enter the fingerprint. A device's field is likewise a node, stored under `work/<device>/field/nodes/` and referenced by all experiments on that device; `work/<device>/field/points/` is the human-readable view, its points named by bias, irradiation flux and field mode, as [stages/field.md](stages/field.md) describes.
 
 ### Parameter Table
 

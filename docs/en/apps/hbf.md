@@ -26,7 +26,7 @@ Avalanche multiplication in the SiC AC-LGAD device is calculated by `CalCurrentG
 
 ### Stages
 
-- [`field`](../stages/field.md): reuses the field node containing the electric field, gain-layer profile, and weighting field of the SiC AC-LGAD pixel device at the operating bias; if no field is found, it is solved before jobs begin and stored in `work/<device>/field/<node>/`.
+- [`field`](../stages/field.md): reuses the field node containing the electric field, gain-layer profile, and weighting field of the SiC AC-LGAD pixel device at the operating bias; if no field is found, it is solved before jobs begin and stored in `work/<device>/field/nodes/<node>/`.
 - [`deposit`](../stages/deposit.md): uses Geant4 to simulate energy deposition and electron-hole pair generation near the entrance surface of the SiC AC-LGAD pixel device by $\alpha$ particles emitted from the hydrogen–boron fusion source in the target-chamber geometry.
 - [`current`](../stages/current.md): simulates electron and hole drift and `"Hatakeyama"` avalanche multiplication in the SiC multiplication field, computing the induced current in each RC node.
 - [`readout`](../stages/readout.md): feeds the induced currents into the 2D resistive-layer and AC-coupling capacitance grid (`device_grid`) of the AC-LGAD and the front-end amplifier chain to solve output voltage waveforms for each pixel channel.
@@ -86,7 +86,7 @@ All other underlying physical and numerical parameters (4H-SiC electron-hole pai
 
 ## Outputs
 
-Results are stored under `work/hbf/` (see [Architecture Overview](../architecture.md#results) for the storage layout): per-stage nodes are stored by input fingerprint under `work/hbf/nodes/<stage>/<node>/` (each carrying a `node.json`; one node per job from `deposit` through `reconstruction`, and one node per scan point for `analysis`), symlink views named by scan point are placed at `work/hbf/points/<point>/<stage>/<job>` (with `points/<point>/field` and `points/<point>/analysis` each being a single symlink), the parameter table is written to `work/hbf/points.json`, the device field nodes are stored under `work/<device>/field/<node>/`, and cross-point statistical summaries and trend plots are stored under `work/hbf/analysis/`.
+Results are stored under `work/hbf/` (see [Architecture Overview](../architecture.md#results) for the storage layout): per-stage nodes are stored by input fingerprint under `work/hbf/nodes/<stage>/<node>/` (each carrying a `node.json`; one node per job from `deposit` through `reconstruction`, and one node per scan point for `analysis`), symlink views named by scan point are placed at `work/hbf/points/<point>/<stage>/<job>` (with `points/<point>/field` and `points/<point>/analysis` each being a single symlink), the parameter table is written to `work/hbf/points.json`, the device field nodes are stored under `work/<device>/field/nodes/<node>/`, and cross-point statistical summaries and trend plots are stored under `work/hbf/analysis/`.
 
 The output data files and plots are listed below:
 

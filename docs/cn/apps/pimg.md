@@ -22,7 +22,7 @@ $$\Delta E = E_{\text{in}} - E_{\text{out}}, \qquad \text{WEPL}(x, y) = \int_{\t
 
 ### 环节
 
-- [`field`](../stages/field.md)：复用各跟踪层与能量测量器件在工作偏压下的场节点；找不到场时在作业开始前补算，存进 `work/<器件>/field/<节点号>/`。
+- [`field`](../stages/field.md)：复用各跟踪层与能量测量器件在工作偏压下的场节点；找不到场时在作业开始前补算，存进 `work/<器件>/field/nodes/<节点号>/`。
 - [`deposit`](../stages/deposit.md)：用 Geant4 模拟质子束依次穿过上游跟踪层、中间人头模型（`toy` 几何或导入的细化模型）、下游跟踪层与末端能量探测器的能量沉积步。
 - [`current`](../stages/current.md)：计算各像素跟踪层与能量探测器上的载流子收集电荷和感应电流。
 - [`readout`](../stages/readout.md)、[`digitizer`](../stages/digitizer.md)、[`trigger`](../stages/trigger.md)：求解各层探测器的前端放大波形、数字化采样量化与符合触发。
@@ -76,7 +76,7 @@ raser pimg
 
 ## 输出
 
-结果存放在 `work/pimg/` 下（存放结构见[架构总纲](../architecture.md#结果)）：各环节节点按输入指纹存放在 `work/pimg/nodes/<环节>/<节点号>/`（各带一份 `node.json`；`deposit` 到 `reconstruction` 每个作业一个节点，`analysis` 每个扫描点一个节点），按扫描点命名的软链接视图位于 `work/pimg/points/<点名>/<环节>/<作业号>`（`points/<点名>/field` 和 `points/<点名>/analysis` 各是一个软链接），参数表为 `work/pimg/points.json`，所用器件的场节点存放在 `work/<器件>/field/<节点号>/`，跨点统计与对比图存放在 `work/pimg/analysis/` 下。
+结果存放在 `work/pimg/` 下（存放结构见[架构总纲](../architecture.md#结果)）：各环节节点按输入指纹存放在 `work/pimg/nodes/<环节>/<节点号>/`（各带一份 `node.json`；`deposit` 到 `reconstruction` 每个作业一个节点，`analysis` 每个扫描点一个节点），按扫描点命名的软链接视图位于 `work/pimg/points/<点名>/<环节>/<作业号>`（`points/<点名>/field` 和 `points/<点名>/analysis` 各是一个软链接），参数表为 `work/pimg/points.json`，所用器件的场节点存放在 `work/<器件>/field/nodes/<节点号>/`，跨点统计与对比图存放在 `work/pimg/analysis/` 下。
 
 输出的数据文件与图像如下表：
 

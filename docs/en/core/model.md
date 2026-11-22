@@ -364,7 +364,7 @@ The following keys in the device JSON are read by [device.md](device.md), [field
 
 ### Input and Output Files
 
-`core/model` is an in-memory physical model library; its numerical values and symbolic expressions are passed directly in memory to [device.md](device.md), [field.md](field.md) (which writes `.pkl` and `.json` files into the `<project>/field/<node_id>/` field node), and [current.md](current.md) (which writes `current.h5`).
+`core/model` is an in-memory physical model library; its numerical values and symbolic expressions are passed directly in memory to [device.md](device.md), [field.md](field.md) (which writes `.pkl` and `.json` files into the `<project>/field/nodes/<node_id>/` field node), and [current.md](current.md) (which writes `current.h5`).
 
 ### Plot Outputs
 

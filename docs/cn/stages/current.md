@@ -1,6 +1,6 @@
 # 载流子输运与感应电流环节（`stages/current`）
 
-`src/raser/stages/current.py` 是八环节仿真链的第 3 个环节 `current`。它承接[能量沉积环节（`stages/deposit`）](deposit.md)节点里的电子-空穴对沉积，以及[场求解环节（`stages/field`）](field.md)在 `<器件 project>/field/<节点号>/` 下算好的场节点。本环节用器件文件构造器件模型和插值场，调用[载流子漂移与感应电流（`core/current`）](../core/current.md)让电子-空穴对在电场与权重场中漂移，把各读出电极的时域感应电流写进自己的节点 `nodes/current/<节点号>/`，并为每个作业的前 `plots` 个事例画漂移路径与电流图。感应电流交给下游[电子学读出环节（`stages/readout`）](readout.md)；净感应电荷 `charge` 与初始对数 `pairs` 交给[统计分析环节（`stages/analysis`）](analysis.md)算电荷收集效率。
+`src/raser/stages/current.py` 是八环节仿真链的第 3 个环节 `current`。它承接[能量沉积环节（`stages/deposit`）](deposit.md)节点里的电子-空穴对沉积，以及[场求解环节（`stages/field`）](field.md)在 `<器件 project>/field/nodes/<节点号>/` 下算好的场节点。本环节用器件文件构造器件模型和插值场，调用[载流子漂移与感应电流（`core/current`）](../core/current.md)让电子-空穴对在电场与权重场中漂移，把各读出电极的时域感应电流写进自己的节点 `nodes/current/<节点号>/`，并为每个作业的前 `plots` 个事例画漂移路径与电流图。感应电流交给下游[电子学读出环节（`stages/readout`）](readout.md)；净感应电荷 `charge` 与初始对数 `pairs` 交给[统计分析环节（`stages/analysis`）](analysis.md)算电荷收集效率。
 
 ## 行为
 
@@ -176,7 +176,7 @@ ValueError: <deposits_path> holds no deposit in the detector <detector>: there i
 ### 读写的文件
 
 - **读：`deposit` 节点里的 `deposit.h5`**。`current` 从中读记录事例的 Geant4 编号 `event`、沉积步所属逻辑体名 `detector`、局部坐标 `x`/`y`/`z`（$\mu\text{m}$）、全局时间 `t`（$\text{s}$）及电子-空穴对数 `pairs`（对）；格式见[能量沉积环节（`stages/deposit`）](deposit.md)。
-- **读：`<器件 project>/field/<节点号>/` 里的场节点**。由 `raser field` 写出。`DevsimField` 读 `Potential_<V>V.pkl`、`Conductive_<V>V.pkl`、`NetDoping_0V.pkl`（TCAD 导入为 `NetDoping_<V>V.pkl`）、`TrappingRate_n_<V>V.pkl`、`TrappingRate_p_<V>V.pkl` 及 `weightingfield/<电极>/Potential_<V>V.pkl`；各文件的数据结构与单位见[场求解与加载（`core/field`）](../core/field.md)。
+- **读：`<器件 project>/field/nodes/<节点号>/` 里的场节点**。由 `raser field` 写出。`DevsimField` 读 `Potential_<V>V.pkl`、`Conductive_<V>V.pkl`、`NetDoping_0V.pkl`（TCAD 导入为 `NetDoping_<V>V.pkl`）、`TrappingRate_n_<V>V.pkl`、`TrappingRate_p_<V>V.pkl` 及 `weightingfield/<电极>/Potential_<V>V.pkl`；各文件的数据结构与单位见[场求解与加载（`core/field`）](../core/field.md)。
 - **写：`nodes/current/<节点号>/current.h5`**（多位置实验里同节点下每个位置一个文件 `current.<位置>.h5`）。上游 `deposit` 有记录事例、且（多位置实验中）该位置本作业有沉积步时写出，重算前先删旧文件再逐事例追加。它交给 `readout` 求输出波形，`charge`（$\text{C}$）与 `pairs`（对）也交给 `analysis` 算电荷收集效率；HDF5 属性（`electrodes`、`dt`［$\text{s}$］）与全部数据集的形状、类型与单位见[载流子漂移与感应电流（`core/current`）](../core/current.md)。
 - **写：`nodes/current/<节点号>/plots/` 里的单事例图**。`plots > 0` 时为前 `plots` 个事例写出（写前先删掉这个文件夹里上次留下的同类图），每张图有 `.png`、`.pdf`、`.root` 三份：三维与 $x$-$z$ 平面漂移路径图 `drift_path_<事例号>`（坐标单位 $\mu\text{m}$）、电流分量波形图 `current_<事例号>`（多个读出电极时各非零电流电极一张 `current_<事例号>_electrode_<k>`，`<k>` 从 `1` 起；横轴 `Time [ns]`、纵轴 `Current [μA]`），以及条形（`strip`）或像素（`pixel`）器件的各电极电荷图 `charge_per_electrode_<事例号>`（数值为各电极的净电荷，单位 $\text{fC}$）；内容与坐标单位见[载流子漂移与感应电流（`core/current`）](../core/current.md)。
 - **写：`nodes/current/<节点号>/node.json`**。记下本节点的输入，以及代码版本、运行环境和运行状态。

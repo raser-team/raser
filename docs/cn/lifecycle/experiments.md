@@ -21,7 +21,8 @@ raser signal my-PiN
 
 | 路径 | 内容 |
 | --- | --- |
-| `<器件 project>/field/<节点号>/` | 该器件的场节点（含电场、权重场、IV/CV、器件参数电路图及 `node.json`），被这块器件的各个实验共用 |
+| `<器件 project>/field/nodes/<节点号>/` | 该器件的场节点（含电场、权重场、IV/CV、器件参数电路图及 `node.json`），被这块器件的各个实验共用 |
+| `<器件 project>/field/points.json`、`<器件 project>/field/points/<点名>` | 场的参数表和视图：每个点的偏压、辐照注量、场模式和节点号，`points/<点名>` 是指向 `../nodes/<节点号>` 的软链接 |
 | `<实验>/config.json` | 分段配置文件，写全本次运行用到的设置，按 `field`、`deposit`、`current`、`readout`、`digitizer`、`trigger`、`reconstruction`、`analysis` 八个环节分段 |
 | `<实验>/points.json` | 参数表，每次运行时从 `config.json` 算出，一行一个扫描点，记录各扫描轴的取值以及每个环节用的节点号；`raser status` 打印这张表 |
 | `<实验>/nodes/<环节>/<节点号>/` | 环节节点文件夹，存放这一环节在该组输入下写出的文件、本环节图像和一份 `node.json`；`deposit` 到 `reconstruction` 每个作业一个节点，`analysis` 每个扫描点一个节点 |
@@ -97,7 +98,7 @@ warning: <锁文件路径> cannot be locked here (Operation not supported): noth
 
 ### 多扫描点调度与集群重提检查
 
-多扫描点实验中，程序先准备各点所需的共享节点（如 `work/<器件>/field/<节点号>/`），再依次调度各扫描点的待跑作业。各扫描点彼此独立，某一点因前置依赖未就绪进入等待，或因作业执行抛出异常而失败时，程序会继续跑完其余扫描点，最后集中列出失败点退出：
+多扫描点实验中，程序先准备各点所需的共享节点（如 `work/<器件>/field/nodes/<节点号>/`），再依次调度各扫描点的待跑作业。各扫描点彼此独立，某一点因前置依赖未就绪进入等待，或因作业执行抛出异常而失败时，程序会继续跑完其余扫描点，最后集中列出失败点退出：
 
 ```text
 1 of 2 points failed:
@@ -143,7 +144,7 @@ warning: <锁文件路径> cannot be locked here (Operation not supported): noth
 
 1. **定位 project 与读写分段 `config.json`**：测试类实验的文件夹是 `<器件 project>/<测试>/`，应用类实验的文件夹就是 `<应用 project>/`，project 按上一节的查找顺序定（如 `work/HPK-Si-PiN/signal/`、`examples/HPK-Si-PiN/signal/`、`work/bmos/`）。读取实验根目录下的 `config.json`（含 `field`、`deposit`、`current`、`readout`、`digitizer`、`trigger`、`reconstruction`、`analysis` 八段）。对命令行传入的 `--set` 与 `--scan` 条目，按首个 `"="` 切分出“段.键”地址与取值字符串（`--scan` 的取值按 `","` 切分），每个值调用 `_parse`（`json.loads` 成功取解析值，抛出 `JSONDecodeError` 保留原字符串）；若同一地址同时出现在 `--set` 与 `--scan` 中，抛出 `ValueError`。非 `--dry-run` 模式下将更新后的设置写回 `config.json`。
 2. **展开扫描点并计算各环节节点号**：对扫描轴取值的笛卡尔积逐组合生成扫描点，按本环节用到的设置值、组件文件（project 自有器件文件或 `raser/components/` 下对应环节组件）中用到的部分、上游各节点号及种子（测量环节 `deposit`、`current` 的种子，`readout`、`digitizer` 自己的种子，都由作业种子派生）计算各环节节点号，写出 `points.json` 并更新 `points/<点名>/<环节>/<作业号>` 软链接。
-3. **比对节点指纹与代码版本 `_commit()`**：获取当前代码版本标识 `_commit()`（当 `REPO_ROOT is None` 时取 `f"raser {raser.__version__}"`；否则在 `REPO_ROOT` 下执行 `git rev-parse HEAD` 与 `git status --short`，工作树干净时取提交哈希，有未提交改动时附加 `"+dirty"`；源码树不是 git 仓库（例如从压缩包解出来的）时拿不到提交号，同样取 `f"raser {raser.__version__}"`）。若目标节点 `nodes/<环节>/<节点号>/`（或 `<器件 project>/field/<节点号>/`）已存在，直接复用该节点；若其 `node.json` 记录的代码版本与当前 `_commit()` 不一致，打印提示后照常复用。若 `--dry-run` 为真，打印各扫描点、环节和作业规划后直接返回。
+3. **比对节点指纹与代码版本 `_commit()`**：获取当前代码版本标识 `_commit()`（当 `REPO_ROOT is None` 时取 `f"raser {raser.__version__}"`；否则在 `REPO_ROOT` 下执行 `git rev-parse HEAD` 与 `git status --short`，工作树干净时取提交哈希，有未提交改动时附加 `"+dirty"`；源码树不是 git 仓库（例如从压缩包解出来的）时拿不到提交号，同样取 `f"raser {raser.__version__}"`）。若目标节点 `nodes/<环节>/<节点号>/`（或 `<器件 project>/field/nodes/<节点号>/`）已存在，直接复用该节点；若其 `node.json` 记录的代码版本与当前 `_commit()` 不一致，打印提示后照常复用。若 `--dry-run` 为真，打印各扫描点、环节和作业规划后直接返回。
 4. **节点加锁、`.part` 写入与启动本地或集群作业**：对待计算的每个节点调用 `_lock` 以追加模式打开锁文件并执行 `fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)`（捕获 `BlockingIOError` 时关闭句柄并抛出 `Running`；捕获 `errno` 属于 `(errno.ENOLCK, errno.ENOTSUP, errno.EOPNOTSUPP, errno.EINVAL)` 的 `OSError` 时打印警告并返回 `None`）。计算期间节点带 `.part` 后缀，写出数据文件与 `node.json` 后原子改名为正式节点目录。本地与集群作业按以下规则启动（详见 [作业、日志、锁、断点续跑与集群提交](jobs.md)）：
    - 单扫描点且省略 `-s`、不加 `-b`：在当前进程经 `_logged` 将 Python 标准输出与标准错误同步写入日志并直接执行 `_run_job`；
    - 多扫描点且省略 `-s`、不加 `-b`：调用 `_own_process` 为每个扫描点启动独立子进程 `jobs._run_local_job`；
@@ -213,8 +214,8 @@ warning: <锁文件路径> cannot be locked here (Operation not supported): noth
 
 - **`<实验文件夹>/config.json`**：实验分段配置文件，按 `field`、`deposit`、`current`、`readout`、`digitizer`、`trigger`、`reconstruction`、`analysis` 八个环节分段记录完整设置；`--set` 与 `--scan` 通过“段.键”地址读写对应环节段中的键。
 - **`<实验文件夹>/points.json`**：参数表 JSON 文件，每次运行时由程序从 `config.json` 算出，一行一个扫描点，记录各扫描轴的取值以及每个环节所用的节点号；`raser status` 读取并打印该表。
-- **`<实验文件夹>/nodes/<环节>/<节点号>/` 与 `<器件 project>/field/<节点号>/`**：按输入指纹命名的节点目录（写到一半时带 `.part` 后缀，写完后改为正式名字，每个节点单独加锁），存放该环节写出的数据文件（如 HDF5 文件与本环节图像，具体格式见 [仿真链与环节入口（`stages`）](../stages/README.md) 与 `docs/cn/core/` 各页）以及一份 `node.json`。`node.json` 原样记录决定节点指纹的四项输入（本环节用到的设置值、组件文件中用到的部分、上游各节点号、测量环节 `deposit` 与 `current` 的种子，以及 `readout`、`digitizer` 自己的种子），并另记代码版本、运行环境和运行状态。
-- **`<实验文件夹>/points/<点名>/<环节>/<作业号>`**：扫描点视图软链接，`<点名>` 按扫描轴取值命名（如 `voltage_100`）；`deposit` 到 `reconstruction` 每个作业一个，指向 `../../../nodes/<环节>/<节点号>`；`points/<点名>/field` 指向 `<器件 project>/field/<节点号>`，`points/<点名>/analysis` 指向 `../../nodes/analysis/<节点号>`。
+- **`<实验文件夹>/nodes/<环节>/<节点号>/` 与 `<器件 project>/field/nodes/<节点号>/`**：按输入指纹命名的节点目录（写到一半时带 `.part` 后缀，写完后改为正式名字，每个节点单独加锁），存放该环节写出的数据文件（如 HDF5 文件与本环节图像，具体格式见 [仿真链与环节入口（`stages`）](../stages/README.md) 与 `docs/cn/core/` 各页）以及一份 `node.json`。`node.json` 原样记录决定节点指纹的四项输入（本环节用到的设置值、组件文件中用到的部分、上游各节点号、测量环节 `deposit` 与 `current` 的种子，以及 `readout`、`digitizer` 自己的种子），并另记代码版本、运行环境和运行状态。
+- **`<实验文件夹>/points/<点名>/<环节>/<作业号>`**：扫描点视图软链接，`<点名>` 按扫描轴取值命名（如 `voltage_100`）；`deposit` 到 `reconstruction` 每个作业一个，指向 `../../../nodes/<环节>/<节点号>`；`points/<点名>/field` 指向 `<器件 project>/field/nodes/<节点号>`，`points/<点名>/analysis` 指向 `../../nodes/analysis/<节点号>`。
 - **`<实验文件夹>/analysis/`**：`analysis` 环节输出的跨扫描点统计与趋势图目录。
 
 ### `config.json` 的格式

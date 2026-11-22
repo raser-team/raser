@@ -75,8 +75,11 @@ flowchart TD
 
 ```text
 work/HPK-Si-PiN/                      # 器件 project
-├── field/                            # 这块器件的场节点，各实验共用
-│   └── <节点号>/
+├── field/                            # 这块器件的场，各实验共用
+│   ├── points.json                   # 参数表：点名 → 偏压、辐照注量、场模式，和节点号
+│   ├── points/                       # 视图，全是软链接
+│   │   └── voltage_200 -> ../nodes/<节点号>
+│   └── nodes/<节点号>/                # 节点
 └── signal/                           # 一个实验
     ├── config.json                   # 设置，按环节分段
     ├── points.json                   # 参数表
@@ -86,7 +89,7 @@ work/HPK-Si-PiN/                      # 器件 project
     │   └── …
     ├── points/                       # 视图，全是软链接
     │   ├── voltage_100/
-    │   │   ├── field -> ../../../field/<节点号>
+    │   │   ├── field -> ../../../field/nodes/<节点号>
     │   │   ├── deposit/              #   每个作业一个链接
     │   │   │   ├── 0 -> ../../../nodes/deposit/<节点号>
     │   │   │   └── 1 -> ../../../nodes/deposit/<节点号>
@@ -105,7 +108,7 @@ work/HPK-Si-PiN/                      # 器件 project
 - 上游各节点的节点号；`analysis` 的上游是这个点各作业的节点，所以它的指纹记下了它统计了哪些作业；
 - 测量环节（deposit、current）的种子，以及 readout（NGspice 噪声）、digitizer（时钟相位、孔径抖动）自己的种子。这些种子都由作业的种子派生，作业的种子由主种子（`--seed`）、作业号和这个点上测量相关的扫描轴取值派生，不用点名，规则见 [lifecycle/experiments.md](lifecycle/experiments.md#种子)。
 
-对这些输入取指纹，指纹就是节点号。节点文件夹里的 `node.json` 把输入原样记下来；代码版本、运行环境和运行状态也记在里面，但不进指纹。器件的场同样是节点，存在 `work/<器件>/field/` 下，被这块器件的各个实验引用。
+对这些输入取指纹，指纹就是节点号。节点文件夹里的 `node.json` 把输入原样记下来；代码版本、运行环境和运行状态也记在里面，但不进指纹。器件的场同样是节点，存在 `work/<器件>/field/nodes/` 下，被这块器件的各个实验引用；`work/<器件>/field/points/` 是给人看的视图，按偏压、辐照注量和场模式起点名，规则见 [stages/field.md](stages/field.md)。
 
 ### 参数表
 

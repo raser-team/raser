@@ -58,7 +58,7 @@ $$\Delta t = t_{\text{reco}} - t_{\text{truth}}, \qquad t_{\text{truth}} = \min_
 
 单个 `signal` 作业按以下顺序执行：
 
-1. **检查与求解共享场（`field`）**：主命令在作业开始前检查 `<project>/field/` 下是否存在匹配当前器件、偏压 `voltage`（$\text{V}$）与辐照注量 `irradiation_flux`（$\text{cm}^{-2}$，$1\ \text{MeV}$ 中子等效注量）的场节点；未就绪则在作业开始前补算，存进 `<project>/field/<节点号>/`（写入期间带 `.part` 后缀，完成后落盘并含 `node.json`）。实验在 `points.json` 中记录该节点号，并用视图软链接 `points/<点名>/field` 指向它。
+1. **检查与求解共享场（`field`）**：主命令在作业开始前检查 `<project>/field/` 下是否存在匹配当前器件、偏压 `voltage`（$\text{V}$）与辐照注量 `irradiation_flux`（$\text{cm}^{-2}$，$1\ \text{MeV}$ 中子等效注量）的场节点；未就绪则在作业开始前补算，存进 `<project>/field/nodes/<节点号>/`（写入期间带 `.part` 后缀，完成后落盘并含 `node.json`）。实验在 `points.json` 中记录该节点号，并用视图软链接 `points/<点名>/field` 指向它。
 2. **能量沉积与电离对生成（`deposit`）**：`stages/deposit.py` 调用 `write_simulated_deposits` 运行 Geant4（或 `toy_mip`）。仅保留在 `"Device"` 内总沉积能量 $E_{\text{tot}} > 0$ 且满足 $\text{edep\_min} \le E_{\text{tot}} \le \text{edep\_max}$ （单位 $\text{MeV}$，未设上下限时仅要求 $E_{\text{tot}} > 0$）的事例，直至录满 `events_per_job` 个事例（最多生成 `generated_limit` 个源事例，超过仍未录满则抛出 `RuntimeError`）或生成满 `generated_per_job` 个源事例。每步沉积能量 $E_k$（$\text{MeV}$）在 `ionized_pairs` 中除以材料平均电离能 $\varepsilon_{\text{pair}}\times 10^{-6}$（$\text{MeV}$）并按 `fano` 开关抽样电子-空穴对数，将每步坐标从 Geant4 世界坐标按式 (18) 的逆变换（见 [`core/deposit`](../core/deposit.md#沿束流的一列)）换到器件坐标 $[0, l_x] \times [0, l_y] \times [0, l_z]\ \mu\text{m}$ 写入 `deposit` 节点的 `deposit.h5`，并按 `deposit.plots` 在节点内绘制几何与径迹图。若录得 `0` 个事例，抛出 `Ended` 提前结束作业。
 3. **载流子漂移与感应电流分箱（`current`）**：`stages/current.py` 加载 `DevsimField`，调用 `write_induced_currents`（默认开启热扩散 `diffusion=True`）对每个记录事例在器件与电极阵列边界内推进电子、空穴漂移（含辐照俘获与雪崩倍增），按 Shockley-Ramo 定理在时间箱宽 `t_bin`（1D 为 $5\ \text{ps}$，2D/3D 为 $50\ \text{ps}$）上分箱累加感应电流并写出 `current` 节点的 `current.h5`，同时在节点内为前 `current.plots` 个事例绘制漂移路径与电流图。
 4. **等效电路与前端放大器读出（`readout`）**：`stages/readout.py` 构建器件等效电路 `DeviceCircuit` 并按 `+` 拆分加载 `amplifier` 指定的 SPICE 子电路链，调用 `ngspice` 求解瞬态响应与频域热噪声谱（以由作业种子派生的 `readout` 噪声种子独立合成时域高斯热噪声叠入波形），仅保存最大电压摆幅 $\ge 10^{-3} V_{\max}$ 的通道写入 `readout` 节点的 `readout.h5`。
@@ -84,7 +84,7 @@ $$\Delta t = t_{\text{reco}} - t_{\text{truth}}, \qquad t_{\text{truth}} = \min_
 
 ### 环节
 
-- [`field`](../stages/field.md)：求解或复用被测器件在目标偏压与辐照注量下的电场、权重场、导电区标志及结电容/未耗尽层参数，存放在 `<project>/field/<节点号>/`。
+- [`field`](../stages/field.md)：求解或复用被测器件在目标偏压与辐照注量下的电场、权重场、导电区标志及结电容/未耗尽层参数，存放在 `<project>/field/nodes/<节点号>/`。
 - [`deposit`](../stages/deposit.md)：根据所选源与 Geant4 装置模拟粒子在被测器件内的能量沉积步并转化为初始电子-空穴对，写入 `deposit.h5`。
 - [`current`](../stages/current.md)：将沉积产生的电子-空穴对放入求解场中漂移、扩散与倍增，算出各读出电极上的时域感应电流与净感应电荷，写入 `current.h5`。
 - [`readout`](../stages/readout.md)：把感应电流送入器件等效电路与 SPICE 前端放大器链，求解输出电压波形并叠加电路热噪声，写入 `readout.h5`。
@@ -180,7 +180,7 @@ raser signal HPK-Si-PiN --scan field.voltage=100,200
 
 ## 输出
 
-结果存放在被测器件 project 下的 `<project>/signal/`（上例就地运行在 `examples/HPK-Si-PiN/signal/`，自建 project 在 `work/<器件>/signal/`），存放结构见 [架构总纲](../architecture.md#结果)：底层按各环节输入指纹存入 `<project>/signal/nodes/<环节>/<节点号>/`（内含该环节输出文件、本环节图像与 `node.json`；`deposit` 到 `reconstruction` 每个作业一个节点，`analysis` 每个扫描点一个节点），上层在 `<project>/signal/points/<点名>/<环节>/<作业号>` 生成软链接视图（`points/<点名>/field`、`points/<点名>/analysis` 各是一个软链接）并在 `<project>/signal/points.json` 记录参数表，跨点统计与趋势图存放在 `<project>/signal/analysis/` 下，器件共享场节点存放在 `<project>/field/<节点号>/` 下。
+结果存放在被测器件 project 下的 `<project>/signal/`（上例就地运行在 `examples/HPK-Si-PiN/signal/`，自建 project 在 `work/<器件>/signal/`），存放结构见 [架构总纲](../architecture.md#结果)：底层按各环节输入指纹存入 `<project>/signal/nodes/<环节>/<节点号>/`（内含该环节输出文件、本环节图像与 `node.json`；`deposit` 到 `reconstruction` 每个作业一个节点，`analysis` 每个扫描点一个节点），上层在 `<project>/signal/points/<点名>/<环节>/<作业号>` 生成软链接视图（`points/<点名>/field`、`points/<点名>/analysis` 各是一个软链接）并在 `<project>/signal/points.json` 记录参数表，跨点统计与趋势图存放在 `<project>/signal/analysis/` 下，器件共享场节点存放在 `<project>/field/nodes/<节点号>/` 下。
 
 ### 数据文件
 

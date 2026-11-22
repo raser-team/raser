@@ -125,6 +125,6 @@ raser bmos --scan field.voltage=-300,-500
 
 ## 输出
 
-结果存放在 `work/bmos/` 下（存放结构见[架构总纲](../architecture.md#结果)）：各环节节点在 `work/bmos/nodes/<环节>/<节点号>/`（各含一份 `node.json`；`deposit` 到 `reconstruction` 每个作业一个节点，`analysis` 每个扫描点一个节点），按扫描点视图为 `work/bmos/points/<点名>/<环节>/<作业号>`（软链接，`points/<点名>/field` 和 `points/<点名>/analysis` 各是一个软链接），参数表为 `work/bmos/points.json`，跨点统计与趋势图在 `work/bmos/analysis/`，监测器件的场节点存放在 `work/<器件>/field/<节点号>/`。
+结果存放在 `work/bmos/` 下（存放结构见[架构总纲](../architecture.md#结果)）：各环节节点在 `work/bmos/nodes/<环节>/<节点号>/`（各含一份 `node.json`；`deposit` 到 `reconstruction` 每个作业一个节点，`analysis` 每个扫描点一个节点），按扫描点视图为 `work/bmos/points/<点名>/<环节>/<作业号>`（软链接，`points/<点名>/field` 和 `points/<点名>/analysis` 各是一个软链接），参数表为 `work/bmos/points.json`，跨点统计与趋势图在 `work/bmos/analysis/`，监测器件的场节点存放在 `work/<器件>/field/nodes/<节点号>/`。
 
 每个作业各环节节点内写出的数据文件为 `deposit.h5`、`current.h5`、`readout.h5`、`digitizer.h5`（量化码，格式见[`stages/digitizer`](../stages/digitizer.md)）、`trigger.h5`（被记录事例的事例号数据集 `event`，`int64`，见[`stages/trigger`](../stages/trigger.md)）和 `reconstruction.h5`；各环节自己的图放在这一环节的节点里（如 `deposit.plots > 0` 时的 `nodes/deposit/<节点号>/g4_geometry.png`，`current.plots > 0` 时 `nodes/current/<节点号>/plots/` 下的 `drift_path_<事例号>`、`current_<事例号>`，各有 `.png`、`.pdf`、`.root`）。每个扫描点的 [`analysis`](../stages/analysis.md) 节点（经 `points/<点名>/analysis/` 查看）内写出单点统计结果（`result.json`、`events.h5`）与单点图（`efficiency`、`amplitude`、`time_difference`、`resolution_of_fraction`，各有 `.png`、`.pdf`），跨点统计表 `points.json` 与趋势图 `trend.png`、`trend.pdf` 写在 `work/bmos/analysis/`。各文件的字段与单位同 [`signal`](../bench/signal.md#输出)，其中每个记录事例对应一个束团。

@@ -22,7 +22,7 @@ In RASER's `pimg`, the Geant4 setup follows the multi-layer pixel tracking plane
 
 ### Stages
 
-- [`field`](../stages/field.md): reuses the field nodes of the tracking layers and energy detector at their operating biases; if no field is found, it is solved before jobs begin and stored in `work/<device>/field/<node>/`.
+- [`field`](../stages/field.md): reuses the field nodes of the tracking layers and energy detector at their operating biases; if no field is found, it is solved before jobs begin and stored in `work/<device>/field/nodes/<node>/`.
 - [`deposit`](../stages/deposit.md): uses Geant4 to simulate energy deposition steps of the proton beam passing successively through the upstream tracking layers, the central head phantom (`toy` geometry or imported detailed model), the downstream tracking layers, and the terminal energy detector.
 - [`current`](../stages/current.md): computes carrier collected charge and induced current in each pixel tracking layer and the energy detector.
 - [`readout`](../stages/readout.md), [`digitizer`](../stages/digitizer.md), [`trigger`](../stages/trigger.md): solves front-end amplifier waveforms, digitization sampling/quantization, and coincidence triggering for each detector layer.
@@ -76,7 +76,7 @@ All other underlying physical and numerical parameters (material mean ionization
 
 ## Outputs
 
-Results are stored under `work/pimg/` (see [Architecture Overview](../architecture.md#results) for the storage layout): per-stage nodes are stored by input fingerprint under `work/pimg/nodes/<stage>/<node>/` (each carrying a `node.json`; one node per job from `deposit` through `reconstruction`, and one node per scan point for `analysis`), symlink views named by scan point are placed at `work/pimg/points/<point>/<stage>/<job>` (with `points/<point>/field` and `points/<point>/analysis` each being a single symlink), the parameter table is written to `work/pimg/points.json`, field nodes of the devices used are stored under `work/<device>/field/<node>/`, and cross-point statistics and comparison plots are stored under `work/pimg/analysis/`.
+Results are stored under `work/pimg/` (see [Architecture Overview](../architecture.md#results) for the storage layout): per-stage nodes are stored by input fingerprint under `work/pimg/nodes/<stage>/<node>/` (each carrying a `node.json`; one node per job from `deposit` through `reconstruction`, and one node per scan point for `analysis`), symlink views named by scan point are placed at `work/pimg/points/<point>/<stage>/<job>` (with `points/<point>/field` and `points/<point>/analysis` each being a single symlink), the parameter table is written to `work/pimg/points.json`, field nodes of the devices used are stored under `work/<device>/field/nodes/<node>/`, and cross-point statistics and comparison plots are stored under `work/pimg/analysis/`.
 
 The output data files and plots are listed below:
 

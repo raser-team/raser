@@ -1,6 +1,6 @@
 # 器件场（`core/field`）
 
-`src/raser/core/field/` 从 [器件定义](device.md) 取得几何、掺杂、偏压与辐照设定，按 `field` 段的设置选用网格，从 [材料模型](model.md) 取得能带、介电常数、复合寿命与碰撞电离系数。它用 DEVSIM 求解器件在给定偏压与辐照注量下的电势、载流子浓度、俘获率与导电区，再求各读出电极的权重势、单位条长互容、IV/CV/噪声曲线与一维器件的未耗尽体区参数，也可以从 Sentaurus TDR 文件导入场。结果写入场节点 `field/<节点号>/`，每个偏压一个场节点，节点记录为 `node.json`；[载流子输运](current.md) 通过 `DevsimField` 读取插值后的电场、掺杂、俘获率、导电标志、权重势与平面雪崩增益，[电子学读出](readout.md) 通过 `field_circuit` 与 `device_circuit` 取得器件的等效 SPICE 电路。命令行入口见 [../stages/field.md](../stages/field.md)。
+`src/raser/core/field/` 从 [器件定义](device.md) 取得几何、掺杂、偏压与辐照设定，按 `field` 段的设置选用网格，从 [材料模型](model.md) 取得能带、介电常数、复合寿命与碰撞电离系数。它用 DEVSIM 求解器件在给定偏压与辐照注量下的电势、载流子浓度、俘获率与导电区，再求各读出电极的权重势、单位条长互容、IV/CV/噪声曲线与一维器件的未耗尽体区参数，也可以从 Sentaurus TDR 文件导入场。结果写入场节点 `field/nodes/<节点号>/`，每个偏压一个场节点，节点记录为 `node.json`；[载流子输运](current.md) 通过 `DevsimField` 读取插值后的电场、掺杂、俘获率、导电标志、权重势与平面雪崩增益，[电子学读出](readout.md) 通过 `field_circuit` 与 `device_circuit` 取得器件的等效 SPICE 电路。命令行入口见 [../stages/field.md](../stages/field.md)。
 
 ## 物理
 
@@ -390,7 +390,7 @@ HEMT 器件仍由 `run_hemt_transport` 自己处理它的区域和异质结界�
 
 ### 读取：场节点里的资产
 
-1. **场节点**：偏压、辐照注量、场模式、所选网格及其文件的哈希与 `read` 记下的器件部分（求解期间读到的器件属性、器件文件的键及其值，如 `doping`、`bias`、`irradiation`）都是场节点的输入，节点号由它们的指纹给出（见 [../stages/field.md](../stages/field.md)）；改了其中任何一项就得到新节点。本包从给定的场节点目录 `field/<节点号>/` 读取。
+1. **场节点**：偏压、辐照注量、场模式、所选网格及其文件的哈希与 `read` 记下的器件部分（求解期间读到的器件属性、器件文件的键及其值，如 `doping`、`bias`、`irradiation`）都是场节点的输入，节点号由它们的指纹给出（见 [../stages/field.md](../stages/field.md)）；改了其中任何一项就得到新节点。本包从给定的场节点目录 `field/nodes/<节点号>/` 读取。
 2. **资产检查**：`solved.potential` 或 `solved.weighting` 中没有该偏压时抛出 `FileNotFoundError`。
 3. **电容与未耗尽层**：`solved_capacitance` 返回 `specific_capacitance_pF × area_factor × 1e-12`（F）；`solved_undepleted` 返回 $(r/A,\ c\cdot A\cdot10^{-12})$（$\Omega$、F），$A$ 见式 (20)，未耗尽宽度为 `0` 时返回 `None`；对应偏压未求解时抛出 `FileNotFoundError`。
 4. **电路取值**（`field_circuit`）：条形器件只列一个读出电极且 `read_ele_num > 1` 时读 `Capacitance_<V>V.json`，文件不存在时抛出 `FileNotFoundError`；其余器件在 `solved.capacitance` 有该偏压时取场电容；所有器件取未耗尽层。
@@ -399,7 +399,7 @@ HEMT 器件仍由 `run_hemt_transport` 自己处理它的区域和异质结界�
 
 `DevsimField(device_name, voltage, read_out_contact, bounds, resolution, field_directory, interpolation_bins, pitch)` 构造时：
 
-1. **目录**：用 `field_directory` 给出的场节点目录 `field/<节点号>/`。`node.json` 缺失时抛出 `FileNotFoundError`；`axes` 取自其中。
+1. **目录**：用 `field_directory` 给出的场节点目录 `field/nodes/<节点号>/`。`node.json` 缺失时抛出 `FileNotFoundError`；`axes` 取自其中。
 2. **加载**：`NetDoping` 取目录中第一个匹配 `NetDoping_<V>V.pkl` 的文件；`Potential`、`TrappingRate_p`、`TrappingRate_n`、`Conductive` 与各读出电极的权重势取该偏压的文件。文件缺失时抛出 `FileNotFoundError`；文件的维数小于 `axes` 的长度时抛出 `ValueError`。
 3. **插值器**：1D 用 `interp1d`（线性，界外报错）；2D 用 `LinearNDInterpolator`（一次 Delaunay 剖分，凸包外为 `NaN`）；3D 用 `interpolate_3d`：
    - 点数不足 2、含非有限值、点形状不是 $N\times3$ 或值数不符时抛出 `ValueError`；所有值相同时返回常数；
@@ -529,7 +529,7 @@ HEMT 器件仍由 `run_hemt_transport` 自己处理它的区域和异质结界�
 
 ### 输出文件
 
-文件写入场节点目录 `work/<device>/field/<节点号>/`。pickle 与 `Capacitance_*.json` 的偏压用 `voltage_label`（整数值写成整数，如 `Potential_200V.pkl`）；`.devsim`、`.dd`、`.undepleted.json`、`.cv.json` 用浮点格式（如 `200.0V.devsim`、`0.0V.undepleted.json`），零偏压的状态文件为 `0V.devsim`、`0V.dd`。负偏压照此带负号，如 `Potential_-100V.pkl`、`-100.0V.devsim`。
+文件写入场节点目录 `work/<device>/field/nodes/<节点号>/`。pickle 与 `Capacitance_*.json` 的偏压用 `voltage_label`（整数值写成整数，如 `Potential_200V.pkl`）；`.devsim`、`.dd`、`.undepleted.json`、`.cv.json` 用浮点格式（如 `200.0V.devsim`、`0.0V.undepleted.json`），零偏压的状态文件为 `0V.devsim`、`0V.dd`。负偏压照此带负号，如 `Potential_-100V.pkl`、`-100.0V.devsim`。
 
 | 文件 | 内容、形状、类型 | 单位 |
 | --- | --- | --- |
