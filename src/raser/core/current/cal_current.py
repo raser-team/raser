@@ -211,6 +211,8 @@ class CalCurrent:
         if hasattr(my_d, "x_ele_num") and hasattr(my_d, "y_ele_num"):
             self.x_ele_num = my_d.x_ele_num
             self.y_ele_num = my_d.y_ele_num
+            self.l_x, self.l_y = my_d.l_x, my_d.l_y
+            self.p_x, self.p_y = my_d.p_x, my_d.p_y
         self.read_out_contact = my_d.read_out_contact
         self.electrodes = electrode_names(self.read_out_contact, self.read_ele_num)
         
@@ -440,10 +442,12 @@ class CalCurrent:
         )
 
     def charge_collection_strip(self, path, event):
-        draw.charge_collection_strip(path, event, self.charge)
+        draw.charge_collection_strip(path, event, self.charge, self.l_x, self.x_ele_num, self.p_x)
 
     def charge_collection_pixel(self, path, event):
-        draw.charge_collection_pixel(path, event, self.charge, self.x_ele_num, self.y_ele_num)
+        draw.charge_collection_pixel(
+            path, event, self.charge, self.l_x, self.l_y, self.x_ele_num, self.y_ele_num, self.p_x, self.p_y
+        )
 
 class CalCurrentGain(CalCurrent):
     '''Calculation of gain carriers and gain current, simplified version'''
