@@ -1,8 +1,13 @@
+import h5py
 import numpy as np
 import pytest
 
+from raser.core.digitizer.digital_waveforms import DigitizerFileSettings
+from raser.core.digitizer.digital_waveforms import EventDigitized
+from raser.core.digitizer.digital_waveforms import append_digitized
 from raser.core.readout.waveforms import EventWaveforms
 from raser.core.readout.waveforms import append_waveforms
+from raser.core.readout.waveforms import read_waveforms
 from raser.core.reconstruction.event_table import read_event_table
 from raser.stages import reconstruction
 
@@ -38,14 +43,72 @@ def _job(folder, scales, count, seed):
     return starts
 
 
-def _run(folder, threshold, amplitude_threshold, edge="falling"):
-    node = str(folder / "node")
+def _run(folder, threshold, amplitude_threshold, edge="falling", fractions=FRACTIONS):
+    """The table of the waveforms of the node, as the slice writes it of the
+    digitized ones."""
+    node = folder / "node"
+    reconstruction.tabulate(
+        read_waveforms(node / "readout.h5"), node / "readout.h5", node / "reconstruction.h5",
+        threshold, amplitude_threshold, fractions, edge,
+    )
+    return read_event_table(node / "reconstruction.h5")
+
+
+BITS = 12
+LSB = 1.0e-4  # V
+PERIOD = 0.5e-9  # s
+
+
+def _digitized(path, events):
+    """A digitizer file of the electrodes left and right: for each event
+    number the start [s] and the scale of the triangle of each electrode it
+    stored, sampled every PERIOD and quantized as the digitizer does."""
+    settings = DigitizerFileSettings(PERIOD, LSB, 0.0, BITS, 4, "toy", BEFORE * PERIOD)
+    volts = np.concatenate([np.zeros(BEFORE), TRIANGLE])
+    for number, traces in events.items():
+        codes = [np.floor(scale * volts / LSB).astype(int) + 2 ** (BITS - 1) for _, scale in traces.values()]
+        record = EventDigitized(
+            number, np.array(codes), np.zeros(len(traces), dtype=int), np.array([start for start, _ in traces.values()]),
+            list(traces), np.zeros(len(traces), dtype=bool),
+        )
+        append_digitized(path, ["left", "right"], settings, record, ["falling", "falling"])
+
+
+def _triggered(path, events, seen):
+    with h5py.File(path, "w") as file:
+        file["event"] = np.array(events, dtype="int64")
+        file["trigger_time"] = np.zeros(len(events), dtype="float64")
+        file.attrs["events_seen"] = seen
+
+
+# Deliberate changes: every digitized event given a row, the codes taken as
+# volts without the lsb, one start taken for all the electrodes of an event,
+# the samples placed half a period late.
+def test_the_slice_tabulates_the_digitized_waveforms_of_the_events_the_trigger_recorded(tmp_path) -> None:
+    node = tmp_path / "node"
+    node.mkdir()
+    # the right electrode is of another device, whose clock starts 0.2 ns later
+    _digitized(node / "digitizer.h5", {
+        3: {"left": (1.0e-9, 1.0), "right": (1.2e-9, 0.5)},
+        5: {"left": (0.0, 1.0)},
+        8: {"left": (2.0e-9, 1.0), "right": (2.2e-9, 0.5)},
+    })
+    _triggered(node / "trigger.h5", [3, 8], 3)
     kwargs = {
-        "_node_paths": {name: node for name in ("readout", "reconstruction")},
-        "threshold": threshold, "amplitude_threshold": amplitude_threshold, "fractions": FRACTIONS, "edge": edge,
+        "_node_paths": {name: str(node) for name in ("digitizer", "trigger", "reconstruction")},
+        "threshold": 3, "amplitude_threshold": 5, "fractions": FRACTIONS, "edge": None,
     }
-    reconstruction.run(kwargs)
-    return read_event_table(folder / "node" / "reconstruction.h5")
+
+    assert reconstruction.run(kwargs) is None
+
+    rows = read_event_table(node / "reconstruction.h5").columns
+    assert list(rows["event"]) == [3, 8]
+    # codes back to volts: the baseline and the peak are both half an lsb
+    # above the floor of their step, 10 mV and 5 mV apart
+    assert rows["amplitude"] == pytest.approx(np.tile([10.0e-3, 5.0e-3], (2, 1)), rel=1e-9, abs=0)
+    # the triangle is symmetric about its sample 6: at t0 + (BEFORE + 6) periods of each electrode
+    peak = (BEFORE + 6) * PERIOD
+    assert rows["CoG"] == pytest.approx(np.array([[1.0e-9, 1.2e-9], [2.0e-9, 2.2e-9]]) + peak, rel=1e-9, abs=0)
 
 
 def test_every_event_has_a_row_and_the_large_ones_are_selected(tmp_path) -> None:
@@ -111,26 +174,16 @@ def test_thresholds_on_the_other_edge_see_no_pulse(tmp_path) -> None:
 def test_position_reads_and_writes_the_files_of_its_own_slices(tmp_path) -> None:
     node = tmp_path / "node"
     node.mkdir()
-    names = {name: str(node) for name in ("readout.left", "reconstruction.left", "readout.right", "reconstruction.right")}
-    samples = np.concatenate([np.zeros(BEFORE), TRIANGLE])
-    append_waveforms(
-        node / "readout.left.h5",
-        ["top"],
-        DT,
-        BEFORE * DT,
-        EventWaveforms(7, 0.0, np.array([samples])),
-        pulse_edge=["falling"],
-    )
-    kwargs = {
-        "_node_paths": names,
-        "threshold": 3,
-        "amplitude_threshold": 5,
-        "fractions": FRACTIONS,
-        "edge": "falling",
+    names = {
+        f"{name}.{position}": str(node)
+        for name in ("digitizer", "trigger", "reconstruction") for position in ("left", "right")
     }
+    _digitized(node / "digitizer.left.h5", {7: {"left": (0.0, 1.0)}})
+    _triggered(node / "trigger.left.h5", [7], 1)
+    kwargs = {"_node_paths": names, "threshold": 3, "amplitude_threshold": 5, "fractions": FRACTIONS, "edge": "falling"}
 
     assert reconstruction.run(kwargs, "left") is None
-    assert reconstruction.run(kwargs, "right") == {"events": 0}  # no currents, no readout there
+    assert reconstruction.run(kwargs, "right") == {"events": 0}  # no currents, nothing digitized or triggered there
 
     assert list(read_event_table(node / "reconstruction.left.h5").columns["event"]) == [7]
     assert not (node / "reconstruction.right.h5").exists()
@@ -190,13 +243,9 @@ def test_area_is_of_the_lobe_that_holds_the_peak(tmp_path) -> None:
 
 def test_fraction_outside_zero_to_one_is_refused(tmp_path) -> None:
     _job(tmp_path, [[1.0]], 1, seed=11)
-    kwargs = {
-        "_node_paths": {"readout": str(tmp_path / "node"), "reconstruction": str(tmp_path / "node")},
-        "threshold": 3, "amplitude_threshold": 5, "fractions": (0.5, 1.2), "edge": "falling",
-    }
 
     with pytest.raises(ValueError, match=r"fractions \[1.2\]: a constant fraction lies between 0 and 1"):
-        reconstruction.run(kwargs)
+        _run(tmp_path, 3, 5, fractions=(0.5, 1.2))
     assert not (tmp_path / "node" / "reconstruction.h5").exists()
 
 

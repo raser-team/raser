@@ -184,7 +184,7 @@ raser analysis examples/HPK-Si-PiN/signal
 
 ### 能量分辨率估计量
 
-`write_point` 在算出效率之后，先于全点 `0` 事例的提前结束，对 `event_energies(jobs)` 调用 `energy_spread`，存入 `result["deposited_energy"]`；再对 `event_charges(tables)` 的全部记录事例收集电荷调用 `energy_resolution`，结果存入 `result["energy_resolution"]["charge"]`；有记录事例时，对选中事例的 `times["amplitude"]` 同样处理，存入 `result["energy_resolution"]["amplitude"]`。`event_charges` 与 `event_efficiencies` 共用同一套核对：作业电流文件里的事例号集合须与重建表完全一致，否则抛出同样的 `ValueError`。`energy_resolution(values)` 调用 `core/analysis` 的 `mad_core_resolution`，只把 `TooFewValues` 与 `NoSpread` 转成 `{"events": len(values), "error": <原因>}`；非有限值、均值为 `0` 等其他 `ValueError` 照常抛出，让点失败。
+`write_point` 在算出效率之后，先于全点 `0` 事例的提前结束，对 `event_energies(jobs)` 调用 `energy_spread`，存入 `result["deposited_energy"]`；再对 `event_charges(tables)` 的全部记录事例收集电荷调用 `energy_resolution`，结果存入 `result["energy_resolution"]["charge"]`；有记录事例时，对选中事例的 `times["amplitude"]` 同样处理，存入 `result["energy_resolution"]["amplitude"]`。`event_charges` 与 `event_efficiencies` 共用同一套核对：重建表里的事例须都在作业的电流文件里，否则抛出同样的 `ValueError`；收集电荷只取重建表里的事例，即被 `trigger` 记录的事例。`energy_resolution(values)` 调用 `core/analysis` 的 `mad_core_resolution`，只把 `TooFewValues` 与 `NoSpread` 转成 `{"events": len(values), "error": <原因>}`；非有限值、均值为 `0` 等其他 `ValueError` 照常抛出，让点失败。
 
 ### 跨扫描点汇总
 

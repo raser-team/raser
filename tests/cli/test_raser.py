@@ -117,7 +117,7 @@ def test_global_test_before_a_command_with_jobs_is_its_dry_run(
     folder = work_root / "HPK-Si-PiN" / "signal" / "seed_1"
     slices = [
         f"  {name:<15}jobs [0, 1]"
-        for name in ("deposit", "field", "current", "readout", "reconstruction")
+        for name in ("deposit", "field", "current", "readout", "digitizer", "trigger", "reconstruction")
     ]
     assert capsys.readouterr().out.splitlines() == [f"{folder}: jobs [0, 1]", *slices]
     assert not work_root.exists()
@@ -143,7 +143,7 @@ def test_inside_an_experiment_folder_the_command_and_device_come_from_its_config
     assert main(["-s", "2", "--seed", "2", "--dry-run"]) == 0
     slices = [
         f"  {name:<15}jobs [0, 1]"
-        for name in ("deposit", "field", "current", "readout", "reconstruction")
+        for name in ("deposit", "field", "current", "readout", "digitizer", "trigger", "reconstruction")
     ]
     assert capsys.readouterr().out.splitlines() == [
         f"{experiment / 'voltage_200' / 'seed_2'}: jobs [0, 1]",
@@ -155,7 +155,7 @@ def test_inside_an_experiment_folder_the_command_and_device_come_from_its_config
     assert main(["-bb", "-s", "2", "--seed", "3"]) == 0
     every = [
         "--job-slices",
-        "deposit,field,current,readout,reconstruction",
+        "deposit,field,current,readout,digitizer,trigger,reconstruction",
     ]  # each voltage is measured anew
     assert submitted == [(["signal", "HPK-Si-PiN", *every], True, 2)] * 2
 
@@ -188,8 +188,8 @@ def test_a_stage_command_given_inside_an_experiment_folder_is_not_taken_for_its_
                 },
                 "current": {"plots": 100},
                 "readout": {"amplifier": "SantaCruz+Gali52+Termination50", "sheet_resistance": None},
-                "digitizer": {},
-                "trigger": {},
+                "digitizer": {"device": "MXR608A", "plots": 100},
+                "trigger": {"device": None},
                 "reconstruction": {
                     "threshold": 10.0,
                     "amplitude_threshold": 10.0,

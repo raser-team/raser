@@ -76,7 +76,7 @@ def test_a_field_solved_again_runs_what_reads_it_again_and_keeps_the_deposits(ex
 
     experiment["state"]["stamp"] = "solved again"
     execute(experiment["workflow"], _kwargs())
-    assert experiment["ran"] == ["field", "current", "readout", "reconstruction"]
+    assert experiment["ran"] == ["field", "current", "readout", "digitizer", "trigger", "reconstruction"]
 
     experiment["ran"].clear()
     execute(experiment["workflow"], _kwargs())
@@ -116,20 +116,40 @@ def test_a_threshold_is_not_scanned_and_another_one_reconstructs_the_same_wavefo
     assert experiment["ran"] == ["reconstruction"]  # the events are those that were measured
 
 
+# Deliberate changes: the digitizer slice reading no file of its device, so that
+# another one runs nothing; the readout slice listed among those that read it.
+def test_another_digitizer_runs_the_digitizer_and_what_follows_it_alone(experiment: dict[str, Any]) -> None:
+    execute(experiment["workflow"], _kwargs())
+    experiment["ran"].clear()
+
+    execute(experiment["workflow"], _kwargs(set=["digitizer.device=toy"]))
+
+    assert experiment["ran"] == ["digitizer", "trigger", "reconstruction"]
+    files = json.loads((experiment["root"] / "seed_1" / "run.json").read_text())["files"]
+    # the file of the digitizer is read for the run; trigger.device is null and names none
+    assert files["digitizer"]["bits"] == 14 and "trigger" not in files
+
+
+# Deliberate change: the check dropped, so that the trigger of the digitizer is taken silently.
+def test_a_trigger_device_of_its_own_is_told_not_to_run_yet() -> None:
+    with pytest.raises(ValueError, match="trigger.device coincidence: a trigger device of its own is not run"):
+        chain._triggered({"device": "coincidence", "_files": {}})
+
+
 def test_another_sheet_resistance_runs_the_readout_and_what_follows_it_alone(experiment: dict[str, Any]) -> None:
     execute(experiment["workflow"], _kwargs())
     experiment["ran"].clear()
 
     execute(experiment["workflow"], _kwargs(set=["readout.sheet_resistance=1.0e5"]))
 
-    assert experiment["ran"] == ["readout", "reconstruction"]
+    assert experiment["ran"] == ["readout", "digitizer", "trigger", "reconstruction"]
 
 
 def test_a_scanned_bias_gives_every_point_its_own_deposits(experiment: dict[str, Any]) -> None:
     execute(experiment["workflow"], _kwargs(scan=["field.voltage=100,300"]))
 
     for point in ("voltage_100", "voltage_300"):
-        assert _held_in(experiment["root"], point) == dict.fromkeys(("deposit", "field", "current", "readout", "reconstruction"), point)
+        assert _held_in(experiment["root"], point) == dict.fromkeys(("deposit", "field", "current", "readout", "digitizer", "trigger", "reconstruction"), point)
     assert experiment["ran"].count("deposit") == 2
     # the points draw other numbers in the same job
     drawn = {point: seed for name, point, seed in experiment["seeds"] if name == "deposit"}
@@ -159,7 +179,7 @@ def test_another_bias_runs_the_field_and_what_follows_it_but_not_the_deposits(
 
     execute(experiment["workflow"], _kwargs(set=["field.voltage=100.0"]))
 
-    assert experiment["ran"] == ["field", "current", "readout", "reconstruction"]
+    assert experiment["ran"] == ["field", "current", "readout", "digitizer", "trigger", "reconstruction"]
 
 
 def test_a_field_not_ready_is_started_once_for_the_points_that_share_it_and_their_jobs_wait(
