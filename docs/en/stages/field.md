@@ -73,7 +73,7 @@ Cause: weighting-field solving requires `Conductive_<V>V.pkl` at the same bias t
 
 ### Shared Field Completion, Waiting, and Handoff in the Simulation Chain
 
-In benchmark, application, or downstream stage commands (such as `raser signal`, `raser current`, `raser readout`, `raser digitizer`, `raser trigger`, `raser reconstruction`, `raser analysis`), each experiment is a Python class inheriting from the `raser` experiment base class that declares its stages, devices, and device roles. Before launching experiment jobs, the main command deduplicates shared field requirements across scan points and checks each with `ready`; for any unready field, it prints `the field is not ready: raser field <device> --set field.voltage=<V> ...` and solves it first in an isolated single-job process (running locally or submitted to the cluster with `-b` following the main command, leaving existing `field` configurations intact).
+In benchmark, application, or downstream stage commands (such as `raser signal`, `raser current`, `raser readout`, `raser digitizer`, `raser trigger`, `raser reconstruction`, `raser analysis`), each experiment is a Python class inheriting from the `raser` experiment base class that declares its stages, devices, and device roles. Before launching experiment jobs, the main command deduplicates shared field requirements across scan points and checks each with `ready`; for any unready field, it prints `solving the field first: raser field <device> --set field.voltage=<V> ...` and solves it first in an isolated single-job process (running locally or submitted to the cluster with `-b` following the main command, leaving existing `field` configurations intact).
 
 If another process is currently solving the same shared field node (node lock contention), the main command prints `<stage>: <locked_target> is run by another process now; run the command again when it is done`, and downstream experiment jobs enter a waiting state (downstream jobs likewise wait when a cluster `-b` shared field job has not yet completed):
 
@@ -108,8 +108,8 @@ raser signal HPK-Si-PiN --scan field.voltage=100,200 -s 2 --set deposit.events_p
 causes the main command to print before launching signal jobs:
 
 ```text
-the field is not ready: raser field HPK-Si-PiN --set field.voltage=100.0
-the field is not ready: raser field HPK-Si-PiN --set field.voltage=200.0
+solving the field first: raser field HPK-Si-PiN --set field.voltage=100.0
+solving the field first: raser field HPK-Si-PiN --set field.voltage=200.0
 ```
 
 The program launches two single-job processes sequentially to solve the `100 V` and `200 V` fields, storing the results under `field/` of the `HPK-Si-PiN` project, with each target bias as its own field node:
@@ -236,7 +236,7 @@ The eight-stage simulation chain and multi-device experiments interact with shar
    - The main command iterates over the shared fields required by all pending scan points, deduplicating by device and `field`-section settings; whenever a requirement has not been started in this invocation and `ready(options, files) is None`, it calls `start(kwargs, options, files)`:
      1. Builds `raser field <device> --set field.voltage=<bias>` arguments (also passing irradiation fluence if it differs from the device file, or any device-file keys other than bias modified by the scan point).
      2. Sets `batch=kwargs["batch"]`, `mem=kwargs["mem"]`, `jobs=1` (ensuring execution in an isolated subprocess or cluster job where DEVSIM loads exclusively), `_argv=words`, `_entry_command_prefix=("field",)`, and `_waiting=kwargs.get("_waiting")` (non-empty only under `-b`).
-     3. Prints `"the field is not ready: " + " ".join(["raser", *words])` and launches the field solve.
+     3. Prints `"solving the field first: " + " ".join(["raser", *words])` and launches the field solve.
    - If `start` raises `Running` because another process holds the node lock, `_make_shared` prints `f"{piece.name}: {running}"` and skips it; the main command subsequently sees `ready` return `None`, moves the corresponding downstream jobs into the waiting state, and prints the waiting message.
    - When neither `-b` nor `--dry-run` is active, `ready(options, files)` is rechecked after `start` returns; if still `None`, raises `RuntimeError(f"{piece.name} was made in this process and is still not ready for a point of {root}: waiting would not help")`.
 5. **Parameter table recording, view symlinking, and in-job verification (`chain._field`)**:
