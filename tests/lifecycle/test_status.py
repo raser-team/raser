@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from raser.lifecycle import status
 from raser.lifecycle import workflow as workflow_module
 from raser.lifecycle.slices import Shared
@@ -138,3 +140,35 @@ def test_a_run_recorded_with_the_slice_names_of_an_older_raser_is_out_of_date(tm
     lines = status._folder_lines(CHAIN, folder, record, None, lambda piece: True)
 
     assert lines == [f"{folder}: out of date (recorded with the slices ['currents', 'deposits', 'field'])"]
+
+
+def _experiment(folder: Path, name: str = "toy") -> Path:
+    folder.mkdir(parents=True)
+    (folder / "config.json").write_text(json.dumps({"workflow": name}))
+    return folder.resolve()
+
+
+# Deliberate changes: a project folder taken as an experiment itself, only the
+# first experiment of a project listed, the folder inside an experiment listed too.
+def test_a_project_folder_or_a_device_names_every_experiment_of_the_project(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("RASER_WORK_PATH", str(tmp_path / "work"))
+    monkeypatch.chdir(tmp_path)
+    signal = _experiment(tmp_path / "work" / "dev" / "signal")
+    laser = _experiment(tmp_path / "work" / "dev" / "tct" / "top", "tct top")
+    _experiment(signal / "analysis")  # a folder with a config.json inside an experiment
+
+    assert status.experiments("work/dev/signal") == [signal]
+    assert status.experiments("work/dev") == [signal, laser]
+    assert status.experiments("dev") == [signal, laser]  # a device under the work folder
+    monkeypatch.chdir(signal)
+    assert status.experiments(".") == [signal]
+
+
+# Deliberate change: the missing config.json opened, a traceback of FileNotFoundError.
+def test_a_path_that_names_no_experiment_is_told_in_one_line(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("RASER_WORK_PATH", str(tmp_path / "work"))
+    (tmp_path / "work" / "empty").mkdir(parents=True)
+
+    for target in ("empty", "nowhere", str(tmp_path)):
+        with pytest.raises(SystemExit, match="neither an experiment folder .* nor a project that holds one"):
+            status.experiments(target)
