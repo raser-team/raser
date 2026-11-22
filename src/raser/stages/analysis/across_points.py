@@ -3,7 +3,14 @@
 import json
 from pathlib import Path
 
+import numpy as np
+
 from raser.supports import figures
+
+from .signals import event_energies
+from .signals import mean_current
+
+KEV_PER_MEV = 1.0e3
 
 
 def scanned_options(points):
@@ -99,3 +106,56 @@ def write_points(points, results, folder):
         axis.set_ylim(bottom=0)
         axis.legend()
     figures.save(figure, folder, "energy_resolution")
+
+
+def write_signals(points, jobs, folder):
+    """Write currents.png and deposited_energy.png (and .pdf) into `folder`,
+    one curve per point: the induced current averaged over the recorded events
+    of the point against time, and the distribution of the energy the events
+    deposited in the sensitive layers, in the same 60 bins for all points.
+
+    A point whose jobs recorded no event has no curve; a figure that would
+    have no curve is not drawn. The curves are labelled with the scanned
+    options of the point, in ascending order of the option when there is one
+    and it is a number.
+
+    points : (folder name, options) of each point
+    jobs   : the (seed folder, job index) pairs of each point
+    """
+    folder = Path(folder)
+    scanned = scanned_options(points)
+    entries = [
+        (", ".join(f"{key} = {options.get(key)}" for key in scanned) or name, options, point_jobs)
+        for (name, options), point_jobs in zip(points, jobs)
+    ]
+    numbers = len(scanned) == 1 and all(
+        isinstance(options[scanned[0]], (int, float)) and not isinstance(options[scanned[0]], bool)
+        for _, options, _ in entries
+    )
+    if numbers:
+        entries.sort(key=lambda entry: entry[1][scanned[0]])
+    colors = figures.series(len(entries), numbers)
+
+    means = [(text, mean_current(point_jobs), color) for (text, _, point_jobs), color in zip(entries, colors)]
+    means = [entry for entry in means if entry[1] is not None]
+    if means:
+        figure, axis = figures.new()
+        for text, (times, current, _), color in means:
+            axis.plot(times / figures.UNIT["ns"], current / figures.UNIT["uA"], color=color, label=text)
+        axis.set_xlabel(figures.label("Time", "ns"))
+        axis.set_ylabel(figures.label("Mean induced current", "uA"))
+        axis.legend()
+        figures.save(figure, folder, "currents")
+
+    energies = [(text, event_energies(point_jobs) * KEV_PER_MEV, color) for (text, _, point_jobs), color in zip(entries, colors)]
+    energies = [entry for entry in energies if len(entry[1])]
+    if not energies:
+        return
+    edges = np.histogram_bin_edges(np.concatenate([values for _, values, _ in energies]), bins=60)
+    figure, axis = figures.new()
+    for text, values, color in energies:
+        axis.hist(values, bins=edges, histtype="step", color=color, label=f"{text}: {len(values)} events")
+    axis.set_xlabel(figures.label("Deposited energy", "keV"))
+    axis.set_ylabel("Events")
+    axis.legend()
+    figures.save(figure, folder, "deposited_energy")

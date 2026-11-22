@@ -23,7 +23,7 @@ raser analysis examples/HPK-Si-PiN/signal
 
 样本不足时作业照常完成：效率不足 `2` 个事例、全点 `0` 事例，或任一时间通道有效样本不足 `20` 个，原因写进 `result.json` 对应的 `error` 字段，相应的图跳过。某个作业在 `deposit` 里录得 `0` 个事例时，它的下游环节随之跳过，统计时也跳过它。
 
-每个点还对收集电荷与读出幅度各算两个能量分辨率估计量（式见[统计分析](../core/analysis.md#能量分辨率估计量)），写入 `result.json` 的 `energy_resolution`：全体样本的 FWHM/均值 `resolution`，和只取中位数 ± 5 σ_MAD 以内核心样本的 FWHM/均值 `core_resolution`，其中 σ_MAD = 1.4826 × 中位绝对偏差，系数 `5` 无出处。收集电荷取全部记录事例各电极净电荷代数和的绝对值，不依赖重建；读出幅度取选中事例的 `amplitude`，已扣基线，且只含不低于幅度阈值的事例，分布在下端被阈值截去。样本不足 `2` 个，或过半样本等于中位数使核心无法确定时，该量只写 `events` 与 `error`，不影响其余结果，也不进入点结束时打印的缺项说明。
+每个点还对收集电荷与读出幅度各算两个能量分辨率估计量（式见[统计分析](../core/analysis.md#能量分辨率估计量)），写入 `result.json` 的 `energy_resolution`：全体样本的 FWHM/均值 `resolution`，和只取中位数 ± 5 σ_MAD 以内核心样本的 FWHM/均值 `core_resolution`，其中 σ_MAD = 1.4826 × 中位绝对偏差，系数 `5` 无出处。收集电荷取全部记录事例各电极净电荷代数和的绝对值，不依赖重建；读出幅度取选中事例的 `amplitude`，已扣基线，且只含不低于幅度阈值的事例，分布在下端被阈值截去。样本不足 `2` 个，或过半样本等于中位数使核心无法确定时，该量只写 `events` 与 `error`，不影响其余结果，也不进入点结束时打印的缺项说明。每点还把全部记录事例在灵敏层内的沉积能量（各沉积步 `e` 之和）的事例数、平均值与样本标准差（`ddof=1`，$\text{MeV}$）写入 `result.json` 的 `deposited_energy`；事例不足 `2` 个时只写 `events` 与 `error`。
 
 在上面的例子中（每点 `2` 个作业、共 `400` 个事例），两个点的 `result.json` 关键结果如下：
 
@@ -89,6 +89,8 @@ raser analysis examples/HPK-Si-PiN/signal
 
 同样的条件下还写出 `energy_resolution.png`、`energy_resolution.pdf`：左图收集电荷、右图读出幅度，各画 `resolution`（黑色圆点实线）与 `core_resolution`（蓝色方点虚线）随扫描变量的变化。上面例子的 `points.json` 每行也带 `energy_resolution`，节选中未列出。
 
+有结果的扫描点多于 `1` 个时，另写出两张各点叠画的图，一点一条曲线：`currents.png`、`currents.pdf` 是该点全部记录事例的平均感应电流随时间的曲线；`deposited_energy.png`、`deposited_energy.pdf` 是该点全部记录事例在灵敏层内沉积能量的直方图，各点用同一组 `60` 个箱。这两张图不要求变化选项恰有一个数值：曲线名写各点变化选项的取值，变化选项恰有一个且为数值时按它升序、用渐变色。没有记录事例的点没有曲线，所有点都没有时不画这张图。
+
 ## 规则
 
 ### 节点
@@ -103,11 +105,12 @@ raser analysis examples/HPK-Si-PiN/signal
 | --- | --- | --- | --- |
 | `PICOSECOND` | `1.0e-12` | $\text{s}$ | `plots.py`、`across_points.py`；将时间差、拟合窗口与时间分辨由 $\text{s}$ 换算为 $\text{ps}$ |
 | `MILLIVOLT` | `1.0e-3` | $\text{V}$ | `plots.py`；将脉冲幅度与幅度阈值由 $\text{V}$ 换算为 $\text{mV}$（`timing.py` 的 `table_setting` 同按 `1.0e-3` 换算为 $\text{mV}$ 并 `round(..., 9)`） |
+| `KEV_PER_MEV` | `1.0e3` | $\text{keV}/\text{MeV}$ | `across_points.py`；将沉积能量由 $\text{MeV}$ 换算为 $\text{keV}$ |
 | `EDGE_SIGN` | `{"rising": 1.0, "falling": -1.0}` | 无 | 导入自 `raser.core.reconstruction.event_table`，在 `timing.py` 的 `event_times` 中将首电极脉冲边沿映射为极性符号 `polarity` |
 | 效率最少事例数（字面量） | `2` | 个 | `collection.py` 的 `efficiency_spread`；计算收集效率均值、均值标准误与样本标准差（`ddof=1`）所需的最少事例数 |
 | 能量分辨率最少样本数（字面量） | `2` | 个 | `core/analysis/resolution.py` 的 `fwhm_over_mean`；收集电荷与读出幅度的 FWHM/均值所需的最少样本数 |
 | `MINIMUM_EVENTS` | `20` | 个 | 定义于 `raser.core.analysis.resolution`，在 `timing.py` 的 `time_widths` 调用 `core_width` 时生效；单通道非 `NaN` 样本数及首轮窗口内样本数下限 |
-| 分布图分箱与曲线采样数（字面量） | 效率与幅度直方图 `60` 箱；时间差在 `mean ± 8 * sigma` 内 `64` 箱、`200` 个拟合曲线点、最多 `3 × 4` 子图 | 箱 / 点 / 格 | `plots.py`；写死在 `draw_efficiencies`、`draw_amplitudes`、`draw_differences` 中 |
+| 分布图分箱与曲线采样数（字面量） | 效率、幅度与跨点沉积能量直方图 `60` 箱；时间差在 `mean ± 8 * sigma` 内 `64` 箱、`200` 个拟合曲线点、最多 `3 × 4` 子图 | 箱 / 点 / 格 | `plots.py`、`across_points.py`；写死在 `draw_efficiencies`、`draw_amplitudes`、`draw_differences`、`write_signals` 中 |
 | 图像画幅与分辨率（字面量） | 单图 `(6, 4)`、`150 dpi`；时间差 `(16, 10)`、`130 dpi`；跨点图 `(11, 4)`、`150 dpi` | $\text{in}$ / $\text{dpi}$ | `plots.py`、`across_points.py`；导出 PNG 的固定画幅与分辨率 |
 
 ### 0 事例作业与缺失文件
@@ -181,7 +184,7 @@ raser analysis examples/HPK-Si-PiN/signal
 
 ### 能量分辨率估计量
 
-`write_point` 在算出效率之后，对 `event_charges(tables)` 的全部记录事例收集电荷调用 `energy_resolution`，结果存入 `result["energy_resolution"]["charge"]`；有记录事例时，对选中事例的 `times["amplitude"]` 同样处理，存入 `result["energy_resolution"]["amplitude"]`。`event_charges` 与 `event_efficiencies` 共用同一套核对：作业电流文件里的事例号集合须与重建表完全一致，否则抛出同样的 `ValueError`。`energy_resolution(values)` 调用 `core/analysis` 的 `mad_core_resolution`，只把 `TooFewValues` 与 `NoSpread` 转成 `{"events": len(values), "error": <原因>}`；非有限值、均值为 `0` 等其他 `ValueError` 照常抛出，让点失败。
+`write_point` 在算出效率之后，先于全点 `0` 事例的提前结束，对 `event_energies(jobs)` 调用 `energy_spread`，存入 `result["deposited_energy"]`；再对 `event_charges(tables)` 的全部记录事例收集电荷调用 `energy_resolution`，结果存入 `result["energy_resolution"]["charge"]`；有记录事例时，对选中事例的 `times["amplitude"]` 同样处理，存入 `result["energy_resolution"]["amplitude"]`。`event_charges` 与 `event_efficiencies` 共用同一套核对：作业电流文件里的事例号集合须与重建表完全一致，否则抛出同样的 `ValueError`。`energy_resolution(values)` 调用 `core/analysis` 的 `mad_core_resolution`，只把 `TooFewValues` 与 `NoSpread` 转成 `{"events": len(values), "error": <原因>}`；非有限值、均值为 `0` 等其他 `ValueError` 照常抛出，让点失败。
 
 ### 跨扫描点汇总
 
@@ -193,6 +196,9 @@ raser analysis examples/HPK-Si-PiN/signal
 - 判定是否作图：`len(scanned) == 1` 且对所有行均满足 `isinstance(row[scanned[0]], (int, float)) and not isinstance(row[scanned[0]], bool)`。不满足时直接返回。
 - 满足时按 `key = scanned[0]` 升序排列各行，用 `figures.new(1, 2)` 建立 `1 × 2` 画幅：左图筛选 `row["efficiency"] is not None` 的行，以黑色圆点连线和误差棒绘制效率，纵轴 `Charge collection efficiency`；右图筛选 `"ToA" in row` 的行记为 `timed`，若 `timed` 非空则取 `timed[0]` 中所有 `CFD*` 通道名，逐通道绘制 `sigma / figures.UNIT["ps"]` 及误差棒 `sigma_error / figures.UNIT["ps"]`（`ps`），颜色取 `figures.series(通道数, True)`，纵轴 `Time resolution [ps]`，下限设为 `0`；两幅的横轴都写扫描键名本身。存为 `trend.png`、`trend.pdf`。
 - 同一条件下再用 `figures.new(1, 2)` 画 `energy_resolution`：左、右图依次为 `charge`、`amplitude`；每幅取该量有结果的行，以 `resolution`（黑色圆点实线，图例 `FWHM / mean`）与 `core_resolution`（`figures.HISTOGRAM` 色方点虚线，图例 `FWHM / mean of the core`）对扫描键作图，横轴为扫描键名，纵轴 `Energy resolution of the charge` 或 `Energy resolution of the amplitude`，下限设为 `0`，存为 `energy_resolution.png`、`energy_resolution.pdf`。
+- 再调用 `write_signals(done, done_jobs, folder)`（`done_jobs` 为各点的作业列表）画 `currents` 与 `deposited_energy`，不要求变化选项恰有一个。曲线名是各变化选项的 `<键> = <值>` 用 `, ` 连接（没有变化选项时用点名）；变化选项恰有一个且取值均为非布尔数值时，按它升序并取 `figures.series(点数, True)` 的渐变色，否则保持点的顺序、取 `figures.series(点数, False)` 的颜色。
+  - `currents`：对每点调用 `mean_current(jobs)`。对每个作业经 `job_file(folder, index, "current")` 读 `current.h5`，返回 `None` 的 `0` 事例作业跳过，作业之间 `dt` 不同时抛出 `ValueError: <path>: time bins of <dt> s, those of the other jobs are <step> s wide`。每个事例的电流取各电极电流之和（$\text{A}$）。公共时间轴的箱中心为 `start + (j + 0.5) * dt`（$\text{s}$，自 primary 产生起算），`start` 为全点最早的事例 `t0`。一个事例的 `t0` 比 `start` 迟 $p = (t_0 - \text{start})/\text{dt}$ 个箱，$p$ 先舍入到 $10^{-9}$ 个箱，使整数箱的偏移不受浮点误差影响，再记 $i = \lfloor p \rfloor$、$f = p - i$，它的第 $k$ 箱电流 $c_k$ 按重叠比例分给公共轴的第 $i + k$ 箱（$(1 - f)\,c_k$）与第 $i + k + 1$ 箱（$f\,c_k$），事例的总电荷不变。事例没有的箱电流为 $0$，该事例仍计入分母：平均电流是各事例叠加之和除以该点记录事例数。没有记录事例的点没有曲线，没有曲线时不画图。横轴 `Time [ns]`，纵轴 `Mean induced current [μA]`。
+  - `deposited_energy`：对每点调用 `event_energies(jobs)`，读 `deposit.h5`，每个记录事例取全部沉积步 `e` 之和（$\text{MeV}$；该文件只含灵敏层内的沉积，多器件时各器件相加），乘 `KEV_PER_MEV` 换为 $\text{keV}$。事例数为 `0` 的点没有曲线，没有曲线时不画图。用 `np.histogram_bin_edges` 在全部点的全部事例上取 `60` 个等宽箱的边界，各点以同一组边界画 `histtype="step"` 的直方图，图例 `<曲线名>: <N> events`。横轴 `Deposited energy [keV]`，纵轴 `Events`。
 
 ## 软件实现
 
@@ -201,10 +207,11 @@ raser analysis examples/HPK-Si-PiN/signal
 - `src/raser/stages/analysis/__init__.py`：注册子命令 `analysis`（短别名 `ana`），实现作业函数 `collect`（编排单点分析与跨点汇总）。
 - `src/raser/stages/analysis/files.py`：提供 `slice_file` 与 `job_file`，找到一个作业的上游文件，并在文件缺失时核查该作业 `deposit` 节点里的 `deposit.h5`，区分正常 0 事例作业与缺失报错。
 - `src/raser/stages/analysis/collection.py`：提供 `event_efficiencies` 与 `efficiency_spread`，核对电流与重建事例号一致，调用 `collection_efficiency` 计算逐事例收集效率并汇总均值、均值标准误与样本标准差。 另提供 `event_charges`（逐事例收集电荷，与 `event_efficiencies` 共用事例号核对）与 `energy_resolution`（对一组样本调用 `mad_core_resolution`，把样本不足与无核心转成 `error`）。
+- `src/raser/stages/analysis/signals.py`：提供 `event_energies`（逐事例灵敏层沉积能量）、`energy_spread`（均值与样本标准差）与 `mean_current`（一个点全部记录事例的平均感应电流，按重叠比例并到公共时间轴）。
 - `src/raser/stages/analysis/timing.py`：提供 `table_setting`、`point_tables`、`event_times`、`time_widths` 与独立汇总接口 `point_resolution`，负责同点重建参数校验、单电极检查、最早沉积时刻 `truth` 提取以及各时间通道核心宽度拟合。
 - `src/raser/stages/analysis/point.py`：提供 `write_point`，串联单个扫描点的表加载、效率计算、时间提取、`events.h5` 与 `result.json` 落盘以及四张单点图绘制，并捕获 `TooFewValues` 转为结果中的 `error` 字段。
 - `src/raser/stages/analysis/plots.py`：封装四张单点分布图的 `matplotlib` 绘制函数：`draw_efficiencies`、`draw_amplitudes`、`draw_differences` 与 `draw_fractions`。
-- `src/raser/stages/analysis/across_points.py`：提供 `scanned_options` 与 `write_points`，提取各点间变化的选项，写出 `points.json` 并在单一数值扫描变量下绘制 `trend`。 并在同一条件下写出收集电荷与读出幅度的 `energy_resolution` 图。
+- `src/raser/stages/analysis/across_points.py`：提供 `scanned_options` 与 `write_points`，提取各点间变化的选项，写出 `points.json` 并在单一数值扫描变量下绘制 `trend`。 并在同一条件下写出收集电荷与读出幅度的 `energy_resolution` 图。另提供 `write_signals`，写出各点平均感应电流叠图 `currents` 与沉积能量叠图 `deposited_energy`。
 - 作业调度、节点复用与加锁由 `src/raser/lifecycle/` 承担。
 
 ### 核心数据结构
@@ -216,7 +223,7 @@ raser analysis examples/HPK-Si-PiN/signal
 | 选中事例时间字典 `times`（`event_times` 返回） | `job`, `event` | `ndarray`（`float64`，写 `events.h5` 时转 `int64`） | 无 | 选中事例所属作业下标与 Geant4 事例号 |
 | 选中事例时间字典 `times`（`event_times` 返回） | `ToA`, `ToT`, `truth`, `CoG`, `CFD<percent>` | `ndarray`（`float64`） | $\text{s}$ | 选中事例的各重建时刻、过阈持续时间与最早沉积真值时刻 |
 | 选中事例时间字典 `times`（`event_times` 返回） | `amplitude`, `baseline`, `noise` | `ndarray`（`float64`） | $\text{V}$ | 选中事例基线以上脉冲幅度、基线均值与基线总体标准差 |
-| 单点结果字典 `result`（`point.py`） | `reconstruction`, `collection`, `energy_resolution`, `timing` | `dict` | `reconstruction` 阈值 $\text{mV}$；`collection` 无量纲；`timing.times` 时间量 $\text{s}$ | 与单点 `result.json` 一一对应的内存汇总结构 |
+| 单点结果字典 `result`（`point.py`） | `reconstruction`, `collection`, `energy_resolution`, `deposited_energy`, `timing` | `dict` | `reconstruction` 阈值 $\text{mV}$；`collection` 无量纲；`timing.times` 时间量 $\text{s}$ | 与单点 `result.json` 一一对应的内存汇总结构 |
 | 跨点汇总行 `row`（`across_points.py`） | `point`, `<变化扫描选项>`, `events`, `efficiency`, `efficiency_error`, `selected`, `energy_resolution`, `<通道>` | `dict` | 选项按原单位；效率无量纲；通道 `sigma68`/`sigma`/`sigma_error` 为 $\text{s}$ | 与 `points.json` 中每个扫描点元素一一对应的字典 |
 
 ## 接口
@@ -240,8 +247,8 @@ raser analysis examples/HPK-Si-PiN/signal
 ### 读入的文件
 
 - **`<实验文件夹>/points.json`**：参数表，给出每个扫描点各环节的节点号。
-- **`deposit` 节点里的 `deposit.h5`**：文件格式见[能量沉积与电离（`core/deposit`）](../core/deposit.md)。本环节只读取事例数 `len(events)` 与每个事例最早沉积步时刻 `min(event.t)`（$\text{s}$）。
-- **`current` 节点里的 `current.h5`**：文件格式见[载流子漂移与感应电流（`core/current`）](../core/current.md)。本环节只读取每个事例的 `event`、`charge`（$\text{C}$）与 `pairs`（对）。
+- **`deposit` 节点里的 `deposit.h5`**：文件格式见[能量沉积与电离（`core/deposit`）](../core/deposit.md)。本环节只读取事例数 `len(events)` 、每个事例最早沉积步时刻 `min(event.t)`（$\text{s}$）与各沉积步能量 `e`（$\text{MeV}$）之和。
+- **`current` 节点里的 `current.h5`**：文件格式见[载流子漂移与感应电流（`core/current`）](../core/current.md)。本环节读取每个事例的 `event`、`charge`（$\text{C}$）与 `pairs`（对）；跨点的电流叠图另读 `dt`、每个事例的 `t0`（$\text{s}$）与各电极电流 `current`（$\text{A}$）。
 - **`reconstruction` 节点里的 `reconstruction.h5`**：文件格式见[事件重建（`core/reconstruction`）](../core/reconstruction.md)。本环节读取属性 `electrodes`、`threshold`（$\text{V}$）、`amplitude_threshold`（$\text{V}$）、`fractions`、`edge` 及数据集 `event`、`selected`、`ToA`、`ToT`、`amplitude`、`baseline`、`noise`、`CoG`、`CFD`。
 
 ### 写出的文件
@@ -264,6 +271,7 @@ raser analysis examples/HPK-Si-PiN/signal
 | `timing` | `error` | `str` | 无 | 全点 `0` 事例时写入 `"the jobs recorded no event"`；有事例但任一通道触发 `TooFewValues` 时替代 `times` 写入 `<len> values, fewer than 20` 或 `<inside> of <len> values are inside [<low>, <high>], fewer than 20` |
 | `energy_resolution` | `charge` | `dict` | 见含义 | 总写入；全部记录事例收集电荷（$\text{C}$，各电极净电荷代数和的绝对值）的 `mad_core_resolution`：`events`（个）、`mean`、`sigma`、`median`、`mad_sigma`、`core_mean`、`core_sigma`（$\text{C}$）、`core_events`（个）、`resolution`、`core_resolution`（无量纲）；样本不足 `2` 个或过半样本等于中位数时只写 `events` 与 `error` |
 | `energy_resolution` | `amplitude` | `dict` | 见含义 | 点上至少有 `1` 个记录事例时写入；选中事例读出幅度的 `mad_core_resolution`，键同 `charge`，带单位的量为 $\text{V}$；同样可只写 `events` 与 `error` |
+| `deposited_energy` | `events`, `mean`, `std` | `int`, `float`, `float` | 个、$\text{MeV}$、$\text{MeV}$ | 总写入；全部记录事例在灵敏层内沉积能量（各沉积步 `e` 之和）的事例数、均值与样本标准差（`ddof=1`）；`events < 2` 时只写 `events` 与 `error`，原文为 `<count> events in the point, a mean and a spread need at least 2` |
 
 #### `points/<点名>/analysis/events.h5`
 
@@ -306,3 +314,5 @@ raser analysis examples/HPK-Si-PiN/signal
 | `points/<点名>/analysis/plots/resolution_of_fraction.png`、`.pdf` | `timing.times` 全部算出 | 各 `CFD*` 通道的截断高斯拟合 `sigma`（黑色实心圆，带误差棒）与 `sigma68`（黑色空心方块）随恒比比例变化 | 横轴 `CFD fraction`（无量纲），纵轴 `Time resolution [ps]` |
 | `<实验文件夹>/analysis/trend.png`、`.pdf` | 有结果的扫描点多于 `1` 个、变化选项恰有 `1` 个且取值均为非布尔数值 | 按扫描变量升序绘制左右双图：左图为收集效率及误差棒，右图为各 `CFD*` 通道的 `sigma` 及误差棒，每个通道一条线 | 横轴为扫描选项名；左图纵轴 `Charge collection efficiency`，右图纵轴 `Time resolution [ps]` |
 | `<实验文件夹>/analysis/energy_resolution.png`、`.pdf` | 同 `trend` | 按扫描变量升序，左图收集电荷、右图读出幅度，各画 `resolution`（黑色圆点实线）与 `core_resolution`（蓝色方点虚线）；缺该量结果的点在该幅中省略 | 横轴为扫描选项名；纵轴 `Energy resolution of the charge`、`Energy resolution of the amplitude`（无量纲，下限 `0`） |
+| `<实验文件夹>/analysis/currents.png`、`.pdf` | 有结果的扫描点多于 `1` 个，且至少一个点有记录事例 | 每个点一条曲线：该点全部记录事例的平均感应电流（各电极电流之和，对事例取平均）随时间；输入为各作业 `current` 节点里的 `current.h5`；没有记录事例的点省略 | 横轴 `Time [ns]`（自 primary 产生起算，箱中心），纵轴 `Mean induced current [μA]` |
+| `<实验文件夹>/analysis/deposited_energy.png`、`.pdf` | 有结果的扫描点多于 `1` 个，且至少一个点有记录事例 | 每个点一条阶梯直方图：该点全部记录事例在灵敏层内的沉积能量分布，各点同用 `60` 个箱；输入为各作业 `deposit` 节点里的 `deposit.h5`；图例 `<曲线名>: <N> events`；没有记录事例的点省略 | 横轴 `Deposited energy [keV]`，纵轴 `Events` |

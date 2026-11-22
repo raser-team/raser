@@ -12,6 +12,8 @@ from .collection import efficiency_spread
 from .collection import energy_resolution
 from .collection import event_charges
 from .collection import event_efficiencies
+from .signals import energy_spread
+from .signals import event_energies
 from .timing import event_times
 from .timing import point_tables
 from .timing import table_setting
@@ -40,6 +42,10 @@ def write_point(jobs, folder):
                     charge of all events, `amplitude` [V] that of the
                     selected events; `amplitude` is not there when the jobs
                     recorded no event
+        deposited_energy  events, mean and std [MeV] of the energy the
+                    recorded events deposited in the sensitive layers, or
+                    `events` and `error` in place of the last two for fewer
+                    than 2 events
         timing      events, selected, polarity and times, as
                     `point_resolution` gives them [s]; or `error` in place of
                     `times` when the selected events give no width, and of
@@ -72,6 +78,7 @@ def write_point(jobs, folder):
         plots.draw_efficiencies(efficiencies, pictures)
     charges = event_charges(tables)
     result["energy_resolution"] = {"charge": energy_resolution(charges)}
+    result["deposited_energy"] = energy_spread(event_energies(jobs))
     if not len(efficiencies):
         result["timing"] = {"events": 0, "selected": 0, "error": "the jobs recorded no event"}
         missing.append("no time resolution: the jobs recorded no event")
