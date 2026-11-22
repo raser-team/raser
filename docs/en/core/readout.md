@@ -71,7 +71,7 @@ where:
 
 If the impulse point lies outside the RC node array (`not first_edge <= here_um <= last_edge`), `shares` raises `ValueError("The point lies at <axis> = <here_um> um, and the RC nodes of the layer reach from <first_edge> to <last_edge> um")`, reporting the coordinate and the array's range along that axis; if the number of current sources `len(circuit.sources)` differs from the device's total RC node count `x_ele_num * y_ele_num`, `impulse_response` raises `ValueError("The circuit has the currents of <len(rc_nodes)> RC nodes, and <det_name> has <count>")`.
 
-RC-node share calculation and multi-point impulse-response injection are implemented by `shares` and `impulse_response` in `network.py`.
+RC-node share calculation and multi-point impulse-response injection are implemented by `shares` in `resistive_layer.py` of `core/field` and `impulse_response` in `network.py`, respectively.
 
 ### Frequency-Domain Thermal Noise from a Given Spectrum and Time-Domain Synthesis
 
@@ -274,7 +274,7 @@ The short-circuit current netlist `write_short_circuit_netlist` contains only th
 - `waveforms.py`: defines the `EventWaveforms` and `Waveforms` dataclasses along with `_check_layout`, `append_waveforms`, `read_waveforms`, and `read_circuit_values` for sparse append writing and reading of `readout.h5`.
 - `schematic.py`: provides `read_hints`, `arrange`, `layout`, `value_text`, and `draw` to render `.cir` subcircuit files into schematic images.
 - `draw.py`: provides `draw_waveform`, using `raser.supports.figures` to plot single-event input induced-current and amplifier output-voltage waveforms and save them as `.png` and `.pdf`.
-- `network.py`: computes the response of a resistive-layer network to a point impulse. `shares(my_d, point_um)` returns the dictionary of RC node shares for unit charge at `(x, y)`; `impulse_response(my_d, circuit, chain, points_um, dt=10e-12, bins=2000, charge=1e-15)` converts each point's RC node shares into first-bin rectangular current pulses and calls `spice.solve` point by point, returning output voltages ($\text{V}$) of shape `(points, outputs, bins)` in the order of `circuit.outputs`.
+- `network.py`: computes the response of a resistive-layer network to a point impulse. `impulse_response(my_d, circuit, chain, points_um, dt=10e-12, bins=2000, charge=1e-15)` converts each point's RC node shares into first-bin rectangular current pulses and calls `spice.solve` point by point, returning output voltages ($\text{V}$) of shape `(points, outputs, bins)` in the order of `circuit.outputs`.
 - `draw_network.py`: plots resistive-layer network impulse responses and the device network circuit. `sharing` plots each readout electrode's maximum absolute waveform amplitude and waveform integral against the impulse $x$ coordinate and saves `network_sharing.png` and `.pdf` in `folder` via `raser.supports.figures.save`; `waveforms` plots the output waveforms of all readout electrodes for one impulse and saves `network_waveforms.png` and `.pdf` via `raser.supports.figures.save`; `schematic` takes the first two readout nodes of `circuit.outputs` as subcircuit ports in a temporary `.cir` file, appends layout hints by element-name prefix (`; right` for `Rxlayer_` and `Rlayer_`, `; up` for `Rylayer_` and `Cpad_`, `; down` for `Clayer_`), and calls `schematic.draw` to draw `network_schematic.png`.
 
 ### Core Data Structures

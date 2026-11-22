@@ -414,7 +414,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 - `gradient.py`：限定在网格范围内的中心差分梯度。
 - `device_circuit.py`：`DeviceCircuit`、`planar_circuit`、`side_by_side`、`row_of_electrodes`。
 - `circuit_parameters.py`：结电容、偏置与耦合、未耗尽层、方块电阻的取值，`field_circuit`、`device_circuit`、`part_of_row`、`device_row`、`device_grid`；`undepleted_layer` 按 Riegler 的平板式由面积、厚度、耗尽宽度、介电常数与电阻率给出未耗尽层的 $R$、$C$。
-- `resistive_layer.py`：阻性层的行电路 `resistive_row` 与网格电路 `resistive_grid`。
+- `resistive_layer.py`：阻性层的行电路 `resistive_row` 与网格电路 `resistive_grid`，以及 `shares(my_d, point_um)`：一点的电荷分到各 RC 格点的份额。
 - `implanted_aluminium.py`：铝注入 4H-SiC 层的方块电阻。
 - `simple.py`：解析 toy 场。
 - `tcad.py`：TDR 场导入与其权重场求解。

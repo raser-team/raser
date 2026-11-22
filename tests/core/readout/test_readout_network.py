@@ -8,7 +8,7 @@ from raser.core.device.build_device import Detector
 from raser.core.device.build_device import device_file
 from raser.core.field.circuit_parameters import device_row
 from raser.core.readout.network import impulse_response
-from raser.core.readout.network import shares
+from raser.core.field.resistive_layer import shares
 
 pytestmark = pytest.mark.ngspice
 

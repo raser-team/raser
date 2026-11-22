@@ -71,7 +71,7 @@ $$s_{ij} = s_i^{(x)} s_j^{(y)}, \qquad n = i N_y + j, \qquad \bar{I}_{n,m} = \be
 
 若冲击点落在 RC 格点阵列范围之外（不满足 `first_edge <= here_um <= last_edge`），`shares` 抛出 `ValueError("The point lies at <axis> = <here_um> um, and the RC nodes of the layer reach from <first_edge> to <last_edge> um")`，写明越界坐标与阵列在该轴上的范围；若电路的电流源数 `len(circuit.sources)` 与器件 RC 格点总数 `x_ele_num * y_ele_num` 不等，`impulse_response` 抛出 `ValueError("The circuit has the currents of <len(rc_nodes)> RC nodes, and <det_name> has <count>")`。
 
-多点脉冲响应注入与 RC 格点份额分配由 `network.py` 的 `shares` 与 `impulse_response` 实现。
+多点脉冲响应注入与 RC 格点份额分配分别由 `core/field` 的 `resistive_layer.py` 中的 `shares` 与 `network.py` 的 `impulse_response` 实现。
 
 ### 给定谱的频域热噪声与时域合成
 
@@ -274,7 +274,7 @@ $$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 
 - `waveforms.py`：定义 `EventWaveforms`、`Waveforms` 数据类及 `_check_layout`、`append_waveforms`、`read_waveforms`、`read_circuit_values`，负责 `readout.h5` 的稀疏追加写入与读取。
 - `schematic.py`：提供 `read_hints`、`arrange`、`layout`、`value_text` 与 `draw`，将 `.cir` 子电路文件绘制为原理图图像。
 - `draw.py`：提供 `draw_waveform`，使用 `raser.supports.figures` 绘制单事例的输入感应电流与放大器输出电压波形图并保存为 `.png` 与 `.pdf`。
-- `network.py`：计算阻性层网络对点冲击的响应。`shares(my_d, point_um)` 给出落在 `(x, y)` 的单位电荷分到各 RC 格点的份额字典；`impulse_response(my_d, circuit, chain, points_um, dt=10e-12, bins=2000, charge=1e-15)` 逐点将各 RC 格点份额作为首箱矩形脉冲电流调用 `spice.solve`，按 `circuit.outputs` 顺序返回形状 `(points, outputs, bins)` 的输出电压（$\text{V}$）。
+- `network.py`：计算阻性层网络对点冲击的响应。`impulse_response(my_d, circuit, chain, points_um, dt=10e-12, bins=2000, charge=1e-15)` 逐点将各 RC 格点份额作为首箱矩形脉冲电流调用 `spice.solve`，按 `circuit.outputs` 顺序返回形状 `(points, outputs, bins)` 的输出电压（$\text{V}$）。
 - `draw_network.py`：绘制阻性层网络冲击响应图与器件网络电路图。`sharing` 绘制各读出电极波形最大绝对值及积分随冲击点 $x$ 的变化，经 `raser.supports.figures.save` 在 `folder` 下存为 `network_sharing.png` 与 `.pdf`；`waveforms` 绘制单个冲击点上各读出电极的输出波形，经 `raser.supports.figures.save` 存为 `network_waveforms.png` 与 `.pdf`；`schematic` 以 `circuit.outputs` 前两个读出节点为端口生成临时 `.cir` 子电路，按元件名前缀添加布局提示（`Rxlayer_`、`Rlayer_` 标 `; right`，`Rylayer_`、`Cpad_` 标 `; up`，`Clayer_` 标 `; down`），调用 `schematic.draw` 绘成 `network_schematic.png`。
 
 ### 核心数据结构

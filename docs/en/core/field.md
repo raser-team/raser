@@ -414,7 +414,7 @@ On constructing `DevsimField(device_name, voltage, read_out_contact, bounds, res
 - `gradient.py`: central-difference gradient bounded to the mesh range.
 - `device_circuit.py`: `DeviceCircuit`, `planar_circuit`, `side_by_side`, `row_of_electrodes`.
 - `circuit_parameters.py`: lookup of junction capacitance, bias and coupling elements, undepleted layer, and sheet resistance; `field_circuit`, `device_circuit`, `part_of_row`, `device_row`, `device_grid`; `undepleted_layer` computes $R$ and $C$ of the undepleted layer by Riegler's planar formula from area, thickness, depleted width, permittivity, and resistivity.
-- `resistive_layer.py`: resistive-layer row circuit `resistive_row` and grid circuit `resistive_grid`.
+- `resistive_layer.py`: resistive-layer row circuit `resistive_row` and grid circuit `resistive_grid`, and `shares(my_d, point_um)`: the shares of the charge of a point among the RC nodes.
 - `implanted_aluminium.py`: sheet resistance of Al-implanted 4H-SiC layers.
 - `simple.py`: analytic toy fields.
 - `tcad.py`: TDR field import and weighting field solving.
