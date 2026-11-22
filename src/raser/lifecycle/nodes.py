@@ -87,22 +87,24 @@ def _seed(words: str) -> int:
     return 1 + int.from_bytes(digest[:8], "big") % (2**31 - 1)
 
 
-def job_seed(seed, index, axes, same_seeds=False) -> int:
-    """The seed of job `index` of a point of the run seeded `seed`.
-
-    `axes` are the scanned settings of the point, "section.key" -> value.
-    Those of the sections that measure go into the seed: a point at another
-    bias, source or drift setting is measured anew. The name of the point and
-    the axes of the later sections do not. With `same_seeds` no axis does:
-    the jobs of one index share their seed over the points."""
-    measured = {
+def measured(axes) -> dict:
+    """Of the scanned settings of a point, "section.key" -> value, those of
+    the sections that measure: a point at another bias, source or drift
+    setting is measured anew, one that differs in a later section is not."""
+    return {
         address: value
         for address, value in axes.items()
-        if address.split(".")[0] in MEASURING and not same_seeds
+        if address.split(".")[0] in MEASURING
     }
-    words = ";".join(
-        f"{address}={text(measured[address])}" for address in sorted(measured)
-    )
+
+
+def job_seed(seed, index, axes, same_seeds=False) -> int:
+    """The seed of job `index` of a point of the run seeded `seed`, where the
+    scanned settings that measure are `axes`. The name of the point is not in
+    it, nor is a setting that does not measure. With `same_seeds` no setting
+    is: the jobs of one index share their seed over the points."""
+    axes = {} if same_seeds else axes
+    words = ";".join(f"{address}={text(axes[address])}" for address in sorted(axes))
     return _seed(f"{int(seed)}/{int(index)}/{words}")
 
 

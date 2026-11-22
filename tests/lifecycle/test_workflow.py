@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import errno
 import json
+import shutil
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -1101,6 +1102,34 @@ def test_a_scanned_option_of_a_slice_with_new_events_runs_every_slice_in_each_po
     ]
     assert "deposits_0.done" in _marks(tmp_path / "toy" / "voltage_300" / "seed_42")
     assert seeded[0] != seeded[3]  # the two points have deposits of their own
+
+
+def test_another_name_of_a_point_leaves_the_seeds_of_its_jobs_as_they_are(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], ran: list[tuple[str, Any]], tmp_path: Path
+) -> None:
+    execute(_chain(ran), _chain_kwargs(scan=["voltage=200,300"]))
+    named_by_voltage = list(seeded)
+    shutil.rmtree(tmp_path / "toy")
+    (tmp_path / "toy").mkdir()
+    (tmp_path / "toy" / "config.json").write_text(
+        json.dumps({"workflow": "toy", "device": "dev", "names": {"voltage": "bias"}})
+    )
+    del seeded[:]
+
+    execute(_chain(ran), _chain_kwargs(scan=["bias=200,300"]))
+
+    assert (tmp_path / "toy" / "bias_300" / "seed_42").is_dir()
+    assert seeded == named_by_voltage
+
+
+def test_points_that_differ_in_the_electronics_alone_draw_the_same_numbers_there(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], ran: list[tuple[str, Any]], tmp_path: Path
+) -> None:
+    execute(_chain(ran), _chain_kwargs(scan=["amplifier=standard,fast"]))
+
+    assert [name for name, _ in ran] == ["deposits", "currents", "waveforms", "waveforms"]
+    assert seeded[2] == seeded[3]  # nothing was measured anew: the noise is the same
+    assert len(set(seeded[:3])) == 3  # each slice of a job draws from a seed of its own
 
 
 def test_with_same_seeds_the_slices_before_the_scanned_one_stay_in_the_unscanned_point(

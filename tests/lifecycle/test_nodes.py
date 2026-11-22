@@ -21,19 +21,22 @@ def test_a_whole_float_is_its_int_and_any_other_float_is_kept_to_the_last_bit() 
         nodes.node_of({"x": float("nan")})
 
 
-def test_the_name_of_a_point_and_the_axes_after_the_measurement_leave_the_job_seed_as_it_is() -> (
-    None
-):
+def test_the_axes_after_the_measurement_leave_the_job_seed_as_it_is() -> None:
     at_100 = nodes.job_seed(1, 0, {"field.voltage": 100})
+    axes = {
+        "field.voltage": 100.0,
+        "readout.amplifier.R1": 499,
+        "digitizer.device.full_scale_V": 2,
+    }
 
-    assert (
-        nodes.job_seed(1, 0, {"field.voltage": 100.0, "readout.amplifier.R1": 499})
-        == at_100
-    )
-    assert (
-        nodes.job_seed(1, 0, {"field.voltage": 100, "digitizer.device.full_scale_V": 2})
-        == at_100
-    )
+    assert nodes.measured(axes) == {"field.voltage": 100.0}
+    assert nodes.job_seed(1, 0, nodes.measured(axes)) == at_100
+    assert nodes.measured(
+        {"deposit.source": "bunch", "current.plots": 0, "trigger.device": None}
+    ) == {
+        "deposit.source": "bunch",
+        "current.plots": 0,
+    }
 
 
 def test_another_bias_source_job_or_run_seed_is_another_measurement() -> None:
