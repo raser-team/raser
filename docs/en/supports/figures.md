@@ -106,7 +106,7 @@ Each stage draws at least the figures listed below. "Per-event" figures are draw
 | readout | `schematic`, `impulse_response` | Front-end circuit schematic and impulse response, saved into the circuit asset | One per circuit |
 | digitizer | `samples_<event>` | Analog waveform overlaid with digitized samples | Per event |
 | trigger | `trigger_amplitude` | Amplitude distributions of recorded and discarded events, with the trigger threshold drawn | One per node |
-| reconstruction | `features_<event>` | Digital waveform annotated with baseline, amplitude, ToA, and each CFD time | Per event |
+| reconstruction | `features_<event>` | Rising-edge section of the digital waveform, annotated with baseline, amplitude, ToA on the threshold line, and the CFD time of each fraction in `reconstruction.fractions` (drawn as points on the edge, labelled with the fraction) | Per event |
 | analysis | `efficiency` | Charge collection efficiency distribution, with a dashed line at the mean | One per scan point |
 | analysis | `amplitude` | Amplitude distribution of recorded events, with a dashed line at the amplitude threshold | One per scan point |
 | analysis | `time_difference` | Distribution and truncated-Gaussian fit of timestamp minus true time for each timing method, one panel per method | One per scan point |

@@ -106,7 +106,7 @@ RASER 画的每一张图，不论出自哪个环节、实验还是资产，也�
 | readout | `schematic`、`impulse_response` | 前端电路的原理图和冲击响应，存进电路资产 | 每个电路一张 |
 | digitizer | `samples_<事例号>` | 模拟波形叠上数字化后的样点 | 单事例 |
 | trigger | `trigger_amplitude` | 记录与丢弃的事例的幅度分布，画出触发阈值 | 每个节点一张 |
-| reconstruction | `features_<事例号>` | 数字波形上标出基线、幅度、ToA、各 CFD 时刻 | 单事例 |
+| reconstruction | `features_<事例号>` | 数字波形的上升沿一段，标出基线、幅度、阈值线上的 ToA，以及配置里 `reconstruction.fractions` 各比例的 CFD 时刻（画成沿上的点，旁边写比例） | 单事例 |
 | analysis | `efficiency` | 电荷收集效率分布，虚线为均值 | 每个扫描点一张 |
 | analysis | `amplitude` | 记录事例的幅度分布，虚线为幅度阈值 | 每个扫描点一张 |
 | analysis | `time_difference` | 每种定时方法的时刻减真实时刻的分布和截断高斯拟合，一种方法一幅 | 每个扫描点一张 |
