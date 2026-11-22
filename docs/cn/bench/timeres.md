@@ -14,7 +14,11 @@
 
 $$\Delta t = t_{\text{DUT}} - t_{\text{ref}}, \qquad \Delta t_{\text{DUT}} = t_{\text{DUT}} - t_{\text{truth,DUT}}, \qquad \Delta t_{\text{ref}} = t_{\text{ref}} - t_{\text{truth,ref}} \tag{1}$$
 
-第一个是实验里能测到的量，后两个是仿真才有的、各自相对真实沉积时刻的量。三个分布分别用同一种截断高斯迭代拟合（[`core/analysis/resolution.py`](../core/analysis.md) 的 `core_width` 与 `truncated_gaussian`）求核心宽度，在迭代收缩窗口 $[a, b]$ 内最小化负对数似然：
+第一个是实验里能测到的量，后两个是仿真才有的、各自相对真实沉积时刻的量。
+
+被 `trigger` 记录的事例里，每个槽位按 `digitizer` 的 `noise_only` 标记分成两类：**S**（signal，该槽位在这个事例有沉积步、波形里有信号）和 **B**（background，该槽位在这个事例是纯噪声道，它过阈值靠的是噪声）。对式 (1) 的 $\Delta t = t_{\text{DUT}} - t_{\text{ref}}$，同时给出“两个槽位都是 S 的事例”与“全部被记录事例（S + B）”两套核心宽度、`sigma68` 和拟合误差；相对真实沉积时刻的 $\Delta t_{\text{DUT}}$ 与 $\Delta t_{\text{ref}}$ 只对 S 有定义（B 没有 `truth`），只用 S。实测里分不开 S 和 B，仿真里能分开，对比两套宽度就能看出假触发对实测宽度的影响。
+
+三个分布分别用同一种截断高斯迭代拟合（[`core/analysis/resolution.py`](../core/analysis.md) 的 `core_width` 与 `truncated_gaussian`）求核心宽度，在迭代收缩窗口 $[a, b]$ 内最小化负对数似然：
 
 $$\mathcal{L}(\tilde{\mu}, \ln\tilde{\sigma}) = \frac{1}{2}\sum_{i=1}^{n}\left(\frac{\tilde{x}_i - \tilde{\mu}}{\tilde{\sigma}}\right)^{2} + n\ln\tilde{\sigma} + n\ln\!\left[\frac{1}{2}\operatorname{erf}\!\left(\frac{\tilde{b} - \tilde{\mu}}{\sqrt{2}\,\tilde{\sigma}}\right) - \frac{1}{2}\operatorname{erf}\!\left(\frac{\tilde{a} - \tilde{\mu}}{\sqrt{2}\,\tilde{\sigma}}\right)\right] \tag{2}$$
 
@@ -87,10 +91,10 @@ $$\sigma_1^2 = \frac{\sigma_{12}^2 + \sigma_{13}^2 - \sigma_{23}^2}{2}, \qquad \
 
 1. **求解或复用共享场（`field`）**：分别为被测器件和参考器件定位各自在目标偏压 `voltage`（$\text{V}$）与辐照注量 `irradiation_flux`（$\text{cm}^{-2}$，$1\ \text{MeV}$ 中子等效注量）下的电场、权重场与等效电路参数，未就绪时在作业开始前补算。两块器件的共享场节点各自存放在对应器件 project 的 `field/<节点号>/` 下。
 2. **在 `time_resolution` 装置下模拟双器件沉积（`deposit`）**：按各自器件文件同时建出参考器件与被测器件实体，并放置 `Al`、`pcb1`、`pcb2`。从 `decay/Sr90` 发射衰变产物，记录任一器件有沉积的事例（双器件符合由 `trigger` 判）直到录满 `events_per_job` 个事例（示例里为 `10000`；最多生成 `generated_limit` 个源事例），按 `ionized_pairs` 抽样电子-空穴对数写入 `deposit` 节点的同一份 `deposit.h5`，并以 `detector` 字段区分参考器件和被测器件的沉积步。
-3. **两块器件各自漂移、读出与数字化（`current`、`readout`、`digitizer`）**：被测器件与参考器件各自在对应求解场中漂移载流子算出感应电流（示例里 `current.plots = 0`，不画逐事例图），经各自器件等效电路与前端放大器链（默认 `SantaCruz+Gali52+Termination50`）求解输出电压波形并按由作业种子派生的 `readout` 噪声种子叠加频域热噪声，再按数字化器组件（默认 `MXR608A`）的模拟带宽、采样和量化设置（时钟相位与孔径抖动由作业种子派生的 `digitizer` 种子抽取）生成两路量化码数字波形写入 `digitizer` 节点。
-4. **双器件符合触发（`trigger`）**：检查同一事例中参考器件与被测器件的量化数字波形，按触发组件里的符合条件，要求列表里全部器件在同一事例都过幅度阈值。只有通过双器件符合的事例被记录，其事例号数据集 `event`（`int64`）写入 `trigger` 节点的 `trigger.h5`。
+3. **两块器件各自漂移、读出与数字化（`current`、`readout`、`digitizer`）**：被测器件与参考器件各自在对应求解场中漂移载流子算出感应电流（示例里 `current.plots = 0`，不画逐事例图），经各自器件等效电路与前端放大器链（默认 `SantaCruz+Gali52+Termination50`）求解输出电压波形并按由作业种子派生的 `readout` 噪声种子叠加频域热噪声，再按数字化器组件（默认 `MXR608A`）的模拟带宽、采样和量化设置（时钟相位与孔径抖动由作业种子派生的 `digitizer` 种子抽取）生成两路量化码数字波形写入 `digitizer` 节点。若某个槽位在 `deposit` 记录的某事例没有沉积步（粒子没打中它），该槽位在该事例不走 `current`、`readout`，`digitizer` 按它的噪声谱资产抽出纯噪声的数字波形，点数、时钟相位与同一事例其他槽位相同；每个位置的 `digitizer.<位置>.h5` 含 `deposit` 记录的全部事例，没有沉积步的事例其电极标 `noise_only`。
+4. **双器件符合触发（`trigger`）**：检查同一事例中参考器件与被测器件的量化数字波形，按触发组件里的符合条件，要求列表里全部器件在同一事例都过幅度阈值；槽位在某事例是纯噪声道时，照常拿它的数字波形判阈值，噪声造成的假触发会自然出现。只有通过双器件符合的事例被记录，其事例号数据集 `event`（`int64`）写入 `trigger` 节点的 `trigger.h5`（各位置为 `trigger.<位置>.h5`）。
 5. **两块器件各自提取脉冲定时（`reconstruction`）**：读取 `digitizer.h5` 中被 `trigger.h5` 记录的符合事例，按 `lsb_V`、`offset_V` 将量化码换回电压（$\text{V}$），采样时刻为 `t0 + k·sampling_period`；分别对被测器件与参考器件的波形扣除前 `BASELINE_POINTS = 200` 点基线并按脉冲边沿翻正，在相邻采样点间线性插值求出过阈到达时间 `ToA`、过阈时长 `ToT`、过阈区间时间重心 `CoG` 以及越过 `fractions`（示例里 `0.1` 至 `0.9` 共 `9` 档）乘以峰值幅度 `amplitude` 的恒比定时时刻 `CFD10`–`CFD90`，找到团簇种子的事例记为 `selected` 并写入 `reconstruction` 节点。
-6. **截断高斯迭代拟合（`analysis`）**：汇总全部已完成作业的 `selected` 符合事例，对每个定时通道（`ToA`、`CoG`、`CFD10`–`CFD90`）分别构造式 (1) 的三套样本（三块器件时是上面列的六套）（滤除 `NaN`，样本总数少于 `MINIMUM_EVENTS = 20` 时记入 `timing.error`）。三套样本各自以中位数加减 $8$ 倍中位绝对偏差 $\text{median} \pm 8\,\text{MAD}$ 作为首轮窗口 $[a, b]$，在最多 `ROUNDS = 6` 轮迭代中执行 `core_width`：筛选窗口内样本（首轮少于 `20` 个则抛出 `TooFewValues`，后续轮次少于 `20` 个则终止并返回上一轮结果），用 `L-BFGS-B`（均值约束于 $[a, b]$）最小化式 (2) 求出 $(\mu, \sigma)$ 并由步长 `step = 1e-4` 的二阶中心差分海森矩阵求逆得到标准误；当相邻两轮 $|\sigma - \sigma_{\text{prev}}| \le 5\times 10^{-3}\,\sigma_{\text{prev}}$、新窗口 $[\mu - 2\sigma, \mu + 2\sigma]$ 超出旧窗口或窗口宽度缩减量 $\le 10^{-3}(b - a)$ 时收敛停止。三套样本各得一个核心宽度，在各扫描点的 `analysis` 节点写出单点 `result.json`、`events.h5` 与分布图，并在 `<project>/timeres/analysis/` 下写出跨点 `points.json`、`trend.png`、`trend.pdf`。
+6. **截断高斯迭代拟合（`analysis`）**：汇总全部已完成作业的 `selected` 符合事例，按 `digitizer` 的 `noise_only` 标记对每个槽位分出 S（有沉积步）和 B（纯噪声道），在 `result.json` 的 `timing` 里对每个槽位写 `signal`（S 的事例数）与 `noise_only`（B 的事例数），并在 `events.h5` 为每个槽位加一列 `noise_only`（`bool`）。对每个定时通道（`ToA`、`CoG`、`CFD10`–`CFD90`）分别构造式 (1) 的样本（三块器件时是上面列的六套）：$\Delta t = t_{\text{DUT}} - t_{\text{ref}}$ 分别给出“两个槽位都是 S 的事例”与“全部被记录事例（S + B）”两套样本，相对真实沉积时刻的两个时间差只对 S 有定义（B 没有 `truth`），只用 S（滤除 `NaN`，样本总数少于 `MINIMUM_EVENTS = 20` 时记入 `timing.error`）。各套样本各自以中位数加减 $8$ 倍中位绝对偏差 $\text{median} \pm 8\,\text{MAD}$ 作为首轮窗口 $[a, b]$，在最多 `ROUNDS = 6` 轮迭代中执行 `core_width`：筛选窗口内样本（首轮少于 `20` 个则抛出 `TooFewValues`，后续轮次少于 `20` 个则终止并返回上一轮结果），用 `L-BFGS-B`（均值约束于 $[a, b]$）最小化式 (2) 求出 $(\mu, \sigma)$ 并由步长 `step = 1e-4` 的二阶中心差分海森矩阵求逆得到标准误；当相邻两轮 $|\sigma - \sigma_{\text{prev}}| \le 5\times 10^{-3}\,\sigma_{\text{prev}}$、新窗口 $[\mu - 2\sigma, \mu + 2\sigma]$ 超出旧窗口或窗口宽度缩减量 $\le 10^{-3}(b - a)$ 时收敛停止。各套样本各得一个核心宽度、`sigma68` 和拟合误差，在各扫描点的 `analysis` 节点写出单点 `result.json`、`events.h5` 与分布图（`time_difference` 图里 $\Delta t$ 的每个子图叠画 S + B、S、B 三条分布并写各自事例数，拟合曲线画 S 的），并在 `<project>/timeres/analysis/` 下写出跨点 `points.json`、`trend.png`、`trend.pdf`。
 
 `timeres` 涉及的内置常数如下表：
 
@@ -148,6 +152,8 @@ raser timeres NJU-PiN --scan field.voltage=-300,-500
 | `deposit.generated_per_job` | `null`（不用） | 事例 | 每作业由源生成的总事例数（与 `deposit.events_per_job` 互斥） |
 | `deposit.generated_limit` | `10000000` | 事例 | 为录满 `events_per_job` 允许生成的最大源事例数上限 |
 | `deposit.edep_min` | `null`（不设下限） | $\text{MeV}$ | 记录事例的最小沉积能量下限 |
+| `deposit.ref.edep_min` | `null` | $\text{MeV}$ | 只对该槽位生效的沉积能量下限，覆盖 `deposit.edep_min`；沉积低于下限时该槽位不算命中，见 [`stages/deposit`](../stages/deposit.md) |
+| `deposit.dut.edep_min` | `null` | $\text{MeV}$ | 只对该槽位生效的沉积能量下限，覆盖 `deposit.edep_min`；沉积低于下限时该槽位不算命中，见 [`stages/deposit`](../stages/deposit.md) |
 | `deposit.edep_max` | `null`（不设上限） | $\text{MeV}$ | 记录事例的最大沉积能量上限 |
 | `deposit.require` | `"any"` | 无 | 记录任一器件有沉积的事例；双器件符合由 `trigger` 判（需要省下游计算时可设成 `"ref AND dut"`：在默认装置上被测器件有沉积的事例里约四分之三参考器件没有沉积，设成 `"ref AND dut"` 后这些事例不进下游，但也就不能用来比较别的触发条件），见 [`stages/deposit`](../stages/deposit.md) |
 | `deposit.coincidence_window_ns` | `null`（不卡时间） | $\text{ns}$ | 符合时间窗宽度（把命中时刻落在同一 $[t_0, t_0 + W]$ 区间内的槽位算作命中；`null` 表示不卡时间） |
@@ -168,11 +174,11 @@ raser timeres NJU-PiN --scan field.voltage=-300,-500
 
 ### 数据与图像文件
 
-上游各环节节点的数据文件结构与 [`signal`](signal.md#输出) 一致，两块器件各有一份；`deposit` 节点的 `deposit.h5` 按 `detector` 区分两块器件的沉积步。[`analysis`](../stages/analysis.md) 写出：
+上游各环节节点的数据文件结构与 [`signal`](signal.md#输出) 一致，两块器件各有一份；`deposit` 节点的 `deposit.h5` 按 `detector` 区分两块器件的沉积步，每个位置的 `digitizer.<位置>.h5` 含 `deposit` 记录的全部事例，没有沉积步的事例其电极标 `noise_only`。[`analysis`](../stages/analysis.md) 写出：
 
-- `nodes/analysis/<节点号>/result.json`（视图 `points/<点名>/analysis/result.json`）：单扫描点的总事例数、通过符合并选中的事例数，以及 `ToA`、`CoG`、`CFD10`–`CFD90` 每个定时通道三个时间差分布（$t_{\text{DUT}} - t_{\text{ref}}$、$t_{\text{DUT}} - t_{\text{truth,DUT}}$、$t_{\text{ref}} - t_{\text{truth,ref}}$）各自的核心宽度、`sigma68` 和拟合误差，单位 $\text{s}$。
-- `nodes/analysis/<节点号>/events.h5`（视图 `points/<点名>/analysis/events.h5`）：单扫描点每个 `selected` 符合事例两块器件各自的 `ToA`、`ToT`、`amplitude`、`baseline`、`noise`、`truth`、`CoG` 和 `CFD10`–`CFD90`，电压 $\text{V}$，时间 $\text{s}$。
-- `nodes/analysis/<节点号>/time_difference.png`、`.pdf`（视图 `points/<点名>/analysis/time_difference.png`、`.pdf`）：单扫描点各定时通道三个时间差的分布、末轮拟合窗口和截断高斯拟合曲线，横轴 `<通道> - truth [ps]`，纵轴 `Events`。
+- `nodes/analysis/<节点号>/result.json`（视图 `points/<点名>/analysis/result.json`）：单扫描点的总事例数、通过符合并选中的事例数、`timing` 里每个槽位的 `signal`（S 的事例数）与 `noise_only`（B 的事例数），以及 `ToA`、`CoG`、`CFD10`–`CFD90` 每个定时通道的三个时间差分布各自的核心宽度、`sigma68` 和拟合误差，单位 $\text{s}$；其中 $t_{\text{DUT}} - t_{\text{ref}}$ 分别给出“两个槽位都是 S 的事例”与“全部被记录事例（S + B）”两套，$t_{\text{DUT}} - t_{\text{truth,DUT}}$ 和 $t_{\text{ref}} - t_{\text{truth,ref}}$ 只用 S。
+- `nodes/analysis/<节点号>/events.h5`（视图 `points/<点名>/analysis/events.h5`）：单扫描点每个 `selected` 符合事例两块器件各自的 `ToA`、`ToT`、`amplitude`、`baseline`、`noise`、`truth`、`CoG`、`CFD10`–`CFD90` 和 `noise_only`（`bool`），电压 $\text{V}$，时间 $\text{s}$。
+- `nodes/analysis/<节点号>/time_difference.png`、`.pdf`（视图 `points/<点名>/analysis/time_difference.png`、`.pdf`）：单扫描点各定时通道三个时间差的分布、末轮拟合窗口和截断高斯拟合曲线，横轴 `<通道> - truth [ps]`，纵轴 `Events`；其中 $\Delta t$ 的每个子图叠画 S + B（全部被记录事例）、S、B 三条，图例写各自事例数，拟合曲线画 S 的。
 - `nodes/analysis/<节点号>/resolution_of_fraction.png`、`.pdf`（视图 `points/<点名>/analysis/resolution_of_fraction.png`、`.pdf`）：单扫描点各 `CFD*` 通道三个分布的核心宽度随恒比分数的变化，横轴 `CFD fraction`，纵轴 `Time resolution [ps]`。
 - 三块器件时，`result.json` 里每个定时通道给出三对时间差分布的核心宽度 $\sigma_{12}$、$\sigma_{13}$、$\sigma_{23}$，按式 (4) 解出的 $\sigma_1$、$\sigma_2$、$\sigma_3$，以及三块器件各自相对真实沉积时刻的分布的核心宽度；`time_difference` 画出这六个分布（三对时间差加三块各自相对真实沉积时刻）。
 - `analysis/points.json`、`analysis/trend.png`、`analysis/trend.pdf`：多扫描点下存放在 `<project>/timeres/analysis/` 的各定时通道三个分布核心宽度对比表（$\text{s}$）和随扫描变量变化的趋势图（$\text{ps}$）。

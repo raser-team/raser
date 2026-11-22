@@ -41,7 +41,7 @@ raser trig --set digitizer.device.trigger.level_V=-0.005
 
 ## 软件实现
 
-- `src/raser/stages/trigger.py`：本环节的模块。`triggered(kwargs, position=None)` 用示波器自己的触发，多位置实验里一个位置一片：读本位置的 `digitizer.h5`，触发条件取 `digitizer.device` 组件内容里的 `trigger`，组件里没有 `trigger` 时报错；上游在这个位置没留下数字波形文件时，本片不写文件，记 0 个事例。`coincident(kwargs, positions)` 用独立触发设备，一片读各位置的 `digitizer.<位置>.h5`、写各位置的 `trigger.<位置>.h5`，设置取 `trigger.device` 的组件内容，没有这个组件时报错；没留下数字波形文件的位置，它的槽位在所有事例里都不命中。两个函数都返回被记录的事例数。
+- `src/raser/stages/trigger.py`：本环节的模块。`triggered(kwargs, position=None)` 用示波器自己的触发，多位置实验里一个位置一片：读本位置的 `digitizer.h5`，触发条件取 `digitizer.device` 组件内容里的 `trigger`，组件里没有 `trigger` 时报错；上游在这个位置没留下数字波形文件时，本片不写文件，记 0 个事例。`coincident(kwargs, positions)` 用独立触发设备，一片读各位置的 `digitizer.<位置>.h5`、写各位置的 `trigger.<位置>.h5`，设置取 `trigger.device` 的组件内容，没有这个组件时报错；整个位置没留下数字波形文件时，它的槽位在所有事例里都不命中；槽位在某事例是纯噪声道时，照常拿它的数字波形判阈值。两个函数都返回被记录的事例数。
 - `src/raser/core/trigger/`：越过电平、边沿、码型、槽位之间的符合与写出，见[触发（`core/trigger`）](../core/trigger.md)。
 
 ## 接口
