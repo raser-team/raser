@@ -300,11 +300,11 @@ $$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 
 | `SantaCruz` | 2（放大器级：`in`, `out`） | UC Santa Cruz 单通道 LGAD 读出板，基于 `BFR840L3RHESD` 的 `475 Ohm` 反馈反相跨阻级 |
 | `Termination50` | 1（终端负载：`in`） | `50 Ohm` 接地终端电阻 |
 
-![BroadBandCividec 原理图](../images/afe-schematic-BroadBandCividec.png)
+![BroadBandCividec 原理图](../../images/readout/schematic-BroadBandCividec.png)
 
 CIVIDEC C2 宽带电流放大器，带宽 `1 MHz - 2 GHz`，增益 `40 dB`。`Rbias` 是输入端的 `1 MΩ` 直流偏置，`Cin` 是 `1 nF` 交流耦合；输入的 `50 Ohm` 拆成产生噪声的 `Rn`（`325.4 Ohm`）和无噪声的 `Rq`（`59.08 Ohm`，`noisy=0`）两个并联电阻，使 `2 GHz` 单极点带宽内的输入电流噪声等于厂家给的 `0.4 uA rms`。`E1` 的增益是 `200`，经 `50 Ohm` 输出电阻 `Rout` 与 `50 Ohm` 负载分压后为 `100`，即 `40 dB`；`Rp`（`1 Ohm`）、`Cp`（`79.58 pF`）给出 `2 GHz` 的单极点。
 
-![ChargeSensitiveCremat 原理图](../images/afe-schematic-ChargeSensitiveCremat.png)
+![ChargeSensitiveCremat 原理图](../../images/readout/schematic-ChargeSensitiveCremat.png)
 
 Cremat CR-110-R2.2 电荷灵敏前放，空载增益 `1.4 V/pC`，衰减时间 `140 us`。输入电容 `Cin`（`12.24 pF`）与等效输入电压噪声电阻 `Rs`（`43.1 Ohm`）接在反相增益 `-3000` 的第一级 `E1` 前，跨接 `Cf`（`1.4 pF`）与 `Rf`（`100 MOhm`）并联反馈以及无噪声极点 `Rp`（`1 kOhm`，`noisy=0`）、`Cp`（`401.3 pF`），再经增益 `+2` 的第二级 `E3` 与 `50 Ohm` 输出电阻 `Rout` 输出。
 

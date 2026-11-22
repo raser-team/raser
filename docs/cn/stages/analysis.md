@@ -30,15 +30,15 @@ raser analysis examples/HPK-Si-PiN/signal
 
 `200 V` 点的三张分布图如下：
 
-![HPK-Si-PiN 电荷收集效率分布](../images/analysis-efficiency-HPK-Si-PiN.png)
+![HPK-Si-PiN 电荷收集效率分布](../../images/analysis/efficiency-HPK-Si-PiN.png)
 
 `200 V` 下 `400` 个事例的电荷收集效率分布直方图，虚线标出平均收集效率 `0.9348`。
 
-![HPK-Si-PiN 脉冲幅度分布](../images/analysis-amplitude-HPK-Si-PiN.png)
+![HPK-Si-PiN 脉冲幅度分布](../../images/analysis/amplitude-HPK-Si-PiN.png)
 
 `200 V` 下 `276` 个选中事例（被 `trigger` 记录且团簇种子幅度不低于 `10 mV`）的脉冲幅度分布直方图，虚线标出幅度阈值。
 
-![HPK-Si-PiN 时间差分布与截断高斯拟合](../images/analysis-time-difference-HPK-Si-PiN.png)
+![HPK-Si-PiN 时间差分布与截断高斯拟合](../../images/analysis/time-difference-HPK-Si-PiN.png)
 
 `200 V` 下 `ToA`、`CoG` 与 `CFD10`–`CFD90` 相对 `truth` 的时间差分布、拟合窗口阴影与截断高斯拟合曲线。
 
@@ -81,7 +81,7 @@ raser analysis examples/HPK-Si-PiN/signal
 
 对应的 `examples/HPK-Si-PiN/signal/analysis/trend.png` 如下：
 
-![HPK-Si-PiN 电荷收集效率与时间分辨随偏压变化](../images/analysis-points-HPK-Si-PiN.png)
+![HPK-Si-PiN 电荷收集效率与时间分辨随偏压变化](../../images/analysis/trend-HPK-Si-PiN.png)
 
 `100 V` 与 `200 V` 两个偏压点的电荷收集效率（左）与各 `CFD` 通道时间分辨（右）对比图。
 

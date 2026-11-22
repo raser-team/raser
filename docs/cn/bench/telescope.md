@@ -179,6 +179,6 @@ raser telescope <器件> --set deposit.source=toy/MIP_telescope --set reconstruc
 | analysis | `track_<事例号>` | 左：$x$-$z$；右：$y$-$z$。各层团簇重心（参考层实心、被测器件空心）与式 (2) 的拟合直线（`z [mm]`、`x [μm]`、`y [μm]`） | 前 `analysis.plots` 个选中事例 |
 | analysis | `residual_<槽位>` | 左：$r_x$；右：$r_y$。被测器件残差分布（`Residual x [μm]`、`Events`）与高斯拟合曲线，标出 $\sigma_{\text{Tol}}$ | 每块被测器件一张 |
 
-![一层 TAICHU3 的像素收集电子数](../images/telescope-pixel-charge.png)
+![一层 TAICHU3 的像素收集电子数](../../images/telescope/pixel-charge.png)
 
 一层 `TAICHU3` 上一个事例各像素收集到的电子数（$60 \times 60$ 像素阵列，横轴 `X` 为像素列编号，纵轴 `Y` 为像素行编号，竖轴为收集电子数，单位：个）。

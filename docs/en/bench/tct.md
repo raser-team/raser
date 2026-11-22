@@ -176,10 +176,10 @@ Each laser position is a scan point, and stage outputs are stored under `<projec
 | `nodes/current/<node>/plots/current_0.png`, `.pdf`, `.root` (`current_0_electrode_<k>` with several readout electrodes) | [`current`](../stages/current.md) (`draw_currents`) | Induced-current waveforms (`electrons`, `holes`, `total`, plus `gain electrons`, `gain holes` when avalanche is enabled) on the $k$-th nonzero-current electrode (starting from `1`) after convolution with the laser temporal pulse | Horizontal axis `Time [ns]`, vertical axis `Current [μA]` |
 | `analysis/trend.png`, `.pdf` | [`analysis`](../stages/analysis.md) | Curves of collected charge and signal versus focal position across a focal-position scan | Horizontal axis relative focal position (dimensionless), vertical axis labeled with the unit of the corresponding physical quantity |
 
-![NJU-PiN laser-injected 2D carrier distribution](../images/tct-carriers-2d-NJU-PiN.png)
+![NJU-PiN laser-injected 2D carrier distribution](../../images/tct/carriers-2d-NJU-PiN.png)
 
 Volume density of initial electron-hole pairs on the $x$-$z$ plane passing through the optical axis, output by `draw_nocarrier2D` for `NJU-PiN` illuminated by the top UV laser `PIL037_top_SiC`.
 
-![NJU-PiN TCT induced current waveform](../images/tct-current-NJU-PiN.png)
+![NJU-PiN TCT induced current waveform](../../images/tct/current-NJU-PiN.png)
 
 Electron component, hole component, and total induced-current waveforms on the readout electrode output by `write_laser_currents` for `NJU-PiN` in a `tct` test.

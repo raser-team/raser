@@ -46,11 +46,11 @@ Changing the source simply changes the source component read by the `deposit` st
 
 - **Beam**: monoenergetic particle beam (`"kind": "beam"`), for example the proton beam `beam/proton` (`raser/components/deposit/beam/proton.json`, `par_type = "proton"`, kinetic energy `par_energy = 1000.0` $\text{MeV}$, transverse random offset half-widths `par_randx = par_randy = 0` $\mu\text{m}$). One event may emit a single particle or emit multiple particles simultaneously via the `particles` list (see [`../apps/bmos.md`](../apps/bmos.md)).
 
-![HPK-Si-PiN single-event carrier drift paths](../images/current-drift-path-HPK-Si-PiN.png)
+![HPK-Si-PiN single-event carrier drift paths](../../images/current/drift-path-HPK-Si-PiN.png)
 
 Electron and hole drift paths for a single event in `HPK-Si-PiN` under the default `decay/Sr90` source: the $\beta$ electron traverses the entire device, and carriers generated along the track drift toward opposite electrodes.
 
-![HPK-Si-PiN single-event induced current](../images/current-event-HPK-Si-PiN.png)
+![HPK-Si-PiN single-event induced current](../../images/current/event-HPK-Si-PiN.png)
 
 Induced current on the readout electrode for the same Sr90 $\beta$-electron event: electron component, hole component, and total current.
 

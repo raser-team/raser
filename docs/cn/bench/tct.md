@@ -176,10 +176,10 @@ raser tct NJU-PiN --set deposit.laser=PIL037_top_SiC --scan deposit.laser.fz_rel
 | `nodes/current/<节点号>/plots/current_0.png`, `.pdf`, `.root`（多个读出电极时为 `current_0_electrode_<k>`） | [`current`](../stages/current.md)（`draw_currents`） | 第 $k$ 号非零电流电极（从 `1` 起）经激光时间脉冲卷积后的 `electrons`、`holes`、`total`（开启雪崩时含 `gain electrons`、`gain holes`）感应电流波形 | 横轴 `Time [ns]`，纵轴 `Current [μA]` |
 | `analysis/trend.png`、`.pdf` | [`analysis`](../stages/analysis.md) | 跨焦点位置扫描的收集电荷与信号随焦点位置变化曲线 | 横轴相对焦点位置（无量纲），纵轴按对应物理量标注单位 |
 
-![NJU-PiN 激光注入二维载流子分布](../images/tct-carriers-2d-NJU-PiN.png)
+![NJU-PiN 激光注入二维载流子分布](../../images/tct/carriers-2d-NJU-PiN.png)
 
 `NJU-PiN` 在顶面紫外激光 `PIL037_top_SiC` 照射下由 `draw_nocarrier2D` 输出的过光轴 $x$-$z$ 面上初始电子-空穴对的体密度。
 
-![NJU-PiN TCT 感应电流波形](../images/tct-current-NJU-PiN.png)
+![NJU-PiN TCT 感应电流波形](../../images/tct/current-NJU-PiN.png)
 
 `NJU-PiN` 在 `tct` 测试中由 `write_laser_currents` 输出的读出电极电子分量、空穴分量与总感应电流波形。

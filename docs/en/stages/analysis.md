@@ -30,15 +30,15 @@ In the example above (`2` jobs and `400` events per point), key results in `resu
 
 The three distribution plots at `200 V` are shown below:
 
-![HPK-Si-PiN charge collection efficiency distribution](../images/analysis-efficiency-HPK-Si-PiN.png)
+![HPK-Si-PiN charge collection efficiency distribution](../../images/analysis/efficiency-HPK-Si-PiN.png)
 
 Histogram of charge collection efficiency for `400` events at `200 V`, with the dashed line marking the mean collection efficiency `0.9348`.
 
-![HPK-Si-PiN pulse amplitude distribution](../images/analysis-amplitude-HPK-Si-PiN.png)
+![HPK-Si-PiN pulse amplitude distribution](../../images/analysis/amplitude-HPK-Si-PiN.png)
 
 Histogram of pulse amplitudes for the `276` selected events (recorded by `trigger` with cluster seed amplitude at or above `10 mV`) at `200 V`, with the dashed line marking the amplitude threshold.
 
-![HPK-Si-PiN time difference distribution and truncated Gaussian fit](../images/analysis-time-difference-HPK-Si-PiN.png)
+![HPK-Si-PiN time difference distribution and truncated Gaussian fit](../../images/analysis/time-difference-HPK-Si-PiN.png)
 
 Time-difference distributions relative to `truth`, shaded fit windows, and truncated Gaussian fit curves for `ToA`, `CoG`, and `CFD10`–`CFD90` at `200 V`.
 
@@ -81,7 +81,7 @@ An excerpt of `examples/HPK-Si-PiN/signal/analysis/points.json` written by the e
 
 The corresponding `examples/HPK-Si-PiN/signal/analysis/trend.png` is:
 
-![HPK-Si-PiN charge collection efficiency and time resolution vs. bias voltage](../images/analysis-points-HPK-Si-PiN.png)
+![HPK-Si-PiN charge collection efficiency and time resolution vs. bias voltage](../../images/analysis/trend-HPK-Si-PiN.png)
 
 Comparison of charge collection efficiency (left) and time resolution of each `CFD` channel (right) across the `100 V` and `200 V` bias points.
 

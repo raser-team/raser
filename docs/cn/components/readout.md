@@ -39,7 +39,7 @@ L2 8 7 2.2u
 .ends SantaCruz
 ```
 
-![SantaCruz 原理图](../images/afe-schematic-SantaCruz.png)
+![SantaCruz 原理图](../../images/readout/schematic-SantaCruz.png)
 
 `SantaCruz` 放大级原理图：信号从 `in` 经 `C1`（`3.3 nF`）到 `x1` 基极，从集电极经 `C5`（`3.3 nF`）到 `out`；`R13`（`1 MOhm`）把输入端直流接地；`R1`（`475 Ohm`）与 `R2`（`3 kOhm`）$\parallel$ `C2`（`3.3 nF`）串联从集电极接回基极构成跨阻反馈；`VCC`（`2.25 V`）经 `L2`（`2.2 uH`）、`R3`（`63.7 Ohm`）、`L1`（`47 uH`）供电，`L1` 阻挡高频信号进入电源，`C3`（`1 nF`）、`C4`（`1 nF`）、`C7`（`10 nF`）、`C8`（`10 nF`）去耦；`x1` 引用同一文件里主子电路之前的 `BFR840L3RHESD` 子电路与 `.MODEL` 定义。
 
@@ -57,7 +57,7 @@ Rout c out 50
 .ends Gali52
 ```
 
-![Gali52 原理图](../images/afe-schematic-Gali52.png)
+![Gali52 原理图](../../images/readout/schematic-Gali52.png)
 
 `Gali52` 放大级原理图：`E1` 是反相增益 `-27.17` 的压控电压源（经 `50 Ohm` 输出电阻 `Rout` 与 `50 Ohm` 负载分压后等效增益为 `-13.585`，即 `22.66 dB`），`Rp`（`1 Ohm`）与 `Cp`（`112.9 pF`）构成 $1/(2\pi R_p C_p) = 1.41\ \text{GHz}$ 的单极点低通滤波，`E2`（增益 `1`）隔离缓冲后经 `Rout` 输出，输入电阻 `Rin` 与输出电阻 `Rout` 各为 `50 Ohm`。
 
@@ -69,7 +69,7 @@ R1 in 0 50
 .ends Termination50
 ```
 
-![Termination50 原理图](../images/afe-schematic-Termination50.png)
+![Termination50 原理图](../../images/readout/schematic-Termination50.png)
 
 `Termination50` 终端负载原理图：`50 Ohm` 接地电阻 `R1`，作为读出链的最后一级，只含单输入端口 `in`。
 
@@ -228,10 +228,10 @@ I1 undepleted top_pad PWL(2.5e-12 0 7.5e-12 0 1.25e-11 0 1.75e-11 0)
 | `SantaCruz` | 2（放大器级：`in`, `out`） | UC Santa Cruz 单通道 LGAD 读出板，基于 `BFR840L3RHESD` 的 `475 Ohm` 反馈反相跨阻放大级，`2.25 V` 供电，输入输出 `3.3 nF` 交流耦合 | 文件头注释：SCIPP/UCSC 原理图 *"Prototype Beam Test Board"*（M. Wilder, 2016-02-19, `proto_beam_test_board_V1.1C.pdf`） | [`readout`](../stages/readout.md)、[`signal`](../bench/signal.md)、[`timeres`](../bench/timeres.md)、[`tct`](../bench/tct.md)、[`bmos`](../apps/bmos.md)、[`cflm`](../apps/cflm.md) 默认链第一级 |
 | `Termination50` | 1（终端负载：`in`） | `50 Ohm` 接地终端负载电阻 | 文件头注释：示波器或后级仪器的 `50 Ohm` 输入端接 | [`readout`](../stages/readout.md)、[`signal`](../bench/signal.md)、[`timeres`](../bench/timeres.md)、[`tct`](../bench/tct.md)、[`bmos`](../apps/bmos.md)、[`cflm`](../apps/cflm.md) 默认链末级负载 |
 
-![BroadBandCividec 原理图](../images/afe-schematic-BroadBandCividec.png)
+![BroadBandCividec 原理图](../../images/readout/schematic-BroadBandCividec.png)
 
 `BroadBandCividec` 放大级原理图：`Rbias` 是输入端 `1 MOhm` 直流偏置电阻，`Cin` 是 `1 nF` 交流耦合电容；输入端 `50 Ohm` 阻抗拆成产生热噪声的 `Rn`（`325.4 Ohm`）和无噪声的 `Rq`（`59.08 Ohm`，`noisy=0`）两个并联电阻，使 `2 GHz` 单极点带宽内的输入电流噪声等于厂家标称的 `0.4 uA rms`；`E1` 增益为 `200`（经 `50 Ohm` 输出电阻 `Rout` 与 `50 Ohm` 负载分压后为 `100`，即 `40 dB`），`Rp`（`1 Ohm`）与 `Cp`（`79.58 pF`）给出 `2 GHz` 单极点。
 
-![ChargeSensitiveCremat 原理图](../images/afe-schematic-ChargeSensitiveCremat.png)
+![ChargeSensitiveCremat 原理图](../../images/readout/schematic-ChargeSensitiveCremat.png)
 
 `ChargeSensitiveCremat` 放大级原理图：`Cin`（`12.24 pF`）与串联等效输入电压噪声电阻 `Rs`（`43.1 Ohm`）接在反相增益 `-3000` 的第一级 `E1` 前，跨接 `Cf`（`1.4 pF`）与 `Rf`（`100 MOhm`）反馈回路以及无噪声极点 `Rp`（`1 kOhm`，`noisy=0`）、`Cp`（`401.3 pF`），再经增益 `+2` 的第二级 `E3` 和 `50 Ohm` 输出电阻 `Rout` 输出。

@@ -39,7 +39,7 @@ L2 8 7 2.2u
 .ends SantaCruz
 ```
 
-![SantaCruz schematic](../images/afe-schematic-SantaCruz.png)
+![SantaCruz schematic](../../images/readout/schematic-SantaCruz.png)
 
 Schematic of the `SantaCruz` amplifier stage: the signal travels from `in` through `C1` (`3.3 nF`) to the base of `x1`, and from the collector through `C5` (`3.3 nF`) to `out`; `R13` (`1 MOhm`) references the input to DC ground; `R1` (`475 Ohm`) in series with `R2` (`3 kOhm`) $\parallel$ `C2` (`3.3 nF`) connects the collector back to the base for transimpedance feedback; `VCC` (`2.25 V`) supplies power through `L2` (`2.2 uH`), `R3` (`63.7 Ohm`), and `L1` (`47 uH`), where `L1` blocks high-frequency signals from entering the supply and `C3` (`1 nF`), `C4` (`1 nF`), `C7` (`10 nF`), and `C8` (`10 nF`) provide decoupling; `x1` references the `BFR840L3RHESD` subcircuit and `.MODEL` definitions placed before the main subcircuit in the same file.
 
@@ -57,7 +57,7 @@ Rout c out 50
 .ends Gali52
 ```
 
-![Gali52 schematic](../images/afe-schematic-Gali52.png)
+![Gali52 schematic](../../images/readout/schematic-Gali52.png)
 
 Schematic of the `Gali52` amplifier stage: `E1` is a voltage-controlled voltage source with inverting gain `-27.17` (after voltage division between the `50 Ohm` output resistance `Rout` and a `50 Ohm` load, the effective gain is `-13.585`, i.e., `22.66 dB`), `Rp` (`1 Ohm`) and `Cp` (`112.9 pF`) form a single-pole low-pass filter at $1/(2\pi R_p C_p) = 1.41\ \text{GHz}$, `E2` (gain `1`) buffers the signal before outputting through `Rout`, and both the input resistance `Rin` and output resistance `Rout` are `50 Ohm`.
 
@@ -69,7 +69,7 @@ R1 in 0 50
 .ends Termination50
 ```
 
-![Termination50 schematic](../images/afe-schematic-Termination50.png)
+![Termination50 schematic](../../images/readout/schematic-Termination50.png)
 
 Schematic of the `Termination50` termination load: a `50 Ohm` resistor `R1` to ground, serving as the final stage of the readout chain with only a single input port `in`.
 
@@ -228,10 +228,10 @@ The depletion-layer junction capacitance `Ctop_depleted` now connects between th
 | `SantaCruz` | 2 (amplifier stage: `in`, `out`) | UC Santa Cruz single-channel LGAD readout board, `475 Ohm` feedback inverting transimpedance amplifier stage based on `BFR840L3RHESD`, `2.25 V` supply, `3.3 nF` input/output AC coupling | File header comment: SCIPP/UCSC schematic *"Prototype Beam Test Board"* (M. Wilder, 2016-02-19, `proto_beam_test_board_V1.1C.pdf`) | First stage of the default chain for [`readout`](../stages/readout.md), [`signal`](../bench/signal.md), [`timeres`](../bench/timeres.md), [`tct`](../bench/tct.md), [`bmos`](../apps/bmos.md), [`cflm`](../apps/cflm.md) |
 | `Termination50` | 1 (termination load: `in`) | `50 Ohm` termination load resistor to ground | File header comment: `50 Ohm` input termination of an oscilloscope or downstream instrument | Final termination load of the default chain for [`readout`](../stages/readout.md), [`signal`](../bench/signal.md), [`timeres`](../bench/timeres.md), [`tct`](../bench/tct.md), [`bmos`](../apps/bmos.md), [`cflm`](../apps/cflm.md) |
 
-![BroadBandCividec schematic](../images/afe-schematic-BroadBandCividec.png)
+![BroadBandCividec schematic](../../images/readout/schematic-BroadBandCividec.png)
 
 Schematic of the `BroadBandCividec` amplifier stage: `Rbias` is the `1 MOhm` input DC bias resistor and `Cin` is the `1 nF` AC coupling capacitor; the `50 Ohm` input impedance is split into two parallel resistors—`Rn` (`325.4 Ohm`) generating thermal noise and noiseless `Rq` (`59.08 Ohm`, `noisy=0`)—so that the input current noise over the `2 GHz` single-pole bandwidth matches the manufacturer specification of `0.4 uA rms`; `E1` has gain `200` (halved to `100`, i.e., `40 dB`, by the `50 Ohm` output resistance `Rout` and `50 Ohm` load), and `Rp` (`1 Ohm`) with `Cp` (`79.58 pF`) sets the `2 GHz` single pole.
 
-![ChargeSensitiveCremat schematic](../images/afe-schematic-ChargeSensitiveCremat.png)
+![ChargeSensitiveCremat schematic](../../images/readout/schematic-ChargeSensitiveCremat.png)
 
 Schematic of the `ChargeSensitiveCremat` amplifier stage: `Cin` (`12.24 pF`) and the series equivalent input voltage-noise resistor `Rs` (`43.1 Ohm`) precede the first stage `E1` of inverting gain `-3000`, bridged by the `Cf` (`1.4 pF`) and `Rf` (`100 MOhm`) feedback loop and the noiseless pole `Rp` (`1 kOhm`, `noisy=0`), `Cp` (`401.3 pF`), followed by the second stage `E3` of gain `+2` and the `50 Ohm` output resistance `Rout`.

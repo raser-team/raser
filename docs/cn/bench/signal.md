@@ -46,11 +46,11 @@ $$\Delta t = t_{\text{reco}} - t_{\text{truth}}, \qquad t_{\text{truth}} = \min_
 
 - **束流**：单能粒子束（`"kind": "beam"`），例如质子束 `beam/proton`（`raser/components/deposit/beam/proton.json`，`par_type = "proton"`，动能 `par_energy = 1000.0` $\text{MeV}$，横向随机偏移半宽 `par_randx = par_randy = 0` $\mu\text{m}$）。一个事例里可以发射单个粒子，也可以通过 `particles` 列表同时发射多个粒子（见 [`../apps/bmos.md`](../apps/bmos.md)）。
 
-![HPK-Si-PiN 单事例载流子漂移路径](../images/current-drift-path-HPK-Si-PiN.png)
+![HPK-Si-PiN 单事例载流子漂移路径](../../images/current/drift-path-HPK-Si-PiN.png)
 
 `HPK-Si-PiN` 在默认 `decay/Sr90` 源下一个事例的电子和空穴漂移路径：$\beta$ 电子穿透整个器件，沿径迹产生的载流子分别向两极漂移。
 
-![HPK-Si-PiN 单事例感应电流](../images/current-event-HPK-Si-PiN.png)
+![HPK-Si-PiN 单事例感应电流](../../images/current/event-HPK-Si-PiN.png)
 
 同一个 Sr90 $\beta$ 电子事例在读出电极上的感应电流：电子分量、空穴分量和总电流。
 

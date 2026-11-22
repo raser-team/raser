@@ -119,15 +119,15 @@ the field is not ready: raser field HPK-Si-PiN --set field.voltage=200.0
 - 曲线数据为 `simIV0to100.0.root`、`simIV0to200.0.root`、`simCV0to100.0.root`、`simCV0to200.0.root`；一维分布图都在 `plots/` 里，各有 `.png` 与 `.pdf`：`iv`、`cv`、`doping`，以及 `electric_field_0V`、`electric_field_100V`、`electric_field_200V`、`potential_0V`、`potential_100V`、`potential_200V`、`weighting_potential_top_100V`、`weighting_potential_top_200V`、`weighting_field_top_100V`、`weighting_field_top_200V`（未加辐照，不画俘获率图）。
 - 实验在 `points.json` 中为 `voltage_100` 和 `voltage_200` 两个扫描点记下各自的 `field` 节点号，并将 `points/voltage_100/field`、`points/voltage_200/field` 软链接指向对应的场节点（可用 `raser status` 查看参数表中各点各环节的状态和节点号）。
 
-![HPK-Si-PiN IV 曲线](../images/field-iv-HPK-Si-PiN.png)
+![HPK-Si-PiN IV 曲线](../../images/field/iv-HPK-Si-PiN.png)
 
 `HPK-Si-PiN` 反向偏压扫描得到的暗电流（IV）曲线。
 
-![HPK-Si-PiN CV 曲线](../images/field-cv-HPK-Si-PiN.png)
+![HPK-Si-PiN CV 曲线](../../images/field/cv-HPK-Si-PiN.png)
 
 `HPK-Si-PiN` 电容随反向偏压变化的 CV 曲线。
 
-![HPK-Si-PiN 200 V 一维电场分布](../images/field-efield-HPK-Si-PiN-200V.png)
+![HPK-Si-PiN 200 V 一维电场分布](../../images/field/efield-HPK-Si-PiN-200V.png)
 
 `200 V` 偏压下 `HPK-Si-PiN` 沿深度方向的一维电场分布。
 
