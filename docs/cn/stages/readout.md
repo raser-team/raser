@@ -1,20 +1,20 @@
 # 电子学读出环节（`stages/readout`）
 
-`src/raser/stages/readout.py` 是八环节仿真链的第 4 个环节 `readout`，由 `raser readout`（短命令 `raser rdo`）或测试、应用的实验命令调度。它承接[载流子输运与感应电流环节（`stages/current`）](current.md)节点里的电极感应电流，以及[场求解环节（`stages/field`）](field.md)在 `work/<器件>/field/` 下的场节点给出的器件电路参数。本环节调用[场求解与加载（`core/field`）](../core/field.md)组装器件等效电路，调用[电子学读出（`core/readout`）](../core/readout.md)加载前端放大器链、判定各输出通道的脉冲方向、求解每个事例的瞬态输出电压波形并叠加电路热噪声，把波形写进自己的节点 `nodes/readout/<节点号>/`。写出的波形交给下游[数字化环节（`stages/digitizer`）](digitizer.md)按示波器或数字化板的采样和量化变成数字波形。
+`src/raser/stages/readout.py` 是八环节仿真链的第 4 个环节 `readout`，由 `raser readout`（短命令 `raser rdo`）或测试、应用的实验命令调度。它承接[载流子输运与感应电流环节（`stages/current`）](current.md)节点里的电极感应电流，以及[场求解环节（`stages/field`）](field.md)在 `<器件 project>/field/<节点号>/` 下的场节点给出的器件电路参数。本环节调用[场求解与加载（`core/field`）](../core/field.md)组装器件等效电路，调用[电子学读出（`core/readout`）](../core/readout.md)加载前端放大器链、判定各输出通道的脉冲方向、求解每个事例的瞬态输出电压波形并叠加电路热噪声，把波形写进自己的节点 `nodes/readout/<节点号>/`。写出的波形交给下游[数字化环节（`stages/digitizer`）](digitizer.md)按示波器或数字化板的采样和量化变成数字波形。
 
 ## 行为
 
 ### 器件等效电路与前端波形
 
-本环节把各电极的感应电流送进器件等效电路和 `amplifier` 指定的前端放大器链，算出每个事例各输出通道的电压波形、器件电路参数记录及脉冲方向（`"rising"` 或 `"falling"`），写进波形文件。`readout` 有自己的种子，管 NGspice 的噪声抽样，和 `deposit`、`current` 的种子一样进本环节节点的指纹；只有带种子的运行为每个被存储的通道独立抽样叠加时域热噪声。每个事例只存最大绝对电压摆幅不小于该事例最大通道摆幅 `1e-3` 倍的输出通道；没有非零感应电流的事例存 `0` 个通道。
+本环节把各电极的感应电流送进器件等效电路和 `amplifier` 指定的前端放大器链，算出每个事例各输出通道的电压波形、器件电路参数记录及脉冲方向（`"rising"` 或 `"falling"`），写进波形文件。`readout` 有自己的种子，由作业的种子派生（见[实验、扫描点与种子](../lifecycle/experiments.md#种子)），管 NGspice 的噪声抽样，和 `deposit`、`current` 的种子一样进本环节节点的指纹；只有带种子的运行为每个被存储的通道独立抽样叠加时域热噪声。每个事例只存最大绝对电压摆幅不小于该事例最大通道摆幅 `1e-3` 倍的输出通道；没有非零感应电流的事例存 `0` 个通道。
 
 例如在 `HPK-Si-PiN` 示例上扫两档偏压：
 
 ```bash
-raser signal HPK-Si-PiN --scan field.voltage=100,200 -s 2 -evt 200 --seed 1
+raser signal HPK-Si-PiN --scan field.voltage=100,200 -s 2 --set deposit.events_per_job=200 --seed 1
 ```
 
-`HPK-Si-PiN` 是常规单电极平面器件，器件文件直接给出 `capacitance_pF = 3.44162280284`（`3.44162280284e-12 F`），默认偏压为 `200 V`。`voltage_200` 点用默认放大器链 `SantaCruz+Gali52+Termination50`，`points/voltage_200/readout` 指向的节点里，作业 `0` 的波形文件属性（`attrs`）为：
+`work/` 下没有 `HPK-Si-PiN` 时，命令在 `examples/HPK-Si-PiN/` 下就地运行，实验文件夹是 `examples/HPK-Si-PiN/signal`。`HPK-Si-PiN` 是常规单电极平面器件，器件文件直接给出 `capacitance_pF = 3.44162280284`（`3.44162280284e-12 F`），器件文件里的偏压为 `200 V`。`voltage_200` 点用示例里的放大器链 `SantaCruz+Gali52+Termination50`，`points/voltage_200/readout/0` 指向的节点里，作业 `0` 的 `readout.h5` 属性（`attrs`）为：
 
 - `dt = 5e-12`（单位 `s`）
 - `electrodes = ['top']`
@@ -39,17 +39,17 @@ raser signal HPK-Si-PiN --scan field.voltage=100,200 -s 2 -evt 200 --seed 1
 `raser readout`（或 `raser rdo`）在当前文件夹或给定路径的实验上跑到 `readout` 为止，缺的 `field`、`deposit`、`current` 节点先补上：
 
 ```bash
-raser readout [路径] [<source>] [选项...]
-raser rdo [路径] [<source>] [选项...]
+raser readout [路径]
+raser rdo [路径]
 ```
 
 放大器链只有 `readout` 读。在上面的实验上再扫两条放大器链：
 
 ```bash
-raser rdo work/HPK-Si-PiN/signal --scan field.voltage=100,200 --scan readout.amplifier=SantaCruz+Gali52+Termination50,BroadBandCividec+Termination50 -s 2 --seed 1
+raser rdo examples/HPK-Si-PiN/signal --scan field.voltage=100,200 --scan readout.amplifier=SantaCruz+Gali52+Termination50,BroadBandCividec+Termination50 -s 2 --seed 1
 ```
 
-扫描只影响下游的设置时，上游节点在各点之间共用。`deposit`、`current` 仍是两档偏压各 $1$ 个、共 $2$ 个节点，指纹没变，直接复用；`readout` 是两档偏压乘两条链，共 $4$ 个节点，其中 `SantaCruz+Gali52+Termination50` 的两个已经算过，只为 `BroadBandCividec+Termination50` 新算两个。下游的 `digitizer`、`trigger`、`reconstruction`、`analysis` 读 `readout` 的节点号，同样各有 $4$ 个节点。节点只增不减，把链改回去时视图指回原来的节点。代码版本和节点记录的不一致时只给一条提示，结果照常复用。每个节点单独加锁，写到一半的节点带 `.part` 后缀。节点与复用规则见[片与重跑](../lifecycle/slices.md)。
+扫描只影响下游的设置时，上游节点在各点之间共用。`deposit`、`current` 仍是两档偏压各 $2$ 个作业、共 $4$ 个节点，指纹没变，直接复用；`readout` 是两档偏压乘两条链、每点 $2$ 个作业，共 $8$ 个节点，其中 `SantaCruz+Gali52+Termination50` 的 $4$ 个已经算过，只为 `BroadBandCividec+Termination50` 新算 $4$ 个。下游的 `digitizer`、`trigger`、`reconstruction` 读 `readout` 的节点号，同样各有 $8$ 个节点；`analysis` 每个扫描点一个节点，共 $4$ 个。节点只增不减，把链改回去时视图指回原来的节点。代码版本和节点记录的不一致时只给一条提示，结果照常复用。每个节点单独加锁，写到一半的节点带 `.part` 后缀。节点与复用规则见[片与重跑](../lifecycle/slices.md)。
 
 ### 上游零事例与多位置空电流
 
@@ -65,15 +65,12 @@ raser rdo work/HPK-Si-PiN/signal --scan field.voltage=100,200 --scan readout.amp
 
 | 常数名 | 值 | 单位 | 定义位置与含义 |
 | --- | --- | --- | --- |
-| `READOUT_DEFAULTS["amplifier"]` | `"SantaCruz+Gali52+Termination50"` | 无 | `src/raser/stages/chain.py`：默认前端放大器与末级负载子电路链 |
-| `READOUT_DEFAULTS["sheet_resistance"]` | `None` | $\Omega$ | `src/raser/stages/chain.py`：默认阻性层方阻覆盖值（`None` 表示取器件文件值或铝注入层推算值） |
 | `STAGES["readout"]` | `("rdo", "the waveforms of the electronics, after all before them", ...)` | 无 | `src/raser/stages/stage_commands.py`：`raser readout` 的短命令、帮助说明与参数挂载函数 |
-| `DEFAULT_MODE` | `"full"`（装了 `devsim`）或 `"fast"`（没装 `devsim`） | 无 | `src/raser/core/field/solved.py`：`solved_field` 找场时的默认求解模式 |
 | `PART_EDGE` | `1e-3` | 无量纲 | `src/raser/core/readout/job.py`：`write_waveforms` 保存输出通道、以及条形行局部电路扩展收敛判定用的相对最大电压摆幅阈值 |
 
 ### 环节命令的解析与启动（`stage_commands.run`）
 
-1. **挂载参数（`register`）**：注册 `readout`（别名 `rdo`），依次挂上 `deposit`、`current`、`readout` 三个环节的选项和共用运行参数，执行入口设为 `partial(run, "readout")`。
+1. **挂载参数（`register`）**：注册 `readout`（别名 `rdo`），挂上共用运行参数及本环节命令选项（上游各环节的设置写在各自的段里，见[场求解环节（`stages/field`）](field.md)、[能量沉积环节（`stages/deposit`）](deposit.md)和[载流子输运与感应电流环节（`stages/current`）](current.md)），执行入口设为 `partial(run, "readout")`。
 2. **解析实验**：读实验文件夹的 `config.json`，找到它的实验类。
 3. **核对环节**：实验类不含 `readout` 环节时退出：
 
@@ -108,32 +105,32 @@ FileNotFoundError: no field of <det_name> ready for this run: solve it with `ras
      ValueError: <det_name> has no resistive layer to give a sheet resistance of <sheet_ohm> Ohm
      ```
 
-     去掉 `--sheet-resistance`（以及配置里对应的设置或扫描）后再运行。
+     去掉 `readout.sheet_resistance` 的设置或扫描后再运行。
    - **常规器件**：
-     1. **辐照注量**：取 `my_d.irradiation_flux`（$\text{cm}^{-2}$）；给了 `irradiation` 时改用 `float(irradiation)`。
-     2. **找场（`solved_field(my_d, my_d.voltage, flux)`）**：在器件已解过的场里筛选辐照注量等于 `float(flux)`、求解模式等于 `DEFAULT_MODE` 的，再用 `changed` 比对器件参数，并检查该偏压下解过电势与权重场。找不到时分别抛出：
+     1. **辐照注量**：取 `my_d.irradiation_flux`（$\text{cm}^{-2}$）；`field.irradiation_flux` 不为 `null` 时改用 `float(irradiation_flux)`。
+     2. **找场（`solved_field(my_d, my_d.voltage, flux, mode)`）**：在器件已解过的场里筛选辐照注量等于 `float(flux)`、求解模式等于 `field.mode` 的，再用 `changed` 比对器件参数，并检查该偏压下解过电势与权重场。找不到时分别抛出：
 
         ```text
-        FileNotFoundError: no <mode> field of <det_name> at the irradiation flux <flux> in <root> (flux and mode of those solved: <have>); solve it with `raser field <det_name> -bias <voltage> --mode <mode> -irr <flux>`
-        ValueError: the field in <folder> was solved for another device (<differing>); solve it again with `raser field <det_name> -bias <voltage> --mode <mode>`
-        FileNotFoundError: the field in <folder> is not solved at <voltage> V (solved at: <solved>); solve it with `raser field <det_name> -bias <voltage> --mode <mode>`
-        FileNotFoundError: the field in <folder> has no weighting field at <voltage> V (solved at: <solved>); solve it with `raser field <det_name> -bias <voltage> --mode <mode> -wf`
+        FileNotFoundError: no <mode> field of <det_name> at the irradiation flux <flux> in <root> (flux and mode of those solved: <have>); solve it with `raser field <det_name> --set field.voltage=<voltage> --set field.mode=<mode> --set field.irradiation_flux=<flux>`
+        ValueError: the field in <folder> was solved for another device (<differing>); solve it again with `raser field <det_name> --set field.voltage=<voltage> --set field.mode=<mode>`
+        FileNotFoundError: the field in <folder> is not solved at <voltage> V (solved at: <solved>); solve it with `raser field <det_name> --set field.voltage=<voltage> --set field.mode=<mode>`
+        FileNotFoundError: the field in <folder> has no weighting field at <voltage> V (solved at: <solved>); solve it with `raser field <det_name> --set field.voltage=<voltage> --set field.mode=<mode>` with the weighting field switched on in the field settings
         ```
 
-        四条依次表示：缺这个注量与模式的场；场是按改动前的器件参数解的；缺该偏压的电势；缺该偏压的权重场。按报错末尾的命令补算。
+        四条依次表示：缺这个注量与模式的场；场是按改动前的器件参数解的；缺该偏压的电势；缺该偏压的权重场。按报错末尾的命令补算；缺权重场时，在 `field` 段打开权重场求解（用 `--set field.<键>=<值>` 改场的设置）。
      3. **读场里的电路参数（`row, solved_f, undepleted = field_circuit(folder, my_d)`）**：
         - `my_d.is_strip and len(my_d.read_out_contact) == 1 and my_d.read_ele_num > 1`（单读出接触重复排布的条形行）：读 `weightingfield/<electrode>/Capacitance_<bias>V.json` 为 `row`，`solved_f = None`。文件不存在时抛出
 
           ```text
-          FileNotFoundError: the field in <folder> has no capacitances between the strips of <det_name> at <voltage> V: <path> is missing, and the readout of a row of strips needs it. A field solved by raser stores it with its weighting field: `raser field <det_name> -wf`. A field imported from TCAD (-ext) does not store it yet, so the strips of an imported field cannot be read out
+          FileNotFoundError: the field in <folder> has no capacitances between the strips of <det_name> at <voltage> V: <path> is missing, and the readout of a row of strips needs it. A field solved by raser stores it with its weighting field: switch the weighting field on in the field settings. A field imported from TCAD does not store it yet, so the strips of an imported field cannot be read out
           ```
 
-          这个文件随 DEVSIM 解的权重场写出；要用 `raser field <det_name> -wf` 由 DEVSIM 解权重场。
+          这个文件随 DEVSIM 解的权重场写出；在 `field` 段打开权重场求解（用 `--set field.<键>=<值>` 改场的设置），由 DEVSIM 解权重场。
         - `row is None` 时：该偏压解过电容，就从 `<float(voltage)>V.cv.json` 取 `specific_capacitance_pF * area_factor * 1e-12`（$\text{F}$）作 `solved_f`；否则 `solved_f = None`。
         - `int(my_d.dimension) == 1` 时：`solved_undepleted(Path(folder), my_d.voltage)` 读 `<float(voltage)>V.undepleted.json`。该偏压没存未耗尽层时抛出
 
           ```text
-          FileNotFoundError: the field in <folder> has no undepleted bulk at <voltage> V (solved at: <solved>): it is stored for a field in one dimension; solve it with `raser field <det_name> -bias <voltage>`
+          FileNotFoundError: the field in <folder> has no undepleted bulk at <voltage> V (solved at: <solved>): it is stored for a field in one dimension; solve it with `raser field <det_name> --set field.voltage=<voltage>`
           ```
 
      4. **组装电路（`circuit, values = device_circuit(my_d, electrodes, solved_f, row=row, solved_undepleted=undepleted)`）**：
@@ -157,10 +154,10 @@ FileNotFoundError: no field of <det_name> ready for this run: solve it with `ras
           ValueError: <det_name> has no capacitance: its device file gives none, its field was not asked for one, and the device has no estimate
           ```
 
-          在器件文件里补 `capacitance_pF`，或用 `raser field -cv` 解电容。
+          在器件文件里补 `capacitance_pF`，或在 `field` 段打开 CV 求解（用 `--set field.<键>=<值>` 改场的设置）解电容。
         - `row` 非 `None` 时要求 `row["unit"] == "F/cm"`，否则抛出 `ValueError: The capacitances of the row are in <unit>`。通过后按条长 `l_y * 1e-4`（$\text{cm}$）换算近邻条间互容、组装 `row_of_electrodes`，并定义 `part_of(hit, margin) = part_of_row(my_d, electrodes, hit, margin, solved_f, row)`。
 4. **放大器链与脉冲方向**：
-   - `chain = named_chain(str(kwargs["amplifier"]))` 按 `"+"` 拆开 `amplifier`，从组件目录依次加载 `afe/<part>.cir`（子电路语法与内置组件见[前端读出电路组件（`components/readout`）](../components/readout.md)）。找不到时抛出 `FileNotFoundError: Cannot find RASER component afe/<part>.cir:`，检查子电路名的拼写，或确认文件放进了 `afe/`。
+   - `chain = named_chain(str(kwargs["amplifier"]))` 按 `"+"` 拆开 `amplifier`，从组件目录依次加载 `readout/<part>.cir`（子电路语法与内置组件见[前端读出电路组件（`components/readout`）](../components/readout.md)）。找不到时抛出 `FileNotFoundError: Cannot find RASER component readout/<part>.cir:`，检查子电路名的拼写，或确认文件放进了 `readout/`。
    - `pulse_edges(my_d, chain, list(circuit.outputs))` 给出与 `circuit.outputs` 一一对应的脉冲方向。
 5. **求解并写出（`write_waveforms`）**：先删掉同路径的旧波形文件，再逐事例求瞬态电压、按种子叠加时域热噪声、筛掉最大绝对摆幅 `< 1e-3 * largest` 的通道后写出。
 
@@ -169,7 +166,7 @@ FileNotFoundError: no field of <det_name> ready for this run: solve it with `ras
 ### 源文件分工
 
 - `src/raser/stages/readout.py`：`waveforms(kwargs, position=None)` 做多位置预检，构造 `Detector` 与电极名，按有无 `resistive_layer` 组装器件等效电路，加载前端子电路链，判定脉冲方向并调用 `write_waveforms`。
-- `src/raser/stages/chain.py`：定义 `READOUT_DEFAULTS`、参数注册函数 `readout_arguments`（`-amp`、`--sheet-resistance`）和按需导入 `readout` 模块的入口 `_waveforms`。
+- `src/raser/stages/chain.py`：定义按需导入 `readout` 模块的入口 `_waveforms`。
 - `src/raser/stages/stage_commands.py`：注册各环节命令；解析目标实验，核对实验含目标环节，设截止环节并切入实验文件夹执行。
 - `src/raser/stages/files.py`：给出各环节在当前作业下的输入输出文件路径。
 
@@ -183,7 +180,7 @@ FileNotFoundError: no field of <det_name> ready for this run: solve it with `ras
 | `"_files"` | `dict` | 随器件键 | 组件文件内容，`_files["device"]` 是已写入本次偏压的器件配置字典 |
 | `"amplifier"` | `str` | 无 | 以 `"+"` 连接的前端放大器与末级负载子电路链 |
 | `"sheet_resistance"` | `float \| None` | $\Omega$ | 阻性层器件的方阻覆盖值 |
-| `"irradiation"` | `float \| None` | $\text{cm}^{-2}$ | 找场时覆盖器件 `irradiation_flux` 的辐照注量 |
+| `"irradiation_flux"` | `float \| None` | $\text{cm}^{-2}$ | 本次运行的辐照注量（`field.irradiation_flux`，$1\ \text{MeV}$ 中子等效注量）；为 `None` 时取 `my_d.irradiation_flux` |
 | `"seed"` | `int \| None` | 无 | 热噪声的随机种子；无种子的工作流（如 `tct`）为 `None`，不叠加噪声 |
 
 组装器件等效电路返回的 `values`（序列化写进波形文件的 `device_circuit` 属性）：
@@ -203,28 +200,27 @@ FileNotFoundError: no field of <det_name> ready for this run: solve it with `ras
 
 ### 选项与配置键
 
-本环节能设的只有下表这些；找场的默认模式 `DEFAULT_MODE`、保存通道的相对摆幅阈值 `PART_EDGE = 1e-3`、频域噪声分析的频段与温度都写死在代码里。`--set`、`--scan` 用“段.键”作地址，如 `--set readout.amplifier=BroadBandCividec+Termination50`。共用运行参数（`-s`、`--seed`、`--same-seeds`、`--set`、`--scan`、`-b`、`-t`、`--dry-run`）见[命令行接口（`raser`）](../cli.md)和[实验、扫描点与种子](../lifecycle/experiments.md)。
+本环节能设的只有下表这些；保存通道的相对摆幅阈值 `PART_EDGE = 1e-3`、频域噪声分析的频段与温度都写死在代码里。`--set`、`--scan` 用“段.键”作地址，如 `--set readout.amplifier=BroadBandCividec+Termination50`。共用运行参数（`-s`、`--seed`、`--same-seeds`、`--set`、`--scan`、`-b`、`-t`、`-mem`、`--dry-run`）见[命令行接口（`raser`）](../cli.md)和[实验、扫描点与种子](../lifecycle/experiments.md)；上游各环节的设置写在各自的段里，见[能量沉积环节（`stages/deposit`）](deposit.md)和[载流子输运与感应电流环节（`stages/current`）](current.md)。配置键的“示例里的值”是 `examples/HPK-Si-PiN/signal/config.json` 写的值；`config.json` 缺了要用的键时报错，指出缺的“段.键”。器件文件键一行写的是器件文件里的写法。
 
-| 选项或键 | 默认值 | 单位 | 含义 |
+| 段.键 | 示例里的值 | 单位 | 含义 |
 | --- | --- | --- | --- |
 | `[路径]` | 当前文件夹 | 无 | 实验文件夹 |
-| `-amp`, `--amplifier`（`readout.amplifier`） | `"SantaCruz+Gali52+Termination50"` | 无 | 以 `"+"` 连接的 `afe/<名称>.cir` 子电路链，前几项是双端口放大级，末项是单端口负载 |
-| `--sheet-resistance`（`readout.sheet_resistance`） | `None` | $\Omega$ | 覆盖阻性层器件的方阻；对常规器件给出会抛出 `ValueError` |
-| `-vol`, `--voltage`（`field.voltage`） | 器件文件 `bias.voltage` | $\text{V}$ | 属于 `field` 段：偏压，用来找场并判定收集电荷的极性 |
-| `-irr`, `--irradiation`（`field` 段，见 `field` 页） | 器件文件 `irradiation.irradiation_flux`，缺省 `0` | $\text{cm}^{-2}$ | 属于 `field` 段：找场时用的辐照注量 |
-| `source`、`--g4setup`、`-evt`、`-gen`、`--generated-limit`、`--edep-min`、`--edep-max`、`deposit.plots`、`current.plots`、`-g4_vis`、`--g4-vis-driver` | 见 `deposit`、`current` 页 | 随各选项 | `raser readout` 一并挂载的上游选项，改了会让对应上游及本环节重算 |
+| `readout.amplifier` | `"SantaCruz+Gali52+Termination50"` | 无 | 以 `"+"` 连接的 `readout/<名称>.cir` 子电路链，前几项是双端口放大级，末项是单端口负载 |
+| `readout.sheet_resistance` | `null`（取器件文件里阻性层的方块电阻） | $\Omega$ | 覆盖阻性层器件的方阻；对常规器件给出会抛出 `ValueError` |
+| `field.voltage` | `200.0`（写 `null` 时取器件文件里的偏压） | $\text{V}$ | 属于 `field` 段：偏压，用来找场并判定收集电荷的极性 |
+| `field.irradiation_flux` | `null`（取器件文件里的辐照注量，器件文件没有辐照块时为 `0`） | $\text{cm}^{-2}$ | 属于 `field` 段：找场时用的辐照注量 |
 | 器件文件键 `read_out_contact`、`read_ele_num`、`electrodes`、`l_y`、`p_x`、`p_y`、`x_ele_num`、`y_ele_num` | 见 `components/device` 页 | $\mu\text{m}$ / 个 | 决定读出电极名称、布局（`"pad"`、`"strip"`、`"pixel"`）、条长与网格单元尺寸 |
 | 器件文件键 `capacitance_pF` | 无（可选） | $\text{pF}$ | 直接给出的单电极耗尽层结电容（或阻性层单元电容），优先于场电容与平板估算 |
-| 器件文件键 `bias_resistance_ohm` | `None` | $\Omega$ | 常规器件单电极偏置电阻；给了 `coupling_capacitance_pF` 时必须给 |
-| 器件文件键 `coupling_capacitance_pF` | `None` | $\text{pF}$ | 常规器件单电极交流耦合电容 |
-| 器件文件键 `undepleted_resistance_ohm`、`undepleted_capacitance_pF` | `None`、`None` | $\Omega$, $\text{pF}$ | 常规器件未耗尽层并联电阻与电容，必须成对给出；不给时一维器件从场里读 |
+| 器件文件键 `bias_resistance_ohm` | 不写（可选） | $\Omega$ | 常规器件单电极偏置电阻；给了 `coupling_capacitance_pF` 时必须给 |
+| 器件文件键 `coupling_capacitance_pF` | 不写（可选） | $\text{pF}$ | 常规器件单电极交流耦合电容 |
+| 器件文件键 `undepleted_resistance_ohm`、`undepleted_capacitance_pF` | 不写（可选） | $\Omega$, $\text{pF}$ | 常规器件未耗尽层并联电阻与电容，必须成对给出；不给时一维器件从场里读 |
 | 器件文件键 `resistive_layer` | 无（可选） | $\Omega$, $\text{cm}^{-2}$, $\mu\text{m}$, $^\circ\text{C}$ | 阻性层配置块，含方阻 `sheet_resistance`（或铝注入参数 `implanted`、`thickness`、`anneal`）、读出条 `strips` 或焊盘 `pads`、接地接触 `grounded` 及可选介质层 `coupling`（`thickness`、`permittivity`） |
 
 ### 读写的文件
 
-- **读：`work/<器件>/field/` 场节点里的电路文件**（`<V>V.cv.json`、`<V>V.undepleted.json`、`weightingfield/<electrode>/Capacitance_<bias>V.json`）。常规器件从中取结电容、一维未耗尽层的 RC 参数和条形行的条间互容；格式见[场求解与加载（`core/field`）](../core/field.md)。
-- **读：`current` 节点里的电流文件**。取 `electrodes`、`dt`（$\text{s}$）和逐事例感应电流；格式见[载流子漂移与感应电流（`core/current`）](../core/current.md)。
-- **写：`nodes/readout/<节点号>/` 里的波形文件**。上游有记录事例、且（多位置下）该位置有电流文件时写出，先删旧文件再逐事例追加。底层读写函数见[电子学读出（`core/readout`）](../core/readout.md)，HDF5 属性与数据集如下：
+- **读：`<器件 project>/field/<节点号>/` 场节点里的电路文件**（`<V>V.cv.json`、`<V>V.undepleted.json`、`weightingfield/<electrode>/Capacitance_<bias>V.json`）。常规器件从中取结电容、一维未耗尽层的 RC 参数和条形行的条间互容；格式见[场求解与加载（`core/field`）](../core/field.md)。
+- **读：`current` 节点里的 `current.h5`**（多位置实验里每个位置一个 `current.<位置>.h5`）。取 `electrodes`、`dt`（$\text{s}$）和逐事例感应电流；格式见[载流子漂移与感应电流（`core/current`）](../core/current.md)。
+- **写：`nodes/readout/<节点号>/readout.h5`**（多位置实验里同节点下每个位置一个文件 `readout.<位置>.h5`）。上游有记录事例、且（多位置下）该位置有电流文件时写出，先删旧文件再逐事例追加。底层读写函数见[电子学读出（`core/readout`）](../core/readout.md)，HDF5 属性与数据集如下：
 
   | 类别 | 名称 | 形状与类型 | 单位 | 含义 |
   | --- | --- | --- | --- | --- |
@@ -240,4 +236,4 @@ FileNotFoundError: no field of <det_name> ready for this run: solve it with `ras
   | 数据集（`datasets`） | `voltage` | `(sum(stored * count),)`，`float64`（`gzip` 压缩） | $\text{V}$ | 按事例和存储通道依次展开的时间箱中心输出电压，每通道占所属事例的 `count` 个点 |
 
 - **写：`nodes/readout/<节点号>/node.json`**。记下本节点的输入，以及代码版本、运行环境和运行状态。
-- **写：`points.json` 与 `points/<点名>/readout`**。参数表记各点 `readout` 用的节点号；视图软链接指向该节点。
+- **写：`points.json` 与 `points/<点名>/readout/<作业号>`**。参数表记各点 `readout` 用的节点号；视图软链接指向该节点。

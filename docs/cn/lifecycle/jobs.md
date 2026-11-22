@@ -76,7 +76,7 @@ warning: <锁文件> cannot be locked here (No locks available): nothing keeps a
 
 传入 `-b`（`--batch`）时，主命令把每个待运行作业写成可执行脚本 `<command_name>.job`（权限 `0o755`），交给 `RASER_SCHEDULER` 指定的集群调度器提交；省略 `-s` 时提交作业 `0`。`-b` 写在子命令前作全局选项时可连写为 `-b`、`-bb`、`-bbb` 等，内存档位取 $\max(\text{-mem},\, \text{全局 } \texttt{b} \text{ 的个数})$，实际向调度器申请 $8000 \times \text{档位}\ \text{MB}$ 内存。顶层 `-t`（`--test`）只在与顶层 `-b` 同时给出时生效，只检查并预览提交信息。
 
-作业脚本与提交文件放在 `<project_root>/<命令首词>/jobs/`，路径解析见 [公共基础设施（`supports`）](../supports/README.md)。脚本开头先清除登录节点的 X11 环境变量、导出 `RASER_CLUSTER_JOB=1`，再从容器绑定变量中滤掉 X11 挂载项。从源码树运行时，脚本先 `cd` 到仓库根目录，再激活 `env/setup_cvmfs.sh <路线名>`（未设 `RASER_ENV_ROUTE` 时执行 `env/setup.sh`）；以 Python 包安装运行时，脚本 `cd` 到提交时的当前工作目录，沿用调度器环境。
+作业脚本与提交文件放在 `<实验>/jobs/`，路径解析见 [公共基础设施（`supports`）](../supports/README.md)。脚本开头先清除登录节点的 X11 环境变量、导出 `RASER_CLUSTER_JOB=1`，再从容器绑定变量中滤掉 X11 挂载项。从源码树运行时，脚本先 `cd` 到仓库根目录，再激活 `env/setup_cvmfs.sh <路线名>`（未设 `RASER_ENV_ROUTE` 时执行 `env/setup.sh`）；以 Python 包安装运行时，脚本 `cd` 到提交时的当前工作目录，沿用调度器环境。
 
 以申请两档内存（`16000 MB`）提交两个作业为例：
 
@@ -87,10 +87,10 @@ raser -bb signal HPK-Si-PiN -s 2 --seed 1
 默认调度器 `hep_sub` 下，每个作业执行 `hep_sub -o <jobs目录> -e <jobs目录> <job文件> -mem 16000 -g <当前目录用户组>`。`RASER_SCHEDULER=condor` 下，额外生成 `<command_name>.sub` 并执行 `condor_submit <sub文件>`，`.sub` 内容形如：
 
 ```text
-executable = /.../work/HPK-Si-PiN/signal/jobs/<command_name>.job
-output = /.../work/HPK-Si-PiN/signal/jobs/<command_name>.out
-error = /.../work/HPK-Si-PiN/signal/jobs/<command_name>.err
-log = /.../work/HPK-Si-PiN/signal/jobs/<command_name>.log
+executable = /.../examples/HPK-Si-PiN/signal/jobs/<command_name>.job
+output = /.../examples/HPK-Si-PiN/signal/jobs/<command_name>.out
+error = /.../examples/HPK-Si-PiN/signal/jobs/<command_name>.err
+log = /.../examples/HPK-Si-PiN/signal/jobs/<command_name>.log
 request_memory = 16000
 getenv = True
 +JobFlavour = "workday"
@@ -149,7 +149,7 @@ not starting the command again: <深度> starts deep, as many as the slices of t
 not starting raser ...: 8 starts deep
 ```
 
-第一行说明 `4` 次尝试（每次间隔 `30 s`）都返回非零，常见于另一作业正占锁，或工作节点缺少运行环境与调度器客户端。后两行说明自动拉起已到嵌套深度上限（本实验命令为链上环节的个数，外部等待命令为 `8` 层），程序主动停下，防止循环提交。查看 `<project_root>/<命令首词>/jobs/` 下 `.out`/`.err` 中每次 `starting the command again: raser ...` 下方的输出；等前置作业完成后，在登录节点手动重跑原命令即可继续。
+第一行说明 `4` 次尝试（每次间隔 `30 s`）都返回非零，常见于另一作业正占锁，或工作节点缺少运行环境与调度器客户端。后两行说明自动拉起已到嵌套深度上限（本实验命令为链上环节的个数，外部等待命令为 `8` 层），程序主动停下，防止循环提交。查看 `<实验>/jobs/` 下 `.out`/`.err` 中每次 `starting the command again: raser ...` 下方的输出；等前置作业完成后，在登录节点手动重跑原命令即可继续。
 
 ### 中断续跑
 
@@ -182,7 +182,7 @@ not starting raser ...: 8 starts deep
   <位置>: job 0 (123456) is no more on the cluster: it failed and is submitted again
   ```
 
-  调度器确认集群上已无该作业，而它没有算完。程序已删掉旧提交记录并重新提交，重提后仍复用已算完的上游节点。到 `<project_root>/<命令首词>/jobs/` 查看上次作业的 `.out`/`.err` 排查原因，例如被内存限制杀掉时调高 `-mem`。
+  调度器确认集群上已无该作业，而它没有算完。程序已删掉旧提交记录并重新提交，重提后仍复用已算完的上游节点。到 `<实验>/jobs/` 查看上次作业的 `.out`/`.err` 排查原因，例如被内存限制杀掉时调高 `-mem`。
 
 - **调度器无法查询**：
 
@@ -299,7 +299,7 @@ not starting raser ...: 8 starts deep
 ### 模块与函数分工
 
 - `src/raser/lifecycle/jobs.py`：编号作业的计划构建、命令行尾参数清理与本地/集群批量派发。`command_tail` 剥离命令前缀、`--batch`/`--dry-run` 及指定选项；`plan_indexed_jobs` 校验作业数与内存档位，生成 `IndexedJobPlan`；`_run_local_job` 与 `last_line` 负责子进程执行、终端与日志双写，以及跳过 C++ 尾行提取 Python 异常摘要；`run_indexed_jobs` 按 `use_cluster` 经 `scheduler.main` 串行提交集群，或经 `ProcessPoolExecutor` 本地并行执行，并汇总失败作业。
-- `src/raser/lifecycle/scheduler.py`：集群作业目录定位、脚本生成、调度器提交与在轨状态查询。`job_dir` 定位 `<project_root>/<destination_subfolder>/jobs/`；`plan_job` 组装 `hep_sub` 或 HTCondor 的 `ClusterJobPlan`（含 `200` 字节脚本名截断与内存换算）；`worker_script` 与 `gen_job` 生成清理 X11 变量与容器绑定、导出 `RASER_CLUSTER_JOB=1`、权限 `0o755` 的 bash 脚本；`submit_job` 写宿主机队列 `RASER_SUBMIT_QUEUE` 或调用调度器并解析集群作业号；`main` 统筹规划、预览、写盘与提交；`job_alive` 经 `hep_q` 或 `condor_q` 查询作业是否还在；`run_cmd` 提供通用外部命令的预览与执行。
+- `src/raser/lifecycle/scheduler.py`：集群作业目录定位、脚本生成、调度器提交与在轨状态查询。`job_dir` 定位 `<实验>/jobs/`；`plan_job` 组装 `hep_sub` 或 HTCondor 的 `ClusterJobPlan`（含 `200` 字节脚本名截断与内存换算）；`worker_script` 与 `gen_job` 生成清理 X11 变量与容器绑定、导出 `RASER_CLUSTER_JOB=1`、权限 `0o755` 的 bash 脚本；`submit_job` 写宿主机队列 `RASER_SUBMIT_QUEUE` 或调用调度器并解析集群作业号；`main` 统筹规划、预览、写盘与提交；`job_alive` 经 `hep_q` 或 `condor_q` 查询作业是否还在；`run_cmd` 提供通用外部命令的预览与执行。
 - `src/raser/lifecycle/workflow.py`（作业调度、锁、日志与续跑部分）：`Running` 与 `_lock` 实现非阻塞文件锁；`_make_shared` 与 `make_shared` 去重触发还没有的器件场求解；`_start`、`_logged`（`_Both`）、`_own_process` 实现三路启动；`_run_job` 运行单个作业并打印 `JOB_ENDED`；`_note_submitted` 与 `_not_submitted` 管理提交记录的原子写入与登录节点重提判定；`_start_again`、`_run_again` 与 `waited_for_by` 实现集群自动重拉与外部等待列表。
 
 ### 核心数据结构
@@ -347,9 +347,9 @@ not starting raser ...: 8 starts deep
 - **节点**：作业把各环节的结果写进 `<实验>/nodes/<环节>/<节点号>/`；写到一半的节点带 `.part` 后缀，写完才改成正式的名字。每个节点单独加锁。节点与 `node.json` 见 [片与重跑](slices.md)。
 - **作业日志**：每个作业一份纯文本日志，记录标准输出与标准错误（当前进程模式只含 Python 层的输出与回溯）。作业跑完请求的环节后，末尾打印 `raser: the job ran its slices: <逗号分隔的环节名>`；本地作业失败时由 `jobs.last_line` 读出摘要。
 - **提交记录**：集群直接提交并取得作业号后写出的 JSON，含两个字符串字段：`"job"`（集群作业号）和 `"time"`（本地时间，格式 `YYYY-MM-DD HH:MM:SS`）。写入时先写同目录 `<记录名>.<pid>.part`，再经 `os.link` 原子落盘并删掉 `.part`。对应环节算完，或登录节点确认该作业已离开集群后删除。
-- **`<project_root>/<命令首词>/jobs/<command_name>.job`**：`scheduler.gen_job` 写出的 UTF-8 可执行 bash 脚本（权限 `0o755`）。它清理 X11 环境变量与容器绑定、导出 `RASER_CLUSTER_JOB=1`、按源码树或包安装模式切换目录并激活环境，再执行 `raser <作业命令>`。
-- **`<project_root>/<命令首词>/jobs/<command_name>.sub`**：只在 `RASER_SCHEDULER=condor` 时由 `scheduler.main` 写出的 UTF-8 HTCondor 提交描述，记录绝对路径的 `executable`、`output`、`error`、`log`，内存请求 `request_memory`（单位 $\text{MB}$）、`getenv = True`、`+JobFlavour` 与 `queue`。
-- **`<project_root>/<命令首词>/jobs/<command_name>.out`、`.err`（及 `.log`）**：集群作业的标准输出、标准错误及调度器事件日志（纯文本）。`hep_sub` 按 `-o`/`-e` 在 `<jobs目录>` 下写出带集群作业号的 `.out`/`.err`；`condor` 按 `.sub` 写出 `<command_name>.out`、`<command_name>.err` 与调度器日志 `<command_name>.log`。
+- **`<实验>/jobs/<command_name>.job`**：`scheduler.gen_job` 写出的 UTF-8 可执行 bash 脚本（权限 `0o755`）。它清理 X11 环境变量与容器绑定、导出 `RASER_CLUSTER_JOB=1`、按源码树或包安装模式切换目录并激活环境，再执行 `raser <作业命令>`。
+- **`<实验>/jobs/<command_name>.sub`**：只在 `RASER_SCHEDULER=condor` 时由 `scheduler.main` 写出的 UTF-8 HTCondor 提交描述，记录绝对路径的 `executable`、`output`、`error`、`log`，内存请求 `request_memory`（单位 $\text{MB}$）、`getenv = True`、`+JobFlavour` 与 `queue`。
+- **`<实验>/jobs/<command_name>.out`、`.err`（及 `.log`）**：集群作业的标准输出、标准错误及调度器事件日志（纯文本）。`hep_sub` 按 `-o`/`-e` 在 `<jobs目录>` 下写出带集群作业号的 `.out`/`.err`；`condor` 按 `.sub` 写出 `<command_name>.out`、`<command_name>.err` 与调度器日志 `<command_name>.log`。
 - **`RASER_SUBMIT_QUEUE` 指向的队列文件**：`scheduler.submit_job` 追加写入的 UTF-8 文本，每行一条经 `shlex.join` 转义的调度器提交命令，供宿主机 `raser` 封装函数在容器退出后逐行提交。
 
 `config.json` 与 `points.json` 见 [实验、扫描点与种子](experiments.md) 和 [片与重跑](slices.md)。

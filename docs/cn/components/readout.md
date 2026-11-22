@@ -1,6 +1,6 @@
 # 前端读出电路组件（`components/readout`）
 
-前端读出电路组件是 SPICE 子电路文件（`.cir`，按 [架构总纲](../architecture.md#组件) 的顶层设计存放在 `components/readout/` 下），承接 [`current`](../stages/current.md)（[`core/current`](../core/current.md)）输出的电极感应电流以及 [`field`](../stages/field.md)（[`core/field`](../core/field.md)）和 [探测器组件](device.md) 给出的器件等效电路 `DeviceCircuit`。[`readout`](../stages/readout.md) 环节（[`core/readout`](../core/readout.md)）按 `+` 连接的顺序读取各级 `.cir` 文件，将它们串成放大器与终端负载链，接在器件等效电路后面交给 `ngspice` 求解瞬态响应与频域热噪声，得到的输出电压波形交给 [`digitizer`](../stages/digitizer.md)（[`core/digitizer`](../core/digitizer.md)）或 [`reconstruction`](../stages/reconstruction.md)（[`core/reconstruction`](../core/reconstruction.md)）。
+前端读出电路组件是 SPICE 子电路文件（`.cir`，存放在 `components/readout/` 下，见 [架构总纲](../architecture.md#组件)），承接 [`current`](../stages/current.md)（[`core/current`](../core/current.md)）输出的电极感应电流以及 [`field`](../stages/field.md)（[`core/field`](../core/field.md)）和 [探测器组件](device.md) 给出的器件等效电路 `DeviceCircuit`。[`readout`](../stages/readout.md) 环节（[`core/readout`](../core/readout.md)）按 `+` 连接的顺序读取各级 `.cir` 文件，将它们串成放大器与终端负载链，接在器件等效电路后面交给 `ngspice` 求解瞬态响应与频域热噪声，得到的输出电压波形交给 [`digitizer`](../stages/digitizer.md)（[`core/digitizer`](../core/digitizer.md)）。
 
 ```mermaid
 flowchart LR
@@ -8,7 +8,7 @@ flowchart LR
     DEV --> S1["SantaCruz (.cir)"]
     S1 --> S2["Gali52 (.cir)"]
     S2 --> LOAD["Termination50 (.cir)"]
-    LOAD --> OUT["输出电压波形 (交给 digitizer / reconstruction)"]
+    LOAD --> OUT["输出电压波形 (交给 digitizer)"]
 ```
 
 查找组件时，project 文件夹里自己的组件优先，找不到再到组件库按名字找。
@@ -75,7 +75,7 @@ R1 in 0 50
 
 ## 键的含义
 
-前端电路组件是 `.cir` 文本文件，使用者能定义和修改的是子电路端口、主子电路内的 SPICE 元件行、主子电路外的辅助模型（`.subckt` 与 `.MODEL`）以及行尾 `;` 后的原理图布局提示；在实验 `config.json` 或命令行 `--set`、`--scan` 中也可以用 `readout.<放大级名>.<元件名>`（如 `readout.SantaCruz.R1`）覆盖或扫描主子电路内元件的数值。
+前端电路组件是 `.cir` 文本文件，使用者能定义和修改的是子电路端口、主子电路内的 SPICE 元件行、主子电路外的辅助模型（`.subckt` 与 `.MODEL`）以及行尾 `;` 后的原理图布局提示；`readout.amplifier` 是槽位，由几级串成，组件里的量按“段.槽位.级名.元件名”寻址：在实验 `config.json` 或命令行 `--set`、`--scan` 中用 `readout.amplifier.<放大级名>.<元件名>`（如 `readout.amplifier.SantaCruz.R1`）覆盖或扫描主子电路内元件的数值。换放大器链写 `--set readout.amplifier=<组件名>`，扫放大器链写 `--scan readout.amplifier=<组件名1>,<组件名2>`，这时槽位整个换成那套组件，原来覆盖的元件数值一并去掉。
 
 ### 子电路端口与元件行语法
 
@@ -109,20 +109,20 @@ R1 in 0 50
 
 | 常数名或固定项 | 值 | 单位 | 定义位置与含义 |
 | --- | --- | --- | --- |
-| `LOWEST_NOISE_HZ` | `1e3` | `Hz` | `src/raser/core/readout/job.py:17`，`ngspice` 频域噪声分析的起始频率下限（上限为奈奎斯特频率 $0.5 / \Delta t$） |
-| `PER_DECADE` | `50` | 点/十倍频程 | `src/raser/core/readout/spice.py:210`，`ngspice` `noise` 分析每十倍频程的采样频率点数 |
-| `ngspice` 噪声分析温度 | `27`（`300.15`） | `°C`（`K`） | `src/raser/core/readout/spice.py:239`，`ngspice` 频域噪声分析的固定工作温度，与器件文件的 `temperature` 无关 |
-| `RECORD` | `256` | 倍 | `src/raser/core/readout/spectral_noise.py:7`，`noise_from_spectrum` 合成时域高斯噪声时的频域记录长度相对于波形时间箱数的倍数 |
-| `PART_EDGE` | `1e-3` | 无量纲 | `src/raser/core/readout/job.py:23`，保存输出通道波形及停止条形行局部电路扩展的电压摆幅占当事例最大通道摆幅的比例阈值 |
-| 脉冲方向探测参数 | 探针电容 `1e-12`、注入电荷 `1e-15`、`dt = 10e-12`、`2000` 箱（第 `5` 箱注入） | `F`, `C`, `s`, 箱 | `src/raser/core/readout/pulse_edge.py:38-41`，`chain_sign` 测试放大器链同相或反相的固定探针输入 |
-| `NO_ANSWER_V` | `1e-9` | `V` | `src/raser/core/readout/pulse_edge.py:30`，`chain_sign` 判定放大器链对 `1 fC` 注入有响应的最小输出摆幅阈值 |
-| `COLLECTOR`, `EMITTER`, `dpi` | `(2, 1)`, `(2, -1)`, `160` | 网格步, 网格步, `dpi` | `src/raser/core/readout/schematic.py:38-39, 612`，NPN 晶体管集电极与发射极相对基极的网格偏移及导出原理图的分辨率 |
+| `LOWEST_NOISE_HZ` | `1e3` | `Hz` | `src/raser/core/readout/job.py`，`ngspice` 频域噪声分析的起始频率下限（上限为奈奎斯特频率 $0.5 / \Delta t$） |
+| `PER_DECADE` | `50` | 点/十倍频程 | `src/raser/core/readout/spice.py`，`ngspice` `noise` 分析每十倍频程的采样频率点数 |
+| `ngspice` 噪声分析温度 | `27`（`300.15`） | `°C`（`K`） | `src/raser/core/readout/spice.py`，`ngspice` 频域噪声分析的固定工作温度，与器件文件的 `temperature` 无关 |
+| `RECORD` | `256` | 倍 | `src/raser/core/readout/spectral_noise.py`，`noise_from_spectrum` 合成时域高斯噪声时的频域记录长度相对于波形时间箱数的倍数 |
+| `PART_EDGE` | `1e-3` | 无量纲 | `src/raser/core/readout/job.py`，保存输出通道波形及停止条形行局部电路扩展的电压摆幅占当事例最大通道摆幅的比例阈值 |
+| 脉冲方向探测参数 | 探针电容 `1e-12`、注入电荷 `1e-15`、`dt = 10e-12`、`2000` 箱（第 `5` 箱注入） | `F`, `C`, `s`, 箱 | `src/raser/core/readout/pulse_edge.py`，`chain_sign` 测试放大器链同相或反相的固定探针输入 |
+| `NO_ANSWER_V` | `1e-9` | `V` | `src/raser/core/readout/pulse_edge.py`，`chain_sign` 判定放大器链对 `1 fC` 注入有响应的最小输出摆幅阈值 |
+| `COLLECTOR`, `EMITTER`, `dpi` | `(2, 1)`, `(2, -1)`, `160` | 网格步, 网格步, `dpi` | `src/raser/core/readout/schematic.py`，NPN 晶体管集电极与发射极相对基极的网格偏移及导出原理图的分辨率 |
 
 ## 读进程序以后怎么用
 
 ### 读入与解析子电路链（`circuit.py`）
 
-1. **按 `+` 拆分链名（`named_chain`、`read_chain`）**：`named_chain(name)` 按 `"+"` 拆开 `amplifier` 设置，对每一段调用 `component_path("afe", f"{part}.cir")` 定位文件并传给 `read_chain(paths)`。
+1. **按 `+` 拆分链名（`named_chain`、`read_chain`）**：`named_chain(name)` 按 `"+"` 拆开 `amplifier` 设置，对每一段调用 `component_path("readout", f"{part}.cir")` 定位文件并传给 `read_chain(paths)`。
 2. **解析单级文件（`read_subcircuit`）**：逐行读取 `.cir` 文件，先按 `";"` 截去行尾原理图布局提示，忽略空行与 `"*"` 开头的注释行。在 `.subckt <文件名> ...` 与 `.ends` 之外的所有非注释行（辅助 `.subckt` 与 `.MODEL` 定义）原样保存在 `"models"` 列表中；在主子电路内，调用 `spice_number` 把元件数值换算成标准国际单位（$\Omega$、$\text{F}$、$\text{H}$、$\text{V}$）。
 3. **端口校验与重名编号（`read_chain`）**：链的前 $N - 1$ 项必须含两个端口 `in` 和 `out`（否则抛出 `ValueError`），按顺序存入 `"stages"`，若同一放大级在链中重复出现则从第 2 个起自动追加 `_2`、`_3` 后缀；链的最后一项必须只含单端口 `in` 作为终端负载 `"load"`（若含 `out` 则抛出 `ValueError`；若某放大级名为 `"load"` 则在拼网表时抛出 `ValueError`）。
 
@@ -184,7 +184,7 @@ wrdata out.raw v(out1)
 4. **分段线性感应电流源（`_current_sources`）**：写出 `I<k> <from> <to> PWL(...)`，正电流从 `<from>` 流向 `<to>`（全耗尽时从 `0` 流向 `top_pad`）。为避免 `ngspice` 将首个点当作一直流过的稳态直流电流，代码在最前面补 1 个零电流箱（中心时刻 $0.5\,\Delta t = 2.5\times 10^{-12}\ \text{s}$ 处取 `0 A`），随后第 $m$ 个时间箱（$m = 0, \dots, n_{\text{bin}} - 1$）的中心时刻为 $t_m = (m + 1.5)\,\Delta t$（单位 `s`），取值为该箱的平均感应电流（单位 `A`，上例演示三箱电流 `2`、`5`、`1 uA`）。
 5. **瞬态求解与插值输出（`_transient`、`_run`）**：`.save` 仅保留待导出的输出节点电压，`tran <dt> <dt * (bins + 1)>` 以感应电流箱宽 $\Delta t$（`5e-12 s`）为步长求解 $(n_{\text{bin}} + 1)\,\Delta t$ 时长并通过 `wrdata` 导出；`_run` 调用 `ngspice -b` 后将输出电压线性插值回各时间箱中心 $t_m = (m + 1.5)\,\Delta t$，得到形状 `(outputs, bins)` 的输出电压波形（单位 `V`）。
 
-对于单接触多条形器件，`write_waveforms`（`job.py`）通过 `_solve_part` 围绕有非零感应电流的受击条，从两侧 `margin = 1` 起逐次将 `margin` 倍增扩展局部电路，直至摆幅 $\ge \text{PART\_EDGE} \times V_{\max}$（`PART_EDGE = 1e-3`）的所有通道在相邻两次扩展间的最大电压变化 $< 10^{-3} V_{\max}$ 或覆盖整行；每个事例仅将最大绝对电压摆幅 $\ge 10^{-3} V_{\max}$（且 $V_{\max} > 0$）的通道写入 `readout_<job>.h5`。
+对于单接触多条形器件，`write_waveforms`（`job.py`）通过 `_solve_part` 围绕有非零感应电流的受击条，从两侧 `margin = 1` 起逐次将 `margin` 倍增扩展局部电路，直至摆幅 $\ge \text{PART\_EDGE} \times V_{\max}$（`PART_EDGE = 1e-3`）的所有通道在相邻两次扩展间的最大电压变化 $< 10^{-3} V_{\max}$ 或覆盖整行；每个事例仅将最大绝对电压摆幅 $\ge 10^{-3} V_{\max}$（且 $V_{\max} > 0$）的通道写入 `readout.h5`。
 
 ### 未耗尽层在网表中的接法（`device_circuit.planar_circuit`）
 
@@ -207,18 +207,18 @@ I1 top_inner top_pad PWL(2.5e-12 0 7.5e-12 0 1.25e-11 0 1.75e-11 0)
    其中：
    - $\Delta P_k$：频率点 $f_k$ 周围宽度 $\Delta f$ 频带内的噪声电压方差，$\text{V}^2$；
    - $N_{\text{rec}} = 256\,n_{\text{bin}}$：扩展时域记录点数（无量纲）；
-   - $\sigma_k$：内部频率点（$0 < k < N_{\text{rec}}/2$）复谱 $X_k$ 的实部与虚部各自独立抽取零均值高斯分布的标准差，$\text{V}$；直流分量 $X_0$（将低于 $f_{\min}$ 的慢噪声体现为逐事例基线偏移）及偶数 $N_{\text{rec}}$ 下的最高频分量 $X_{N_{\text{rec}}/2}$ 按实高斯分布 $\mathcal{N}(0,\, N_{\text{rec}}^2 \Delta P_k)$ 抽样。
+   - $\sigma_k$：内部频率点（$0 < k < N_{\text{rec}}/2$）复谱 $X_k$ 的实部与虚部各自独立抽取零均值高斯分布的标准差，$\text{V}$；直流分量 $X_0$（承接低于 $\Delta f / 2$ 的全部功率，使慢于波形时长的低频噪声表现为逐事例变化的基线偏移）及偶数 $N_{\text{rec}}$ 下的最高频分量 $X_{N_{\text{rec}}/2}$ 按实高斯分布 $\mathcal{N}(0,\, N_{\text{rec}}^2 \Delta P_k)$ 抽样。
 3. **逆变换截取与叠加**：随机数生成器由 `np.random.default_rng([noise_seed, event.event, place[name]])` 按种子、事例号和通道全局下标独立初始化，调用 `np.fft.irfft(X, n=N_rec)[:bins]` 截取前 $n_{\text{bin}}$ 个点（单位 `V`），直接加到该通道的输出电压波形上。
 
 ### 脉冲边沿方向判定（`pulse_edge.py`）
 
 1. **判定电极收集电荷符号（`collected_charge_sign`）**：读取器件文件的 `bias.electrode` 与 `bias.voltage`（`V`）。若读出电极即为偏置电极，其相对另一电极的电势差为 $V_{\text{above}} = V_{\text{bias}}$，否则为 $V_{\text{above}} = -V_{\text{bias}}$（$V_{\text{above}} == 0$ 时抛出 `ValueError`）。$V_{\text{above}} > 0$ 时电极处于高电势、收集电子，返回 $s_q = -1$；$V_{\text{above}} < 0$ 时收集空穴，返回 $s_q = +1$。
 2. **探测放大器链极性（`chain_sign`）**：在结电容为 $1\ \text{pF}$（`1e-12 F`）的单电极平板电路上，以时间箱宽 $\Delta t = 10\ \text{ps}$（`10e-12 s`）、共 `2000` 箱在第 `5` 箱注入 $+1\ \text{fC}$ 正电荷（电流 $10^{-15} / \Delta t = 10^{-4}\ \text{A}$），求解放大器链输出电压相对首箱静态电压 `voltage[0]` 的最大绝对偏离点摆幅 $V_{\text{largest}}$：若 $|V_{\text{largest}}| < 10^{-9}\ \text{V}$（`NO_ANSWER_V`），抛出 `ValueError`；$V_{\text{largest}} > 0$ 返回 $s_{\text{chain}} = +1$，$V_{\text{largest}} < 0$ 返回 $s_{\text{chain}} = -1$。
-3. **合成通道脉冲方向（`pulse_edges`）**：对每个输出通道计算乘积 $s_q \cdot s_{\text{chain}}$，大于 `0` 记为 `"rising"`，小于 `0` 记为 `"falling"`，写入 `readout_<job>.h5` 的 `pulse_edge` 属性供下游定时与触发使用。
+3. **合成通道脉冲方向（`pulse_edges`）**：对每个输出通道计算乘积 $s_q \cdot s_{\text{chain}}$，大于 `0` 记为 `"rising"`，小于 `0` 记为 `"falling"`，写入 `readout.h5` 的 `pulse_edge` 属性供下游定时与触发使用。
 
 ## 库里有哪些组件
 
-`components/readout/`（源码路径 `src/raser/components/afe/`）包含以下 5 个 SPICE 电路组件：
+`raser/components/readout/` 包含以下 5 个 SPICE 电路组件：
 
 | 组件名称 | 端口数 | 电路描述 | 出处 | 适用的器件或实验 |
 | --- | --- | --- | --- | --- |

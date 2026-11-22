@@ -14,11 +14,11 @@ $$\varepsilon = \varepsilon_r \varepsilon_0, \qquad m_n^* = \left(\frac{m_n^*}{m
 
 - $\varepsilon$：材料介电常数，在 DEVSIM 场求解中单位为 $\text{F/cm}$，在平行板电容估算中单位为 $\text{F/m}$；
 - $\varepsilon_r$：无量纲相对介电常数（代码中为 `RELATIVE_PERMITTIVITY` 与 `Material.permittivity`），`"Si"` 取 `11.9`，`"SiC"`（4H-SiC，沿 $c$ 轴）取 `9.76`，`"Diamond"` 取 `5.7`；
-- $\varepsilon_0$：真空介电常数，[field.md](field.md) 的 `create_parameter.py` 取 `eps_0 = 8.85e-14` $\text{F/cm}$，[device.md](device.md) 的 `build_device.py` 与 [field.md](field.md) 的 `circuit_parameters.py` 取 `8.8541878128e-12` $\text{F/m}$；
+- $\varepsilon_0$：真空介电常数，取 $8.8541878128\times 10^{-12}\ \text{F/m}$（CODATA 2018；在 DEVSIM 场求解中以 $\text{F/cm}$ 计为 $8.8541878128\times 10^{-14}\ \text{F/cm}$）；
 - $m_e$：自由电子静止质量，代码中取 $9.109\times 10^{-31}\ \text{kg}$；
 - $m_n^*, m_p^*$：电子与空穴有效质量，$\text{kg}$（代码中为 `Material.electron_mass` 与 `Material.hole_mass`）。
 
-各材料在 `Material.mat_database`（`material.py`）中的基础物性与默认模型设置如下表：
+各材料在 `Material.mat_database`（`material.py`）中的基础物性与缺省选用的模型如下表：
 
 | 材料名（`mat_name`） | 相对介电常数 `RELATIVE_PERMITTIVITY` | 电子有效质量 `electron_mass`（$\text{kg}$） | 空穴有效质量 `hole_mass`（$\text{kg}$） | 缺省 `mobility_model` | 缺省 `avalanche_model` |
 | --- | --- | --- | --- | --- | --- |
@@ -26,7 +26,7 @@ $$\varepsilon = \varepsilon_r \varepsilon_0, \qquad m_n^* = \left(\frac{m_n^*}{m
 | `"SiC"` | `9.76` | `0.29 * m_e` | `1.0 * m_e` | `"Das"` | `"Hatakeyama"` |
 | `"Diamond"` | `5.7` | 未设置 | 未设置 | `"Reggiani_diamond"` | `None` |
 
-相对介电常数定义在 `material.py` 的全局字典 `RELATIVE_PERMITTIVITY` 中，并在 `Material(mat_name).mat_database()` 中赋给 `self.permittivity`；有效质量在 `Material.mat_database()` 中赋给 `self.electron_mass` 与 `self.hole_mass`（`"SiC"` 取 4H-SiC 纵向有效质量，`"Diamond"` 未设置）。在调用关系上，[device.md](device.md) 的 `Detector.capacitance`（`src/raser/core/device/build_device.py`）读取 `Material(self.material).permittivity` 估算平行板结电容；[field.md](field.md) 的 `CreateSiliconConstant`、`CreateSiliconCarbideConstant`、`CreateDiamondConstant`（`src/raser/core/field/create_parameter.py`）读取 `RELATIVE_PERMITTIVITY` 设置 DEVSIM 区域参数 `eps` 与 `Permittivity`；[field.md](field.md) 的 `capacitances`（`src/raser/core/field/solver_section.py`）读取 `Material(MyDetector.material).permittivity`，将真空介电常数下求得的权重场接触电荷换算为周期性条形电极的单位长度互容（$\text{F/cm}$）。硅的相对介电常数见文献 [1]（附录 G）；4H-SiC 和金刚石的相对介电常数以及硅和 4H-SiC 的有效质量出处待补。
+相对介电常数定义在 `material.py` 的全局字典 `RELATIVE_PERMITTIVITY` 中，并在 `Material(mat_name).mat_database()` 中赋给 `self.permittivity`；有效质量在 `Material.mat_database()` 中赋给 `self.electron_mass` 与 `self.hole_mass`（`"SiC"` 取 4H-SiC 纵向有效质量，`"Diamond"` 未设置）。在调用关系上，[device.md](device.md) 的 `Detector.capacitance`（`src/raser/core/device/build_device.py`）读取 `Material(self.material).permittivity` 估算平行板结电容；[field.md](field.md) 的 `CreateSiliconConstant`、`CreateSiliconCarbideConstant`、`CreateDiamondConstant`（`src/raser/core/field/create_parameter.py`）读取 `RELATIVE_PERMITTIVITY` 设置 DEVSIM 区域参数 `eps` 与 `Permittivity`；[field.md](field.md) 的 `capacitances`（`src/raser/core/field/solver_section.py`）读取 `Material(MyDetector.material).permittivity`，将真空介电常数下求得的权重场接触电荷换算为周期性条形电极的单位长度互容（$\text{F/cm}$）。硅的相对介电常数见文献 [1]（附录 G）。
 
 ### 迁移率
 
@@ -69,14 +69,14 @@ $$\mu_p(T, N_{\text{eff}}, E) = \frac{\mu_{LI,p}}{\Bigl[1 + \bigl(\mu_{LI,p} E /
 - $\beta, \beta_{p,1}, \beta_{p,2}$：高场速度饱和过渡区无量纲幂指数；
 - $\mu_{LI}, \mu$：低场掺杂修正迁移率与含高场饱和的总迁移率，$\text{cm}^2/(\text{V}\cdot\text{s})$。
 
-三种材料缺省模型（`"Selberherr"`、`"Das"`、`"Reggiani_diamond"`，对应式 (3)–(7)）的全部参数取值如下表：
+三种材料缺省选用的模型（`"Selberherr"`、`"Das"`、`"Reggiani_diamond"`，对应式 (3)–(7)）的全部参数取值如下表：
 
 | 材料与模型 | 载流子（`charge`） | $\mu_L$（$\text{cm}^2/(\text{V}\cdot\text{s})$） | $\mu_{\min}$（$\text{cm}^2/(\text{V}\cdot\text{s})$） | $C_{\text{ref}}$（$\text{cm}^{-3}$） | $\alpha$（无量纲） | $\beta$（无量纲） | $v_{\text{sat}}$（$\text{cm/s}$） |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `"Si"` / `"Selberherr"` | 空穴（`> 0`） | $460.0\,t^{-2.18}$ | $45.0\,t^{-0.45}$ | $2.23\times 10^{17}\,t^{3.2}$ | $0.72\,t^{0.065}$ | $1.0$ | $9.05\times 10^6\sqrt{\tanh(312.0/T)}$ |
 | `"Si"` / `"Selberherr"` | 电子（`<= 0`） | $1430.0\,t^{-2.0}$ | $80.0\,t^{-0.45}$ | $1.12\times 10^{17}\,t^{3.2}$ | $0.72\,t^{0.065}$ | $2$ | $1.45\times 10^7\sqrt{\tanh(155.0/T)}$ |
 | `"SiC"` / `"Das"` | 空穴（`> 0`） | $124\,t^{-2}$ | $15.9$ | $1.76\times 10^{19}$ | $0.34$ | $1.213\,t^{0.17}$ | $2\times 10^7\,t^{0.52}$ |
-| `"SiC"` / `"Das"` | 电子（`<= 0`） | $947\,t^{-2}$ | $0$ | $1.94\times 10^{19}$ | $0.61$ | $1\cdot t^{0.66}$ | $2\times 10^7\,t^{0.87}$ |
+| `"SiC"` / `"Das"` | 电子（`<= 0`） | $947\,t^{-2}$ | $0$ | $1.94\times 10^{17}$ | $0.61$ | $1\cdot t^{0.66}$ | $2\times 10^7\,t^{0.87}$ |
 | `"Diamond"` / `"Reggiani_diamond"` | 空穴（`> 0`） | $1200\,t^{-2.5}$ | $50 / t$ | $1.0\times 10^{17}$ | $0.5$ | $1.5\,t^{0.2}$ | $1.0\times 10^7\,t^{-0.5}$ |
 | `"Diamond"` / `"Reggiani_diamond"` | 电子（`<= 0`） | $1800\,t^{-2.5}$ | $100 / t$ | $2.0\times 10^{17}$ | $0.5$ | $1.0\,t^{0.3}$ | $2.7\times 10^7\,t^{-0.5}$ |
 
@@ -94,15 +94,15 @@ $$\mu_p(T, N_{\text{eff}}, E) = \frac{\mu_{LI,p}}{\Bigl[1 + \bigl(\mu_{LI,p} E /
 | $\beta_{p,2}$ | $0.15\,t + \dfrac{0.8 N_A^2}{N_A^2 + (8\times 10^{17})^2} + \dfrac{0.8 N_D^2}{N_D^2 + (10^{19})^2}$ | 无 | 无量纲 |
 | $v_{\text{sat}}$ | $9.1\times 10^6\,t^{-0.4}$ | $\dfrac{2.4\times 10^7}{1 + 0.8\exp(t/2)}$ | $\text{cm/s}$ |
 
-迁移率计算由 `material.py` 中的 `Material.cal_mobility(temperature, input_doping, charge, electric_field)` 实现。构造 `Material(mat_name, mobility_model=None)` 时若不传 `mobility_model`，缺省模型由 `mat_name` 唯一决定：`"Si"` 用 `"Selberherr"`，`"SiC"` 用 `"Das"`，`"Diamond"` 用 `"Reggiani_diamond"`。在调用关系上：
+迁移率计算由 `material.py` 中的 `Material.cal_mobility(temperature, input_doping, charge, electric_field)` 实现。迁移率模型按名字注册，器件文件按名字选用；每种材料有缺省选用的模型：`"Si"` 为 `"Selberherr"`，`"SiC"` 为 `"Das"`，`"Diamond"` 为 `"Reggiani_diamond"`。在调用关系上：
 
-- [current.md](current.md) 的 `CalCurrent.drift_all`（`src/raser/core/current/cal_current.py`）将 `Material(my_d.material).cal_mobility` 传给 `advance`（`src/raser/core/current/drift.py`），在每个时间步用材料缺省模型求取局部迁移率，用于计算漂移位移与 Einstein 热扩散标准差；
+- [current.md](current.md) 的 `CalCurrent.drift_all`（`src/raser/core/current/cal_current.py`）将 `Material(my_d.material).cal_mobility` 传给 `advance`（`src/raser/core/current/drift.py`），在每个时间步用器件选用的迁移率模型求取局部迁移率，用于计算漂移位移与 Einstein 热扩散标准差；
 - [current.md](current.md) 的 `collect_by_diffusion`（`src/raser/core/current/diffusion.py`）调用 `Material(my_d.material).cal_mobility(my_d.temperature, neff, -1, 0)` 计算无场像素传感器中电子的零场迁移率；
 - [field.md](field.md) 的 `_fits` 与 `sheet_resistance`（`src/raser/core/field/implanted_aluminium.py`，供 `src/raser/core/field/circuit_parameters.py` 的 `sheet_resistance` 调用）调用 `Material("SiC").cal_mobility(..., 1, 0)`，以 `"Das"` 模型的零场空穴迁移率为基准标定实测霍尔迁移率折减比例 `MOBILITY_LEFT` 并计算铝注入 4H-SiC 阻性层方阻；
 - `Material.draw_velocity`（`material.py`）调用 `self.cal_mobility` 绘制电子与空穴漂移速度随电场的变化曲线；
-- `"Reggiani"` 在构造 `Material("Si", mobility_model="Reggiani")` 时启用。
+- 硅器件的器件文件选用 `"Reggiani"` 时，构造 `Material("Si", mobility_model="Reggiani")`。
 
-硅的 `"Selberherr"` 模型见文献 [2]，硅的 `"Reggiani"` 模型见文献 [3]；4H-SiC 的 `"Das"` 模型与金刚石的 `"Reggiani_diamond"` 模型出处待补。
+硅的 `"Selberherr"` 模型见文献 [2]，硅的 `"Reggiani"` 模型见文献 [3]；4H-SiC 的 `"Das"` 模型见文献 [19]，其掺杂参数源于文献 [20]，电子的 $C_{\text{ref}}$ 取文献 [20] 的原值 $1.94\times 10^{17}\ \text{cm}^{-3}$（文献 [19] 中的 $1.94\times 10^{19}$ 是笔误），空穴取 $1.76\times 10^{19}\ \text{cm}^{-3}$。
 
 ### 碰撞电离系数
 
@@ -116,7 +116,7 @@ $$\alpha(E, T) = \begin{cases} 0, & E < 1.75\times 10^5\ \text{V/cm} \\ \gamma(T
 
 2. **Okuto–Crowell 模型（`"Okuto"`，`"Si"` 备选）**：将前因子与临界场表示为相对参考温度 $T_0 = 300.0\ \text{K}$ 的线性温度函数，场强不高于 $1.0\times 10^5\ \text{V/cm}$ 时置零：
 
-$$\alpha(E, T) = \begin{cases} 0, & E \le 1.0\times 10^5\ \text{V/cm} \\ a\bigl[1 + c(T - T_0)\bigr] E^{\gamma_0} \exp\!\left(-\dfrac{b\bigl[1 + d(T - T_0)\bigr]}{E}\right), & E > 1.0\times 10^5\ \text{V/cm} \end{cases} \tag{13}$$
+$$\alpha(E, T) = \begin{cases} 0, & E \le 1.0\times 10^5\ \text{V/cm} \\ a\bigl[1 + c(T - T_0)\bigr] E^{\gamma_0} \exp\!\left(-\left(\dfrac{b\bigl[1 + d(T - T_0)\bigr]}{E}\right)^{\delta}\right), & E > 1.0\times 10^5\ \text{V/cm} \end{cases} \tag{13}$$
 
 3. **Hatakeyama 模型（`"Hatakeyama"`，`"SiC"` 缺省）**：计入 4H-SiC 六方晶格各向异性，当电场方向偏离 $\langle 0001\rangle$ 晶向朝向 $\langle 11\bar{2}0\rangle$ 晶向夹角为 $\theta$（方向余弦 `along_0001` $= \cos\theta$、`along_1120` $= \sin\theta$）时，由两主轴系数 $(a_{0001}, b_{0001})$ 与 $(a_{1120}, b_{1120})$ 合成有效系数，场强不高于 $10^4\ \text{V/cm}$ 时置零：
 
@@ -133,7 +133,7 @@ $$\alpha(E, T) = \begin{cases} 0, & E \le 10^4\ \text{V/cm} \\ \gamma(T)\,a\exp\
 - $k$：玻尔兹曼常数，`BOLTZMANN_EV_PER_K` $= 8.617333262\times 10^{-5}\ \text{eV/K}$（CODATA 2018）；
 - $\gamma(T)$：光学声子散射无量纲温度因子；$\hbar\omega$（代码中为 `hbarOmega`）为光学声子能量，$\text{eV}$；$T_0$ 为参考温度，$\text{K}$；
 - $E_0$：`"vanOverstraeten"` 模型的高低场分界场强，取 $4.0\times 10^5\ \text{V/cm}$；$a_{\text{low}}, a_{\text{high}}$ 为低场与高场指前因子，$\text{cm}^{-1}$；$b_{\text{low}}, b_{\text{high}}$ 为低场与高场临界电场，$\text{V/cm}$；
-- $\gamma_0$：`"Okuto"` 模型电场幂指数（代码中为 `_gamma`），取 $1.0$（无量纲）；$a$ 为指前系数，$\text{V}^{-1}$；$b$ 为临界电场，$\text{V/cm}$；$c, d$ 为温度系数，$\text{K}^{-1}$；
+- $\gamma_0, \delta$：`"Okuto"` 模型的电场幂指数（代码中分别为 `_gamma`、`_delta`，无量纲），分别取 $1.0$、$2.0$；$a$ 为指前系数，$\text{V}^{-1}$；$b$ 为临界电场，$\text{V/cm}$；$c, d$ 为温度系数，$\text{K}^{-1}$；
 - $\theta$：`"Hatakeyama"` 模型中电场相对 $\langle 0001\rangle$ 朝向 $\langle 11\bar{2}0\rangle$ 的偏轴角（`angle_deg`），度，缺省取 `OFF_AXIS_DEG = 4.0`（对应 $4^\circ$ 偏轴 4H-SiC 外延片中垂直于表面的平面器件电场）；
 - $a_{0001}, a_{1120}$：4H-SiC 沿 $\langle 0001\rangle$ 与 $\langle 11\bar{2}0\rangle$ 方向的指前因子，$\text{cm}^{-1}$；$b_{0001}, b_{1120}$ 为两方向的临界电场，$\text{V/cm}$；$A$（无量纲）、$B$（$\text{V/cm}$）、$a$（$\text{cm}^{-1}$）与 $b(E)$（$\text{V/cm}$）为合成参数。
 
@@ -143,7 +143,7 @@ $$\alpha(E, T) = \begin{cases} 0, & E \le 10^4\ \text{V/cm} \\ \gamma(T)\,a\exp\
 | --- | --- | --- | --- |
 | `"vanOverstraeten"` | $E_{\text{th}} = 1.75\times 10^5\ \text{V/cm}$，$E_0 = 4.0\times 10^5\ \text{V/cm}$，$\hbar\omega = 0.063\ \text{eV}$，$T_0 = 293.0\ \text{K}$ | 电子（`charges < 0`） | $a_{\text{low}} = 7.03\times 10^5\ \text{cm}^{-1}$，$a_{\text{high}} = 7.03\times 10^5\ \text{cm}^{-1}$，$b_{\text{low}} = 1.231\times 10^6\ \text{V/cm}$，$b_{\text{high}} = 1.231\times 10^6\ \text{V/cm}$ |
 | `"vanOverstraeten"` | 同上 | 空穴（`charges > 0`） | $a_{\text{low}} = 1.582\times 10^6\ \text{cm}^{-1}$，$a_{\text{high}} = 6.71\times 10^5\ \text{cm}^{-1}$，$b_{\text{low}} = 2.036\times 10^6\ \text{V/cm}$，$b_{\text{high}} = 1.693\times 10^6\ \text{V/cm}$ |
-| `"Okuto"` | $E_{\text{th}} = 1.0\times 10^5\ \text{V/cm}$，$T_0 = 300.0\ \text{K}$，$\gamma_0 = 1.0$ | 电子（`charges < 0`） | $a = 0.426\ \text{V}^{-1}$，$b = 4.81\times 10^5\ \text{V/cm}$，$c = 3.05\times 10^{-4}\ \text{K}^{-1}$，$d = 6.86\times 10^{-4}\ \text{K}^{-1}$ |
+| `"Okuto"` | $E_{\text{th}} = 1.0\times 10^5\ \text{V/cm}$，$T_0 = 300.0\ \text{K}$，$\gamma_0 = 1.0$，$\delta = 2.0$ | 电子（`charges < 0`） | $a = 0.426\ \text{V}^{-1}$，$b = 4.81\times 10^5\ \text{V/cm}$，$c = 3.05\times 10^{-4}\ \text{K}^{-1}$，$d = 6.86\times 10^{-4}\ \text{K}^{-1}$ |
 | `"Okuto"` | 同上 | 空穴（`charges > 0`） | $a = 0.243\ \text{V}^{-1}$，$b = 6.53\times 10^5\ \text{V/cm}$，$c = 5.35\times 10^{-4}\ \text{K}^{-1}$，$d = 5.67\times 10^{-4}\ \text{K}^{-1}$ |
 | `"Hatakeyama"` | $E_{\text{th}} = 10^4\ \text{V/cm}$，$\theta = 4.0^\circ$（`OFF_AXIS_DEG`），$\hbar\omega = 0.19\ \text{eV}$，$T_0 = 300.0\ \text{K}$ | 电子（`charges < 0`） | $a_{0001} = 1.76\times 10^8\ \text{cm}^{-1}$，$a_{1120} = 2.10\times 10^7\ \text{cm}^{-1}$，$b_{0001} = 3.30\times 10^7\ \text{V/cm}$，$b_{1120} = 1.70\times 10^7\ \text{V/cm}$ |
 | `"Hatakeyama"` | 同上 | 空穴（`charges > 0`） | $a_{0001} = 3.41\times 10^8\ \text{cm}^{-1}$，$a_{1120} = 2.96\times 10^7\ \text{cm}^{-1}$，$b_{0001} = 2.50\times 10^7\ \text{V/cm}$，$b_{1120} = 1.60\times 10^7\ \text{V/cm}$ |
@@ -154,7 +154,7 @@ $$\alpha(E, T) = \begin{cases} 0, & E \le 10^4\ \text{V/cm} \\ \gamma(T)\,a\exp\
 - [field.md](field.md) 的 `DevsimField._integrate_planar_gain`（`src/raser/core/field/devsim_field.py`）调用 `Material(my_d.material, avalanche_model=my_d.avalanche_model).cal_coefficient(abs(E), ±1, my_d.temperature)`，沿一维中心深度剖面积分求取平板稳态倍增因子（供 [current.md](current.md) 的 `CalCurrentGain._build_planar_gain_carriers` 使用）；
 - [current.md](current.md) 的 `CalCurrentGain._build_local_gain_carriers`（`src/raser/core/current/cal_current.py`）调用 `Material(my_d.material, avalanche_model=my_d.avalanche_model).cal_coefficient(field, charge_sign, my_d.temperature)`，在多维场中沿原生载流子漂移路径分段积分碰撞电离系数。
 
-van Overstraeten–de Man 模型见文献 [4]，Okuto–Crowell 模型见文献 [5]，Hatakeyama 主轴参数与偏轴角合成公式见文献 [6, 7]；`"vanOverstraeten"` 与 `"Hatakeyama"` 中经光学声子能量 $\hbar\omega$ 引入的温度因子 $\gamma(T)$ 出处待补。
+van Overstraeten–de Man 模型见文献 [4]，Okuto–Crowell 模型见文献 [5]，Hatakeyama 主轴参数与偏轴角合成公式见文献 [6, 7]。经光学声子能量 $\hbar\omega$ 引入的温度因子 $\gamma(T)$ 的物理来源见文献 [16]；`"vanOverstraeten"` 用 $\hbar\omega = 0.063\ \text{eV}$ 的写法取自文献 [17]；`"Hatakeyama"` 的 $\hbar\omega = 0.19\ \text{eV}$ 见文献 [18]，原文只对电子给出，代码对空穴也取这个值。
 
 ### 能带与本征载流子浓度
 
@@ -168,19 +168,19 @@ $$n_i(T) = \sqrt{N_c(T)\,N_v(T)}\,\exp\!\left(-\frac{E_g}{2 k T}\right) \tag{18}
 
 - $T$：温度，$\text{K}$；
 - $N_c(T), N_v(T)$：导带与价带有效状态密度，$\text{cm}^{-3}$；$N_{c0}, N_{v0}$ 为参考温度 $T_{\text{ref}}$（`"Si"` 与 `"Diamond"` 取 $300\ \text{K}$，`"SiC"` 取 $1\ \text{K}$）下的系数值；
-- $E_g$：不随温度变化的禁带宽度，$\text{J}$（代码中由以 $\text{eV}$ 为单位的带隙乘以固定换算常数 $1.6\times 10^{-19}\ \text{J/eV}$ 得到）；
-- $k$：玻尔兹曼常数，代码中 `_K_J_PER_K` 取 $1.3806503\times 10^{-23}\ \text{J/K}$；
+- $E_g$：不随温度变化的禁带宽度，$\text{J}$（由以 $\text{eV}$ 为单位的带隙乘以 CODATA 2018 元电荷 $1.602176634\times 10^{-19}\ \text{J/eV}$ 得到）；
+- $k$：玻尔兹曼常数，取 CODATA 2018 值 $1.380649\times 10^{-23}\ \text{J/K}$（对应 $8.617333262\times 10^{-5}\ \text{eV/K}$）；
 - $n_i(T)$：本征载流子浓度，$\text{cm}^{-3}$。
 
 各材料在 `BAND_STRUCTURE`（`band_structure.py`）中的公式与参数如下表：
 
 | 材料 | `N_c`（$\text{cm}^{-3}$） | `N_v`（$\text{cm}^{-3}$） | `E_g`（$\text{J}$） | $300\ \text{K}$ 下的 $N_c, N_v$（$\text{cm}^{-3}$） |
 | --- | --- | --- | --- | --- |
-| `"Si"` | `2.82e19*pow(T/300, 1.5)` | `1.83e19*pow(T/300, 1.5)` | `1.12*1.6e-19` | $2.82\times 10^{19},\; 1.83\times 10^{19}$ |
-| `"SiC"` | `3.25e15*pow(T, 1.5)` | `4.8e15*pow(T, 1.5)` | `3.26*1.6*1e-19` | $1.69\times 10^{19},\; 2.49\times 10^{19}$ |
-| `"Diamond"` | `1.8e19*pow(T/300, 1.5)` | `1.5e19*pow(T/300, 1.5)` | `5.47*1.6e-19` | $1.80\times 10^{19},\; 1.50\times 10^{19}$ |
+| `"Si"` | `2.82e19*pow(T/300, 1.5)` | `1.83e19*pow(T/300, 1.5)` | `1.12*1.602176634e-19` | $2.82\times 10^{19},\; 1.83\times 10^{19}$ |
+| `"SiC"` | `3.25e15*pow(T, 1.5)` | `4.8e15*pow(T, 1.5)` | `3.26*1.602176634e-19` | $1.69\times 10^{19},\; 2.49\times 10^{19}$ |
+| `"Diamond"` | `1.8e19*pow(T/300, 1.5)` | `1.5e19*pow(T/300, 1.5)` | `5.47*1.602176634e-19` | $1.80\times 10^{19},\; 1.50\times 10^{19}$ |
 
-该模型由 `band_structure.py` 中的 `_material` 构造为字典 `BAND_STRUCTURE[material]`，每项包含 `"N_c"`、`"N_v"`、`"E_g"`、`"n_i"` 四个关于自变量 `["T"]` 的 `Formula`。在调用关系上，[field.md](field.md) 的 `CreateSiliconConstant`、`CreateSiliconCarbideConstant`、`CreateDiamondConstant`（`src/raser/core/field/create_parameter.py`）对 `BAND_STRUCTURE[material]` 中的四个 `Formula` 调用 `.value(T=T)`，向 DEVSIM 区域写入参数 `N_c`、`N_v`、`E_g`、`n_i` 以及 `n1 = n_i`、`p1 = n_i`；本包 `incomplete_ionization.py` 的 `free_holes` 调用 `BAND_STRUCTURE[material]["N_v"].value(T=temperature_k)` 计算价带有效状态密度（供 [field.md](field.md) 的 `implanted_aluminium.py` 计算铝注入 4H-SiC 层方阻）。4H-SiC 的有效状态密度由 $N = 2 M_c (2\pi m^* k T / h^2)^{3/2}$ 按导带 $M_c = 3$ 个能谷（每谷 $0.37\,m_0$）与价带空穴 $1.0\,m_0$ 导出，见文献 [8]（第 6 节）；硅和金刚石的系数出处待补。
+该模型由 `band_structure.py` 中的 `_material` 构造为字典 `BAND_STRUCTURE[material]`，每项包含 `"N_c"`、`"N_v"`、`"E_g"`、`"n_i"` 四个关于自变量 `["T"]` 的 `Formula`。在调用关系上，[field.md](field.md) 的 `CreateSiliconConstant`、`CreateSiliconCarbideConstant`、`CreateDiamondConstant`（`src/raser/core/field/create_parameter.py`）对 `BAND_STRUCTURE[material]` 中的四个 `Formula` 调用 `.value(T=T)`，向 DEVSIM 区域写入参数 `N_c`、`N_v`、`E_g`、`n_i` 以及 `n1 = n_i`、`p1 = n_i`；本包 `incomplete_ionization.py` 的 `free_holes` 调用 `BAND_STRUCTURE[material]["N_v"].value(T=temperature_k)` 计算价带有效状态密度（供 [field.md](field.md) 的 `implanted_aluminium.py` 计算铝注入 4H-SiC 层方阻）。4H-SiC 的有效状态密度由 $N = 2 M_c (2\pi m^* k T / h^2)^{3/2}$ 按导带 $M_c = 3$ 个能谷（每谷 $0.37\,m_0$）与价带空穴 $1.0\,m_0$ 导出，见文献 [8]（第 6 节）。
 
 ### 杂质与不完全电离
 
@@ -192,7 +192,7 @@ $$n_{1,i}(T) = N_{\text{band}}\exp\!\left(-\frac{\Delta E_i(N)}{k T}\right) \tag
 
 $$\frac{N_{\text{ion}}}{N} = \sum_{i} \begin{cases} \dfrac{f_i\,n_{1,i}(T)}{n_{1,i}(T) + g\,c}, & c > 0 \\ f_i, & c \le 0 \end{cases} \tag{21}$$
 
-对于含单能级受主浓度 $N_A$（部分电离）与完全电离补偿施主浓度 $N_D$ 的半导体层，忽略自由电子与本征载流子浓度 $n_i$，由电中性条件 $p(p + N_D) = (N_A - N_D) p_1 / g$ 解出的自由空穴浓度 $p$ 为：
+对于含单能级受主浓度 $N_A$（部分电离）与完全电离补偿施主浓度 $N_D$ 的半导体层，忽略自由电子与本征载流子浓度 $n_i$，由电中性条件 $p + N_D = N_A^-$，即 $p(p + N_D) = (N_A - N_D - p)\,p_1 / g$（其中 $p_1 = N_v(T)\exp\!\left(-\Delta E(N_A)/(k T)\right)$）解出的自由空穴浓度 $p$ 为：
 
 $$p_{\text{freed}} = \frac{N_v(T)}{g}\exp\!\left(-\frac{\Delta E(N_A)}{k T}\right), \qquad p_{\text{taken}} = N_D + p_{\text{freed}} \tag{22}$$
 
@@ -211,7 +211,9 @@ $$p = \frac{\sqrt{p_{\text{taken}}^2 + 4\,p_{\text{freed}}(N_A - N_D)} - p_{\tex
 - $k$：玻尔兹曼常数，`BOLTZMANN_EV_PER_K` $= 8.617333262\times 10^{-5}\ \text{eV/K}$；
 - $T$：温度（`T` 或 `temperature_k`），$\text{K}$；
 - $N_A, N_D$：受主浓度（`acceptors_cm3`）与补偿施主浓度（`donors_cm3`），$\text{cm}^{-3}$；
-- $p_{\text{freed}}, p_{\text{taken}}, p$：折算特征空穴浓度、与补偿施主之和及求解出的自由空穴浓度（代码中分别为 `freed_cm3`、`taken_cm3` 与返回值），$\text{cm}^{-3}$。
+- $\Delta E(N_A)$：受主浓度 $N_A$ 下的有效电离能（按式 (19) 计算），$\text{eV}$；
+- $p_1$：单能级受主的特征空穴浓度 $N_v(T)\exp\!\left(-\Delta E(N_A)/(k T)\right)$，$\text{cm}^{-3}$；
+- $p_{\text{freed}}, p_{\text{taken}}, p$：折算特征空穴浓度（$p_1 / g$）、与补偿施主之和及求解出的自由空穴浓度（代码中分别为 `freed_cm3`、`taken_cm3` 与返回值），$\text{cm}^{-3}$。
 
 `DOPANTS`（`dopants.py`）注册的全部材料与掺杂元素参数如下表：
 
@@ -258,7 +260,7 @@ $$\Gamma_{\text{TAT}}(E, F_{\text{sat}}) = \begin{cases} 2\sqrt{3\pi}\,\dfrac{E}
 - [field.md](field.md) 的 `CreateSRH`（`src/raser/core/field/physics_drift_diffusion.py`）调用 `SRH.devsim(n="Electrons", p="Holes", n_i="n_i", n1="n1", p1="p1", tau_n="taun", tau_p="taup")` 生成节点模型 `USRH`，与附加复合项 `U_const`（以及开启辐照时由 `src/raser/core/field/physics_irradiation.py` 生成的辐照缺陷复合率 `U_r`，见 [field.md](field.md)）相加构成连续性方程源项 `ElectronGeneration` 与 `HoleGeneration`；
 - [field.md](field.md) 的 `CreateFESRH`（`src/raser/core/field/physics_avalanche.py`）在 `"SiliconCarbide"` 区域开启碰撞电离模型时，调用 `TAT_FIELD_ENHANCEMENT.devsim(E="abs(ElectricField)", F_sat="F_sat")` 构造边模型 `R_TAT = (TAT_FIELD_ENHANCEMENT)*(U_const@n1)`，并从 `Ion_coeff_rate` 中减去 `R_TAT`。
 
-SRH 复合率公式见文献 [1]（第 1.5.4 节）与原始文献 [14]，Hurkx 陷阱辅助隧穿场增强公式见文献 [15]；`SRH_LIFETIME` 中三类材料的寿命数值以及 4H-SiC 的 `F_gamma = 3.9e4` $\text{V/cm}$、`F_sat = 1e5` $\text{V/cm}$、`pi = 3.14159` 出处待补。
+SRH 复合率公式见文献 [1]（第 1.5.4 节）与原始文献 [14]，Hurkx 陷阱辅助隧穿场增强公式见文献 [15]；4H-SiC 的电子寿命 $2.5\ \mu\text{s}$ 见文献 [19]，空穴寿命 $0.5\ \mu\text{s}$ 见文献 [21]（组里时间分辨光致发光测量确认）。
 
 ## 算法
 
@@ -277,7 +279,7 @@ SRH 复合率公式见文献 [1]（第 1.5.4 节）与原始文献 [14]，Hurkx 
 | `_VAN_OVERSTRAETEN` 阈值与常数 | $E_{\text{th}} = 1.75\times 10^5$，$E_0 = 4.0\times 10^5$，$\hbar\omega = 0.063$，$T_0 = 293.0$ | — | — | — | $\text{V/cm}$, $\text{V/cm}$, $\text{eV}$, $\text{K}$ | `impact_ionization.py`，van Overstraeten–de Man 碰撞电离阈值、高低场分界、光学声子能量与参考温度 |
 | `"Okuto"` 阈值与常数 | $E_{\text{th}} = 1.0\times 10^5$，$T_0 = 300.0$，`_gamma = 1.0`，`_delta = 2.0` | — | — | — | $\text{V/cm}$, $\text{K}$, 无量纲, 无量纲 | `material.py`（`Material.cal_coefficient`），Okuto–Crowell 碰撞电离阈值、参考温度与指数 |
 | `_HATAKEYAMA` 阈值与常数 | — | $E_{\text{th}} = 10^4$，`OFF_AXIS_DEG = 4.0`，$\hbar\omega = 0.19$，$T_0 = 300.0$ | — | — | $\text{V/cm}$, 度, $\text{eV}$, $\text{K}$ | `impact_ionization.py`，Hatakeyama 碰撞电离阈值、偏轴角、光学声子能量与参考温度 |
-| `_K_J_PER_K`, 带隙换算因子 | — | — | — | `1.3806503e-23`, `1.6e-19` | $\text{J/K}$, $\text{J/eV}$ | `band_structure.py`，计算 $n_i(T)$ 与 $E_g$ 所用的玻尔兹曼常数和电荷换算因子 |
+| `_K_J_PER_K`, 带隙换算因子 | — | — | — | `1.380649e-23`, `1.602176634e-19` | $\text{J/K}$, $\text{J/eV}$ | `band_structure.py`，计算 $n_i(T)$ 与 $E_g$ 所用的 CODATA 2018 玻尔兹曼常数和元电荷换算因子 |
 | `SRH_LIFETIME`（`tau_n`, `tau_p`） | `7e-3`, `7e-3` | `2.5e-6`, `0.5e-6` | `5.6e-7`, `2.4e-7` | — | $\text{s}$ | `recombination.py`，电子与空穴默认 SRH 寿命 |
 | `TAT_SATURATION_FIELD` | — | `1e5` | — | — | $\text{V/cm}$ | `recombination.py`，4H-SiC 陷阱辅助隧穿场增强默认饱和场强（可通过器件文件 `parameter` 键覆盖 `"F_sat"`） |
 | `F_gamma`, `pi` | — | `3.9e4`, `3.14159` | — | — | $\text{V/cm}$, 无量纲 | `recombination.py`（`TAT_FIELD_ENHANCEMENT`），TAT 特征场强与圆周率常数 |
@@ -345,7 +347,7 @@ SRH 复合率公式见文献 [1]（第 1.5.4 节）与原始文献 [14]，Hurkx 
 
 ## 接口
 
-使用者在器件文件中能设并与本包模型相关的只有下表列出的键，其余全部模型参数（相对介电常数、有效质量、缺省迁移率模型及各模型系数、碰撞电离参数与 $4.0^\circ$ 偏轴角、能带参数、掺杂能级与简并度、SRH 寿命、TAT 特征场强 `F_gamma`）均写死在代码中；其中写入 DEVSIM 区域参数的副本可在场求解中被 `parameter` 键覆盖，一个器件文件只设一个（见上文内置常数）。场求解与载流子输运的命令行用法分别见 [../stages/field.md](../stages/field.md) 与 [../stages/current.md](../stages/current.md)。
+使用者在器件文件中能设并与本包模型相关的只有下表列出的键，其余全部模型参数（相对介电常数、有效质量、各材料缺省选用的迁移率模型及各模型系数、碰撞电离参数与 $4.0^\circ$ 偏轴角、能带参数、掺杂能级与简并度、SRH 寿命、TAT 特征场强 `F_gamma`）均写死在代码中；其中写入 DEVSIM 区域参数的副本可在场求解中被 `parameter` 键覆盖，一个器件文件只设一个（见上文内置常数）。命令行用 `raser model --draw <模型>` 绘制模型曲线（见 [命令行接口](../cli.md)）；场求解与载流子输运的命令行用法分别见 [../stages/field.md](../stages/field.md) 与 [../stages/current.md](../stages/current.md)。
 
 ### 器件文件读取的键
 
@@ -362,11 +364,11 @@ SRH 复合率公式见文献 [1]（第 1.5.4 节）与原始文献 [14]，Hurkx 
 
 ### 输入与输出文件
 
-`core/model` 是纯内存物理模型库，输出的数值与符号表达式在内存中直接交给 [device.md](device.md)、[field.md](field.md)（写出 `<project>/field/<节点号>/` 场节点里的 `.pkl` 与 `.json` 文件）和 [current.md](current.md)（写出 `current_<job>.h5`）。
+`core/model` 是纯内存物理模型库，输出的数值与符号表达式在内存中直接交给 [device.md](device.md)、[field.md](field.md)（写出 `<project>/field/<节点号>/` 场节点里的 `.pkl` 与 `.json` 文件）和 [current.md](current.md)（写出 `current.h5`）。
 
 ### 绘图输出
 
-在 Python 中调用 `Material(<材料名>).draw_velocity(temperature, Neff)`（例如 `Material("SiC").draw_velocity(300, 1e14)`）时，通过 [../supports/README.md](../supports/README.md) 的 `output(__file__, "model")` 在 `<项目根>/model/model/` 下生成漂移速度图；项目根取环境变量 `RASER_PROJECT_PATH`，未设时为当前目录：
+命令行使用 `raser model --draw <模型>` 绘制迁移率、漂移速度、碰撞电离系数等物理模型随电场、温度或掺杂浓度的曲线（见 [命令行接口](../cli.md)）。在 Python 中也可调用 `Material(<材料名>).draw_velocity(temperature, Neff)`（例如 `Material("SiC").draw_velocity(300, 1e14)`），通过 [../supports/README.md](../supports/README.md) 的 `output(__file__, "model")` 在 `<项目根>/model/model/` 下生成漂移速度图；项目根取环境变量 `RASER_PROJECT_PATH`，未设时为当前目录：
 
 | 文件名 | 内容 | 单位 |
 | --- | --- | --- |
@@ -389,3 +391,9 @@ SRH 复合率公式见文献 [1]（第 1.5.4 节）与原始文献 [14]，Hurkx 
 - [13] E. Gheeraert, S. Koizumi, T. Teraji, H. Kanda, “Electronic transitions of electrons bound to phosphorus donors in diamond”, Solid State Commun. 113 (2000) 577, doi:10.1016/S0038-1098(99)00546-3
 - [14] W. Shockley, W. T. Read, Jr., “Statistics of the Recombinations of Holes and Electrons”, Phys. Rev. 87 (1952) 835, doi:10.1103/PhysRev.87.835
 - [15] G. A. M. Hurkx, D. B. M. Klaassen, M. P. G. Knuvers, “A new recombination model for device simulation including tunneling”, IEEE Trans. Electron Devices 39 (1992) 331, doi:10.1109/16.121690
+- [16] C. R. Crowell, S. M. Sze, “Temperature dependence of avalanche multiplication in semiconductors”, Appl. Phys. Lett. 9 (1966) 242, doi:10.1063/1.1754731
+- [17] Synopsys, *Sentaurus Device User Guide*, Synopsys Inc., 碰撞电离的 van Overstraeten–de Man 模型一节
+- [18] T. Hatakeyama, “Measurements of impact ionization coefficients of silicon carbide for high voltage power devices”, Phys. Status Solidi A 206 (2009) 2284, doi:10.1002/pssa.200925213
+- [19] A. Das, S. P. Duttagupta, “TCAD simulation for alpha-particle spectroscopy using SiC Schottky diode”, Radiat. Prot. Dosim. 167 (2015) 443, doi:10.1093/rpd/ncu369
+- [20] W. J. Schaffer, G. H. Negley, K. G. Irvine, J. W. Palmour, “Conductivity anisotropy in epitaxial 6H and 4H SiC”, MRS Proc. 339 (1994) 595, doi:10.1557/PROC-339-595
+- [21] Z. Li et al., “Mechanisms of proton irradiation-induced defects on the electrical performance of 4H-SiC PIN detectors”, JINST 21 (2026) P03010, doi:10.1088/1748-0221/21/03/P03010, arXiv:2503.09016

@@ -11,22 +11,23 @@ $$\Delta E = E_{\text{in}} - E_{\text{out}}, \qquad \text{WEPL}(x, y) = \int_{\t
 其中：
 
 - $E_{\text{in}}$、$E_{\text{out}}$：质子进入人头模型前的入射动能与穿出后的残余动能，$\text{MeV}$；$\Delta E$ 为质子穿过模型损失的能量，$\text{MeV}$；
-- $\rho_{s}(\mathbf{r}) = S(\mathbf{r}, E) / S_{\text{water}}(E)$：位置 $\mathbf{r}$ 处组织材料相对于液态水的相对阻止本领（Relative Stopping Power，RSP，无量纲）；
-- $S_{\text{water}}(E) = -(dE/dl)_{\text{water}}$：质子在液态水中的质量或线阻止本领，$\text{MeV/mm}$；
+- $dl$：沿最可能路径（MLP）的路径微元，$\text{mm}$；
+- $\rho_{s}(\mathbf{r}) = S(\mathbf{r}, E) / S_{\text{water}}(E)$：位置 $\mathbf{r}$ 处组织材料相对于液态水的相对阻止本领（Relative Stopping Power，RSP，无量纲），其中 $S(\mathbf{r}, E)$ 为该处组织材料的线阻止本领，$\text{MeV/mm}$；
+- $S_{\text{water}}(E) = -(dE/dl)_{\text{water}}$：质子在液态水中的线阻止本领，$\text{MeV/mm}$；
 - $\text{WEPL}(x, y)$：投影坐标 $(x, y)$（单位 $\mu\text{m}$ 或 $\text{mm}$）处沿质子路径积分的水等效路径长度，$\text{mm}$。
 
-在 RASER 的 `pimg` 设计中，Geant4 装置沿用 [`telescope`](../bench/telescope.md) 的多层像素跟踪平面排布（如前后各若干层 `TAICHU3` 或 SiC 像素层），在望远镜中心区域放置一个人头模型（默认提供由同心球壳或椭球构成的颅骨加脑组织简化 `toy` 模型，并支持通过 `gdml_import` 导入细化的头部几何或医学体模），从而在同一套仿真链中同时评估跟踪探测器空间分辨、多次库仑散射和能量分辨对成像质量的影响。质子照相与断层成像的物理范式与探测器系统设计见文献 [1]（R. P. Johnson, “Review of medical radiography and tomography with proton beams”, *Rep. Prog. Phys.* 81 (2018) 016701, doi:10.1088/1361-6633/aa8b1d）。
+在 RASER 的 `pimg` 中，Geant4 装置沿用 [`telescope`](../bench/telescope.md) 的多层像素跟踪平面排布（如前后各若干层 `TAICHU3` 或 SiC 像素层），在望远镜中心区域放置一个人头模型（默认提供由同心球壳或椭球构成的颅骨加脑组织简化 `toy` 模型，并支持通过 `gdml_import` 导入细化的头部几何或医学体模），从而在同一套仿真链中同时评估跟踪探测器空间分辨、多次库仑散射和能量分辨对成像质量的影响。质子照相与断层成像的物理范式与探测器系统见文献 [1]（R. P. Johnson, “Review of medical radiography and tomography with proton beams”, *Rep. Prog. Phys.* 81 (2018) 016701, doi:10.1088/1361-6633/aa8b1d）。
 
 ## 用到的环节和组件
 
 ### 环节
 
-- [`field`](../stages/field.md)：求解或复用各跟踪层与能量测量器件在工作偏压下的共享场，存放在 `work/<器件>/field/`。
+- [`field`](../stages/field.md)：复用各跟踪层与能量测量器件在工作偏压下的场节点；找不到场时在作业开始前补算，存进 `work/<器件>/field/<节点号>/`。
 - [`deposit`](../stages/deposit.md)：用 Geant4 模拟质子束依次穿过上游跟踪层、中间人头模型（`toy` 几何或导入的细化模型）、下游跟踪层与末端能量探测器的能量沉积步。
 - [`current`](../stages/current.md)：计算各像素跟踪层与能量探测器上的载流子收集电荷和感应电流。
 - [`readout`](../stages/readout.md)、[`digitizer`](../stages/digitizer.md)、[`trigger`](../stages/trigger.md)：求解各层探测器的前端放大波形、数字化采样量化与符合触发。
-- [`reconstruction`](../stages/reconstruction.md)：在上下游像素跟踪层上做击中团簇聚类，重建单质子入射与出射径迹。
-- [`analysis`](../stages/analysis.md)：在 `work/pimg/analysis/` 下汇总全部质子径迹，按投影网格统计平均能量损失 $\Delta E$、散射角分布并生成人头模型的二维 WEPL 成像图。
+- [`reconstruction`](../stages/reconstruction.md)：读 `digitizer` 节点里被 `trigger` 记录的事例，把量化码换回电压（$\text{V}$），在上下游像素跟踪层上做击中团簇聚类，重建单质子入射与出射径迹。
+- [`analysis`](../stages/analysis.md)：局限：`analysis` 现在只统计单电极的结果，多电极、多位置的统计（例如 telescope 的残差、cflm 各焊盘的汇总）还没做。
 
 ### 组件
 
@@ -36,32 +37,51 @@ $$\Delta E = E_{\text{in}} - E_{\text{out}}, \qquad \text{WEPL}(x, y) = \int_{\t
 
 ## 跑法与配置
 
-按顶层设计（[命令行接口](../cli.md#命令)），直接运行 `pimg` 应用，或用 `--set`、`--scan` 扫描跟踪层器件参数：
+直接运行 `pimg` 应用，或用 `--set`、`--scan` 扫描跟踪层器件参数（器件写在 `config.json` 中，可作扫描轴；命令行用法见[命令行接口](../cli.md#命令)）：
 
 ```bash
 raser pimg
 ```
 
-实验配置写在 `work/pimg/config.json` 中，按环节分段。这个情景需要两类能量沉积组件：质子束流源，以及前后望远镜层中间放人头模型的装置，在 `deposit` 段里选用；跟踪层器件默认是 `TAICHU3`。
+实验配置写在 `work/pimg/config.json` 中，按环节分段。这个情景需要两类能量沉积组件：质子束流源 `beam/proton`，以及前后望远镜层中间放 toy 人头的装置 `head_phantom`，在 `deposit` 段里选用；跟踪层器件默认是 `TAICHU3`。下面只摘和本页有关的段；`examples/pimg/config.json` 里八段都写全。
 
-设计口径下使用者能设的配置键如下表：
+```json
+{
+  "workflow": "pimg",
+  "field": {
+    "voltage": null
+  },
+  "deposit": {
+    "source": "beam/proton",
+    "g4setup": "head_phantom"
+  },
+  "readout": {
+    "amplifier": "SantaCruz+Gali52+Termination50"
+  },
+  "reconstruction": {
+    "threshold": 10.0,
+    "amplitude_threshold": 10.0
+  }
+}
+```
 
-| 段.键 | 默认值（设计） | 单位 | 含义 |
+使用者能设的配置键如下表。“示例里的值”是 `examples/pimg/config.json` 写的值；`config.json` 缺了要用的键时报错，指出缺的“段.键”：
+
+| 段.键 | 示例里的值 | 单位 | 含义 |
 | --- | --- | --- | --- |
-| `field.voltage` | 取器件文件 `bias.voltage` | $\text{V}$ | 探测器偏置电压 |
+| `field.voltage` | `null`（取器件文件里的偏压） | $\text{V}$ | 探测器偏置电压 |
 | `readout.amplifier` | `"SantaCruz+Gali52+Termination50"` | 无 | 前端放大器与终端负载组件链 |
-| `reconstruction.threshold`, `reconstruction.amplitude_threshold` | `10.0`, `10.0` | $\text{mV}$ | 像素过阈阈值与团簇种子幅度阈值 |
+| `reconstruction.threshold`, `reconstruction.amplitude_threshold` | `10.0`, `10.0` | $\text{mV}$ | 像素过阈阈值与团簇种子通道幅度阈值（在被 `trigger` 记录的事例里找到种子的记为 `selected`） |
 
-其余底层物理与数值参数（材料平均电离能与 Fano 因子、像素热扩散步长 `50e-12 s`、聚类邻域距离容差 `1e-7 um^2`与重建基线采样点数 `200`）写死在代码里。
+其余底层物理与数值参数（材料平均电离能与 Fano 因子、2D/3D 感应电流时间箱宽 `50e-12 s` 与漂移时间步长 `20e-12 s`、聚类邻域距离容差 `1e-7 um^2` 与重建基线采样点数 `200`）写死在代码里。
 
 ## 输出
 
-按 [架构总纲](../architecture.md#结果) 的设计，结果存放在 `work/pimg/` 下：各环节节点按输入指纹存放在 `work/pimg/nodes/<环节>/<节点号>/`（各带一份 `node.json`），按扫描点命名的软链接视图位于 `work/pimg/points/<点名>/<环节>`，参数表为 `work/pimg/points.json`，所用器件的共享场存放在 `work/<器件>/field/`，成像结果与跨点对比图存放在 `work/pimg/analysis/` 下。
+结果存放在 `work/pimg/` 下（存放结构见[架构总纲](../architecture.md#结果)）：各环节节点按输入指纹存放在 `work/pimg/nodes/<环节>/<节点号>/`（各带一份 `node.json`；`deposit` 到 `reconstruction` 每个作业一个节点，`analysis` 每个扫描点一个节点），按扫描点命名的软链接视图位于 `work/pimg/points/<点名>/<环节>/<作业号>`（`points/<点名>/field` 和 `points/<点名>/analysis` 各是一个软链接），参数表为 `work/pimg/points.json`，所用器件的场节点存放在 `work/<器件>/field/<节点号>/`，跨点统计与对比图存放在 `work/pimg/analysis/` 下。
 
-设计输出的数据文件与图像如下表：
+输出的数据文件与图像如下表：
 
 | 文件名 | 写出环节 | 内容 | 单位 |
 | --- | --- | --- | --- |
-| `deposit_<job>.h5`, `current.<layer>_<job>.h5`, `reconstruction_<job>.h5` | `deposit` 至 `reconstruction` | 各层像素能量沉积步、像素收集电荷/感应电流以及逐质子入射/出射团簇位置重建表 | 坐标 $\mu\text{m}$，时间 $\text{s}$，能量 $\text{MeV}$，电荷 $\text{C}$ |
-| `analysis/[<点名>/]result.json` 与逐质子径迹 | [`analysis`](../stages/analysis.md) | 成像平面网格的统计汇总（空间分辨、对比度噪声比）及逐质子径迹与 WEPL 数据集 | 坐标 $\text{mm}$，能量 $\text{MeV}$，WEPL $\text{mm}$ |
-| WEPL 图 | [`analysis`](../stages/analysis.md) | 人头模型在投影平面 $(x, y)$ 上的二维水等效路径长度（WEPL）或平均能量损失 $\Delta E$ 质子照相图 | 横纵轴空间坐标 $\text{mm}$，色标 WEPL $\text{mm}$（或 $\Delta E$ $\text{MeV}$） |
+| `deposit.h5`, `current.<layer>.h5`, `readout.<layer>.h5`, `digitizer.<layer>.h5`, `trigger.<layer>.h5`, `reconstruction.h5` | `deposit` 至 `reconstruction` | 各作业节点内全层能量沉积步、各层像素感应电流与收集电荷、前端读出电压波形、数字化量化码（格式见[`stages/digitizer`](../stages/digitizer.md)）、被触发记录的事例号 `event`（`int64`）以及逐质子入射/出射团簇位置重建表 | 坐标 $\mu\text{m}$，时间 $\text{s}$，能量 $\text{MeV}$，电荷 $\text{C}$，电流 $\text{A}$，电压 $\text{V}$ |
+| `points/<点名>/analysis/` | [`analysis`](../stages/analysis.md) | 局限：`analysis` 现在只统计单电极的结果，多电极、多位置的统计（例如 telescope 的残差、cflm 各焊盘的汇总）还没做。 | 无 |

@@ -24,7 +24,7 @@ $$t_r^{10\text{–}90} \approx \frac{0.34}{B} \tag{3}$$
 - $\sigma_t$：冲激响应 $h(t) \propto \exp(-t^2 / 2\sigma_t^2)$ 的标准差，$\text{s}$；
 - $t_r^{10\text{–}90}$：阶跃响应从终值的 $10\%$ 升到 $90\%$ 的时间，$\text{s}$。
 
-响应形状固定为高斯。放大器与本模块的带宽是串联的：波形先经 `readout` 的放大器链，再经本模块的高斯滤波，输出的上升时间由这两次滤波共同决定。式 (1)–(3) 出处待补。
+响应形状固定为高斯。放大器与本模块的带宽是串联的：波形先经 `readout` 的放大器链，再经本模块的高斯滤波，输出的上升时间由这两次滤波共同决定。高斯响应与上升时间 $0.34/B$ 见文献 [3]。
 
 ### 采样
 
@@ -36,7 +36,7 @@ $$t_k = t_0 + \varphi + k\,T_s + \delta_k,\qquad \varphi \sim U[0, T_s),\qquad \
 
 - $t_k$：第 $k$ 个采样时刻（$k = 0, 1, \dots$），$\text{s}$；
 - $t_0$：`readout` 波形里该事例的起始时刻 `t0`，$\text{s}$；
-- $T_s$：采样间隔，$\text{s}$，等于组件 `sampling_rate_GSps`（$\text{GS/s}$）的倒数；
+- $T_s$：采样间隔，$T_s = 10^{-9}/$`sampling_rate_GSps`，$\text{s}$，`sampling_rate_GSps` 为组件的采样率（$\text{GS/s}$）；
 - $\varphi$：该事例、该台设备的时钟相位，$\text{s}$，在 $[0, T_s)$ 上均匀分布；
 - $\delta_k$：第 $k$ 个采样点的孔径抖动，$\text{s}$，零均值高斯分布；
 - $\sigma_a$：孔径抖动的均方根，$\text{s}$，取组件的 `aperture_jitter_ps`（乘 $10^{-12}$）。
@@ -80,17 +80,16 @@ $$\sigma_q = \frac{\text{LSB}}{\sqrt{12}} \tag{8}$$
    3. 按式 (4) 得各采样时刻，每个采样点从 $\mathcal{N}(0, \sigma_a^2)$ 抽一个孔径抖动。
    4. 在滤波后的电压序列上线性插值，取各采样时刻的电压。
 4. **量化**：按式 (5)、(6) 把每个采样电压变成码；式 (6) 截断前码 $< 0$ 或 $> 2^N - 1$ 的点数逐电极记为被截点数。
-5. **写出**：码、被截点数和事例的第一个采样时刻 $t_0 + \varphi$ 交给数字化环节写进数字波形文件。
+5. **写出**：码、被截点数和每台设备的第一个采样时刻 $t_0 + \varphi$ 交给数字化环节写进数字波形文件。
 
-随机量 $\varphi$、$\delta_k$ 由 `digitizer` 自己的种子抽取，和 `readout` 的种子各自独立。
+随机量 $\varphi$、$\delta_k$ 由 `digitizer` 自己的种子抽取。这个种子由作业的种子派生（见[实验、扫描点与种子](../lifecycle/experiments.md#种子)），进 `digitizer` 节点的指纹，和 `readout` 的种子各自独立。
 
 ## 软件实现
 
 ### 模块与函数分工
 
-- `__init__.py`：包文档字符串，声明本包用于采样、量化及其背后的数字电路。
-- 采样与量化的函数（将来新增，用 numpy 实现）：输入为一个事例的电压波形和设置，输出码与被截点数。
-- `regincr.py`、`regincr_sim.py`：legacy：包里现有的 `pymtl3` 示例，留作将来纯数字逻辑（例如 FPGA 触发逻辑）的参考，在 Python 里单独调用 `regincr_sim.main()` 运行。`RegIncr` 是一个 8 位寄存器自增器，每个时钟周期锁存输入、输出锁存值加 1；`main()` 用代码里写定的一组输入仿真 7 个时钟周期，把 VCD 波形写成 `<project_root>/digitizer/fpga/regincr_sim.vcd`（`<project_root>` 取环境变量 `RASER_PROJECT_PATH`，未设时为当前目录），并在标准输出打印逐周期端口值和字符波形。
+- `__init__.py`：包文档字符串，声明本包用于带宽滤波、采样和量化。
+- 带宽、采样与量化的函数（用 `numpy` 实现）：输入为一个事例的电压波形、组件设置和 `digitizer` 的种子，输出码、被截点数和各台设备的第一个采样时刻。
 
 ## 接口
 
@@ -100,11 +99,11 @@ $$\sigma_q = \frac{\text{LSB}}{\sqrt{12}} \tag{8}$$
 
 ### 输入
 
-`readout` 节点的波形文件，由[电子学读出环节（`stages/readout`）](../stages/readout.md)写出：本模块用到属性 `electrodes`、`dt`（$\text{s}$）、`pulse_edge`，数据集 `event`、`t0`（$\text{s}$）、`count`、`stored`、`index`、`voltage`（$\text{V}$）。格式见[电子学读出（`core/readout`）](readout.md)。
+`readout` 节点的 `readout.h5`（多位置实验为同节点下的 `readout.<位置>.h5`），由[电子学读出环节（`stages/readout`）](../stages/readout.md)写出：本模块用到属性 `electrodes`、`dt`（$\text{s}$）、`pulse_edge`，数据集 `event`、`t0`（$\text{s}$）、`count`、`stored`、`index`、`voltage`（$\text{V}$）。格式见[电子学读出（`core/readout`）](readout.md)。
 
-### 输出：`digitizer_<job>.h5`
+### 输出：`digitizer.h5`
 
-数字化环节把本模块的结果写进 `nodes/digitizer/<节点号>/digitizer_<job>.h5`，沿用 `readout` 波形文件的稀疏存法，只存 `readout` 文件里存了波形的电极。
+数字化环节把本模块的结果写进 `nodes/digitizer/<节点号>/digitizer.h5`（多位置实验为同节点下的 `digitizer.<位置>.h5`），沿用 `readout` 波形文件的稀疏存法，只存 `readout` 文件里存了波形的电极。
 
 **文件属性（Attributes）**
 
@@ -123,16 +122,17 @@ $$\sigma_q = \frac{\text{LSB}}{\sqrt{12}} \tag{8}$$
 | 数据集名 | 形状与类型 | 单位 | 含义 |
 | --- | --- | --- | --- |
 | `event` | `(events,)`, `int64` | 无 | 事例编号 |
-| `t0` | `(events,)`, `float64` | $\text{s}$ | 第一个采样点的时刻 $t_0 + \varphi$，已含时钟相位 |
 | `count` | `(events,)`, `int64` | 点 | 该事例每个电极的采样点数 |
 | `stored` | `(events,)`, `int64` | 个 | 该事例存了数字波形的电极数 |
 | `index` | `(sum(stored),)`, `int64` | 无 | 存了的电极在 `electrodes` 中从 `0` 起的下标，按 `stored` 切分到各事例 |
+| `t0` | `(sum(stored),)`, `float64` | $\text{s}$ | 该电极第一个采样点的时刻 $t_0 + \varphi$，已含所属设备的时钟相位，按 `stored` 切分到各事例；同一台设备上的电极取值相同 |
 | `clipped` | `(sum(stored),)`, `int64` | 点 | 该电极被截在最大或最小码的点数 |
 | `code` | `(sum(stored * count),)`, `int16` | 无 | 码 $c$，按事例与存了的电极依次展开，每个电极占所属事例的 `count` 个点 |
 
-码按式 (7) 换回电压：$\hat V = (\texttt{code} - 2^{N-1} + 0.5)\cdot\texttt{lsb\_V} + \texttt{offset\_V}$，$N$ 取属性 `bits`。
+码按式 (7) 换回电压：$\hat V = (\texttt{code} - 2^{N-1} + 0.5)\cdot\texttt{lsb\_V} + \texttt{offset\_V}$（$\text{V}$），$N$ 取属性 `bits`；每个电极第 $k$ 个点（从 `0` 起）的标称时刻是该电极的 `t0` $+ k\cdot$`sampling_period`（$\text{s}$）。
 
 ## 参考文献
 
 - [1] M. Shinagawa, Y. Akazawa, T. Wakimoto, “Jitter analysis of high-speed sampling systems”, IEEE J. Solid-State Circuits 25 (1990) 220, doi:10.1109/4.50307
 - [2] W. R. Bennett, “Spectra of Quantized Signals”, Bell Syst. Tech. J. 27 (1948) 446, doi:10.1002/j.1538-7305.1948.tb01340.x
+- [3] Keysight Technologies, “Understanding Oscilloscope Frequency Response and Its Effect on Rise-Time Accuracy”, Application Note 5988-8008EN
