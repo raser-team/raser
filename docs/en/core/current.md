@@ -113,10 +113,10 @@ The table below lists all built-in physical constants and numerical step paramet
 
 | Constant | 1D (or selected 2D mesh in the transverse $x$-$y$ plane) | 2D / 3D | Unit | Location and Meaning |
 | --- | --- | --- | --- | --- |
-| `t_bin` | `5e-12` | `50e-12` | $\text{s}$ | Output time step of current: induced-current time-bin width (file attribute `dt`) |
+| `t_bin` | `5e-12` | `10e-12` | $\text{s}$ | Output time step of current: induced-current time-bin width (file attribute `dt`) |
 | `t_start` (relative) | `-1.25e-9` | `-12.5e-9` | $\text{s}$ | Start offset relative to the event's earliest creation time (`-0.25 * t_end`) |
 | `t_end` (relative) | `5e-9` | `50e-9` | $\text{s}$ | Minimum end offset relative to the event's latest creation time |
-| `delta_t` | `2e-12` | `20e-12` | $\text{s}$ | Single-step carrier drift time step $\Delta t$ |
+| `delta_t` | `2e-12` | `5e-12` | $\text{s}$ | Single-step carrier drift time step $\Delta t$ |
 | `min_intensity` | `1` | `1` | $\text{V/cm}$ | Minimum electric-field threshold for stopping drift (`"low_field"`) |
 | `max_drift_time` | `100e-9` | `100e-9` | $\text{s}$ | Upper cap on single-cluster drift duration (`"time_out"`) |
 | `kboltz` | `8.617333262e-5` | `8.617333262e-5` | $\text{eV/K}$ | CODATA 2018 Boltzmann constant for thermal diffusion in `drift.py` (numerically equal to $k_B/e$ [$\text{V/K}$]) |
