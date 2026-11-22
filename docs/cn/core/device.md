@@ -198,7 +198,6 @@ $$C = \frac{\varepsilon_0 \varepsilon_r \left(A \times 10^{-12}\right)}{d \times
 | `ITk-md8` | Si `planar` 器件 |
 | `ITk-Si-strip` | Si `strip` 器件 |
 | `NJU-PiN` | SiC `planar` 器件 |
-| `NJU-PiN-bmos` | SiC `planar` 器件 |
 | `pixel_ayyouby` | Si `lgadpixel` 器件，3×3 阵列 Ayyoub 风格 DJ-LGAD 像素（间距 `20 × 20 um`） |
 | `SICAR-1` | SiC `lgad` 器件 |
 | `SICAR-1-PiN` | SiC `planar` 器件 |

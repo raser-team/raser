@@ -44,7 +44,6 @@ def _device(name):
         ("DJLGAD_Ayyoub_Table1_1D", "falling"),
         ("ITk-md8", "falling"),
         ("NJU-PiN", "rising"),
-        ("NJU-PiN-bmos", "rising"),
         ("SICAR-1-PiN", "rising"),
         ("SICAR-1", "rising"),
         ("iLGAD", "rising"),

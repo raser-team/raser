@@ -6,7 +6,7 @@
 
 ### Standard Practice and Physical Definitions
 
-In academic practice for online beam monitoring (Beam Monitor Online System) on proton or heavy-ion accelerator beamlines, a radiation-hard wide-bandgap semiconductor detector (such as the 4H-SiC PiN diode `NJU-PiN-bmos`) is placed directly in the beam path. Bunch by bunch, it measures the superimposed transient induced current pulse and total collected charge produced when multiple charged particles in a bunch traverse the detector simultaneously, thereby monitoring the intensity (particle count), arrival time, and pulse amplitude distribution of each bunch online.
+In academic practice for online beam monitoring (Beam Monitor Online System) on proton or heavy-ion accelerator beamlines, a radiation-hard wide-bandgap semiconductor detector (such as the 4H-SiC PiN diode `NJU-PiN`) is placed directly in the beam path. Bunch by bunch, it measures the superimposed transient induced current pulse and total collected charge produced when multiple charged particles in a bunch traverse the detector simultaneously, thereby monitoring the intensity (particle count), arrival time, and pulse amplitude distribution of each bunch online.
 
 In RASER, a single bunch is simulated as a single Geant4 event. Suppose one bunch emits $M$ particles simultaneously, the set of deposition steps left in the device by the $m$-th particle and its secondaries is $\mathcal{S}_m$, and the number of initial electron-hole pairs converted from the $k$-th deposition step is $N_{\text{pairs}, k}$. Then the total number of initial electron-hole pairs $N_{\text{bunch}}$ generated in the device by one bunch and the bunch charge collection efficiency $\eta$ are:
 
@@ -53,7 +53,7 @@ Limitations: the `3` protons of a bunch in `bunch.json` are emitted in parallel 
 
 ### Components
 
-- [Detector components (`components/device`)](../components/device.md): provides the online beam monitoring device definition (such as the dedicated 4H-SiC PiN device `NJU-PiN-bmos.json`, dimensions $5000 \times 5000 \times 100\ \mu\text{m}$, default bias `-500.0 V`).
+- [Detector components (`components/device`)](../components/device.md): provides the online beam monitoring device definition (such as the 4H-SiC PiN device `NJU-PiN.json`, dimensions $5000 \times 5000 \times 100\ \mu\text{m}$, default bias `-500.0 V`).
 - [Energy deposition components (`components/deposit`)](../components/deposit.md): provides the default multi-particle bunch source `bunch.json` (`src/raser_app/bmos/components/deposit/bunch.json`) and the default Geant4 setup `device_alone.py` (`raser/components/deposit/device_alone.py`).
 - [Front-end readout circuit components (`components/readout`)](../components/readout.md), [digitizer components (`components/digitizer`)](../components/digitizer.md), [trigger components (`components/trigger`)](../components/trigger.md): provides the SPICE front-end amplifier chain (default `SantaCruz+Gali52+Termination50`), digitization sampling and quantization, and trigger threshold definitions.
 
@@ -71,7 +71,7 @@ Following the sectioned format in [Architecture Overview](../architecture.md#pro
 ```json
 {
   "workflow": "bmos",
-  "device": "NJU-PiN-bmos",
+  "device": "NJU-PiN",
   "field": {
     "voltage": -500.0,
     "irradiation_flux": null

@@ -198,7 +198,6 @@ The device file has no `mesh` section: geometry (layer thicknesses, materials, a
 | `ITk-md8` | Si `planar` device |
 | `ITk-Si-strip` | Si `strip` device |
 | `NJU-PiN` | SiC `planar` device |
-| `NJU-PiN-bmos` | SiC `planar` device |
 | `pixel_ayyouby` | Si `lgadpixel` device, 3×3 array of Ayyoub-style DJ-LGAD pixels (pitch `20 × 20 um`) |
 | `SICAR-1` | SiC `lgad` device |
 | `SICAR-1-PiN` | SiC `planar` device |

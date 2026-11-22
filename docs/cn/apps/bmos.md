@@ -6,7 +6,7 @@
 
 ### 通用做法与物理定义
 
-学术界在质子或重离子加速器束流线上做在线束流监测（Beam Monitor Online System）时，将耐辐照宽禁带半导体探测器（如 4H-SiC PiN 二极管 `NJU-PiN-bmos`）直接放置在束流路径上，逐束团（bunch）测量束团内多个带电粒子同时穿过探测器时叠加产生的瞬态感应电流脉冲与总收集电荷，从而在线监测每个束团的流强（粒子数）、到达时刻与脉冲幅度分布。
+学术界在质子或重离子加速器束流线上做在线束流监测（Beam Monitor Online System）时，将耐辐照宽禁带半导体探测器（如 4H-SiC PiN 二极管 `NJU-PiN`）直接放置在束流路径上，逐束团（bunch）测量束团内多个带电粒子同时穿过探测器时叠加产生的瞬态感应电流脉冲与总收集电荷，从而在线监测每个束团的流强（粒子数）、到达时刻与脉冲幅度分布。
 
 在 RASER 中，单个束团作为单个 Geant4 事例模拟。设一个束团同时发射 $M$ 个粒子，第 $m$ 个粒子及其次级产物在器件内留下的沉积步集合为 $\mathcal{S}_m$，第 $k$ 个沉积步转化的初始电子-空穴对数为 $N_{\text{pairs}, k}$，则单个束团在器件内产生的总初始电子-空穴对数 $N_{\text{bunch}}$ 与束团电荷收集效率 $\eta$ 为：
 
@@ -53,7 +53,7 @@ $$N_{\text{bunch}} = \sum_{m=1}^{M}\sum_{k \in \mathcal{S}_m} N_{\text{pairs}, k
 
 ### 组件
 
-- [探测器组件（`components/device`）](../components/device.md)：提供在线束流监测器件定义（如专用的 4H-SiC PiN 器件 `NJU-PiN-bmos.json`，尺寸 $5000 \times 5000 \times 100\ \mu\text{m}$，默认偏压 `-500.0 V`）。
+- [探测器组件（`components/device`）](../components/device.md)：提供在线束流监测器件定义（如 4H-SiC PiN 器件 `NJU-PiN.json`，尺寸 $5000 \times 5000 \times 100\ \mu\text{m}$，默认偏压 `-500.0 V`）。
 - [能量沉积组件（`components/deposit`）](../components/deposit.md)：提供默认多粒子束团源 `bunch.json`（`src/raser_app/bmos/components/deposit/bunch.json`）及默认 Geant4 装置 `device_alone.py`（`raser/components/deposit/device_alone.py`）。
 - [前端读出电路组件（`components/readout`）](../components/readout.md)、[数字化器组件（`components/digitizer`）](../components/digitizer.md)、[触发组件（`components/trigger`）](../components/trigger.md)：提供 SPICE 前端放大器链（默认 `SantaCruz+Gali52+Termination50`）、数字化采样量化与触发阈值定义。
 
@@ -71,7 +71,7 @@ raser bmos --scan field.voltage=-300,-500
 ```json
 {
   "workflow": "bmos",
-  "device": "NJU-PiN-bmos",
+  "device": "NJU-PiN",
   "field": {
     "voltage": -500.0,
     "irradiation_flux": null
