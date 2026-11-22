@@ -53,7 +53,19 @@ def _resistive_strips(tmp_path):
     }
 
 
-def test_currents_on_the_rc_nodes_of_a_resistive_layer_come_out_on_its_strips(tmp_path):
+def _field_gives(monkeypatch, solved_f=None, undepleted=None):
+    """The field of the device gives the capacitance solved_f [F] of the whole
+    device and the undepleted layer (ohm, farad), None where it gives none."""
+    monkeypatch.setattr(readout, "solved_field", lambda *_: None)
+    monkeypatch.setattr(
+        readout, "field_circuit", lambda *_: (None, solved_f, undepleted)
+    )
+
+
+def test_currents_on_the_rc_nodes_of_a_resistive_layer_come_out_on_its_strips(
+    tmp_path, monkeypatch
+):
+    _field_gives(monkeypatch)
     # each strip on its 50 Ohm
     waveforms(_resistive_strips(tmp_path))
 
@@ -70,8 +82,9 @@ def test_currents_on_the_rc_nodes_of_a_resistive_layer_come_out_on_its_strips(tm
 
 
 def test_sheet_resistance_given_to_the_slice_takes_the_place_of_the_device_file(
-    tmp_path,
+    tmp_path, monkeypatch
 ):
+    _field_gives(monkeypatch)
     # the same hit, the layer at 4 kOhm a square instead of the 1 kOhm of the
     # file: 100 and 300 Ohm of layer to the two strips
     kwargs = _resistive_strips(tmp_path)
@@ -101,6 +114,50 @@ def test_sheet_resistance_for_a_device_without_a_resistive_layer_is_refused(
 
     with pytest.raises(ValueError, match="no resistive layer"):
         waveforms(kwargs)
+
+
+def test_a_resistive_layer_device_is_read_out_through_the_undepleted_layer_of_its_field(
+    tmp_path, monkeypatch
+):
+    # the field leaves 1 kOhm and 1 pF undepleted: they are recorded as of
+    # the field. The undepleted layer holds charge back and gives it out
+    # again, so the 1 fC the two strips collect is the same with and without
+    # it (20 ns of currents against about 1.3 ns of 1 kOhm on 1.25 pF)
+    charge_fc = {}
+    for name, undepleted in {"bare": None, "layer": (1000.0, 1e-12)}.items():
+        folder = tmp_path / name
+        folder.mkdir()
+        _field_gives(monkeypatch, undepleted=undepleted)
+        waveforms(_resistive_strips(folder))
+        voltage = read_waveforms(folder / "readout.h5").events[0].voltage
+        charge_fc[name] = voltage.sum() * DT_S / 50.0 * 1e15
+        if undepleted is not None:
+            assert read_circuit_values(folder / "readout.h5")["undepleted_layer"] == {
+                "ohm": 1000.0,
+                "farad": pytest.approx(1e-12, rel=1e-12, abs=0),
+                "from": "field",
+            }
+
+    assert charge_fc["bare"] == pytest.approx(1.0, rel=0.02)
+    assert charge_fc["layer"] == pytest.approx(charge_fc["bare"], rel=0.02)
+
+
+def test_a_resistive_layer_device_without_a_measured_capacitance_takes_its_share_of_the_field_one(
+    tmp_path, monkeypatch
+):
+    # the field solved 2 pF for the whole device at its bias; an RC node is
+    # p_x / l_x of it, 10 um of the 200 um the 20 nodes of 10 um make
+    kwargs = _resistive_strips(tmp_path)
+    kwargs["_files"]["device"].pop("capacitance_pF")
+    kwargs["_files"]["device"]["l_x"] = 200
+    _field_gives(monkeypatch, solved_f=2e-12)
+
+    waveforms(kwargs)
+
+    assert read_circuit_values(tmp_path / "readout.h5")["rc_node_capacitance"] == {
+        "farad": pytest.approx(2e-12 * 10 / 200, rel=1e-12, abs=0),
+        "from": "field",
+    }
 
 
 def test_a_planar_device_not_fully_depleted_is_read_out_through_its_undepleted_bulk(

@@ -186,7 +186,7 @@ $$\text{1D:}\quad r = \sum_{k} w_k\,\bar\rho_k, \quad W_{\text{und}} = \sum_k w_
 
 一维的集总模型是精确的。二维、三维中共用节点只保留所有电极同相的那一部分，对所有电极信号之和是精确的，对单个电极在成形时间远大于 $\max(\tau_0, 2\tau_r)$ 时趋于精确，对相邻电极的信号不准（$\tau_r = \varepsilon\rho$，$\tau_0 = \tau_r\,l_z/d_0$，$d_0 = l_z - W_{\text{und}}$ 为耗尽深度）。二维、三维器件有未耗尽层时，组装器件电路的一步打印一条警告，给出偏压、$d_0$、$\tau_r$ 与 $\tau_0$，说明偏压过低、未耗尽层的集总参数对相邻电极不准。
 
-条形电极行（`field_circuit` 读到 `Capacitance_<V>V.json`）中，相隔 $k$ 个位置的两条之间接电容 $C_k = \tfrac12 C_{\text{neighbour}k}\,L$，$k \le$ `neighbours_coupled`，$L$ 为条长 `l_y`（换成 cm）；每条接到 `undepleted` 的电容为 $C_{\text{total}}L$（或 `capacitance_pF`）减去它到行内其他条的互容之和。只为击中条附近的一段条搭电路时（`part_of_row`），段外的 $n$ 根条在虚地上，它们的这份电容合成 $n$ 倍行中部一根条的值，接在 `undepleted` 与地之间（`C_undepleted_rest`）。
+条形电极行（一个读出电极重复排布、没有 `resistive_layer` 的器件，`field_circuit` 读 `Capacitance_<V>V.json`）中，相隔 $k$ 个位置的两条之间接电容 $C_k = \tfrac12 C_{\text{neighbour}k}\,L$，$k \le$ `neighbours_coupled`，$L$ 为条长 `l_y`（换成 cm）；每条接到 `undepleted` 的电容为 $C_{\text{total}}L$（或 `capacitance_pF`）减去它到行内其他条的互容之和。只为击中条附近的一段条搭电路时（`part_of_row`），段外的 $n$ 根条在虚地上，它们的这份电容合成 $n$ 倍行中部一根条的值，接在 `undepleted` 与地之间（`C_undepleted_rest`）。
 
 阻性电荷共享层（`resistive_layer`）把层切成宽为间距的 RC 格点，每个 RC 格点是一个节点，经耗尽层电容接到 `undepleted`；相邻 RC 格点之间接层电阻：
 

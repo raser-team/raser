@@ -100,7 +100,7 @@ FileNotFoundError: no field of <det_name> ready for this run: solve it with `ras
 3. **组装器件等效电路**：
    - **器件文件有 `resistive_layer`（阻性层器件）**：
      1. `my_d.is_pixel` 为真时取 `build = device_grid`（二维阻性网格），否则取 `build = device_row`（一维阻性行）。
-     2. `circuit, values = build(my_d, electrodes, sheet_ohm=sheet_ohm)`：方阻依次按 `sheet_ohm` 非 `None`（来源记 `"chosen"`）→ `resistive_layer["sheet_resistance"]`（`"device file"`）→ 铝注入层参数推算（`"implanted layer"`）选取；RC 格点电容依次按 `capacitance_pF`（`"device file"`）→ 器件平板电容估算（`"parallel plate"`）选取。
+     2. 照下面常规器件第 1、2 步取该偏压的场文件夹，`row, solved_f, undepleted = field_circuit(...)`（阻性层器件的 `row` 为 `None`）；`circuit, values = build(my_d, electrodes, solved_f, sheet_ohm=sheet_ohm, solved_undepleted=undepleted)`：方阻依次按 `sheet_ohm` 非 `None`（来源记 `"chosen"`）→ `resistive_layer["sheet_resistance"]`（`"device file"`）→ 铝注入层参数推算（`"implanted layer"`）选取；RC 格点电容依次按 `capacitance_pF`（`"device file"`）→ 场在该偏压解出的电容乘一个 RC 格点占器件面积的比例 $p_x p_y / (l_x l_y)$（一维阻性行为 $p_x / l_x$；`"field"`）→ 器件平板电容估算（`"parallel plate"`）选取；器件在该偏压没有全耗尽时，各 RC 格点的电容和电流源接到共用的未耗尽节点，整块器件的未耗尽层电阻和电容从这个节点接地（见[器件场](../core/field.md)的“器件电路参数”）。
    - **没有阻性层却给了 `sheet_ohm`**：抛出
 
      ```text
