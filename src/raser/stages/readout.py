@@ -1,9 +1,12 @@
 """The waveforms slice of a signal job."""
 
+import math
 import os
 
 from raser.core.current.cal_current import electrode_names
 from raser.core.device import build_device as bdv
+from raser.core.readout.cable import Cable
+from raser.core.readout.cable import read_cable
 from raser.core.readout.circuit import named_chain
 from raser.core.field.circuit_parameters import device_circuit
 from raser.core.field.circuit_parameters import field_circuit
@@ -14,6 +17,52 @@ from raser.core.field.solved import solved_field
 from raser.core.readout.job import write_waveforms
 from raser.core.readout.pulse_edge import pulse_edges
 from raser.stages.files import output
+
+
+def cable_of(kwargs, det_name, outputs):
+    """The cable.Cable the settings give behind the outputs of the device,
+    or None for a read-out without cable.
+
+    kwargs["cable"] is None or missing for no cable; otherwise the name of a
+    cable component, or an object with its "name" and "length_m", the length
+    [m] of the cable of each output by the name of the output. Every output
+    needs a length, a finite number of at least zero.
+    """
+    given = kwargs.get("cable")
+    if given is None:
+        return None
+    if isinstance(given, str):
+        given = {"name": given}
+    if "name" not in given:
+        raise ValueError("readout.cable needs the name of a cable component")
+    lengths = given.get("length_m", {})
+    for channel in outputs:
+        if channel not in lengths:
+            raise ValueError(
+                f"readout.cable.length_m.{channel} is missing: give a cable "
+                f"length in m for each output of {det_name} ({outputs})"
+            )
+    unknown = [channel for channel in lengths if channel not in outputs]
+    if unknown:
+        raise ValueError(
+            f"readout.cable.length_m has unknown channels {unknown}; "
+            f"the outputs of {det_name} are {outputs}"
+        )
+    for channel, value in lengths.items():
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or value < 0
+        ):
+            raise ValueError(
+                f"readout.cable.length_m.{channel} must be a finite "
+                f"non-negative number in m, not {value}"
+            )
+    return Cable(
+        read_cable(given["name"]),
+        {channel: float(lengths[channel]) for channel in outputs},
+    )
 
 
 def waveforms(kwargs, position=None):
@@ -76,6 +125,7 @@ def waveforms(kwargs, position=None):
         chain,
         circuit,
         kwargs.get("seed"),
+        cable_of(kwargs, kwargs["det_name"], list(circuit.outputs)),
         circuit_values=values,
         pulse_edge=pulse_edges(my_d, chain, list(circuit.outputs)),
         part_of=part_of,

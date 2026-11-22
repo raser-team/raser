@@ -95,10 +95,12 @@ def _run(netlist_text, raw, dt, bins):
     )
 
 
-def _chain(chain, circuit):
+def _chain(chain, circuit, cable=None):
     """Lines of the stages and the load behind each output of the device, with
     the device itself, and the node of the load of each output, in the order
-    of circuit.outputs."""
+    of circuit.outputs. With a cable (cable.Cable), a lossless line of its
+    impedance and of the delay of the output lies between the last stage and
+    the load of each output whose cable is longer than zero."""
     stages = chain["stages"]
     if "load" in stages:
         raise ValueError('A stage cannot be named "load"')
@@ -112,7 +114,7 @@ def _chain(chain, circuit):
     lines.extend(subcircuit(name, stage).rstrip() for name, stage in stages.items())
     lines.append(subcircuit("load", chain["load"]).rstrip())
     outputs = []
-    for k, output in enumerate(circuit.outputs.values(), start=1):
+    for k, (read_out, output) in enumerate(circuit.outputs.items(), start=1):
         # the output of a stage is the input of the next one; without a
         # stage the load is on the device itself
         nodes = [output]
@@ -121,13 +123,19 @@ def _chain(chain, circuit):
             nodes.append(f"out{k}")
         for j, name in enumerate(stages):
             lines.append(f"X{k}_{j + 1} {nodes[j]} {nodes[j + 1]} {name}")
+        if cable is not None and cable.length_m[read_out] > 0:
+            lines.append(
+                f"T{k} {nodes[-1]} 0 cable{k} 0 "
+                f"Z0={cable.impedance_ohm:.9g} TD={cable.delay_s(read_out):.9g}"
+            )
+            nodes.append(f"cable{k}")
         lines.append(f"Xload{k} {nodes[-1]} load")
         outputs.append(nodes[-1])
     lines.extend(circuit.lines)
     return lines, outputs
 
 
-def write_netlist(chain, electrodes, dt, currents, circuit, raw):
+def write_netlist(chain, electrodes, dt, currents, circuit, raw, cable=None):
     """Netlist of one transient run.
 
     The device, the amplifier stages and the load follow one another.
@@ -150,6 +158,10 @@ def write_netlist(chain, electrodes, dt, currents, circuit, raw):
         from the first to the second node the circuit gives for the electrode.
     circuit : DeviceCircuit.
     raw : file ngspice writes the voltages on the loads to.
+    cable : None, or the cable.Cable behind the outputs: each output with a
+        cable longer than zero has a lossless transmission line, the T
+        element of its impedance and delay, between its last stage and its
+        load. The losses of the cable are not in the netlist.
 
     The run starts one bin before the first bin, with the circuit at rest and
     no current in that bin, and lasts to the end of the last bin, with the
@@ -158,7 +170,7 @@ def write_netlist(chain, electrodes, dt, currents, circuit, raw):
     currents = np.atleast_2d(np.asarray(currents, dtype=np.float64))
     sources = _current_sources(electrodes, dt, currents, circuit)
 
-    lines, outputs = _chain(chain, circuit)
+    lines, outputs = _chain(chain, circuit, cable)
     lines.extend(sources)
     lines.extend(
         _transient(dt, currents.shape[1], raw, [f"v({node})" for node in outputs])
@@ -166,14 +178,14 @@ def write_netlist(chain, electrodes, dt, currents, circuit, raw):
     return "\n".join(lines) + "\n"
 
 
-def solve(chain, electrodes, dt, currents, circuit):
+def solve(chain, electrodes, dt, currents, circuit, cable=None):
     """Output voltages [V] on the bins of the induced currents, shape
-    (outputs, bins), in the order of circuit.outputs. The arguments are those
-    of write_netlist."""
+    (outputs, bins), in the order of circuit.outputs, on the load of each
+    output. The arguments are those of write_netlist."""
     currents = np.atleast_2d(np.asarray(currents, dtype=np.float64))
     with tempfile.TemporaryDirectory() as folder:
         raw = Path(folder) / "out.raw"
-        netlist = write_netlist(chain, electrodes, dt, currents, circuit, raw)
+        netlist = write_netlist(chain, electrodes, dt, currents, circuit, raw, cable)
         return _run(netlist, raw, dt, currents.shape[1])
 
 
