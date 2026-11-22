@@ -71,3 +71,34 @@ def test_events_axis_has_integer_ticks_and_title() -> None:
     ticks = axis.get_yticks()
     assert all(float(t).is_integer() for t in ticks)
     assert axis.get_ylabel() == "Events"
+
+
+@pytest.mark.parametrize(
+    ("counts", "expected"),
+    [
+        ([14, 7, 4, 1], False),
+        ([500, 40, 2, 1], True),
+        ([0, 0, 31, 1], True),
+        ([5, 5, 5], False),
+        ([], False),
+        ([0, 0], False),
+        ([30, 1], False),
+        ([0, 20, 10], False),
+    ],
+)
+def test_log_counts_needs_the_tallest_bin_over_30_times_the_lowest_filled_one(
+    counts, expected
+) -> None:
+    assert figures.log_counts(counts) is expected
+
+
+@pytest.mark.parametrize(
+    ("counts", "scale"), [([600, 30, 1], "log"), ([14, 7, 1], "linear")]
+)
+def test_events_axis_follows_the_counts_of_its_histogram(counts, scale) -> None:
+    figure, axis = figures.new()
+    heights, _, _ = axis.hist(range(len(counts)), bins=len(counts), weights=counts)
+    figures.events(axis, counts=heights)
+    assert axis.get_yscale() == scale
+    if scale == "linear":
+        assert all(float(t).is_integer() for t in axis.get_yticks())
