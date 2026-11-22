@@ -64,7 +64,7 @@ $$P(t) = \frac{2\sqrt{\ln 2}}{\sqrt{\pi}\,\text{FWHM}_t}\exp\!\left(-\frac{4\ln 
 4. **前端电路读出（`readout`）**：`readout` 环节读取 `current` 节点的 `current.h5`，组装器件等效电路与 `amplifier` 子电路链，调用 `ngspice` 求解输出电压波形并按由作业种子派生的 `readout` 噪声种子叠加频域热噪声，写入 `readout` 节点的 `readout.h5`。
 5. **数字化与触发（`digitizer`、`trigger`）**：`digitizer` 按数字化器组件（默认 `MXR608A`）的模拟带宽、采样和量化（时钟相位与孔径抖动由作业种子派生的 `digitizer` 种子抽取）把模拟波形转为量化码写入 `digitizer` 节点的 `digitizer.h5`；`trigger` 按触发条件判定记录哪些事例，将被记录事例的事例号数据集 `event`（`int64`）写入 `trigger` 节点的 `trigger.h5`。
 6. **波形特征提取（`reconstruction`）**：`reconstruction` 环节读取 `digitizer.h5` 中被 `trigger.h5` 记录的事例，按 `lsb_V`、`offset_V` 把量化码换回电压（$\text{V}$），采样时刻为 `t0 + k·sampling_period`，扣除基线、翻正脉冲并提取幅度、定时量、面积与团簇特征，将找到种子的事例记为 `selected`，写入 `reconstruction` 节点的 `reconstruction.h5`。
-7. **单点与位置扫描汇总（`analysis`）**：`analysis` 环节汇总每个焦点扫描点的结果，在各扫描点的 `analysis` 节点（`nodes/analysis/<节点号>/`，视图 `points/<点名>/analysis/`）写出单点 `result.json`、`events.h5` 与分布图，并在 `<project>/tct/analysis/` 下写出跨焦点位置的汇总表 `points.json` 和收集电荷、信号随焦点位置变化的趋势图 `points.png`。
+7. **单点与位置扫描汇总（`analysis`）**：`analysis` 环节汇总每个焦点扫描点的结果，在各扫描点的 `analysis` 节点（`nodes/analysis/<节点号>/`，视图 `points/<点名>/analysis/`）写出单点 `result.json`、`events.h5` 与分布图，并在 `<project>/tct/analysis/` 下写出跨焦点位置的汇总表 `points.json` 和收集电荷、信号随焦点位置变化的趋势图 `trend.png`、`trend.pdf`。
 
 `tct` 涉及的内置常数如下表：
 
@@ -174,12 +174,12 @@ raser tct NJU-PiN --set deposit.laser=PIL037_top_SiC --scan deposit.laser.fz_rel
 | `nodes/deposit/<节点号>/plots/pair_density_3d.png`、`.pdf`、`.root` | [`deposit`](../stages/deposit.md)（`LaserInjection.draw_nocarrier3D`） | 激光脉冲在器件内生成的初始电子-空穴对的三维体密度（`TH3D`，`50 × 50 × 50` 箱，按吸收公式在各箱中心算出，低于最大值 `10%` 的箱留空） | 三轴 `x [μm]`、`y [μm]`、`z [μm]`，箱内容为对每 $\mu\text{m}^3$ |
 | `nodes/deposit/<节点号>/plots/pair_density.png`、`.pdf`、`.root` | [`deposit`](../stages/deposit.md)（`LaserInjection.draw_nocarrier2D`） | $y = \text{fy\_rel}\cdot l_y$ 的 $x$-$z$ 面（过光轴）上初始电子-空穴对的体密度，按吸收公式在 `200 × 200` 网格上算出（`TH2D`，`COLZ` 色标） | 横轴 `x [μm]`，纵轴 `z [μm]`，色标 `Pair density [μm⁻³]` |
 | `nodes/current/<节点号>/plots/current_0.png`, `.pdf`, `.root`（多个读出电极时为 `current_0_electrode_<k>`） | [`current`](../stages/current.md)（`draw_currents`） | 第 $k$ 号非零电流电极（从 `1` 起）经激光时间脉冲卷积后的 `electrons`、`holes`、`total`（开启雪崩时含 `gain electrons`、`gain holes`）感应电流波形 | 横轴 `Time [ns]`，纵轴 `Current [μA]` |
-| `analysis/points.png` | [`analysis`](../stages/analysis.md) | 跨焦点位置扫描的收集电荷与信号随焦点位置变化曲线 | 横轴相对焦点位置（无量纲），纵轴按对应物理量标注单位 |
+| `analysis/trend.png`、`.pdf` | [`analysis`](../stages/analysis.md) | 跨焦点位置扫描的收集电荷与信号随焦点位置变化曲线 | 横轴相对焦点位置（无量纲），纵轴按对应物理量标注单位 |
 
-![NJU-PiN 激光注入二维载流子分布](../images/tct-carriers-2d-NJU-PiN.png)
+![NJU-PiN 激光注入二维载流子分布](../../images/tct/carriers-2d-NJU-PiN.png)
 
 `NJU-PiN` 在顶面紫外激光 `PIL037_top_SiC` 照射下由 `draw_nocarrier2D` 输出的过光轴 $x$-$z$ 面上初始电子-空穴对的体密度。
 
-![NJU-PiN TCT 感应电流波形](../images/tct-current-NJU-PiN.png)
+![NJU-PiN TCT 感应电流波形](../../images/tct/current-NJU-PiN.png)
 
 `NJU-PiN` 在 `tct` 测试中由 `write_laser_currents` 输出的读出电极电子分量、空穴分量与总感应电流波形。

@@ -151,7 +151,7 @@ flowchart LR
 2. **求解电势、电场、权重势与俘获率（`create_parameter.py`、`solver_section.py`、`loop_section.py`）**：`bias` 和 `temperature` 定出接触边界条件与半导体参数（热电压、禁带宽度、本征载流子浓度），在 `dimension` 维网格上求出电势和电场，并按 `read_out_contact` 求出各读出电极的权重势；给定 `irradiation` 时同时求出缺陷空间电荷与电子、空穴俘获率。`area_factor` 将一维（乘以面积 $l_x l_y$，单位 `cm^2`）或二维（乘以垂直于求解平面的长度，单位 `cm`）网格求出的比电流、比电容换算为整块器件的 IV、CV 值。
 3. **未耗尽体区阻抗提取（`conductive.py`、`save_milestone.py`）**：一维 DEVSIM 求解在偏压未耗尽整块器件时，将满足 $|N_{\text{net}}| > 0$、$n + p > 0.5|N_{\text{net}}|$ 且电阻率 $\rho = [e(\mu_n n + \mu_p p)]^{-1} \ge 10.0\ \Omega\cdot\text{cm}$ 的相邻节点区间积分为未耗尽层厚度 $w_{\text{undep}}$（`cm`）、比电阻 $r_{\text{undep}} = \sum \bar{\rho}\,\Delta x$（`Ohm cm^2`）和比电容 $c_{\text{undep}} = 10^{12}\varepsilon / w_{\text{undep}}$（`pF/cm^2`），其中 $e$ 为元电荷（C），$\mu_n$、$\mu_p$ 为电子、空穴迁移率（$\text{cm}^2/(\text{V}\cdot\text{s})$），$n$、$p$ 为电子、空穴浓度（$\text{cm}^{-3}$），$\varepsilon$ 为材料介电常数（F/cm），存入 `<V>V.undepleted.json`，并在读出环节通过 `area_factor` 换算为整块器件的未耗尽层电阻和电容。
 
-![HPK-Si-PiN 掺杂沿深度分布](../images/field-doping-HPK-Si-PiN.png)
+![HPK-Si-PiN 掺杂沿深度分布](../../images/field/doping-HPK-Si-PiN.png)
 
 `HPK-Si-PiN` 沿深度分布的三段掺杂：表面 `0–1 um` 为 `Donors` 的 $1.0\times 10^{19}\ \text{cm}^{-3}$ $n^+$ 层，`1–50 um` 为 `Acceptors` 的 $5\times 10^{12}\ \text{cm}^{-3}$ 灵敏体区，`50–151 um` 为 $1.0\times 10^{18}\ \text{cm}^{-3}$ $p^+$ 衬底（`l_z = 50` `um` 为灵敏层厚度，`field` 网格延伸到衬底底部的背电极）。
 

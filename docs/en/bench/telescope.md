@@ -195,6 +195,6 @@ The `plots/` directory of each stage node contains the following plots (see [Plo
 | analysis | `track_<event>` | Left: $x$-$z$; right: $y$-$z$. Cluster centroids of each layer (filled for reference layers, open for DUTs) and the fitted straight line from Eq. (2) (`z [mm]`, `x [μm]`, `y [μm]`) | First `analysis.plots` selected events |
 | analysis | `residual_<slot>` | Left: $r_x$; right: $r_y$. DUT residual distributions (`Residual x [μm]`, `Events`) with Gaussian fit curves and $\sigma_{\text{Tol}}$ labeled | One per DUT |
 
-![Electrons collected per pixel on one TAICHU3 layer](../images/telescope-pixel-charge.png)
+![Electrons collected per pixel on one TAICHU3 layer](../../images/telescope/pixel-charge.png)
 
 Number of electrons collected by each pixel on one `TAICHU3` layer in a single event ($60 \times 60$ pixel array; horizontal axis `X` is pixel column index, depth axis `Y` is pixel row index, vertical axis is collected electron count, unit: count).

@@ -119,15 +119,15 @@ The program launches two single-job processes sequentially to solve the `100 V` 
 - The curve data are `simIV0to100.0.root`, `simIV0to200.0.root`, `simCV0to100.0.root`, `simCV0to200.0.root`; the 1D profile plots are all in `plots/`, each with `.png` and `.pdf`: `iv`, `cv`, `doping`, and `electric_field_0V`, `electric_field_100V`, `electric_field_200V`, `potential_0V`, `potential_100V`, `potential_200V`, `weighting_potential_top_100V`, `weighting_potential_top_200V`, `weighting_field_top_100V`, `weighting_field_top_200V` (no irradiation, so no trapping-rate plots).
 - The experiment records the `field` node IDs for the `voltage_100` and `voltage_200` scan points in `points.json`, and points the symlinks `points/voltage_100/field` and `points/voltage_200/field` to their corresponding field nodes (use `raser status` to inspect the status and node ID of each stage at each point in the parameter table).
 
-![HPK-Si-PiN IV curve](../images/field-iv-HPK-Si-PiN.png)
+![HPK-Si-PiN IV curve](../../images/field/iv-HPK-Si-PiN.png)
 
 Dark current (IV) curve of `HPK-Si-PiN` from the reverse bias sweep.
 
-![HPK-Si-PiN CV curve](../images/field-cv-HPK-Si-PiN.png)
+![HPK-Si-PiN CV curve](../../images/field/cv-HPK-Si-PiN.png)
 
 CV curve of `HPK-Si-PiN` capacitance versus reverse bias voltage.
 
-![HPK-Si-PiN 200 V 1D electric field profile](../images/field-efield-HPK-Si-PiN-200V.png)
+![HPK-Si-PiN 200 V 1D electric field profile](../../images/field/efield-HPK-Si-PiN-200V.png)
 
 1D electric field profile of `HPK-Si-PiN` along depth at `200 V` bias.
 

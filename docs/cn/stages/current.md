@@ -88,11 +88,11 @@ ValueError: <deposits_path> holds no deposit in the detector <detector>: there i
 
 `index` 长度为 `196`，表示 $200$ 个记录事例中有 $196$ 个的感应电流写进了 `current`，其余 $4$ 个在全部时间箱上都为零。下游读取时按 `stored` 与 `count` 切分 `index` 和 `current`，把未存储的电极还原为零。
 
-![HPK-Si-PiN 单事例载流子漂移路径](../images/current-drift-path-HPK-Si-PiN.png)
+![HPK-Si-PiN 单事例载流子漂移路径](../../images/current/drift-path-HPK-Si-PiN.png)
 
 `HPK-Si-PiN` 单个事例的载流子漂移路径图，上方为器件三维体区内的轨迹，下方为 $x$-$z$ 平面内的沉积点、电子与空穴轨迹（坐标单位 $\mu\text{m}$）。
 
-![HPK-Si-PiN 单事例感应电流](../images/current-event-HPK-Si-PiN.png)
+![HPK-Si-PiN 单事例感应电流](../../images/current/event-HPK-Si-PiN.png)
 
 `HPK-Si-PiN` 单个事例在 `top` 电极上的感应电流图，分别画出电子分量、空穴分量与总感应电流随时间的变化（横轴单位 $\text{s}$，纵轴单位 $\text{A}$）。
 
