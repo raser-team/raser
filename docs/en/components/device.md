@@ -59,7 +59,7 @@ The only keys users can set in a device JSON file are listed in the tables below
 
 | Key | Default | Unit | Meaning |
 | --- | --- | --- | --- |
-| `det_name` | JSON filename stem (`path.stem`) | None | Detector name, also assigned to the `det_name`, `device`, and `region` attributes of `Detector` |
+| `det_name` | JSON filename stem (`path.stem`) | None | Detector name, also assigned to the `det_name` and `device` attributes of `Detector`; the regions of a mesh are not named after it, see the mesh construction step of [`core/field`](../core/field.md) |
 | `det_model` | None (required) | None | Detector structural model identifier; takes one of `"planar"`, `"lgad"`, `"ilgad_planar"`, `"strip"`, `"lgadstrip"`, `"pixel"`, `"lgad_pixel"`, `"lgadpixel"`, `"3D_pixel"`, `"3D_column_series"` in the library; parallel-plate junction capacitance estimation is skipped when the lowercased string contains `"3d"` |
 | `material` | None (required) | None | Semiconductor material name: `"Si"`, `"SiC"`, `"Diamond"` (passed to `Material` in [`core/model`](../core/model.md) and [`core/deposit`](../core/deposit.md)), or `"GaN"` (HEMT transport branch) |
 | `l_x`, `l_y`, `l_z` | None (required) | `um` | Full detector dimensions along $x$, $y$, and $z$, with $z$ as the thickness direction |

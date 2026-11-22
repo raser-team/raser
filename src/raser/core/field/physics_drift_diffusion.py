@@ -361,14 +361,22 @@ def CreateOxidePotentialOnly(device, region, update_type="default"):
 
 
 #in the future, worry about workfunction
-def CreateOxideContact(device, region, contact):
+def CreateWeightingContact(device, contact):
+    """The contact holds the potential at its bias, without the built-in
+    potential of the doping under it: what a weighting potential asks for."""
     set_parameter(name = "Permittivity", value=9.76*8.85e-14)
-    conteq="Permittivity *ElectricField"
     contact_bias_name  = GetContactBiasName(contact)
     contact_model_name = GetContactNodeModelName(contact)
     eq = "Potential - {0}".format(contact_bias_name)
     CreateContactNodeModel(device, contact, contact_model_name, eq)
     CreateContactNodeModelDerivative(device, contact, contact_model_name, eq, "Potential")
+
+
+def CreateOxideContact(device, region, contact):
+    CreateWeightingContact(device, contact)
+    conteq="Permittivity *ElectricField"
+    contact_bias_name  = GetContactBiasName(contact)
+    contact_model_name = GetContactNodeModelName(contact)
 
     #TODO: make everyone use dfield
     if not InEdgeModelList(device, region, contactcharge_edge):

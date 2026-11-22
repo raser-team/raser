@@ -306,7 +306,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 网格属于 `field`：器件文件里没有 `mesh` 段，几何（各层厚度、材料、电极在哪一面）是器件的固有性质；用哪一套网格由 `field` 段的设置指定。
 
 1. **取坐标轴**：`mesh_axes` 给出存盘坐标对应的器件轴：1D 为 `("z",)`；2D 为 `("x", "y")`（所选网格在横向 $x$-$y$ 平面）或 `("z", "x")`；3D 为 `("x", "y", "z")`（所选网格由 `sde` 生成）或 `("z", "x", "y")`。DEVSIM 内部长度单位为 cm。
-2. **建网格**（`DevsimMesh.mesh_define`）：求单晶胞拼接的权重场时（$s > 0$）调用 `createRowOfCells`；否则 1D 用所选一维网格的 `mesh_line`、`region`、`contact`；2D 用所选的 Gmsh 网格文件或内置二维网格（`mesh_line`、`region`、`contact`）；3D 一律读 Gmsh 网格文件。`dimension` 不是 1、2、3 时抛出 `ValueError`。
+2. **建网格**（`DevsimMesh.mesh_define`）：求单晶胞拼接的权重场时（$s > 0$）调用 `createRowOfCells`；否则 1D 用所选一维网格的 `mesh_line`、`region`、`contact`；2D 用所选的 Gmsh 网格文件或内置二维网格（`mesh_line`、`region`、`contact`）；3D 一律读 Gmsh 网格文件。`dimension` 不是 1、2、3 时抛出 `ValueError`。网格里放半导体的区域是主区域：`main_region(mesh)` 取所选网格 `region` 列表中 `material` 为 `"Silicon"`、`"SiliconCarbide"` 或 `"Diamond"` 的一项，返回它的 `region` 名；这样的项不是恰好一项时抛出 `ValueError`，写明器件名和各项的名字、材料。区域的名字由网格自己起，与器件名无关，库里的网格写 `"bulk"`；Gmsh 网格文件里物理组的名字写在 `gmsh_name`，不随之改。参数、方程、掺杂、存盘时读的模型都建在主区域上。`<V>V.devsim` 存点里记着区域名，区域改名之前解出的存点不能用来求单点电容，要重解。
 3. **权重场的材料与掺杂**：求权重场时 `_regions` 把每个区域材料换成 `"gas"`（内置 2D 网格里的 `"air"` 区域保留；Gmsh 网格不保留），`setDoping` 把掺杂换成 `Acceptors = "0"`、`Donors = "1"`。
 4. **掺杂**：`Acceptors` 取 `doping.Acceptors`，有 `doping.Acceptors_ir` 时以 `+` 相接；`Donors` 同理；`NetDoping = Donors - Acceptors`。不求权重场的 1D 器件画 `plots/doping`。最后写出 `<det_name>.dat`（Tecplot）。
 5. **HEMT 界面**：`hemt_physics.transport_model == "drift_diffusion_v1"` 时 2D 网格还加所选二维网格的 `interface`，没有界面时抛出 `ValueError`。
