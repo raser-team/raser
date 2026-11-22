@@ -88,9 +88,9 @@ where $W$ is the mesh depth ($\text{cm}$), $I_{\text{bd}}$ is the breakdown inte
 
 ### Irradiation Defects and Trapping Rates
 
-Irradiation introduces deep-level defects into the band gap. Defects are occupied by electrons according to SRH statistics; charged defects enter the Poisson equation, empty defects trap electrons, filled defects trap holes, and all defects contribute to recombination. For each defect $i$:
+Irradiation introduces deep-level defects into the band gap, and the material carries defects left from its growth. Defects are occupied by electrons according to SRH statistics; charged defects enter the Poisson equation, empty defects trap electrons, filled defects trap holes, and all defects contribute to recombination. For each defect $i$:
 
-$$N_{t,i} = g_i\,\Phi, \qquad f_i = \frac{c_{n,i}\,n + c_{p,i}\,p_{1,i}}{c_{n,i}(n + n_{1,i}) + c_{p,i}(p + p_{1,i})} \tag{12}$$
+$$N_{t,i} = N_{0,i} + g_i\,\Phi, \qquad f_i = \frac{c_{n,i}\,n + c_{p,i}\,p_{1,i}}{c_{n,i}(n + n_{1,i}) + c_{p,i}(p + p_{1,i})} \tag{12}$$
 
 $$U_r = \sum_i \frac{N_{t,i}\,c_{n,i}\,c_{p,i}\,(np - n_i^2)}{c_{n,i}(n + n_{1,i}) + c_{p,i}(p + p_{1,i})} \tag{13}$$
 
@@ -100,13 +100,13 @@ $$n_{1,i} = N_c \exp\!\Bigl(-\frac{E_g/2 - E_{t,i}}{kT}\Bigr), \qquad p_{1,i} = 
 
 where:
 
-- $\Phi$: irradiation fluence, $\text{cm}^{-2}$; $g_i$: defect introduction rate (`g_int`), $\text{cm}^{-1}$; $N_{t,i}$: defect concentration, $\text{cm}^{-3}$;
+- $\Phi$: irradiation fluence, $\text{cm}^{-2}$; $g_i$: defect introduction rate (`g_int`), $\text{cm}^{-1}$; $N_{0,i}$: background concentration independent of the fluence (`N_t0`, `0` when the defect dictionary does not give it), $\text{cm}^{-3}$; $N_{t,i}$: defect concentration, $\text{cm}^{-3}$;
 - $f_i$: fraction of defects occupied by electrons (dimensionless); acceptor defects contribute $N_t^{-} = \sum N_{t,i} f_i$, and donor defects contribute $N_t^{+} = \sum N_{t,i}(1 - f_i)$;
 - $E_{t,i}$: defect energy level (`E_t_ev`, referenced to midgap and positive toward the conduction band, $\text{eV}$, multiplied by $1.602176634\times10^{-19}\ \text{J/eV}$ to convert to J); $E_g$: band gap, J; $N_c$, $N_v$: conduction and valence band effective densities of states, $\text{cm}^{-3}$;
 - $\sigma_{n,i}$, $\sigma_{p,i}$: electron and hole capture cross sections, $\text{cm}^2$; $v_{\text{th}}$ = `vel_mean` $= 10^7\ \text{cm/s}$;
 - $\Gamma_n$, $\Gamma_p$: electron and hole trapping rates (`TrappingRate_n`, `TrappingRate_p`), $\text{s}^{-1}$, saved to disk and supplied to [current.md](current.md) via `DevsimField.get_trap_e` and `get_trap_h`.
 
-`physics_irradiation.CreateIrradiation` selects the defect table according to `irradiation.irradiation_model`; all other names take the parameter `custom_defect`, which defaults to an empty table. Irradiation terms are created when an `irradiation` block is present and the electric field is being solved; otherwise trapping rates are `0`. If `"type"` in a defect dictionary is neither `"donor"` nor `"acceptor"`, a `ValueError` is raised. `"Schwandt"` is the Hamburg Penta Trap Model [15], `"XingChen"` is our group's fit to proton-irradiated silicon [16], and `"Perugia"` is the three-level model for p-type FZ silicon [17]:
+`physics_irradiation.CreateIrradiation` selects the defect table according to `irradiation.irradiation_model`; `"CommonDefect"` takes the diamond background-defect table in a `Diamond` region and the SiC table in other regions; all other names take the parameter `custom_defect`, which defaults to an empty table. Irradiation terms are created when an `irradiation` block is present and the electric field is being solved; otherwise trapping rates are `0`. If `"type"` in a defect dictionary is neither `"donor"` nor `"acceptor"`, a `ValueError` is raised. `"Schwandt"` is the Hamburg Penta Trap Model [15], `"XingChen"` is our group's fit to proton-irradiated silicon [16], and `"Perugia"` is the three-level model for p-type FZ silicon [17]:
 
 | Model | Defect | Type | `E_t_ev` [eV] | `g_int` [$\text{cm}^{-1}$] | $\sigma_n$ [$\text{cm}^2$] | $\sigma_p$ [$\text{cm}^2$] |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -125,6 +125,13 @@ where:
 | | `CiOi` | donor | `-0.56+0.36` | `0.3780` | `3.230e-17` | `2.036e-14` |
 | `"CommonDefect"` (SiC) | `Z12` | acceptor | `1.63-0.67` | `1` | `3e-16` | `2e-12` |
 | | `EH67` | donor | `1.63-1.65` | `1` | `2e-17` | `3e-17` |
+| `"CommonDefect"` (diamond) | `BoronAcceptor` | acceptor | `-5.47/2+0.37` | `0` | `1.0e-15` | `2.0e-14` |
+| | `SubstitutionalNitrogen_P1` | donor | `5.47/2-1.70` | `0` | `2.0e-14` | `1.0e-15` |
+| | `VacancyRelated` | acceptor | `-5.47/2+2.00` | `0` | `1.0e-14` | `1.0e-14` |
+
+Background concentrations `N_t0` of the diamond table: boron `2.0e14`, nitrogen `5.0e14`, vacancy `1.0e14` $\text{cm}^{-3}$. The levels are the boron acceptor at $E_v + 0.37\ \text{eV}$ [23] and the substitutional nitrogen donor at $E_c - 1.70\ \text{eV}$ [24]; the vacancy exists in the negative charge state $V^-$ [25] and is treated as an acceptor, with its level at $E_v + 2.00\ \text{eV}$. The background concentrations, the capture cross sections and the vacancy level are starting values to be fitted to IV, TCT and CCE data.
+
+A `Diamond` region follows peiyao, so that undoped diamond can be solved: $n$ and $p$ in Eqs. (12)–(14) are taken as $\max(n, n_f)$ and $\max(p, n_f)$, with $n_f$ = `CARRIER_FLOOR` $= 1\ \text{cm}^{-3}$; every defect adds $N_{t,i} f_i$ to the trapped electrons and $N_{t,i}(1 - f_i)$ to the trapped holes, whether donor or acceptor; the potential of an ohmic contact equals its bias, and an undoped node at a contact holds $n_f$ electrons and holes; the drift-diffusion start is $\max(N_{\text{net}}, n_f)$ and $\max(-N_{\text{net}}, n_f)$. $n_f$ and this way of counting the charge have no source; they are assumptions that let the equations be solved.
 
 ### Weighting Potential
 
@@ -321,9 +328,9 @@ When solving for the electric field, `solver_section.main` executes in the follo
 6. **Zero bias**: solves and saves at $0\ \text{V}$, writing `0V.dd` and `0V.devsim`, and records `0.0` in `solved.potential` in `node.json`.
 7. **Target and stop points**: target bias $V_g$ comes from `field.voltage`, falling back to `bias.voltage` when `null`. One field node corresponds to one target bias; intermediate bias files stored in the node are checkpoints saved along the ramp to $V_g$. Saved points are $\pm k\Delta_s$ ($k = 1, \dots, \lfloor |V_g|/\Delta_s\rfloor$, $\Delta_s$ = `saved_voltage_interval`), appending $V_g$ if the last point falls short of $|V_g|$; curve points are generated in the same way using `curve_voltage_interval`. Signs follow $V_g$. Raises `ValueError` if an interval is `0`.
 8. **Stepping**: initial step size $\Delta$ = `voltage_step.initial`, with sign following $V_g$. Each step tries $V_t = V_c + \Delta$; if $|V_t|$ passes the nearest stop point (smallest magnitude among $V_g$, next saved point, and next curve point), $V_t$ is clamped to that stop point.
-9. **Single-step solve** (`loop_solver`): initialized from the previous solution; once two solutions exist, the potential is linearly extrapolated to $V_t$ from the last two points. After setting the bias, a DC solve is run with `voltage_step` tolerances.
+9. **Single-step solve** (`loop_solver`): initialized from the previous solution, with the electron and hole densities no lower than the smallest positive float; once two solutions exist, the potential is linearly extrapolated to $V_t$ from the last two points. After setting the bias, a DC solve is run with `voltage_step` tolerances.
 10. **Success**: $\Delta \leftarrow \Delta \times$ `increase_factor`. When $V_t$ is a curve point, records the voltage, current $(I_n + I_p)\times$ `area_factor` (A), and the capacitance and noise described below. When $V_t$ is a saved point or $V_g$, saves to disk, writing `<V_t>V.dd` and `<V_t>V.devsim`, and records it in `solved.potential`; finishes upon reaching $V_g$.
-11. **Failure**: on any DEVSIM error in a single step, writes `last_solvable.dd` first. If the error message contains `"Convergence failure"`, sets $\Delta \leftarrow (V_t - V_c)\times$ `decrease_factor` and retries; any other DEVSIM error is re-raised as is. If $|\Delta| < 10^{-7}\ \text{V}$, stops and raises `RuntimeError("Step size too small (less than 1e-7). Exiting loop.")`.
+11. **Failure**: on any DEVSIM error in a single step, writes `last_solvable.dd` first. If the error message contains `"Convergence failure"` or `"negative or zero value before update"`, sets $\Delta \leftarrow (V_t - V_c)\times$ `decrease_factor` and retries; any other DEVSIM error is re-raised as is. If $|\Delta| < 10^{-7}\ \text{V}$, stops and raises `RuntimeError("Step size too small (less than 1e-7). Exiting loop.")`.
 12. **Wrap-up**: writes `read` to `node.json`, plots the IV curve; in CV mode plots CV and $1/C^2$ curves; plots the noise curve when the noise switch is enabled.
 
 ### Small-Signal Capacitance and Noise
@@ -567,3 +574,6 @@ The slices and profiles of 2D and 3D plots follow `mesh_axes`, and the axis titl
 - [20] A. Das, S. P. Duttagupta, “TCAD simulation for alpha-particle spectroscopy using SiC Schottky diode”, Radiat. Prot. Dosim. 167 (2015) 443, doi:10.1093/rpd/ncu369
 - [21] Z. Li et al., “Mechanisms of proton irradiation-induced defects on the electrical performance of 4H-SiC PIN detectors”, JINST 21 (2026) P03010, doi:10.1088/1748-0221/21/03/P03010, arXiv:2503.09016
 - [22] S. Mägdefessel, R. Mori, N. Sorgenfrei, U. Parzefall, “Understanding the frequency dependence of capacitance measurements of irradiated silicon detectors”, arXiv:2301.09371, eqs. (2), (3)
+- [23] A. T. Collins, A. W. S. Williams, “The nature of the acceptor centre in semiconducting diamond”, J. Phys. C: Solid State Phys. 4 (1971) 1789, doi:10.1088/0022-3719/4/13/030
+- [24] R. G. Farrer, “On the substitutional nitrogen donor in diamond”, Solid State Commun. 7 (1969) 685, doi:10.1016/0038-1098(69)90593-6
+- [25] A. Mainwood, A. M. Stoneham, “Stability of electronic states of the vacancy in diamond”, J. Phys.: Condens. Matter 9 (1997) 2453, doi:10.1088/0953-8984/9/11/013

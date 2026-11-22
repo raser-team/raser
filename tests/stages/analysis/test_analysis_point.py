@@ -252,6 +252,11 @@ def test_analysis_holds_the_results_of_the_points_whose_jobs_are_done(tmp_path, 
     assert views["voltage_300"].resolve() != views["voltage_100"].resolve()  # a node for each point
     assert (views["voltage_100"] / "plots" / "time_difference.png").is_file()
     assert not (root / "points" / "voltage_200").exists()
+    assert {name: result["deposited_energy"] for name, result in results.items()} == {
+        name: {"events": 100, "mean": pytest.approx(0.1), "std": pytest.approx(0.0, abs=1e-12)} for name in ("voltage_300", "voltage_100")
+    }
+    assert (place / "currents.png").exists()
+    assert (place / "deposited_energy.png").exists()
     # one row per point that ran, with the option that differs between them
     rows = json.loads((place / "points.json").read_text())
     assert [(row["point"], row["voltage"], row["events"]) for row in rows] == [

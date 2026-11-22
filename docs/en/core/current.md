@@ -52,7 +52,39 @@ where:
 - $N_0$: initial signed carrier count at time $t_0$ ($\text{s}$) (dimensionless);
 - $\Gamma(\mathbf{r})$: carrier trapping rate at position $\mathbf{r}$ ($\mu\text{m}$), $\text{s}^{-1}$, provided by `DevsimField.get_trap_e` (electrons) and `DevsimField.get_trap_h` (holes) in [field.md](field.md).
 
-Trapping decay is evaluated only when the device has a non-`None` `irradiation_model`; otherwise trapping is omitted (equivalent to $\Gamma = 0$). Deep-level defect trapping kinetics are from Ref. [3], and the effective trapping rate and exponential survival model in irradiated silicon detectors are from Ref. [4].
+Trapping, release, and lifetime decay are set by the following device keys, whose notation is given in [Keys Read from the Device File](#keys-read-from-the-device-file):
+
+- When `enable_trapping` is true, carriers are trapped at the field's trapping rate $\Gamma$; when false, $\Gamma = 0$; the name of `irradiation_model` plays no part. When the key is absent the former rule holds: trapping occurs if `irradiation_model` is not `None`, and not otherwise.
+- When `enable_lifetime_decay` is true, finite-lifetime decay is added, with the lifetime $\tau$ of electrons and holes taken from `electron_lifetime` and `hole_lifetime` ($\text{s}$); both keys must be written. The default is false.
+- The `trapping_model` block gives `mode`, the release times, the trapping-rate scale, and the spatial variation; defaults are `"deterministic"`, no release, scale $1$, and no spatial variation.
+
+The total rate at which a carrier leaves free motion is
+
+$$\Lambda(\mathbf{r}) = s\, f(\mathbf{r})\, \Gamma(\mathbf{r}) + \frac{1}{\tau}$$
+
+where $s$ is the scale of that carrier in `trapping_rate_scale` (default $1$), $f(\mathbf{r})$ is the spatial-variation factor ($1$ when not enabled), and $1/\tau$ is included only when `enable_lifetime_decay` is true; the first term is $0$ when `enable_trapping` is false.
+
+With `mode` `"deterministic"` (default), the surviving number is the mean, Eq. (4) with $\Lambda$ in place of $\Gamma$: $N(t) = N_0 \exp\!\left(-\int \Lambda\, dt'\right)$. This mode has no release.
+
+With `mode` `"stochastic"`, the cluster is sampled as $n = \max(\mathrm{round}(|N_0|), 1)$ carriers, each of charge $N_0 / n$. In each step of duration $\Delta t$:
+
+- a carrier in motion leaves it with probability $1 - e^{-\Lambda \Delta t}$; the fraction $s f \Gamma / \Lambda$ of those is trapped and the rest are lost to the lifetime, which do not return;
+- a carrier trapped before the step is released with probability $1 - e^{-\Delta t / t_{\text{rel}}}$ and rejoins the carriers in motion, $t_{\text{rel}}$ being `electron_release_time` or `hole_release_time` ($\text{s}$); without it nothing is released. A carrier trapped in this step is not released in it;
+- the numbers for each probability are binomial draws.
+
+The surviving number of a step is the mean of the numbers in motion at its start and end, times the charge of one carrier, in line with the step midpoint taken in the deterministic mode.
+
+The spatial variation (`trapping_model.spatial_variation`, when `enabled` is true) writes $f$ as the product of an interface enhancement and a bulk variation:
+
+$$f(\mathbf{r}) = \left[1 + (F - 1)\, e^{-d/\lambda}\right]_{d \le d_0} \cdot \exp\!\left(\sigma g_c - \frac{\sigma^2}{2}\right)$$
+
+where $d = \min(z, l_z - z)$ is the distance to the two contacts ($\mu\text{m}$), $d_0$, $\lambda$, $F$ are `depth_um`, `profile_um`, `factor` of `interface` (one for electrons and one for holes; the first factor is $1$ for $d > d_0$), $\sigma$ is `lognormal_sigma`, and $g_c$ is the standard normal number of the cubic cell $c$ of side `cell_size_um`. $\exp(\sigma g - \sigma^2/2)$ has mean $1$ and leaves the mean trapping rate unchanged. $g_c$ is fixed within a cell, whichever cluster reaches it first.
+
+All random numbers come from streams derived from the job seed: the stochastic mode uses `stream("trap_electron")` and `stream("trap_hole")`; the $g_c$ of a cell is the first number of a stream named by the job seed, `spatial_variation.seed`, and the cell index. The results repeat for the same job seed; after `seed_generators` seeds anew, all are drawn anew.
+
+The following values are as written in peiyao's device file and have **no source, to be fitted**: $\sigma = 0.3$, `cell_size_um` $= 25\ \mu\text{m}$, interface `depth_um` $= 5\ \mu\text{m}$, `profile_um` $= 2\ \mu\text{m}$, `factor` $= 3$ (electrons and holes). `electron_release_time` and `hole_release_time` likewise have no source; his file does not write them, so nothing is released. These keys have no default in the code: with the spatial variation or the interface enabled, all must be written.
+
+Deep-level defect trapping kinetics are from Ref. [3], and the effective trapping rate and exponential survival model in irradiated silicon detectors are from Ref. [4].
 
 ### Shockley-Ramo Induction
 
@@ -163,7 +195,7 @@ Starting from $(\mathbf{r}_0, t_0)$, a single cluster repeatedly calls `advance`
 
 ### Surviving Carrier Count under Trapping
 
-After all clusters of one polarity finish drifting, `drift_all` computes surviving counts under trapping in one pass. When `my_d.irradiation_model is None`, trapping is skipped and `remaining` is set to `None`. Otherwise, for each path $\{(\mathbf{r}_k, t_k)\}_{k=0}^{M-1}$ of $M$ points ($M - 1$ steps):
+After all clusters of one polarity finish drifting, `drift_all` computes surviving counts in one pass. `Trapping.from_device(my_d)` reads the trapping settings; when `enable_trapping` and `enable_lifetime_decay` are both false (without these keys, when `irradiation_model` is `None`), it is skipped and `remaining` is set to `None`. Otherwise, for each path $\{(\mathbf{r}_k, t_k)\}_{k=0}^{M-1}$ of $M$ points ($M - 1$ steps), `mode` `"stochastic"` takes a separate route from item 5; items 1 to 4 below are the `"deterministic"` algorithm, where $\Gamma_k$ stands for $\Lambda_k = s f \Gamma_k + 1/\tau$ (just $\Gamma_k$ without the new keys):
 
 1. Select `my_f.get_trap_h_cached` (holes) or `my_f.get_trap_e_cached` (electrons) by carrier charge sign, read trapping rate $\Gamma_k$ ($\text{s}^{-1}$, $k = 0, \dots, M - 2$) at the **start** position $\mathbf{r}_k$ of each step, and treat it as constant over $[t_k, t_{k+1}]$.
 2. Compute step decay $d_k = \Gamma_k (t_{k+1} - t_k)$.
@@ -171,6 +203,8 @@ After all clusters of one polarity finish drifting, `drift_all` computes survivi
    $$N_{k + 1/2} = N_0 \exp\!\left(-\sum_{j=0}^{k-1} d_j - \frac{1}{2} d_k\right)$$
 4. When the surviving count at an arbitrary fraction $\eta \in [0, 1]$ within a step is needed (`surviving_at`, used for gain-layer crossing in 1D planar gain), evaluate:
    $$N_{k + \eta} = N_0 \exp\!\left(-\sum_{j=0}^{k-1} d_j - \eta\, d_k\right)$$
+
+5. Stochastic mode: following the steps in [Trapping](#trapping), draw the numbers trapped, lost, and released from the $n$ carriers step by step; the surviving number of step $k$ is the mean of the numbers in motion at its start and end times the charge of one carrier (`stochastic_survivors`). The 1D planar gain has no interpolation within a step at the crossing; it takes this number of the step the crossing lies in.
 
 When `count_ends` tallies carrier counts by stop reason, it takes unsigned values: if trapping is enabled and the path took at least one step, it takes the last step's midpoint surviving count $|N_{M - 3/2}|$, otherwise the initial count $|N_0|$.
 
@@ -269,7 +303,8 @@ Limitation: this model omits junction electric fields and drift, $z$-direction m
 
 ### Module and Function Responsibilities
 
-- `drift.py`: implements single-cluster transport and per-step physics. `advance` performs one step advance and stop checks, and `drift` loops a cluster until stopped; `induced_charges` computes Shockley-Ramo induced charges per step on a specified electrode; `surviving` and `surviving_at` compute surviving carrier counts under trapping.
+- `drift.py`: implements single-cluster transport and per-step physics. `advance` performs one step advance and stop checks, and `drift` loops a cluster until stopped; `induced_charges` computes Shockley-Ramo induced charges per step on a specified electrode; `surviving` and `surviving_at` compute surviving carrier counts under trapping, handing over to `trapping.py`.
+- `trapping.py`: `Trapping` reads the trapping settings of the device; `survivors` and `survivors_at` give the deterministic surviving numbers, `stochastic_survivors` does the random sampling, and `spatial_factor` gives the spatial-variation factor.
 - `cal_current.py`: implements event-level transport orchestration, binning, avalanche multiplication, laser convolution, and batch output. `CalCurrent` handles time-window setup, spatial filtering, carrier drift, and binning; `CalCurrentGain` subclasses `CalCurrent` to execute `"planar_integral"` or `"local_path"` multiplication selected by `gain_algorithm`; `CalCurrentLaser` performs laser pulse convolution using `pulse_in_bins`; `spread_over_bins`, `fill_histogram`, `electrode_names`, `split_at_conductor_edges`, `deposits_in`, and `log_ends` are helper functions; `write_induced_currents` and `write_laser_currents` write event results to HDF5 files and trigger plotting.
 - `diffusion.py`: provides `time_bin` and `collect_by_diffusion` for 2D diffusion-only collection in field-free pixel sensors.
 - `currents.py`: defines `EventCurrents`, `Currents`, `append_currents`, and `read_currents` for sparse per-event appending to `current.h5` and full-electrode restoration on read.
@@ -298,7 +333,18 @@ Users can configure only the keys listed in the table below; the mobility model 
 | `det_name`, `det_model` | `det_name` defaults to filename stem; `det_model` has no default (required for plotting) | None | Device name (used in error messages) and model identifier (used in `<det_model>_drift_path` filenames) |
 | `max_drift_time_ns` | None (estimated from the device when absent, see step 1 of [Single-Step Advance and Stop Conditions](#single-step-advance-and-stop-conditions)) | $\text{ns}$ | Maximum drift duration of a single cluster, a positive finite number |
 | `material`, `temperature` | None (required) | None, $\text{K}$ | Material name (passed to `Material` in [model.md](model.md)) and device temperature $T$ |
-| `irradiation.irradiation_model` | `None` if no `irradiation` block | None | Maps to `irradiation_model`; enables carrier trapping decay when non-`None` |
+| `irradiation.irradiation_model` | `None` if no `irradiation` block | None | Maps to `irradiation_model`; without `enable_trapping`, carrier trapping is enabled when non-`None` |
+| `enable_trapping` | Whether `irradiation_model` is non-`None`, when absent | None | When true, carriers are trapped at the field's trapping rate; once written, independent of `irradiation_model` |
+| `enable_lifetime_decay` | `False` | None | When true, adds finite-lifetime decay; `electron_lifetime` and `hole_lifetime` must also be written |
+| `electron_lifetime`, `hole_lifetime` | None (required when `enable_lifetime_decay` is true) | $\text{s}$ | Lifetime $\tau$ of electrons and holes, above $0$ |
+| `trapping_model.mode` | `"deterministic"` | None | `"deterministic"` is the exponential-decay mean, `"stochastic"` is per-carrier random trapping, release, and lifetime loss |
+| `trapping_model.electron_release_time`, `trapping_model.hole_release_time` | No release when absent | $\text{s}$ | Mean release time $t_{\text{rel}}$ of trapped carriers, above $0$; used by `"stochastic"` only |
+| `trapping_model.trapping_rate_scale.electron`, `.hole` | `1` | None | Scale $s$ of the field's trapping rate, not below $0$ |
+| `trapping_model.spatial_variation.enabled` | `False` | None | When true, the trapping rate is multiplied by the spatial-variation factor; all keys below must be written |
+| `trapping_model.spatial_variation.seed`, `.cell_size_um`, `.lognormal_sigma` | None (required when `enabled` is true) | None, $\mu\text{m}$, None | Seed (integer) for the cell numbers, side of the cubic cell, log-normal $\sigma$; values have no source, to be fitted |
+| `trapping_model.spatial_variation.interface.enabled` | `False` | None | When true, adds the trapping enhancement near the contacts |
+| `trapping_model.spatial_variation.interface.depth_um`, `.profile_um`, `.factor.electron`, `.factor.hole` | None (required when `interface.enabled` is true) | $\mu\text{m}$, $\mu\text{m}$, None, None | Range $d_0$, decay length $\lambda$, multiple $F$ at the contact; values have no source, to be fitted |
+| `trapping_model.enabled`, `trapping_model.lifetime_enabled` | Unrestricted when absent | None | Written `false`, switches trapping or lifetime decay off; can switch off only, never on |
 | `enable_gain`, `avalanche_model` | `False`, `None` | None | When both are active, `has_avalanche` is true and enables `CalCurrentGain`; supports `"vanOverstraeten"`, `"Okuto"`, `"Hatakeyama"` |
 | `gain_pair_threshold` | `0.05` | pairs | Minimum accumulated pairs to trigger emission of a new gain cluster in `"local_path"` mode (negative values clamped to `0.0`) |
 | `gain_max_carriers` | `50000` | clusters | Maximum gain clusters allowed per event in `"local_path"` mode; unlimited when $\le 0$ |

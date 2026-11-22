@@ -411,7 +411,7 @@ def main (kwargs):
             except devsim.error as msg:
                 milestone_flag = False
                 goal_flag = False
-                if str(msg).find("Convergence failure") == -1:
+                if "Convergence failure" not in str(msg) and "negative or zero value before update" not in str(msg):
                     raise
                 # of the step that was tried, which a stop may have cut short
                 voltage_step = (v_trial - v_current) * paras['decrease_factor']
