@@ -12,23 +12,22 @@ import csv
 from array import array
 import os
 
+import numpy as np
 import ROOT
+from raser.supports import figures
 ROOT.gROOT.SetBatch(True)
 import matplotlib.pyplot
 
 from raser.supports.output import output
 
-def draw_iv(device,V,I,path):
-
-    fig2=matplotlib.pyplot.figure()
-    matplotlib.pyplot.semilogy(V,I)
-    matplotlib.pyplot.xlabel('Voltage (V)')
-    matplotlib.pyplot.ylabel('Current (A)')
-    matplotlib.pyplot.yscale('log')
-    fig2.savefig(os.path.join(path, "{}_iv.png".format(device)))
-    fig2.clear()
+LEAST_CURRENT = 1e-15  # A, currents of 1 fA and less are not drawn
 
 
+def draw_iv(V, I, path):
+    """Write the IV points as `simIV<min>to<max>.root` and draw `iv` into `<path>/plots`.
+
+    V [V] and I [A] are lists of the same length; the figure shows |V| and |I|.
+    """
     file = ROOT.TFile(os.path.join(path, "simIV{}to{}.root".format(min(V),max(V))), "RECREATE")
     tree = ROOT.TTree("SicarTestIV", "SicarTest with impactgen")
     x = array('d', [0])
@@ -44,42 +43,23 @@ def draw_iv(device,V,I,path):
     file.Write()
     file.Close()
 
-    file = ROOT.TFile(os.path.join(path, "simIV{}to{}.root".format(min(V),max(V))), "READ")
-    tree = file.Get("SicarTestIV")
-
-    graph = ROOT.TGraph(tree.GetEntries())
-    for i, entry in enumerate(tree):
-        x = entry.x
-        y = entry.y
-        graph.SetPoint(i, x, y)
-
-    canvas = ROOT.TCanvas("canvas", "Graph", 800, 600)
-    graph.SetMarkerStyle(ROOT.kFullCircle)
-    graph.SetMarkerSize(0.5)
-    graph.SetMarkerColor(ROOT.kBlue)
-    graph.SetLineColor(ROOT.kWhite)
-    graph.Draw("AP")
-
-    graph.SetTitle("Current vs Voltage")
-    graph.GetXaxis().SetTitle("Voltage(V)")
-    graph.GetYaxis().SetTitle("Current(A)")
-
-    canvas.Update()
-    canvas.SaveAs(os.path.join(path, "simIV{}to{}_picture.root".format(min(V),max(V))))
-    canvas.SaveAs(os.path.join(path, "simIV{}to{}_picture.pdf".format(min(V),max(V))))
-    canvas.Close()
+    figure, axis = figures.new()
+    # a device has no current of 1 fA or less: such a point is numerical, as
+    # the one at 0 V, and is left out of the figure (the file keeps it)
+    bias, current = np.abs(V), np.abs(I)
+    physical = current > LEAST_CURRENT
+    axis.plot(bias[physical], current[physical], color=figures.TOTAL, marker="o", markersize=3)
+    axis.set_yscale("log")
+    axis.set_xlabel(figures.label("Reverse bias", "V"))
+    axis.set_ylabel(figures.label("Leakage current", "A"))
+    figures.save(figure, os.path.join(path, "plots"), "iv")
 
 
-def draw_noise(device,V,noise,path):
-    fig2=matplotlib.pyplot.figure()
-    matplotlib.pyplot.semilogy(V,noise)
-    matplotlib.pyplot.xlabel('Voltage (V)')
-    matplotlib.pyplot.ylabel('Current (A)')
-    matplotlib.pyplot.yscale('log')
-    fig2.savefig(os.path.join(path, "{}_noise.png".format(device)))
-    fig2.clear()
+def draw_noise(V, noise, path):
+    """Write the noise points as `simnoise<min>to<max>.root` and draw `noise` into `<path>/plots`.
 
-
+    V [V] and noise [A] are lists of the same length.
+    """
     file = ROOT.TFile(os.path.join(path, "simnoise{}to{}.root".format(min(V),max(V))), "RECREATE")
     tree = ROOT.TTree("SicarTestnoise", "SicarTest with impactgen")
     x = array('d', [0])
@@ -95,59 +75,20 @@ def draw_noise(device,V,noise,path):
     file.Write()
     file.Close()
 
-    file = ROOT.TFile(os.path.join(path, "simnoise{}to{}.root".format(min(V),max(V))), "READ")
-    tree = file.Get("SicarTestnoise")
-
-    graph = ROOT.TGraph(tree.GetEntries())
-    for i, entry in enumerate(tree):
-        x = entry.x
-        y = entry.y
-        graph.SetPoint(i, x, y)
-
-    canvas = ROOT.TCanvas("canvas", "Graph", 800, 600)
-    graph.SetMarkerStyle(ROOT.kFullCircle)
-    graph.SetMarkerSize(0.5)
-    graph.SetMarkerColor(ROOT.kBlue)
-    graph.SetLineColor(ROOT.kWhite)
-    graph.Draw("AP")
-
-    graph.SetTitle("NoiseCurrent vs Voltage")
-    graph.GetXaxis().SetTitle("Voltage(V)")
-    graph.GetYaxis().SetTitle("NoiseCurrent(A)")
-
-    canvas.Update()
-    canvas.SaveAs(os.path.join(path, "simnoise{}to{}_picture.root".format(min(V),max(V))))
-    canvas.SaveAs(os.path.join(path, "simnoise{}to{}_picture.pdf".format(min(V),max(V))))
-    canvas.Close()
+    figure, axis = figures.new()
+    axis.plot(np.abs(V), np.abs(noise), color=figures.TOTAL, marker="o", markersize=3)
+    axis.set_yscale("log")
+    axis.set_xlabel(figures.label("Reverse bias", "V"))
+    axis.set_ylabel(figures.label("Noise current", "A"))
+    figures.save(figure, os.path.join(path, "plots"), "noise")
 
 
+def draw_cv(V, C, path):
+    """Write the CV points as `simCV<min>to<max>.root` and draw `cv` into `<path>/plots`.
 
-
-def draw_cv(device,V,C,path):
-    fig3=matplotlib.pyplot.figure(num=4,figsize=(4,4))
-    # matplotlib.pyplot.plot(V, C)
-    matplotlib.pyplot.semilogy(V, C,'.')
-    matplotlib.pyplot.xlabel('Voltage (V)')
-    matplotlib.pyplot.ylabel('Capacitance (pF)')
-    #matplotlib.pyplot.axis([-200, 0, 0, 20])
-    matplotlib.pyplot.subplots_adjust(left=0.15) 
-     
-    fig3.savefig(os.path.join(path, "{}_cv.png".format(device)))
-    fig3.clear()
-
-    fig4=matplotlib.pyplot.figure(num=4,figsize=(4,4))
-    C_minus2 = []
-    for c in C:
-        C_minus2.append(1/c**2)
-    matplotlib.pyplot.plot(V, C_minus2)
-    matplotlib.pyplot.xlabel('Voltage (V)')
-    matplotlib.pyplot.ylabel('1/C^2 (pF^{-2})')
-    #matplotlib.pyplot.axis([-200, 0, 0, 20])
-     
-    fig4.savefig(os.path.join(path, "{}_c^-2v.png".format(device)))
-    fig4.clear()
-
-
+    V [V] and C [pF] are lists of the same length; the figure shows C and
+    1/C^2 against |V|.
+    """
     file = ROOT.TFile(os.path.join(path, "simCV{}to{}.root".format(min(V),max(V))), "RECREATE")
     tree = ROOT.TTree("SicarTestCV", "SicarTest with impactgen")
     x = array('d', [0])
@@ -163,30 +104,16 @@ def draw_cv(device,V,C,path):
     file.Write()
     file.Close()
 
-    file = ROOT.TFile(os.path.join(path, "simCV{}to{}.root".format(min(V),max(V))), "READ")
-    tree = file.Get("SicarTestCV")
-
-    graph = ROOT.TGraph(tree.GetEntries())
-    for i, entry in enumerate(tree):
-        x = entry.x
-        y = entry.y
-        graph.SetPoint(i, x, y)
-
-    canvas = ROOT.TCanvas("canvas", "Graph", 800, 600)
-    graph.SetMarkerStyle(ROOT.kFullCircle)
-    graph.SetMarkerSize(0.5)
-    graph.SetMarkerColor(ROOT.kBlue)
-    graph.SetLineColor(ROOT.kWhite)
-    graph.Draw("AP")
-
-    graph.SetTitle("CAP vs Voltage")
-    graph.GetXaxis().SetTitle("Voltage")
-    graph.GetYaxis().SetTitle("CAP(pF)")
-
-    canvas.Update()
-    canvas.SaveAs(os.path.join(path, "simCV{}to{}_picture.root".format(min(V),max(V))))
-    canvas.SaveAs(os.path.join(path, "simCV{}to{}_picture.pdf".format(min(V),max(V))))
-    canvas.Close()
+    bias = np.abs(V)
+    capacitance = np.asarray(C, dtype=float)
+    figure, (left, right) = figures.new(1, 2)
+    left.plot(bias, capacitance, color=figures.TOTAL, marker="o", markersize=3)
+    left.set_xlabel(figures.label("Reverse bias", "V"))
+    left.set_ylabel(figures.label("Capacitance", "pF"))
+    right.plot(bias, 1 / capacitance**2, color=figures.TOTAL, marker="o", markersize=3)
+    right.set_xlabel(figures.label("Reverse bias", "V"))
+    right.set_ylabel(r"$1/C^2$ [pF$^{-2}$]")
+    figures.save(figure, os.path.join(path, "plots"), "cv")
 
 def draw_electrons(device, positions, electrons, bias_voltages,path):
     fig1=matplotlib.pyplot.figure()
@@ -261,6 +188,23 @@ def draw1D(x,y,title,xtitle,ytitle,v,path):
     graph.GetYaxis().SetTitle(ytitle)
     canvas.Draw()
     canvas.SaveAs(os.path.join(path, title+"{}_1d.png".format(v)))
+
+def draw_profile(x, curves, ylabel, path, name, *suffixes, log=False):
+    """Draw curves against the depth into `<path>/plots` as `<name>_<suffixes>`.
+
+    x is the depth [um]; curves is a list of (y, color, legend text or None),
+    y in the unit of ylabel; log makes the vertical axis logarithmic.
+    """
+    figure, axis = figures.new()
+    for y, color, text in curves:
+        axis.plot(x, y, color=color, label=text)
+    if log:
+        axis.set_yscale("log")
+    axis.set_xlabel(figures.label("Depth", "um"))
+    axis.set_ylabel(ylabel)
+    if any(text is not None for _, _, text in curves):
+        axis.legend()
+    figures.save(figure, os.path.join(path, "plots"), name, *suffixes)
 
 def draw2D(x,y,value,title,v,path):
     title = str(title)

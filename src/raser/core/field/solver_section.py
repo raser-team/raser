@@ -409,11 +409,11 @@ def main (kwargs):
     if is_wf != True:
         save_milestone.save_record(path, read=MyDetector.read)
 
-        draw_iv(device, V=loop.get_voltage_values(), I=loop.get_current_values(),path=path)
+        draw_iv(V=loop.get_voltage_values(), I=loop.get_current_values(),path=path)
         if is_cv == True:
-            draw_cv(device, V=loop.get_voltage_values(), C=loop.get_cap_values(),path=path)
+            draw_cv(V=loop.get_voltage_values(), C=loop.get_cap_values(),path=path)
         if is_noise == True:
-            draw_noise(device, V=loop.get_voltage_values(), noise=loop.get_noise_values(),path=path,)
+            draw_noise(V=loop.get_voltage_values(), noise=loop.get_noise_values(),path=path,)
     T2 =time.time()
     print("=========RASER info===========\nSimulation finish ,total used time: {}s !^w^!\n================".format(T2-T1))
 
