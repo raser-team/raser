@@ -23,7 +23,6 @@ from . import draw
 from .draw_drift_path import draw_drift_path
 from .currents import EventCurrents, append_currents
 
-from ..deposit.carrier_list import CarrierListFromG4P
 from ..deposit.deposits import EventDeposits, read_deposits
 from raser.supports.output import output
 
@@ -658,25 +657,6 @@ class CalCurrentGain(CalCurrent):
                                         self.n_bin, self.t_start, self.t_end))
             self.negative_cu.append(ROOT.TH1F("gain_charge_tmp-"+str(i+1)," No."+str(i+1)+"Gain Negative Current",
                                         self.n_bin, self.t_start, self.t_end))
-
-class CalCurrentG4P(CalCurrent):
-    def __init__(self, my_d, my_f, my_g4, batch, keep_drift_paths=True):
-        G4P_carrier_list = CarrierListFromG4P(
-            my_d.material,
-            my_g4,
-            batch,
-            fano_sampling=getattr(my_d, "fano_sampling", False),
-            fano_factor=getattr(my_d, "fano_factor", 0.0),
-        )
-        self.generated_pairs = sum(G4P_carrier_list.ionized_pairs)
-        super().__init__(
-            my_d,
-            my_f,
-            G4P_carrier_list.ionized_pairs,
-            G4P_carrier_list.track_position,
-            keep_drift_paths=keep_drift_paths,
-        )
-
 
 def pulse_in_bins(time_pulse, fwhm, n_bin, bin_width):
     """Share of a laser pulse in a time bin, for each offset of the bin.
