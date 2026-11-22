@@ -1,6 +1,6 @@
 # Device Field (`core/field`)
 
-`src/raser/core/field/` obtains geometry, mesh, doping, bias, and irradiation settings from [device definition](device.md), and band structure, permittivity, recombination lifetimes, and impact ionization coefficients from [material models](model.md). It uses DEVSIM to solve for the electric potential, carrier concentrations, trapping rates, and conductive regions of a device at a given bias voltage and irradiation fluence, then computes the weighting potential of each readout electrode, mutual capacitance per unit strip length, IV/CV/noise curves, and undepleted bulk parameters of 1D devices; it can also import fields from Sentaurus TDR files. Results are written to the field node `field/<node_id>/`, one field node per bias voltage, with the node record stored in `node.json`; [carrier transport](current.md) reads interpolated electric field, doping, trapping rates, conductive flags, weighting potential, and planar avalanche gain through `DevsimField`, and [electronics readout](readout.md) obtains the device equivalent SPICE circuit through `field_circuit` and `device_circuit`. See [../stages/field.md](../stages/field.md) for the command-line entry point.
+`src/raser/core/field/` obtains geometry, doping, bias, and irradiation settings from [device definition](device.md), selects the mesh according to the `field` section settings, and obtains band structure, permittivity, recombination lifetimes, and impact ionization coefficients from [material models](model.md). It uses DEVSIM to solve for the electric potential, carrier concentrations, trapping rates, and conductive regions of a device at a given bias voltage and irradiation fluence, then computes the weighting potential of each readout electrode, mutual capacitance per unit strip length, IV/CV/noise curves, and undepleted bulk parameters of 1D devices; it can also import fields from Sentaurus TDR files. Results are written to the field node `field/<node_id>/`, one field node per bias voltage, with the node record stored in `node.json`; [carrier transport](current.md) reads interpolated electric field, doping, trapping rates, conductive flags, weighting potential, and planar avalanche gain through `DevsimField`, and [electronics readout](readout.md) obtains the device equivalent SPICE circuit through `field_circuit` and `device_circuit`. See [../stages/field.md](../stages/field.md) for the command-line entry point.
 
 ## Physics
 
@@ -17,8 +17,8 @@ $$U = U_{\text{SRH}} + U_{\text{const}} + U_r + R_{\text{TAT}} \tag{3}$$
 where:
 
 - $\psi$: electrostatic potential, $\text{V}$;
-- $\varepsilon = \varepsilon_r \varepsilon_0$: permittivity, $\text{F/cm}$ ($\varepsilon_0 = 8.85\times10^{-14}\ \text{F/cm}$, $\varepsilon_r$ taken from `RELATIVE_PERMITTIVITY` in [model.md](model.md): Si `11.9`, SiC `9.76`, Diamond `5.7`);
-- $q = 1.60217646\times10^{-19}\ \text{C}$: elementary charge (`ElectronCharge`);
+- $\varepsilon = \varepsilon_r \varepsilon_0$: permittivity, $\text{F/cm}$ ($\varepsilon_0 = 8.8541878128\times10^{-14}\ \text{F/cm}$, $\varepsilon_r$ taken from `RELATIVE_PERMITTIVITY` in [model.md](model.md): Si `11.9`, SiC `9.76`, Diamond `5.7`);
+- $q = 1.602176634\times10^{-19}\ \text{C}$: elementary charge (`ElectronCharge`);
 - $n$, $p$: electron and hole concentrations, $\text{cm}^{-3}$;
 - $N_{\text{net}} = N_D - N_A$: net doping (`NetDoping = Donors - Acceptors`), $\text{cm}^{-3}$;
 - $N_t^{+}$, $N_t^{-}$: concentrations of positively charged donor defects and negatively charged acceptor defects (`TrappedHoles`, `TrappedElectrons`), $\text{cm}^{-3}$, see Eq. (12); zero when no irradiation model is active;
@@ -36,7 +36,7 @@ where:
 
 - subscripts $0$, $1$: the two endpoints of a mesh edge; $L$: edge length, $\text{cm}$;
 - $\mu_n$, $\mu_p$: electron and hole mobilities, $\text{cm}^2/(\text{V}\cdot\text{s})$;
-- $k = 1.3806503\times10^{-23}\ \text{J/K}$; $T$: device temperature `temperature`, $\text{K}$.
+- $k = 1.380649\times10^{-23}\ \text{J/K}$; $T$: device temperature `temperature`, $\text{K}$.
 
 Recombination takes the Shockley-Read-Hall form [2]:
 
@@ -44,7 +44,7 @@ $$U_{\text{SRH}} = \frac{np - n_i^2}{\tau_p\,(n + n_1) + \tau_n\,(p + p_1)}, \qq
 
 where $n_i$ is the intrinsic carrier concentration ($\text{cm}^{-3}$, given by `BAND_STRUCTURE` in [model.md](model.md) at temperature $T$), and $\tau_n$, $\tau_p$ are the lifetimes ($\text{s}$).
 
-Code correspondence: `physics_drift_diffusion.CreateSiliconDriftDiffusion` sets up in order `CreatePE` (Eq. 1), `CreateBernoulli` and `CreateElectronCurrent`/`CreateHoleCurrent` (Eqs. 4, 5), `CreateSRH` (Eqs. 3, 6), and `CreateECE`/`CreateHCE` (Eq. 2). `create_parameter.create_parameter` writes constants for DEVSIM region materials `Silicon`, `SiliconCarbide`, `Diamond`, and `gas`. Mobilities remain constant throughout the solve, independent of electric field and doping, taken from region parameters `mu_n`, `mu_p` (Si `1450`/`500`, SiC `1100`/`114`, Diamond `110`/`1100`, in $\text{cm}^2/(\text{V}\cdot\text{s})$); citation for the constant mobilities to be added. Lifetimes are taken from `SRH_LIFETIME` (Si `7e-3`/`7e-3` s, SiC `2.5e-6`/`0.5e-6` s, Diamond `5.6e-7`/`2.4e-7` s); citation for the lifetimes to be added.
+Code correspondence: `physics_drift_diffusion.CreateSiliconDriftDiffusion` sets up in order `CreatePE` (Eq. 1), `CreateBernoulli` and `CreateElectronCurrent`/`CreateHoleCurrent` (Eqs. 4, 5), `CreateSRH` (Eqs. 3, 6), and `CreateECE`/`CreateHCE` (Eq. 2). `create_parameter.create_parameter` writes constants for DEVSIM region materials `Silicon`, `SiliconCarbide`, `Diamond`, and `gas`. Mobility models are registered by name and selected by name in the device file, with each material having a default model (see [model.md](model.md)); in the DEVSIM solve, each material currently defaults to a constant mobility independent of electric field and doping, taken from region parameters `mu_n`, `mu_p` (Si `1450`/`500`, SiC `1100`/`114`, Diamond `110`/`1100`, in $\text{cm}^2/(\text{V}\cdot\text{s})$). Lifetimes are taken from `SRH_LIFETIME` (Si `7e-3`/`7e-3` s, SiC `2.5e-6`/`0.5e-6` s, Diamond `5.6e-7`/`2.4e-7` s); the electron lifetime of SiC is taken from [20], and the hole lifetime `0.5e-6` s is confirmed by our group's time-resolved photoluminescence measurements [21].
 
 All electrodes are treated as ohmic contacts (`set_contact_type` is `None` at every call site): at electrode nodes, $n = n_0$, $p = n_i^2/n_0$ (for $N_{\text{net}} > 0$) or $p = p_0$, $n = n_i^2/p_0$ (for $N_{\text{net}} \le 0$), and the potential is $\psi = V_{\text{bias}} + V_T \ln(n_0/n_i)$ or $\psi = V_{\text{bias}} - V_T \ln(p_0/n_i)$, where $n_0 = 10^{-10} + \tfrac12\bigl|N_{\text{net}} + \sqrt{N_{\text{net}}^2 + 4n_i^2}\bigr|$, and $p_0$ has the same expression with $N_{\text{net}}$ negated. The equations and contact conditions are adapted from DEVSIM examples [3].
 
@@ -68,15 +68,15 @@ In SiC regions, a trap-assisted tunneling term $R_{\text{TAT}}$ (`CreateFESRH`) 
 
 $$R_{\text{TAT}} = \Gamma(|E|)\,U_{\text{const}}, \qquad \Gamma(F) = 2\sqrt{3\pi}\,\frac{F'}{F_\Gamma}\exp\!\Bigl[\Bigl(\frac{F'}{F_\Gamma}\Bigr)^2\Bigr], \quad F' = \min(F, F_{\text{sat}}) \tag{8}$$
 
-where $F_\Gamma = 3.9\times10^4\ \text{V/cm}$, $F_{\text{sat}}$ defaults to `TAT_SATURATION_FIELD` $= 10^5\ \text{V/cm}$ (parameter name `F_sat`, overridable via `parameter` in the device file), $\pi$ is taken as `3.14159`, and $U_{\text{const}}$ is evaluated at the `n1` endpoint node of the edge. Citations for $F_\Gamma$ and $F_{\text{sat}}$ to be added.
+where $F_\Gamma = 3.9\times10^4\ \text{V/cm}$, $F_{\text{sat}}$ defaults to `TAT_SATURATION_FIELD` $= 10^5\ \text{V/cm}$ (parameter name `F_sat`, overridable via `parameter` in the device file), $\pi$ is taken as `3.14159`, and $U_{\text{const}}$ is evaluated at the `n1` endpoint node of the edge.
 
-The coefficients of `"Fine_exponential_models"` are:
+The coefficients of `"Fine_exponential_models"` take the Thornber form [13], with parameters from the measurements of Konstantinov et al. on 4H-SiC [14]:
 
-$$\alpha_n = \frac{qE'}{\epsilon_{in}}\exp\!\Bigl[-\frac{\epsilon_{in}\epsilon_0}{(qE'\lambda_n)^2}\Bigr], \qquad \alpha_p = \frac{qE'}{\epsilon_{ip}}\exp\!\Bigl[-\frac{\epsilon_{ip}\epsilon_0}{q}\,E'\lambda_p\,(\epsilon_0 + qE'\lambda_p)\Bigr] \tag{9}$$
+$$\alpha_n = \frac{qE'}{\epsilon_{in}}\exp\!\Bigl[-\frac{\epsilon_{in}E_R}{(qE'\lambda_n)^2}\Bigr], \qquad \alpha_p = \frac{qE'}{\epsilon_{ip}}\exp\!\Bigl[-\frac{\epsilon_{ip}E_R}{qE'\lambda_p\,(E_R + qE'\lambda_p)}\Bigr] \tag{9}$$
 
-where $E' = E + 1\ \text{V/cm}$, $\epsilon_{in} = 10 \times 1.6\times10^{-19}\ \text{J}$, $\epsilon_{ip} = 7\times 1.6\times10^{-19}\ \text{J}$, $\epsilon_0 = 0.36\times1.6\times10^{-19}\ \text{J}$ (optical phonon energy), and $\lambda_n = 2.99\times10^{-7}$, $\lambda_p = 3.25\times10^{-7}$ (mean free paths). The $\alpha_p$ in Eq. (9) is written verbatim from the code expression; citation to be added.
+where $E' = E + 1\ \text{V/cm}$; $\epsilon_{in} = 10\ \text{eV}$ and $\epsilon_{ip} = 7\ \text{eV}$ are the effective ionization threshold energies of electrons and holes; $E_R = 3E_p = 0.36\ \text{eV}$, with $E_p = 0.12\ \text{eV}$ the optical phonon energy; $\lambda_n = 2.99\times10^{-7}\ \text{cm}$ and $\lambda_p = 3.25\times10^{-7}\ \text{cm}$ are the mean free paths; energies are converted to J using $1.602176634\times10^{-19}\ \text{J/eV}$, and $\alpha$ is in $\text{cm}^{-1}$. $\alpha_p$ is the Thornber expression with $E_{kT} = 0$; $\alpha_n$ is its high-field limit $qE'\lambda_n \gg E_R$, using only the high-field asymptote for electrons following [14].
 
-When `avalanche_model` is `"Tunnel"`, an additional term $R_{\text{improved}} = 3.11\,|E|^{2.5}\exp(|E|/3\times10^4)$ (`CreateTunnelModel_Zaiyi`) is added to $G_{\text{ii}}$, and in SiC regions $R_{\text{TAT}}$ is redefined as the unsaturated $\Gamma(|E|)\,U_{\text{SRH}}$; citation to be added.
+When `avalanche_model` is `"Tunnel"`, an additional term $R_{\text{improved}} = 3.11\,|E|^{2.5}\exp(|E|/3\times10^4)$ (`CreateTunnelModel_Zaiyi`) is added to $G_{\text{ii}}$, and in SiC regions $R_{\text{TAT}}$ is redefined as the unsaturated $\Gamma(|E|)\,U_{\text{SRH}}$.
 
 `DevsimField` also provides the steady-state 1D planar multiplication integral used by the `"planar_integral"` algorithm in [current.md](current.md). Integrating along depth $z$ starting from the face $b$ where electrons exit [7]:
 
@@ -102,16 +102,16 @@ where:
 
 - $\Phi$: irradiation fluence, $\text{cm}^{-2}$; $g_i$: defect introduction rate (`g_int`), $\text{cm}^{-1}$; $N_{t,i}$: defect concentration, $\text{cm}^{-3}$;
 - $f_i$: fraction of defects occupied by electrons (dimensionless); acceptor defects contribute $N_t^{-} = \sum N_{t,i} f_i$, and donor defects contribute $N_t^{+} = \sum N_{t,i}(1 - f_i)$;
-- $E_{t,i}$: defect energy level (`E_t_ev`, referenced to midgap and positive toward the conduction band, $\text{eV}$; the code multiplies by $1.6\times10^{-19}$ to convert to J); $E_g$: band gap, J; $N_c$, $N_v$: conduction and valence band effective densities of states, $\text{cm}^{-3}$;
+- $E_{t,i}$: defect energy level (`E_t_ev`, referenced to midgap and positive toward the conduction band, $\text{eV}$, multiplied by $1.602176634\times10^{-19}\ \text{J/eV}$ to convert to J); $E_g$: band gap, J; $N_c$, $N_v$: conduction and valence band effective densities of states, $\text{cm}^{-3}$;
 - $\sigma_{n,i}$, $\sigma_{p,i}$: electron and hole capture cross sections, $\text{cm}^2$; $v_{\text{th}}$ = `vel_mean` $= 10^7\ \text{cm/s}$;
 - $\Gamma_n$, $\Gamma_p$: electron and hole trapping rates (`TrappingRate_n`, `TrappingRate_p`), $\text{s}^{-1}$, saved to disk and supplied to [current.md](current.md) via `DevsimField.get_trap_e` and `get_trap_h`.
 
-`physics_irradiation.CreateIrradiation` selects the defect table according to `irradiation.irradiation_model`; all other names take the parameter `custom_defect`, which defaults to an empty table. Irradiation terms are created when an `irradiation` block is present and the electric field is being solved; otherwise trapping rates are `0`. If `"type"` in a defect dictionary is neither `"donor"` nor `"acceptor"`, a `ValueError` is raised. Citations for the tables are to be added:
+`physics_irradiation.CreateIrradiation` selects the defect table according to `irradiation.irradiation_model`; all other names take the parameter `custom_defect`, which defaults to an empty table. Irradiation terms are created when an `irradiation` block is present and the electric field is being solved; otherwise trapping rates are `0`. If `"type"` in a defect dictionary is neither `"donor"` nor `"acceptor"`, a `ValueError` is raised. `"Schwandt"` is the Hamburg Penta Trap Model [15], `"XingChen"` is our group's fit to proton-irradiated silicon [16], and `"Perugia"` is the three-level model for p-type FZ silicon [17]:
 
 | Model | Defect | Type | `E_t_ev` [eV] | `g_int` [$\text{cm}^{-1}$] | $\sigma_n$ [$\text{cm}^2$] | $\sigma_p$ [$\text{cm}^2$] |
 | --- | --- | --- | --- | --- | --- | --- |
 | `"XingChen"` | `E30K` | donor | `0.56-0.1` | `2.0810` | `2.300e-14` | `2.920e-16` |
-| | `V3` | acceptor | `0.56-0.458` | `1.6504` | `2.551e-14` | `1.551e-13` |
+| | `V3` | acceptor | `0.56-0.458` | `1.6504` | `2.551e-14` | `1.511e-13` |
 | | `Ip` | acceptor | `0.56-0.545` | `0.6936` | `4.478e-15` | `6.709e-15` |
 | | `H220` | donor | `-0.56+0.48` | `2.6112` | `4.166e-15` | `1.965e-16` |
 | | `CiOi` | donor | `-0.56+0.36` | `1.6511` | `3.230e-17` | `2.036e-14` |
@@ -148,9 +148,9 @@ where $d$ is `l_z`, $p$ is `p_x` (both in $\mu\text{m}$), and $\delta$ is `weigh
 
 The same solution gives the mutual capacitance per unit strip length from that strip to every other electrode:
 
-$$C_j = \varepsilon_r\,|Q_j| \tag{18}$$
+$$C_j = \frac{\varepsilon_r\,|Q_j|}{V_1} \tag{18}$$
 
-where $Q_j$ is the contact charge on electrode $j$ ($\text{C/cm}$, with the readout electrode set to $1\ \text{V}$), $\varepsilon_r$ is the relative permittivity of the device material (solved in $\varepsilon_0$ and then multiplied back), and $C_j$ is in $\text{F/cm}$. The left and right strips at distance $k$ from the readout strip are merged into a single electrode `neighbour<k>`.
+where $Q_j$ is the contact charge on electrode $j$ ($\text{C/cm}$), $V_1 = 1\ \text{V}$ is the voltage applied to the readout electrode, $\varepsilon_r$ is the relative permittivity of the device material (solved in $\varepsilon_0$ and then multiplied back), and $C_j$ is in $\text{F/cm}$. The left and right strips at distance $k$ from the readout strip are merged into a single electrode `neighbour<k>`.
 
 ### Conductive Region Classification
 
@@ -158,13 +158,13 @@ After solving, the code determines whether each node is conductive at that bias 
 
 $$\text{conductive} \iff \rho < \rho_0 \ \ \text{or}\ \ \bigl(|N_{\text{net}}| > 0 \ \text{and}\ n + p > 0.5\,|N_{\text{net}}|\bigr), \qquad \rho = \frac{1}{q(\mu_n n + \mu_p p)} \tag{19}$$
 
-where $\rho$ is the resistivity ($\Omega\cdot\text{cm}$), $\rho_0$ = `RESISTIVITY` $= 10\ \Omega\cdot\text{cm}$, `UNDEPLETED` $= 0.5$ is the carrier-count threshold per net dopant ion, and $q$ is taken as `1.602176634e-19` C. Nodes with zero net doping are judged by resistivity alone. Fields solved by DEVSIM use the region's constant mobility parameters `mu_n`, `mu_p`; fields imported from TCAD use each node's `eMobility`, `hMobility` from the file. This is implemented in `conductive.conductive`, and the classification is written to `Conductive_<V>V.pkl`, used both in Eq. (16) and for the "collected" criterion in [current.md](current.md) (`DevsimField.get_conductive`).
+where $\rho$ is the resistivity ($\Omega\cdot\text{cm}$), $\rho_0$ = `RESISTIVITY` $= 10\ \Omega\cdot\text{cm}$, `UNDEPLETED` $= 0.5$ is the carrier-count threshold per net dopant ion, and $q$ is taken as `1.602176634e-19` C. Nodes with zero net doping are judged by resistivity alone. Fields solved by DEVSIM use the mobility selected for the region (defaulting to the constant mobility parameters `mu_n`, `mu_p`); fields imported from TCAD use each node's `eMobility`, `hMobility` from the file. This is implemented in `conductive.conductive`, and the classification is written to `Conductive_<V>V.pkl`, used both in Eq. (16) and for the "collected" criterion in [current.md](current.md) (`DevsimField.get_conductive`).
 
 ### Device Circuit Parameters
 
 In the electronics netlist, the device is represented as a network of capacitors, resistors, and induced current sources (`DeviceCircuit`). For a single-electrode planar device, the topology places the depletion-layer capacitance $C_{\text{dep}}$ between electrode `<e>_pad` and the back of the depletion layer, with the induced current source in parallel; the undepleted bulk is $R_{\text{und}} \parallel C_{\text{und}}$ connected between the back of the depletion layer and ground; an optional bias resistor $R_{\text{bias}}$ connects `<e>_pad` to ground, and an optional coupling capacitor $C_{\text{c}}$ connects `<e>_pad` to the readout port `<e>_port`.
 
-The junction capacitance $C_{\text{dep}}$ is obtained by `junction_capacitance` in order of preference from: `capacitance_pF` in the device file (measured value), the capacitance solved by the field at that bias voltage (specific capacitance in `<V>V.cv.json` times `area_factor`), and the parallel-plate estimate of `Detector.capacitance` (readout area divided by `depletion_depth`, defaulting to `l_z`); if none of the three is available, a `ValueError` is raised. Field capacitance comes only from `<V>V.cv.json` written by the `-cv` command at that bias (recorded in `solved.capacitance`); in field nodes where only the sweep and weighting field were solved, the junction capacitance falls back to the parallel-plate estimate.
+The junction capacitance $C_{\text{dep}}$ is obtained by `junction_capacitance` in order of preference from: `capacitance_pF` in the device file (measured value), the capacitance solved by the field at that bias voltage (specific capacitance in `<V>V.cv.json` times `area_factor`), and the parallel-plate estimate of `Detector.capacitance` (readout area divided by `depletion_depth`, defaulting to `l_z`); if none of the three is available, a `ValueError` is raised. Field capacitance comes only from `<V>V.cv.json` written by the single-point capacitance subtask at that bias (recorded in `solved.capacitance`); in field nodes where only the sweep and weighting field were solved, the junction capacitance falls back to the parallel-plate estimate.
 
 The undepleted bulk follows Riegler's lumped $R \parallel C$ model [10], computed from a 1D field:
 
@@ -184,7 +184,7 @@ A resistive charge-sharing layer (`resistive_layer`) divides the layer into cell
 
 $$C_{\text{cell}} = c_A\,w\,l, \qquad R_{\text{row}} = \frac{R_\square}{l}\,w\,\Bigl(1 - \frac{m}{2}\Bigr), \qquad R_{\text{grid}} = R_\square\,\frac{w_\parallel}{w_\perp}\Bigl(1 - \frac{m}{2}\Bigr) \tag{21}$$
 
-where $c_A = C_{\text{dep}}/(w\,l)$ is the depletion-layer capacitance per unit area ($\text{F/m}^2$, with $C_{\text{dep}}$ the junction capacitance of one cell); $w$, $l$ are the cell width (`p_x`) and strip length (`l_y`), in $\text{m}$ (`p_x`, `p_y` in a grid); $R_\square$ is the sheet resistance, $\Omega$; $m \in \{0, 1\}$ is the number of cells in the pair lying beneath an electrode (the electrode starts at the cell edge, half a cell from the neighboring cell center); in a grid, $w_\parallel$ and $w_\perp$ are the cell widths parallel and perpendicular to the resistor direction. Cells under an electrode are merged into a single node; when `coupling` is given, the electrode couples capacitively to the layer through a dielectric, the layer remains continuous beneath the electrode, and each cell connects to the electrode via a capacitance $\varepsilon_0\varepsilon_r w l / t$ (where $t$ is `coupling.thickness`).
+where $c_A = C_{\text{dep}}/(w\,l)$ is the depletion-layer capacitance per unit area ($\text{F/m}^2$, with $C_{\text{dep}}$ the junction capacitance of one cell); $w$, $l$ are the cell width (`p_x`) and strip length (`l_y`), in $\text{m}$ (`p_x`, `p_y` in a grid); $R_\square$ is the sheet resistance, $\Omega$; $m \in \{0, 1\}$ is the number of cells in the pair lying beneath an electrode (the electrode starts at the cell edge, half a cell from the neighboring cell center); in a grid, $w_\parallel$ and $w_\perp$ are the cell widths parallel and perpendicular to the resistor direction. Cells under an electrode are merged into a single node; when `coupling` is given, the electrode couples capacitively to the layer through a dielectric, the layer remains continuous beneath the electrode, and each cell connects to the electrode via a capacitance $\varepsilon_0\varepsilon_r w l / t$ (where $t$ is `coupling.thickness`, given in $\mu\text{m}$ in the device file and converted to m in code).
 
 The sheet resistance $R_\square$ is taken from `resistive_layer.sheet_resistance` in the device file; when omitted, it is computed from the Al-implanted 4H-SiC layer model [11]:
 
@@ -215,7 +215,7 @@ where $E_z$ is in $\text{V/cm}$ ($10^4$ converts from $\text{V}/\mu\text{m}$), $
 
 Planar (`AnalyticPlanarField`): $\phi_w = z/d$ (with $z$ clamped to $[0, d]$); `get_w_p_cached` raises `ValueError` for positions outside $[0, l_x]\times[0, l_y]$; the electric field is given by Eq. (24).
 
-Strip and pixel (`AnalyticStripPixelField`): each electrode is a rectangle of width $a$ = `pitch_x_um` and length $b$ ($b$ = `pitch_y_um` for pixels; for strips taken in order from `sensor_y_um`, `pitch_y_um`, `pitch_x_um`); the weighting potential is the image series for a rectangular electrode between two grounded planes, citation to be added:
+Strip and pixel (`AnalyticStripPixelField`): each electrode is a rectangle of width $a$ = `pitch_x_um` and length $b$ ($b$ = `pitch_y_um` for pixels; for strips taken in order from `sensor_y_um`, `pitch_y_um`, `pitch_x_um`); the weighting potential is the image series for a rectangular electrode between two grounded planes [18]:
 
 $$\phi_w = \frac{1}{2\pi}\Bigl\{F(x, y, u) - \sum_{n=1}^{N}\bigl[F(x, y, 2nd - u) - F(x, y, 2nd + u)\bigr]\Bigr\} \tag{26}$$
 
@@ -223,7 +223,7 @@ $$F(x, y, u) = \sum_{\pm,\pm} (\pm)(\pm)\arctan\frac{x_\pm\,y_\pm}{u\,\sqrt{x_\p
 
 where $(x, y)$ is the position relative to the electrode center ($\mu\text{m}$), $u = d - z$ is the distance to the electrode plane, and $N$ = `weighting_series_terms` (default `100`); in $F$, the $(x_+, y_+)$ and $(x_-, y_-)$ terms carry a plus sign and the cross terms carry a minus sign; the result is clamped to $[0, 1]$. When only one readout electrode is listed (`central_electrode`), the electrode is centered in the device; otherwise electrodes are arranged by index into `round(l_x / p_x)` columns.
 
-3D column (`AnalyticColumn3DField`): solves a 2D sine series with zero boundary conditions in a rectangular cell of size $W\times H$ (default $2p_x \times 2p_y$), ignoring $z$. The weighting potential is the Green's function averaged over 49 source points on the readout column, normalized at a point on the column surface $(x_r + r_c, y_r)$; the electric potential is the superposition of the weighting potential and the uniform space-charge solution, citation to be added:
+3D column (`AnalyticColumn3DField`): solves a 2D sine series with zero boundary conditions in a rectangular cell of size $W\times H$ (default $2p_x \times 2p_y$), ignoring $z$. The weighting potential is the Green's function averaged over 49 source points on the readout column, normalized at a point on the column surface $(x_r + r_c, y_r)$; the electric potential is the superposition of the weighting potential and the uniform space-charge solution, both being eigenfunction expansions of the Dirichlet problem on a rectangle [19]:
 
 $$\mathcal{G}(x, y) = \sum_{m,n=1}^{M}\frac{4}{WH}\,\frac{\overline{\sin k_m x_s \sin k_n y_s}}{k_m^2 + k_n^2}\,\sin k_m x\,\sin k_n y, \qquad \phi_w = \frac{\mathcal{G}(x, y)}{\mathcal{G}(x_r + r_c, y_r)} \tag{28}$$
 
@@ -231,7 +231,7 @@ $$u_1 = \sum_{m,n\ \text{odd}}\frac{16}{\pi^2 mn\,(k_m^2 + k_n^2)}\sin k_m x\,\s
 
 $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} = \Bigl(V\nabla\phi_w - \frac{qN}{\varepsilon_0\varepsilon_r}\nabla P\Bigr)\times10^4 \tag{30}$$
 
-where $k_m = m\pi/W$, $k_n = n\pi/H$ ($\mu\text{m}^{-1}$), and $M$ = `series_terms`; the source points are the column center plus 8, 16, and 24 points on rings of radius $0.35r_c$, $0.65r_c$, and $0.9r_c$; $(x_r, y_r)$ is the readout column position (default cell center) and $r_c$ is the column radius ($\mu\text{m}$); $N$ is `doping_cm3` and $\varepsilon_r$ defaults to `11.7`; $\psi$ is in V and $\mathbf{E}$ is in $\text{V/cm}$ ($q N/(\varepsilon_0\varepsilon_r)$ is computed in SI units and multiplied by $10^{-12}$ to convert to $\text{V}/\mu\text{m}^2$). Positions are first clamped inside the cell; $\phi_w = 1$ inside the readout column, $\phi_w = 0$ inside ground columns (default at the four corners), and the rest is clamped to $[0, 1]$.
+where $k_m = m\pi/W$, $k_n = n\pi/H$ ($\mu\text{m}^{-1}$), and $M$ = `series_terms`; the source points are the column center plus 8, 16, and 24 points on rings of radius $0.35r_c$, $0.65r_c$, and $0.9r_c$; $(x_r, y_r)$ is the readout column position (default cell center) and $r_c$ is the column radius ($\mu\text{m}$); $N$ is `doping_cm3` and $\varepsilon_r$ defaults to `11.9`; $\psi$ is in V and $\mathbf{E}$ is in $\text{V/cm}$ ($q N/(\varepsilon_0\varepsilon_r)$ is computed in SI units and multiplied by $10^{-12}$ to convert to $\text{V}/\mu\text{m}^2$). Positions are first clamped inside the cell; $\phi_w = 1$ inside the readout column, $\phi_w = 0$ inside ground columns (default at the four corners), and the rest is clamped to $[0, 1]$.
 
 `strip_pixel_field_from_detector` selects the analytic field from lowercased `det_model`: containing `"3d"` selects 3D column, containing `"planar"` or equal to `"lgad"` selects planar, containing `"strip"` or `"pixel"` selects strip/pixel (`"pixel"` for pixel), and all other values raise `ValueError`.
 
@@ -243,9 +243,9 @@ The quantities in the table below are written into the code. The "Key" column st
 
 | Constant | Value | Unit | Location and Meaning | Key |
 | --- | --- | --- | --- | --- |
-| `q` (`ElectronCharge`) | `1.60217646e-19` | C | `CreateGlobalConstant`, DEVSIM equations | None |
-| `k` | `1.3806503e-23` | J/K | Same as above | None |
-| `eps_0` | `8.85e-14` | F/cm | Same as above, and `Permittivity` of each material | None |
+| `q` (`ElectronCharge`) | `1.602176634e-19` | C | `CreateGlobalConstant`, DEVSIM equations | None |
+| `k` | `1.380649e-23` | J/K | Same as above | None |
+| `eps_0` | `8.8541878128e-14` | F/cm | Same as above, and `Permittivity` of each material | None |
 | `T0` | `300.0` | K | Same as above, region parameter | None |
 | `vel_mean` | `1e7` | cm/s | Thermal velocity $v_{\text{th}}$ for defect capture | None |
 | `mu_n`, `mu_p` | Si `1450`/`500`; SiC `1100`/`114`; Diamond `110`/`1100` | $\text{cm}^2/(\text{V}\cdot\text{s})$ | Constant mobility | None (`parameter` can override any region parameter) |
@@ -254,10 +254,10 @@ The quantities in the table below are written into the code. The "Key" column st
 | `n_i` (`gas`) | `1e-9` | $\text{cm}^{-3}$ | Dielectric for weighting field | None |
 | `F_sat` | `1e5` | V/cm | `TAT_SATURATION_FIELD` | `parameter: {"name": "F_sat", ...}` |
 | `F_gamma` | `3.9e4` | V/cm | Eq. (8) | None |
-| `epsilon_model_in`, `_ip`, `_0` | `10`, `7`, `0.36` times `1.6e-19` | J | Eq. (9) | None |
+| `epsilon_model_in`, `_ip`, `_0` | `10`, `7`, `0.36` times `1.602176634e-19` | J | Eq. (9) | None |
 | `lambda_model_n`, `_p` | `2.99e-7`, `3.25e-7` | cm | Eq. (9) | None |
 | `EDGE_FIELD` offset | `1` | V/cm | $|E| + 1$ in impact ionization coefficients | None |
-| Defect energy conversion `e` | `1.6e-19` | J/eV | `CreateIrradiation` | None |
+| Defect energy conversion `e` | `1.602176634e-19` | J/eV | `CreateIrradiation` | None |
 | `CONDUCTOR_PERMITTIVITY` | `1e10` | None | Eq. (16), DEVSIM and TCAD weighting fields | None |
 | `RESISTIVITY` | `10.0` | $\Omega\cdot\text{cm}$ | Eq. (19) | None |
 | `UNDEPLETED` | `0.5` | None | Eq. (19) | None |
@@ -278,7 +278,7 @@ The quantities in the table below are written into the code. The "Key" column st
 | TCAD permittivities | Silicon `11.9`, SiliconCarbide `9.76`, Oxide `3.9`, Nitride `7.5`; Aluminum as conductor | None | `tcad.PERMITTIVITY`, `METALS` | None |
 | TCAD electrode clamping factor | `1e20` | None | `Hold` in `set_up_weighting` | None |
 | TCAD weighting field convergence | absolute `1e-6`, relative `1e-6`, `20` iterations | None | `solve_weighting` | None |
-| `DEFAULT_RELATIVE_PERMITTIVITY` | `11.7` | None | 3D column in `simple.py` | `relative_permittivity` |
+| `DEFAULT_RELATIVE_PERMITTIVITY` | `11.9` | None | 3D column in `simple.py` | `relative_permittivity` |
 | Analytic field doping | `1.0e12` | $\text{cm}^{-3}$ | `simple.py` | `input_doping` |
 | `VACUUM_PERMITTIVITY_F_M` | `8.8541878128e-12` | F/m | Resistive-layer coupling capacitance | None |
 | Al-implanted reference layer | concentration `1e20` $\text{cm}^{-3}$, thickness `300e-7` cm, measurement temperature `300.0` K, table `ANNEALED` | see left | `implanted_aluminium.py` | None |
@@ -287,11 +287,13 @@ The solver convergence settings `SOLVER` can be overridden via `field.solver` in
 
 ### Mesh
 
-1. **Coordinate axes**: `mesh_axes` maps saved coordinates to device axes: `("z",)` for 1D; `("x", "y")` (when `mesh.plugin` is true) or `("z", "x")` for 2D; `("x", "y", "z")` (when `mesh.mesher == "sde"`) or `("z", "x", "y")` for 3D. DEVSIM internal length units are cm.
-2. **Mesh construction** (`DevsimMesh.mesh_define`): when solving a single-cell stitched weighting field ($s > 0$), calls `createRowOfCells`; otherwise, 1D uses `mesh_line`, `region`, and `contact` from `mesh.1D_mesh`; 2D reads the Gmsh file if `mesh.gmsh_mesh` is non-empty, or uses `mesh.2D_mesh` otherwise; 3D always reads the Gmsh file `mesh.gmsh_mesh.file` (resolved through `Detector.file`, with relative paths relative to the device file). Raises `ValueError` if `dimension` is not 1, 2, or 3.
+Meshes belong to `field`: the device file has no `mesh` section, since geometry (layer thicknesses, materials, and which face each electrode lies on) is an intrinsic property of the device; which mesh to use is specified by the `field` section settings.
+
+1. **Coordinate axes**: `mesh_axes` maps saved coordinates to device axes: `("z",)` for 1D; `("x", "y")` (when the selected mesh lies in the transverse $x$-$y$ plane) or `("z", "x")` for 2D; `("x", "y", "z")` (when the selected mesh is generated by `sde`) or `("z", "x", "y")` for 3D. DEVSIM internal length units are cm.
+2. **Mesh construction** (`DevsimMesh.mesh_define`): when solving a single-cell stitched weighting field ($s > 0$), calls `createRowOfCells`; otherwise, 1D uses `mesh_line`, `region`, and `contact` from the selected 1D mesh; 2D uses the selected Gmsh mesh file or built-in 2D mesh (`mesh_line`, `region`, `contact`); 3D always reads the Gmsh mesh file. Raises `ValueError` if `dimension` is not 1, 2, or 3.
 3. **Materials and doping for weighting fields**: when solving a weighting field, `_regions` replaces every region's material with `"gas"` (the `"air"` region in a built-in 2D mesh is preserved; Gmsh meshes do not keep it), and `setDoping` replaces doping with `Acceptors = "0"`, `Donors = "1"`.
 4. **Doping**: `Acceptors` is taken from `doping.Acceptors` and joined with `+` to `doping.Acceptors_ir` if present; `Donors` works identically; `NetDoping = Donors - Acceptors`. For 1D devices not solving a weighting field, `Doping.png` is plotted. Finally `<det_name>.dat` (Tecplot) is written.
-5. **HEMT interface**: when `hemt_physics.transport_model == "drift_diffusion_v1"`, the 2D mesh also adds `mesh.2D_mesh.interface`; raises `ValueError` if no interface is defined.
+5. **HEMT interface**: when `hemt_physics.transport_model == "drift_diffusion_v1"`, the 2D mesh also adds `interface` from the selected 2D mesh; raises `ValueError` if no interface is defined.
 6. **Single-cell stitching** (`createRowOfCells`):
    - Supports only non-`plugin` 2D meshes; otherwise raises `ValueError`;
    - Builds one unit cell first and reads its node coordinates (depth, lateral); raises `ValueError` if the cell width differs from `p_x` by more than $10^{-6}\,p_x$;
@@ -304,29 +306,31 @@ When solving for the electric field, `solver_section.main` executes in the follo
 
 1. **Wrap the device**: `Reading(Detector(...))` records the attributes, keys, and mesh file hashes read during the solve. If the device file defines `frequency`, it overrides the small-signal frequency; `area_factor` defaults to `1.0`. HEMT devices are dispatched to `run_hemt_transport`.
 2. **Build mesh and constants**: as described above; `create_parameter` writes temperature and material constants, optional `parameter`, and node model `U_const`.
-3. **Irradiation and avalanche**: irradiation terms are enabled when an `irradiation` block is present and a weighting field is not being solved; the fluence is taken from the command option, defaulting to `irradiation.irradiation_flux`. The avalanche model is taken from `avalanche_model` (`None` when `has_avalanche` is false).
+3. **Irradiation and avalanche**: irradiation terms are enabled when an `irradiation` block is present and a weighting field is not being solved; the fluence is taken from `field.irradiation_flux`, falling back to `irradiation.irradiation_flux` when `null`. The avalanche model is taken from `avalanche_model` (`None` when `has_avalanche` is false).
 4. **Circuit**: attaches voltage source `V1` to `bias.electrode` (DC `0`, AC amplitude `ac.real`, `ac.imaginary`).
 5. **Initial solution** (`loop_section.initial_solver`): solves the Poisson equation alone first with intrinsic carrier distributions $n = n_i e^{\psi/V_T}$, $p = n_i^2/n$ using DC tolerances from `initial`; then sets up Eqs. (1)–(6) initialized from the intrinsic concentrations and solves; finally deletes the intrinsic carrier models.
 6. **Zero bias**: solves and saves at $0\ \text{V}$, writing `0V.dd` and `0V.devsim`, and records `0.0` in `solved.potential` in `node.json`.
-7. **Target and stop points**: target bias $V_g$ comes from `-bias` on the command line, defaulting to `bias.voltage`. Saved points are $\pm k\Delta_s$ ($k = 1, \dots, \lfloor |V_g|/\Delta_s\rfloor$, $\Delta_s$ = `saved_voltage_interval`), appending $V_g$ if the last point falls short of $|V_g|$; curve points are generated in the same way using `curve_voltage_interval`. Signs follow $V_g$. Raises `ValueError` if an interval is `0`.
+7. **Target and stop points**: target bias $V_g$ comes from `field.voltage`, falling back to `bias.voltage` when `null`. One field node corresponds to one target bias; intermediate bias files stored in the node are checkpoints saved along the ramp to $V_g$. Saved points are $\pm k\Delta_s$ ($k = 1, \dots, \lfloor |V_g|/\Delta_s\rfloor$, $\Delta_s$ = `saved_voltage_interval`), appending $V_g$ if the last point falls short of $|V_g|$; curve points are generated in the same way using `curve_voltage_interval`. Signs follow $V_g$. Raises `ValueError` if an interval is `0`.
 8. **Stepping**: initial step size $\Delta$ = `voltage_step.initial`, with sign following $V_g$. Each step tries $V_t = V_c + \Delta$; if $|V_t|$ passes the nearest stop point (smallest magnitude among $V_g$, next saved point, and next curve point), $V_t$ is clamped to that stop point.
 9. **Single-step solve** (`loop_solver`): initialized from the previous solution; once two solutions exist, the potential is linearly extrapolated to $V_t$ from the last two points. After setting the bias, a DC solve is run with `voltage_step` tolerances.
 10. **Success**: $\Delta \leftarrow \Delta \times$ `increase_factor`. When $V_t$ is a curve point, records the voltage, current $(I_n + I_p)\times$ `area_factor` (A), and the capacitance and noise described below. When $V_t$ is a saved point or $V_g$, saves to disk, writing `<V_t>V.dd` and `<V_t>V.devsim`, and records it in `solved.potential`; finishes upon reaching $V_g$.
 11. **Failure**: on any DEVSIM error in a single step, writes `last_solvable.dd` first. If the error message contains `"Convergence failure"`, sets $\Delta \leftarrow (V_t - V_c)\times$ `decrease_factor` and retries; any other DEVSIM error is re-raised as is. If $|\Delta| < 10^{-7}\ \text{V}$, stops and raises `RuntimeError("Step size too small (less than 1e-7). Exiting loop.")`.
-12. **Wrap-up**: writes `read` to `node.json`, plots the IV curve; in CV mode plots CV and $1/C^2$ curves; with `-noise` plots the noise curve.
+12. **Wrap-up**: writes `read` to `node.json`, plots the IV curve; in CV mode plots CV and $1/C^2$ curves; plots the noise curve when the noise switch is enabled.
 
 ### Small-Signal Capacitance and Noise
 
-1. **CV during sweep**: in CV mode (full solve when none of `-iv`, `-cv`, `-wf` is specified), at each curve point `circuit_alter` sets the bias and runs an AC small-signal solve at frequency $f$:
-   $$C = \frac{10^{12}\,\operatorname{Im} I_{V1}}{-2\pi f}\times\texttt{area\_factor}\quad[\text{pF}]$$
-   Results are plotted in the CV plot; `cv.json` is written by the single-point capacitance command below.
-2. **Single-point capacitance** (`saved_point.capacitance`, command `-cv`): loads `<V>V.devsim` (float-formatted filename, e.g. `200.0V.devsim`; raises `FileNotFoundError` listing available files if missing), recreates parameters, sets the bias electrode to $V$ and all others to $0$, runs a DC solve with `voltage_step` tolerances, then runs an AC solve to obtain the specific capacitance $10^{12}\operatorname{Im} I_{V1}/(-2\pi f)$: $\text{pF/cm}^2$ in 1D, $\text{pF/cm}$ in 2D, and pF in 3D. Only saved points (multiples of `saved_voltage_interval` and the target bias) have `.devsim` files.
-3. **Noise**: with `-noise`, runs a DEVSIM noise solve at each curve point (output node `V1.I`) and records the mesh value of circuit node `V1.I`.
+1. **CV during sweep**: in CV mode (the full solve when none of the IV sweep, single-point capacitance, or weighting field subtasks is individually enabled in the `field` section), at each curve point `circuit_alter` sets the bias and runs an AC small-signal solve at frequency $f$:
+   $$C = \frac{10^{12}\,\operatorname{Im} I_{V1}}{-2\pi f\,V_{\text{ac}}}\times\texttt{area\_factor}\quad[\text{pF}]$$
+
+   where $I_{V1}$ is the AC small-signal current at the bias circuit node `V1` ($\text{A/cm}^2$ in 1D, $\text{A/cm}$ in 2D, A in 3D), $V_{\text{ac}} = 1\ \text{V}$ is the AC excitation amplitude, and $f$ is the frequency (Hz).
+   Results are plotted in the CV plot; `cv.json` is written by the single-point capacitance step below.
+2. **Single-point capacitance** (`saved_point.capacitance`, single-point capacitance subtask): loads `<V>V.devsim` (float-formatted filename, e.g. `200.0V.devsim`; raises `FileNotFoundError` listing available files if missing), recreates parameters, sets the bias electrode to $V$ and all others to $0$, runs a DC solve with `voltage_step` tolerances, then runs an AC solve to obtain the specific capacitance $10^{12}\operatorname{Im} I_{V1}/(-2\pi f)$: $\text{pF/cm}^2$ in 1D, $\text{pF/cm}$ in 2D, and pF in 3D. Only saved points (multiples of `saved_voltage_interval` and the target bias) have `.devsim` files.
+3. **Noise**: when the noise switch is enabled, runs a DEVSIM noise solve at each curve point (output node `V1.I`) and records the mesh value of circuit node `V1.I`.
 
 ### Weighting Field Solving
 
 1. **Prerequisite**: raises `FileNotFoundError` if `Conductive_<V_g>V.pkl` is missing, instructing to solve the field at that bias first.
-2. **Electrodes**: readout electrodes are taken from `name` in `read_out_contact` (or from `name` in `mesh.2D_mesh.ac_contact` if non-empty); one voltage source is attached to each electrode.
+2. **Electrodes**: readout electrodes are taken from `name` in `read_out_contact` (or from `name` in `ac_contact` of the selected 2D mesh if non-empty); one voltage source is attached to each electrode.
 3. **Row cell count**: when `read_out_contact` has only one entry and `read_ele_num > 1`, $s$ is set by Eq. (17).
 4. **Per electrode**: solves only the Poisson equation (material `"gas"`); `take_conductors_into_electrodes` reads `Conductive_<V_g>V.pkl` and matches every region node to its nearest point in the file (for a stitched row, lateral coordinates are first taken modulo the cell width), raising `ValueError` for any node farther than $10^{-9}$ times the mesh span; then rewrites `PotentialEdgeFlux` and `contactcharge_edge` according to Eq. (16); sets the readout electrode to $1\ \text{V}$ and solves.
 5. **Row-end check** ($s > 0$): takes the maximum $r$ of $|\phi_w|$ within one unit cell at each end, computes mutual capacitances by Eq. (18), and counts `neighbours_coupled` as the number $c$ of consecutive neighbors starting from `neighbour1` satisfying $C_{\text{neighbour}k} \ge$ `crosstalk_tolerance` $\times\sum_j C_j$. If $r >$ `weighting_tolerance` or $c = s$: sets $s' = \lceil 1.5\,s\rceil$; raises `ValueError` if $s' > 2s_0$ (the weighting potential does not decay along the row, typically caused by a conductive region touching the readout electrode); otherwise clears DEVSIM (preserving `direct_solver` and `solver_callback`) and re-solves from scratch with $s'$.
@@ -343,7 +347,7 @@ When solving for the electric field, `solver_section.main` executes in the follo
 
 ### Reading: Assets in a Field Node
 
-1. **Field node**: bias voltage, irradiation fluence, field mode, and the device parts recorded in `read` (device attributes, device file keys and values such as `doping`, `mesh`, `bias`, `irradiation`, and mesh file hashes read during the solve) are all inputs of the field node, whose node ID is given by their fingerprint (see [../stages/field.md](../stages/field.md)); changing any of them produces a new node. This package reads from the given field node directory `field/<node_id>/`.
+1. **Field node**: bias voltage, irradiation fluence, field mode, the selected mesh and its file hashes, and the device parts recorded in `read` (device attributes, device file keys and values such as `doping`, `bias`, and `irradiation` read during the solve) are all inputs of the field node, whose node ID is given by their fingerprint (see [../stages/field.md](../stages/field.md)); changing any of them produces a new node. This package reads from the given field node directory `field/<node_id>/`.
 2. **Asset checks**: raises `FileNotFoundError` if the requested bias is absent from `solved.potential` or `solved.weighting`.
 3. **Capacitance and undepleted layer**: `solved_capacitance` returns `specific_capacitance_pF × area_factor × 1e-12` (F); `solved_undepleted` returns $(R/A,\ C\cdot A\cdot10^{-12})$ ($\Omega$, F), where $A$ is `area_factor`, returning `None` when the undepleted width is `0`; raises `FileNotFoundError` if the corresponding bias has not been solved.
 4. **Circuit lookup** (`field_circuit`): for a strip device listing a single readout electrode with `read_ele_num > 1`, reads `Capacitance_<V>V.json`, raising `FileNotFoundError` if missing; for other devices, takes the field capacitance if that bias is in `solved.capacitance`; for 1D devices, reads the undepleted layer.
@@ -370,7 +374,7 @@ On constructing `DevsimField(device_name, voltage, read_out_contact, bounds, res
 
 `tcad.import_field(tdr, my_d, folder, asked, flip)`:
 
-1. **Bias voltage**: reads the dataset named `ContactExternalVoltage` under `/collection/geometry_0/state_0` and extracts the voltage on `bias.electrode`. Raises `ValueError` if the file contains no electrode voltages and `-bias` is omitted, if that electrode is absent, or if the requested bias disagrees with the file.
+1. **Bias voltage**: reads the dataset named `ContactExternalVoltage` under `/collection/geometry_0/state_0` and extracts the voltage on `bias.electrode`. Raises `ValueError` if the file contains no electrode voltages and `field.voltage` is `null`, if that electrode is absent, or if the requested bias disagrees with the file.
 2. **Mesh conversion**: `tdr_reader.read_tdr` reads geometry and nodal datasets (bulk regions and node-located scalar or vector datasets only; raises `RuntimeError` for mixed element types, multi-part regions, etc.); `tdr_import.import_tdr` builds the DEVSIM mesh and nodal solutions (multi-row datasets named `<name>_<row>`) and writes `converted.devsim`. Coordinates are converted from $\mu\text{m}$ to cm by multiplying by `1e-4`.
 3. **Saving fields**: `save_milestone(..., is_tcad=True)` saves `ElectrostaticPotential`, `DopingConcentration`, `eDensity`, `hDensity`, `eGapStatesRecombination`, and `hGapStatesRecombination` as `Potential`, `NetDoping`, `Electrons`, `Holes`, `TrappingRate_n`, and `TrappingRate_p`.
 4. **Conductive region**: `Aluminum` regions are entirely conductive; regions lacking `eDensity` and `hDensity` are non-conductive; semiconductor regions missing any of `eDensity`, `hDensity`, `DopingConcentration`, `eMobility`, or `hMobility` raise `ValueError`; all others are classified by Eq. (19) using nodal mobilities and written to `Conductive_<V>V.pkl`.
@@ -420,7 +424,7 @@ On constructing `DevsimField(device_name, voltage, read_out_contact, bounds, res
 
 ## Interface
 
-Users can configure the device file keys in the table below and the solver settings under `field.solver`; all other parameters are hardcoded. See [../stages/field.md](../stages/field.md) for command-line usage and [../components/device.md](../components/device.md) for general device file conventions.
+Users can configure the device file keys in the table below and the solver settings under `field.solver`; meshes are not in the device file, and which mesh to use is specified by the `field` section settings; all other parameters are hardcoded. See [../stages/field.md](../stages/field.md) for command-line usage and [../components/device.md](../components/device.md) for general device file conventions.
 
 ### Keys Read from the Device File
 
@@ -432,17 +436,12 @@ Users can configure the device file keys in the table below and the solver setti
 | `area_factor` | `1.0` | 1D $\text{cm}^2$, 2D cm, 3D None | Factor converting specific mesh current and capacitance to device values |
 | `temperature` | None (required) | K | Device temperature |
 | `material` | None (required) | None | Device material; determines $\varepsilon_r$ in Eq. (18) and planar gain coefficients |
-| `bias.electrode`, `bias.voltage` | None (required) | None, V | Bias electrode and default target bias |
+| `bias.electrode`, `bias.voltage` | None (required) | None, V | Bias electrode and target bias when `field.voltage` is `null` |
 | `read_out_contact` | None (required) | None | List of readout electrodes, each with `name` and optional `x_span`, `y_span` (cell span) |
 | `doping.Acceptors`, `doping.Donors` | None (required) | $\text{cm}^{-3}$ | DEVSIM expressions |
 | `doping.Acceptors_ir`, `doping.Donors_ir` | None | $\text{cm}^{-3}$ | Additional doping expressions added on top |
-| `mesh.plugin` | `False` | None | Sets 2D coordinate axes to `("x", "y")` |
-| `mesh.mesher` | `None` | None | When `"sde"`, sets 3D coordinate axes to `("x", "y", "z")` |
-| `mesh.1D_mesh` | Required for 1D | cm | `mesh_line`, `region`, `contact` |
-| `mesh.2D_mesh` | Required for built-in 2D mesh | cm | `mesh_line`, `region`, `contact`; HEMT also requires `interface`; see Weighting Field Solving for `ac_contact` |
-| `mesh.gmsh_mesh` | Required for 3D and 2D Gmsh meshes | cm | `file`, `region`, `contact` |
 | `irradiation.irradiation_model` | `None` if block absent | None | `"XingChen"`, `"Perugia"`, `"Schwandt"`, `"CommonDefect"`; other names yield an empty defect table |
-| `irradiation.irradiation_flux` | `0` if block absent | $\text{cm}^{-2}$ | Default fluence |
+| `irradiation.irradiation_flux` | `0` if block absent | $\text{cm}^{-2}$ | Fluence when `field.irradiation_flux` is `null` |
 | `avalanche_model`, `enable_gain` | `None`, `False` | None | Enables Eq. (7) when both are active |
 | `parameter` | None | parameter-dependent | A `{"name", "value"}` object written as a DEVSIM region parameter after material constants, e.g. `{"name": "mu_n", "value": 1350}`, `{"name": "F_sat", "value": 2e5}`; one parameter per device file |
 | `U_const` | `0` | $\text{cm}^{-3}\,\text{s}^{-1}$ | Additional recombination rate (number or expression) |
@@ -463,7 +462,7 @@ Users can configure the device file keys in the table below and the solver setti
 | `resistive_layer.coupling.thickness`, `.permittivity` | None | $\mu\text{m}$, None | Dielectric layer beneath electrodes |
 | `det_model` | None | None | Selects analytic field type; if it contains `"3d"`, `Detector.capacitance` is `None` when `capacitance_pF` is absent |
 | `depletion_voltage`, `input_doping` | `|bias.voltage|`, `1e12` | V, $\text{cm}^{-3}$ | Analytic fields |
-| `column_radius_um`, `column_cell_x_um`, `column_cell_y_um`, `readout_column_x_um`, `readout_column_y_um`, `ground_columns_um`, `relative_permittivity`, `weighting_series_terms` | required, `2*p_x`, `2*p_y`, cell center, cell center, four corners, `11.7`, `100` | $\mu\text{m}$ / None | Analytic fields (3D column and strip/pixel) |
+| `column_radius_um`, `column_cell_x_um`, `column_cell_y_um`, `readout_column_x_um`, `readout_column_y_um`, `ground_columns_um`, `relative_permittivity`, `weighting_series_terms` | required, `2*p_x`, `2*p_y`, cell center, cell center, four corners, `11.9`, `100` | $\mu\text{m}$ / None | Analytic fields (3D column and strip/pixel) |
 
 ### Solver Settings `SOLVER`
 
@@ -495,10 +494,10 @@ Files are written to the field node directory `work/<device>/field/<node_id>/`. 
 | `Conductive_<V>V.pkl` | Conductive flag, `1.0` or `0.0` | cm; None |
 | `NetDoping_0V.pkl` (`NetDoping_<V>V.pkl` for TCAD) | Net doping | cm; $\text{cm}^{-3}$ |
 | `<V>V.undepleted.json` | 1D DEVSIM field: `voltage_V`, `undepleted_width_um`, `specific_resistance_ohm_cm2`, `specific_capacitance_pF` (`null` at full depletion), `per` (`"cm^2"`) | V, $\mu\text{m}$, $\Omega\cdot\text{cm}^2$, $\text{pF/cm}^2$ |
-| `<V>V.cv.json` | Written by `-cv`: `voltage_V`, `specific_capacitance_pF`, `per` (`"cm^2"`, `"cm"`, `"device"`), `area_factor`, `frequency_Hz` | V, pF/unit, —, Hz |
+| `<V>V.cv.json` | Written by the single-point capacitance subtask: `voltage_V`, `specific_capacitance_pF`, `per` (`"cm^2"`, `"cm"`, `"device"`), `area_factor`, `frequency_Hz` | V, pF/unit, —, Hz |
 | `weightingfield/<contact>/Potential_<V>V.pkl` | Weighting potential | cm; None |
 | `weightingfield/<contact>/Capacitance_<V>V.json` | Stitched row: `unit` (`"F/cm"`), `of`, `total`, `to` (`neighbour<k>` and non-readout electrodes), `neighbours_coupled` | F/cm |
-| `<V>V.devsim`, `<V>V.dd`, `0V.devsim`, `0V.dd` | DEVSIM state (reloaded by `-cv`) and Tecplot data | cm, V |
+| `<V>V.devsim`, `<V>V.dd`, `0V.devsim`, `0V.dd` | DEVSIM state (reloaded by single-point capacitance) and Tecplot data | cm, V |
 | `<det_name>.dat`, `weightingfield/weightingfield.dat`, `last_solvable.dd`, `converted.devsim` | Mesh, weighting field, last state before convergence failure, TCAD conversion result | cm, V |
 | `simIV<min>to<max>.root` | TTree `SicarTestIV`, branches `voltage`, `Current` | V, A |
 | `simCV<min>to<max>.root` | TTree `SicarTestCV`, branches `voltage`, `CAP` | V, pF |
@@ -522,7 +521,7 @@ Files are written to the field node directory `work/<device>/field/<node_id>/`. 
 
 - [1] D. L. Scharfetter, H. K. Gummel, “Large-signal analysis of a silicon Read diode oscillator”, IEEE Trans. Electron Devices 16 (1969) 64, doi:10.1109/T-ED.1969.16566
 - [2] S. M. Sze, K. K. Ng, *Physics of Semiconductor Devices*, 3rd ed., Wiley-Interscience (2007), sec. 1.5.4, doi:10.1002/0470068329
-- [3] J. E. Sanchez, DEVSIM TCAD semiconductor device simulator, https://devsim.org (citation to be added: the code only notes that it is adapted from DEVSIM examples)
+- [3] J. E. Sanchez, “DEVSIM: A TCAD Semiconductor Device Simulator”, J. Open Source Softw. 7 (2022) 3898, doi:10.21105/joss.03898
 - [4] R. van Overstraeten, H. de Man, “Measurement of the ionization rates in diffused silicon p-n junctions”, Solid-State Electronics 13 (1970) 583, doi:10.1016/0038-1101(70)90139-5
 - [5] T. Hatakeyama, T. Watanabe, T. Shinohe, K. Kojima, K. Arai, N. Sano, “Impact ionization coefficients of 4H silicon carbide”, Appl. Phys. Lett. 85 (2004) 1380, doi:10.1063/1.1784520
 - [6] G. A. M. Hurkx, D. B. M. Klaassen, M. P. G. Knuvers, “A new recombination model for device simulation including tunneling”, IEEE Trans. Electron Devices 39 (1992) 331, doi:10.1109/16.121690
@@ -530,5 +529,14 @@ Files are written to the field node directory `work/<device>/field/<node_id>/`. 
 - [8] W. Shockley, “Currents to Conductors Induced by a Moving Point Charge”, J. Appl. Phys. 9 (1938) 635, doi:10.1063/1.1710367
 - [9] S. Ramo, “Currents Induced by Electron Motion”, Proc. IRE 27 (1939) 584, doi:10.1109/JRPROC.1939.228757
 - [10] W. Riegler, “An application of extensions of the Ramo–Shockley theorem to signals in silicon sensors”, Nucl. Instrum. Methods Phys. Res. A 940 (2019) 453, eq. 50, doi:10.1016/j.nima.2019.06.056, arXiv:1812.07570
-- [11] M. Spera, D. Corso, S. Di Franco, G. Greco, A. Severino, P. Fiorenza, F. Giannazzo, F. Roccaforte, “Effect of high temperature annealing (T > 1650 °C) on the morphological and electrical properties of p-type implanted 4H-SiC layers”, arXiv:2001.08021 (journal citation to be added)
+- [11] M. Spera, D. Corso, S. Di Franco, G. Greco, A. Severino, P. Fiorenza, F. Giannazzo, F. Roccaforte, “Effect of high temperature annealing (T > 1650 °C) on the morphological and electrical properties of p-type implanted 4H-SiC layers”, Mater. Sci. Semicond. Process. 93 (2019) 274, doi:10.1016/j.mssp.2019.01.019, arXiv:2001.08021
 - [12] S. Spannagel et al., “Allpix²: A modular simulation framework for silicon detectors”, Nucl. Instrum. Methods Phys. Res. A 901 (2018) 164, doi:10.1016/j.nima.2018.06.020
+- [13] K. K. Thornber, “Applications of scaling to problems in high-field electronic transport”, J. Appl. Phys. 52 (1981) 279, doi:10.1063/1.328490
+- [14] A. O. Konstantinov, Q. Wahab, N. Nordell, U. Lindefelt, “Ionization rates and critical fields in 4H silicon carbide”, Appl. Phys. Lett. 71 (1997) 90, doi:10.1063/1.119478
+- [15] J. Schwandt, E. Fretwurst, E. Garutti, R. Klanner, C. Scharf, G. Steinbrück, “A new model for the TCAD simulation of the silicon damage by high fluence proton irradiation”, 2018 IEEE NSS/MIC, doi:10.1109/NSSMIC.2018.8824412, arXiv:1904.10234
+- [16] X. Li et al., “Simulation of radiation damage effect on silicon detectors using RASER”, JINST 20 (2025) P12009, doi:10.1088/1748-0221/20/12/P12009, arXiv:2504.20463
+- [17] M. Petasecca, F. Moscatelli, D. Passeri, G. U. Pignatel, “Numerical simulation of radiation damage effects in p-type and n-type FZ silicon detectors”, IEEE Trans. Nucl. Sci. 53 (2006) 2971, doi:10.1109/TNS.2006.881910
+- [18] W. Riegler, G. Aglieri Rinella, “Point charge potential and weighting field of a pixel or pad in a plane condenser”, Nucl. Instrum. Methods Phys. Res. A 767 (2014) 267, doi:10.1016/j.nima.2014.08.044; explicit series in W. Riegler, “Time resolution of silicon pixel sensors”, JINST 12 (2017) P11017, Appendix E, doi:10.1088/1748-0221/12/11/P11017
+- [19] J. D. Jackson, *Classical Electrodynamics*, 3rd ed., Wiley (1999), sec. 3.12
+- [20] A. Das, S. P. Duttagupta, “TCAD simulation for alpha-particle spectroscopy using SiC Schottky diode”, Radiat. Prot. Dosim. 167 (2015) 443, doi:10.1093/rpd/ncu369
+- [21] Z. Li et al., “Mechanisms of proton irradiation-induced defects on the electrical performance of 4H-SiC PIN detectors”, JINST 21 (2026) P03010, doi:10.1088/1748-0221/21/03/P03010, arXiv:2503.09016

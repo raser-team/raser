@@ -41,19 +41,31 @@ flowchart TD
 
 ## Experiments Are Python Classes
 
-- **Inheriting the experiment base class**: Each benchmark or application is a Python class inheriting from the `raser` experiment base class. The class declares which stages it consists of, which devices it has, what role each device plays (for example, device under test or reference device), and default values.
-- **Device under test as the subject**: The device given on the command line replaces the device under test. For example, `telescope` uses TAICHU as the reference by default, and the command line swaps the device under test placed in the middle.
+- **Inheriting the experiment base class**: Each benchmark or application is a Python class inheriting from the `raser` experiment base class. The class declares which stages it consists of, which devices it has, and what role each device plays (for example, device under test or reference device). The class does not store setting values: values come solely from the experiment folder's `config.json`, and the `config.json` inside an example project is the starting point for each experiment; no default values are kept in code, and if `config.json` is missing a required key, an error is raised identifying which `"section.key"` is missing.
+- **Device under test as the subject**: The device given on the command line replaces the device under test. For example, `telescope` uses `TAICHU3` as reference layers by default with two devices under test in the middle, and the device given on the command line replaces both of them.
 - **Benchmark class outputs**: Placed under the device's project, i.e., `work/<device>/<bench>/`, keeping all benchmark results for the same device together.
 - **Application class outputs**: Placed under `work/<app>/`; the device can be a scan axis (multiple device axes are supported) to compare the results obtained with different devices installed.
-- **Custom experiment registration**: A user's own benchmark or application is written as such a class, placed in the user's own package (registered via entry points) or inside the user's project folder (auto-discovered), and registered by name; the official `raser_bench` and `raser_app` use the exact same mechanism.
+- **Custom experiment registration**: A user's own benchmark or application is written as such a class and registered by name in one of two ways, with the official `raser_bench` and `raser_app` using the first:
+  - Placed in the user's own package and registered via entry points in the package's `pyproject.toml`, one experiment per line, where the name is the command word:
+
+    ```toml
+    [project.entry-points."raser.experiments"]
+    my-scan = "mypackage.experiments:MyScan"
+    ```
+
+    Once the package is installed, `raser my-scan` is ready to use.
+  - Placed in a project folder: classes inheriting from the experiment base class inside `*.py` files at the project root are auto-discovered, with the class name converted to lowercase with hyphens as the command word (`MyScan` becomes `my-scan`), available only inside that project.
+  - When both locations define an experiment with the same name, the one in the project folder takes priority; if a name collides with a stage name, a short command, `status`, `new`, `model`, or `device`, an error is raised.
 
 ## project
 
 - **project**: A device folder or an application folder under `work/`.
 - **examples**: Each example under `examples/` is a project, such as `examples/HPK-Si-PiN/` (containing `signal/`, `timeres/`, etc., each with a complete `config.json`) and `examples/bmos/`.
-- **Sectioned configuration file**: `config.json` in each experiment folder specifies all settings used for the run, sectioned by stage (one section each for `field`, `deposit`, `current`, `readout`, `digitizer`, `trigger`, `reconstruction`, and `analysis`). `--set` and `--scan` use `"section.key"` as the address, for example `--set field.voltage=100` and `--scan field.voltage=100,200`. Every setting used by a run comes from the configuration file.
+- **Sectioned configuration file**: `config.json` in each experiment folder specifies all settings used for the run, sectioned by stage (one section each for `field`, `deposit`, `current`, `readout`, `digitizer`, `trigger`, `reconstruction`, and `analysis`). `--set` and `--scan` use `"section.key"` as the address, for example `--set field.voltage=100` and `--scan field.voltage=100,200`. Every setting used by a run comes from the configuration file, with all eight sections written in full; examples on documentation pages show only the sections relevant to that page.
 - **Creating a new project**: `raser new --from <example> <path>` copies the entire example project to `<path>` with a complete configuration, independent of the example thereafter. For example, `raser new --from HPK-Si-PiN work/my-PiN`.
 - **Referencing a device**: If the project folder contains its own device file, that file is used; when only a name is given, it is looked up in the component library.
+- **Component slots**: Keys within a section that select a component are slots, such as `deposit.source`, `deposit.laser`, `readout.amplifier`, and `digitizer.device`. A slot is written either as a component name string or as an object with `name`, where the remaining keys in the object override identically named keys from the component file: `"laser": {"name": "PIL037_top_SiC", "fz_rel": 0.5}`. A key inside a component is addressed as `"section.slot.key"`, for example `--scan deposit.laser.fz_rel=0.1,0.5` or `--set digitizer.device.full_scale_V=0.08`; since `readout.amplifier` is a cascade of amplifier stages, its address adds a stage-name level, for example `readout.amplifier.SantaCruz.R1`.
+- **Swapping a component swaps the whole set**: `name` cannot be modified with `--set` or `--scan`. To swap a component, write `--set section.slot=<component_name>`, and to scan components, write `--scan section.slot=<component_name1>,<component_name2>`; this replaces the entire slot with that component file and drops any previously overridden keys (such as `fx_rel`, `fy_rel`, and `fz_rel` of a laser); any additional `section.slot.key` passed in the same command applies to the newly swapped component, for example `--set deposit.laser=LA01IR_top_Si --set deposit.laser.fz_rel=0.3`. To give the replacement component different values, either place a separate component file in the project or write the full object for it in `config.json`.
 
 Details of configuration merging, scan-point expansion, and job scheduling are in [lifecycle/experiments.md](lifecycle/experiments.md) and [lifecycle/jobs.md](lifecycle/jobs.md).
 
@@ -74,20 +86,24 @@ work/HPK-Si-PiN/                      # device project
     │   └── …
     ├── points/                       # views, all symlinks
     │   ├── voltage_100/
-    │   │   ├── deposit -> ../../nodes/deposit/<node_id>
-    │   │   └── …
+    │   │   ├── field -> ../../../field/<node_id>
+    │   │   ├── deposit/              #   one symlink per job
+    │   │   │   ├── 0 -> ../../../nodes/deposit/<node_id>
+    │   │   │   └── 1 -> ../../../nodes/deposit/<node_id>
+    │   │   ├── …
+    │   │   └── analysis -> ../../nodes/analysis/<node_id>
     │   └── voltage_200/
     └── analysis/                     # cross-point statistics and trend plots
 ```
 
 ### Nodes
 
-One result computed by a stage for a given set of inputs is a node. Its inputs consist of four items:
+One result computed by a stage for a given set of inputs is a node. `deposit` through `reconstruction` are computed per job, so however many jobs a scan point runs, each stage has that many nodes; `field` and `analysis` have one node per scan point. A node's inputs consist of four items:
 
 - the setting values used by this stage;
 - the part of the component files used by this stage;
-- the node IDs of its upstream nodes;
-- the seeds of the measurement stages (deposit, current), and readout's own seed (NGspice noise).
+- the node IDs of its upstream nodes; the upstream nodes of `analysis` are the per-job nodes of that scan point, so its fingerprint records which jobs it aggregated;
+- the seeds of the measurement stages (deposit, current), as well as the own seeds of readout (NGspice noise) and digitizer (clock phase, aperture jitter). All of these seeds are derived from the job seed, which is derived from the master seed (`--seed`), the job index, and the values of the measurement-related scan axes at that point, without using the point name; see [lifecycle/experiments.md](lifecycle/experiments.md#seeds) for the rules.
 
 A fingerprint is computed from these inputs, and that fingerprint is the node ID. `node.json` inside the node folder records the inputs verbatim; the code version, runtime environment, and run status are also recorded there, but do not enter the fingerprint. A device's field is likewise a node, stored under `work/<device>/field/` and referenced by all experiments on that device.
 
@@ -97,7 +113,7 @@ On each run, the program computes `points.json` from `config.json`: one row per 
 
 ### Views
 
-`points/<point>/<stage>` is a symlink pointing to the node. Point names are derived from scan-axis values, such as `voltage_100`, serving as human-readable entry points; if settings change or a scan axis is added, the point name may stay the same while the node it points to updates accordingly, so parameters and results always match.
+`points/<point>/<stage>/` is a folder containing one symlink per job at that scan point, named by the job index and pointing to that job's node at that stage; `field` and `analysis` have only one node per point, so `points/<point>/field` and `points/<point>/analysis` are symlinks directly. Point names are derived from scan-axis values, such as `voltage_100`, serving as human-readable entry points; if settings change or a scan axis is added, the point name may stay the same while the node it points to updates accordingly, so parameters and results always match.
 
 ### Reuse
 
@@ -121,6 +137,8 @@ Scan two things simultaneously on `signal`: `field.voltage=100,200`, and two val
 | readout and downstream | 4 | Two bias values times two resistor values |
 
 Then change the number of events per job from 20 to 40: all fingerprints change, everything is computed into new nodes, and the old nodes remain. Changing it back to 20 points the views back to the old nodes, and nothing needs to be recomputed.
+
+Changing the number of jobs per point from `-s 3` to `-s 5` (with the same `--seed`): the seeds of jobs 0, 1, and 2 remain unchanged, so their nodes are reused as usual and only jobs 3 and 4 are newly computed; because the jobs aggregated by `analysis` have changed, each point's `analysis` is computed into a new node, and the cross-point statistics under `<experiment>/analysis/` are rewritten accordingly.
 
 ## Chain
 

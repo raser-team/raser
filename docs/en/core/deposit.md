@@ -1,6 +1,6 @@
 # Energy Deposition and Ionization (`core/deposit`)
 
-`src/raser/core/deposit/` takes the device dimensions and material from the [device model](device.md) and the setup script, radioactive source or beam, and laser definitions from [energy deposition components](../components/deposit.md). It uses Geant4 or a straight-line toy MIP model to compute particle deposition steps in the device, converts the deposited energy of each step into electron-hole pairs, and writes `deposit_<job>.h5`; for lasers, it directly produces carrier groups according to the absorption coefficient. The deposit file is passed to [carrier drift and induced current](current.md) for drift simulation, the earliest deposition time of each event is passed to [statistical analysis](analysis.md) as `truth`, and the [telescope](../bench/telescope.md) also reads this file; laser carrier groups are passed to the current calculation by [TCT](../bench/tct.md). For the command-line entry point, see the [energy deposition stage](../stages/deposit.md).
+`src/raser/core/deposit/` takes the device dimensions and material from the [device model](device.md) and the setup script, radioactive source or beam, and laser definitions from [energy deposition components](../components/deposit.md). It uses Geant4 or a straight-line toy MIP model to compute particle deposition steps in the device, converts the deposited energy of each step into electron-hole pairs, and writes `deposit.h5`; for lasers, it directly produces carrier groups according to the absorption coefficient and likewise writes `deposit.h5`. The deposit file is passed to [carrier drift and induced current](current.md) for drift simulation, the earliest deposition time of each event is passed to [statistical analysis](analysis.md) as `truth`, and the [telescope](../bench/telescope.md) also reads this file. For commands and settings in the `deposit` section, see the [energy deposition stage](../stages/deposit.md).
 
 ## Physics
 
@@ -21,12 +21,12 @@ where:
 - $\mathcal{N}(\mu, \sigma^2)$: Gaussian distribution with mean $\mu$ and variance $\sigma^2$;
 - $N$: number of pairs written to the file, pairs.
 
-Both equations are implemented by `ionized_pairs(event, material, fano)`. When `fano=True` (the default), sampling follows Eq. (2); otherwise $N = \bar{N}$, and the material does not need a Fano factor. Values for each material:
+Both equations are implemented by `ionized_pairs(event, material, fano)`. When `fano=True`, sampling follows Eq. (2); otherwise $N = \bar{N}$, and the material does not need a Fano factor. Values for each material:
 
 | Material | `PAIR_ENERGY_EV` ($\text{eV}$) | `FANO_FACTOR` | Source |
 | --- | --- | --- | --- |
-| `"Si"` | `3.6` | `0.115` | source to be added |
-| `"SiC"` | `8.4` | `0.128` | source to be added |
+| `"Si"` | `3.6` | `0.115` | Ionization energy is an approximation to the $3.65\ \text{eV}$ given in PDG Sec. 35.8, Table 35.10 [8]; Fano factor takes the asymptotic value $0.115$ [9], measured as $0.1161$ [10] |
+| `"SiC"` | `7.83` | `0.128` | Electron-hole pair creation energy of 4H-SiC $(7.83 \pm 0.02)\ \text{eV}$ [11]; Fano factor $0.128$ [12] |
 | `"Diamond"` | `13.1` | `0.382` | Measured on CVD diamond with $5.486\ \text{MeV}$ α particles from Am-241; Fano factor is $0.382 \pm 0.007$ [2] |
 
 For Fano fluctuations, see Ref. [1].
@@ -44,7 +44,7 @@ where:
 - $\mathbf{r}_k$: position of the deposition step, taken at the step midpoint, $\mu\text{m}$ (code comment notes: when the step endpoints lie on the device surface, rounding error may place an endpoint outside the device);
 - $\ell_k$: step length, $\mu\text{m}$; $s_{\max}$: the setup's `maxstep`, $\mu\text{m}$.
 
-The device material in Geant4 is built according to `material`: `"Si"` uses NIST `G4_Si`; `"Diamond"` uses `G4_C` with the density changed to $3.52\ \text{g/cm}^3$ (code comment: NIST `G4_C` is graphite at $2.0\ \text{g/cm}^3$); `"SiC"` is a compound of equal atomic fractions of Si and C with density $3.2\ \text{g/cm}^3$. Sources for the two densities are to be added.
+The device material in Geant4 is built according to `material`: `"Si"` uses NIST `G4_Si`; `"Diamond"` uses `G4_C` with the density changed to $3.52\ \text{g/cm}^3$ (code comment: NIST `G4_C` is graphite at $2.0\ \text{g/cm}^3$); `"SiC"` is a compound of equal atomic fractions of Si and C with density $3.21\ \text{g/cm}^3$. The diamond density is taken from the PDG table of atomic and nuclear properties [8], and the 4H-SiC density is taken from Ref. [13].
 
 ### Toy MIP Track
 
@@ -70,14 +70,18 @@ This is implemented by `mip_deposits`. The number of pairs in each segment is th
 
 | Material | `PAIRS_PER_UM` ($\mu\text{m}^{-1}$) | $dE/dx$ ($\text{MeV}/\mu\text{m}$) | `LANDAU_WIDTH_MEV_PER_UM` ($\text{MeV}/\mu\text{m}$) |
 | --- | --- | --- | --- |
-| `"Si"` | `80.0` | `2.88e-4` | `2.0e-5` |
-| `"SiC"` | `55.0` | `4.62e-4` | `3.2e-5` |
+| `"Si"` | `80.0` | `2.88e-4` | `1.78e-5` |
+| `"SiC"` | `55.0` | `4.31e-4` | `2.46e-5` |
 
-Sources for `PAIRS_PER_UM` and `LANDAU_WIDTH_MEV_PER_UM` are to be added.
+Si yields about $80$ pairs per $\mu\text{m}$: the most probable charge in $300\ \mu\text{m}$ of silicon is about $23\,000\ e$, i.e. about $77\ e/\mu\text{m}$ [8, 14]. SiC yields about $55$ pairs$/\mu\text{m}$, converted from $7.83\ \text{eV}$ and MIP energy loss. The Landau width follows PDG Ch. 34 [8]:
+
+$$w = \frac{K}{2}\left\langle\frac{Z}{A}\right\rangle\frac{\rho}{\beta^2} \times 10^{-4} \tag{4a}$$
+
+with $\beta = 1$, where $K/2 = 0.1535\ \text{MeV cm}^2/\text{g}$, $\rho$ is the density ($\text{g/cm}^3$), and $10^{-4}$ converts per $\text{cm}$ to per $\mu\text{m}$: $1.78\times10^{-5}\ \text{MeV}/\mu\text{m}$ for Si ($\langle Z/A\rangle = 0.4985$, $\rho = 2.329$), and $2.46\times10^{-5}\ \text{MeV}/\mu\text{m}$ for 4H-SiC ($\langle Z/A\rangle = 0.4988$, $\rho = 3.21$).
 
 ### Single-Photon and Two-Photon Absorption of Lasers
 
-A laser pulse generates carriers in the device via optical absorption. In single-photon absorption (SPA), each absorbed photon produces one electron-hole pair, and the intensity attenuates along the beam path as $e^{-\alpha s}$. In two-photon absorption (TPA), the generation rate is proportional to the square of the intensity and is concentrated near the focus. The beam is Gaussian, with a transverse radius that expands with distance from the focus.
+A laser pulse generates carriers in the device via optical absorption. In single-photon absorption (SPA), each absorbed photon produces one electron-hole pair, and the intensity attenuates along the beam path according to the Beer–Lambert law as $e^{-\alpha s}$. In two-photon absorption (TPA), following $dI/dz = -\alpha I - \beta_2 I^2$ [15], the generation rate is proportional to the square of the intensity and is concentrated near the focus. The beam is Gaussian, with a transverse radius that expands with distance from the focus.
 
 When `alpha` is not given in the laser file, the absorption coefficient $\alpha$ is looked up by `absorption_coefficient`:
 
@@ -117,7 +121,7 @@ where:
 - $r$: distance from the optical axis, $\mu\text{m}$;
 - $P(t)$: normalized temporal distribution at offset $t$ ($\text{s}$) from the pulse center, $\text{s}^{-1}$ (`timePulse`).
 
-The second factor in Eq. (11) is the integral of the squared Gaussian temporal pulse distribution. Beam intensity along the path attenuates only according to $\alpha$. When $\alpha \ne 0$, SPA carrier groups are added according to Eq. (10); when `tech` is `"TPA"`, TPA carrier groups are additionally added according to Eq. (11); for a two-photon laser, $\alpha$ represents defect absorption of sub-bandgap photons (code comment). The generation time of each group is broadened around `central_time` with FWHM $\tau$ for SPA groups and $\tau/\sqrt{2}$ for TPA groups, because $P^2(t)$ is a Gaussian narrower by a factor of $\sqrt{2}$. This is implemented by `LaserInjection`. The absorption-coefficient table `Si.txt` is taken from Ref. [7]; sources for Eqs. (9)–(13) are to be added.
+The second factor in Eq. (11) is the integral of the squared Gaussian temporal pulse distribution. Beam intensity along the path attenuates only according to $\alpha$. When $\alpha \ne 0$, SPA carrier groups are added according to Eq. (10); when `tech` is `"TPA"`, TPA carrier groups are additionally added according to Eq. (11); for a two-photon laser, $\alpha$ represents defect absorption of sub-bandgap photons (code comment). The generation time of each group is broadened around `central_time` with FWHM $\tau$ for SPA groups and $\tau/\sqrt{2}$ for TPA groups, because $P^2(t)$ is a Gaussian narrower by a factor of $\sqrt{2}$. This is implemented by `LaserInjection`. The absorption-coefficient table `Si.txt` is taken from Ref. [7].
 
 ### Radioactive Decay Sources
 
@@ -146,17 +150,17 @@ Nuclides are generated by `NuclideGeneratorAction` (`G4GeneralParticleSource`, k
 
 | Constant | Value | Unit | Location and Meaning | Key in File |
 | --- | --- | --- | --- | --- |
-| `PAIR_ENERGY_EV` | Si `3.6`, SiC `8.4`, Diamond `13.1` | $\text{eV}$ | `ionization.py`, $\varepsilon$ in Eq. (1) | none |
-| `FANO_FACTOR` | Si `0.115`, SiC `0.128`, Diamond `0.382` | dimensionless | `ionization.py`, $F$ in Eq. (2) | none (the switch `fano` is a stage option) |
+| `PAIR_ENERGY_EV` | Si `3.6`, SiC `7.83`, Diamond `13.1` | $\text{eV}$ | `ionization.py`, $\varepsilon$ in Eq. (1) | none |
+| `FANO_FACTOR` | Si `0.115`, SiC `0.128`, Diamond `0.382` | dimensionless | `ionization.py`, $F$ in Eq. (2) | none (the switch `deposit.fano` is a stage setting) |
 | `PAIRS_PER_UM` | Si `80.0`, SiC `55.0` | $\mu\text{m}^{-1}$ | `mip_track.py`, $n_{\text{MIP}}$ in Eq. (4) | none |
-| `LANDAU_WIDTH_MEV_PER_UM` | Si `2.0e-5`, SiC `3.2e-5` | $\text{MeV}/\mu\text{m}$ | `mip_track.py`, $w$ in Eq. (5) | none |
-| `GENERATED_LIMIT` | `10_000_000` | events | `generation.py`, maximum number of generated events when running by recorded count | none (stage option `--generated-limit`) |
-| `DEVICE_ALONE` | see "Setup" below | — | `simulate_deposits.py`, setup used when none is given | replaced as a whole by `g4setup` |
+| `LANDAU_WIDTH_MEV_PER_UM` | Si `1.78e-5`, SiC `2.46e-5` | $\text{MeV}/\mu\text{m}$ | `mip_track.py`, $w$ in Eq. (5) | none |
+| `GENERATED_LIMIT` | `10_000_000` | events | `generation.py`, maximum number of generated events when running by recorded count | none (stage setting `deposit.generated_limit`) |
+| `DEVICE_ALONE` | see "Setup" below | — | `simulate_deposits.py`, setup used when none is given | replaced as a whole by `deposit.g4setup` |
 | `WORLD_HALF_SIDE` | `25000` | $\mu\text{m}$ | `simulate_deposits.py`, default half-side length of the world cube | `world_half_size_um` under `gdml_import` |
 | Physics list | `FTFP_BERT` + `G4StepLimiterPhysics` | — | `geant4/interaction.py` | none |
 | Radioactive decay time threshold | `1.0e60` | years | `geant4/interaction.py` | none |
-| Random engine | `CLHEP::RanecuEngine`, seeded by the job's `seed` | — | `geant4/interaction.py` | none |
-| Device density | Diamond `3.52`, SiC `3.2` (Si:C atomic ratio `50:50`) | $\text{g/cm}^3$ | `geant4/detector_construction.py` | none |
+| Random engine | `CLHEP::RanecuEngine`, seeded by the `deposit` stage's seed (derived from the job's seed) | — | `geant4/interaction.py` | none |
+| Device density | Diamond `3.52`, SiC `3.21` (Si:C atomic ratio `50:50`) | $\text{g/cm}^3$ | `geant4/detector_construction.py` | none |
 | `RADIOACTIVE_DECAY` | `210` | — | `geant4/nuclide_source.py`, process subtype for radioactive decay | none |
 | $h$, $c$ | `6.626e-34`, `2.998e8` | $\text{J}\cdot\text{s}$, $\text{m/s}$ | `laser.py`, Eq. (8) | none |
 | Number of rings, number of sectors | `4`, `8` | count | `laser.py`, division of the laser cross section | none |
@@ -186,7 +190,7 @@ Nuclides are generated by `NuclideGeneratorAction` (`G4GeneralParticleSource`, k
 
 `write_simulated_deposits` calls `simulate_deposits`, writes the file via `write_deposits`, and returns the number of recorded events.
 
-In GDML import mode, the device logical volume `"Device"` is built according to `material` for `"Si"` (`G4_Si`) and `"SiC"` (equal atomic fractions of Si and C, $3.2\ \text{g/cm}^3$).
+In GDML import mode, the device logical volume `"Device"` is built according to `material` for `"Si"` (`G4_Si`) and `"SiC"` (equal atomic fractions of Si and C, $3.21\ \text{g/cm}^3$).
 
 ### Slicing Energy-Loss Tracks into Deposition Steps
 
@@ -204,7 +208,7 @@ In GDML import mode, the device logical volume `"Device"` is built according to 
 
 ### Laser Carrier Groups
 
-`LaserInjection(my_d, laser_dic)` reads the laser keys (see "Interface"). If `alpha` is not given, it looks up the table using Eq. (7): raise `ValueError` if `laser/absorption/<material>.txt` does not exist in the components or if $10^3\lambda$ is shorter than the shortest wavelength in the table; set $\alpha = 0$ if it is longer than the longest wavelength. It then adds SPA groups with $k = 2$ and broadening $\tau$ when $\alpha \ne 0$, and subsequently adds TPA groups with $k = 4$ and broadening $\tau/\sqrt{2}$ when `tech == "TPA"`. If `tech` is neither `"SPA"` nor `"TPA"`, `NameError(tech)` is raised after adding any SPA groups. Each call to `_add_groups` proceeds as follows:
+`LaserInjection(my_d, laser_dic)` reads the laser keys (see "Interface"). If `alpha` is not given, it looks up the table using Eq. (7): raise `ValueError` if `deposit/absorption/<material>.txt` does not exist in the components or if $10^3\lambda$ is shorter than the shortest wavelength in the table; set $\alpha = 0$ if it is longer than the longest wavelength. It then adds SPA groups with $k = 2$ and broadening $\tau$ when $\alpha \ne 0$, and subsequently adds TPA groups with $k = 4$ and broadening $\tau/\sqrt{2}$ when `tech == "TPA"`. If `tech` is neither `"SPA"` nor `"TPA"`, `NameError(tech)` is raised after adding any SPA groups. Each call to `_add_groups` proceeds as follows:
 
 1. **Beam-path coordinates** (`_beam_frame`): `"top"` enters from $z = 0$ along $+z$, path length $l_z$, focus $s_f = f_z l_z$, transverse coordinates $(u, v) = (x, y)$, center $(f_x l_x, f_y l_y)$; `"bottom"` enters from $z = l_z$ along $-z$, path length $l_z$, $s_f = l_z - f_z l_z$, $z = l_z - s$; `"edge"` enters from $x = 0$ along $+x$, path length $l_x$, $s_f = f_x l_x$, $(u, v) = (y, z)$, center $(f_y l_y, f_z l_z)$. Here $f_x, f_y, f_z$ are `fx_rel`, `fy_rel`, `fz_rel`. Any other `direction` raises `NameError(direction)`.
 2. **Beam-path sampling**: Let the finest length scale be $d = \min\bigl(L_{\text{beam}},\ z_R,\ 10^{6}/\alpha\bigr)$ (taking the third term as $L_{\text{beam}}$ when $\alpha = 0$). Place $\lceil 50 L_{\text{beam}}/d \rceil + 1$ equidistant points on $[0, L_{\text{beam}}]$, compute $dN/ds$ via Eq. (10) or (11), and accumulate via the trapezoidal rule (multiplied by $10^{-6}$ to convert to per $\mu\text{m}$) to obtain $M(s)$, with total pairs $N_{\text{tot}} = M(L_{\text{beam}})$.
@@ -232,7 +236,7 @@ In GDML import mode, the device logical volume `"Device"` is built according to 
 1. Let `tsg` be whether `driver.upper()` is in `{"TSG", "TSG_FILE", "TSG_OFFSCREEN"}`. If `output` is given while the driver is neither TSG nor starts with `"OGL"`, raise `ValueError`.
 2. If the driver is not in `DAWNFILE`, `HEPREPFILE`, `K3DJUPYTER`, `MPLJUPYTER`, `TSG`, `TSG_FILE`, `TSG_OFFSCREEN`, `VRML2FILE`, first create a `G4UIExecutive` session.
 3. Build and rotate the configuration with `generated = events` and no energy window, and construct the same geometry and actions as in the "Geant4 branch".
-4. Open the driver (`register_driver` registers `TSG_OFFSCREEN`, `TSG_QT_GLES`, `OGL`, `VRML2FILE`, and `ATREE` for g4ppyy). When using TSG with `output` given, configure PNG output to `<output>.png`. Run the component macro `g4macro/vis_pcb.mac` for `gdml_import`, or `g4macro/init_vis.mac` and `g4macro/vis.mac` otherwise; raise `FileNotFoundError` if a macro is not found in the component paths. When using OGL with `output` given, set a white background, vector printing, size `2000 × 2000`, and filename `output`.
+4. Open the driver (`register_driver` registers `TSG_OFFSCREEN`, `TSG_QT_GLES`, `OGL`, `VRML2FILE`, and `ATREE` for g4ppyy). When using TSG with `output` given, configure PNG output to `<output>.png`. Run the component macro `deposit/vis_pcb.mac` for `gdml_import`, or `deposit/init_vis.mac` and `deposit/vis.mac` otherwise; raise `FileNotFoundError` if a macro is not found in the component paths. When using OGL with `output` given, set a white background, vector printing, size `2000 × 2000`, and filename `output`.
 5. Run `BeamOn(events)`, then refresh the viewer and export the image. If an interactive session was created, enter it and return after the window is closed. If any Geant4 command returns a nonzero status, raise `RuntimeError` (`Geant4 refused the command ...`).
 
 ## Software Implementation
@@ -260,7 +264,7 @@ In GDML import mode, the device logical volume `"Device"` is built according to 
 
 ## Interface
 
-Users can configure the keys in device files, setup scripts, radioactive source and beam files, and laser files listed in the tables below; all other parameters on this page are hard-coded. Event counts, energy window, `fano`, and plotted event count `deposit.plots` are stage options; for command-line usage, see the [energy deposition stage](../stages/deposit.md).
+Users can configure the keys in device files, setup scripts, radioactive source and beam files, and laser files listed in the tables below; all other parameters on this page are hard-coded. Event counts, energy window, `deposit.fano`, and plotted event count `deposit.plots` are settings in the `deposit` section; see the [energy deposition stage](../stages/deposit.md).
 
 ### Keys Read from Device Files
 
@@ -271,7 +275,7 @@ Users can configure the keys in device files, setup scripts, radioactive source 
 
 ### Setup
 
-A setup is the dictionary `G4SETUP` inside a `g4setup/<name>.py` script; when no setup is given, `DEVICE_ALONE` is used (identical to `device_alone.py` except for `name` and `description`).
+A setup is the dictionary `G4SETUP` inside a `<name>.py` script under `components/deposit/`; when no setup is given, `DEVICE_ALONE` is used (identical to `device_alone.py` except for `name` and `description`).
 
 #### Top-Level Keys of `G4SETUP`
 
@@ -333,7 +337,7 @@ When the GDML file contains the string `RASER_GDML_WRAPPER_WORLD`, the GDML worl
 | Key | Default | Unit | Meaning |
 | --- | --- | --- | --- |
 | `world_half_size_um` | computed by `world_half_side` | $\mu\text{m}$ | Overrides the half-side length of the world cube |
-| `gdml.file` | none (required) | none | Path to the GDML file; searched in order as an absolute path, relative to each component root, under `g4experiment/<file>` of each component root, and under `src/raser/<file>`; raises `ValueError` if empty and `FileNotFoundError` if not found |
+| `gdml.file` | none (required) | none | Path to the GDML file; searched in order as an absolute path, relative to each component root, under `deposit/<file>` of each component root, and under `src/raser/<file>`; raises `ValueError` if empty and `FileNotFoundError` if not found |
 | `gdml.top_volume` | `None` | none | Name of the logical volume to place; if absent from the file or omitted, the GDML world volume is placed |
 | `gdml.validate` | `False` | none | Whether to validate the GDML schema while reading |
 | `gdml.auto_center` | `True` | none | Whether to subtract the center of the bounding box of all `<position>` coordinates in the GDML file |
@@ -346,10 +350,10 @@ When the GDML file contains the string `RASER_GDML_WRAPPER_WORLD`, the GDML worl
 
 | Component | Location | Description |
 | --- | --- | --- |
-| `device_alone` | `components/g4setup/` | Device placed alone in vacuum, source $17\ \text{mm}$ above the top face |
-| `Sr90_collimator` | `bench/signal/components/g4setup/` | Brass collimator in air (see [signal](../bench/signal.md)) |
-| `pcb_readout_gdml` | `bench/signal/components/g4setup/` | PCB readout board imported from `pcb_readout.gdml` (see [signal](../bench/signal.md)) |
-| `time_resolution` | `bench/timeres/components/g4setup/` | Reference silicon device and two apertured PCB boards (see [time resolution](../bench/timeres.md)) |
+| `device_alone` | `raser/components/deposit/` | Device placed alone in vacuum, source $17\ \text{mm}$ above the top face |
+| `Sr90_collimator` | `src/raser_bench/signal/components/deposit/` | Brass collimator in air (see [signal](../bench/signal.md)) |
+| `pcb_readout_gdml` | `src/raser_bench/signal/components/deposit/` | PCB readout board imported from `pcb_readout.gdml` (see [signal](../bench/signal.md)) |
+| `time_resolution` | `src/raser_bench/timeres/components/deposit/` | Reference silicon device and two apertured PCB boards (see [time resolution](../bench/timeres.md)) |
 
 ### Radioactive Sources and Beams
 
@@ -401,7 +405,7 @@ A `toy_mip` source may contain only the keys in the table below and the common k
 | `toy/MIP` | `toy_mip` | Default track, `landau_sampling = true` |
 | `toy/MIP_pixel_edge`, `toy/MIP_pixel_edge_fast` | `toy_mip` | From $(600, 450, 0)$ to $(600, 450, 300)$ $\mu\text{m}$, `packets` equal to `50` and `5`, the latter without Landau sampling |
 | `toy/MIP_strip_edge` | `toy_mip` | Start $x$ sampled uniformly in $[150, 270]$ $\mu\text{m}$, standard deviation of $dx/dz$ equal to $10$ mrad |
-| `bunch` (`apps/bmos/components/source/`) | `beam` | Three $80\ \text{MeV}$ protons emitted simultaneously side by side (see [`bmos`](../apps/bmos.md)) |
+| `bunch` (`src/raser_app/bmos/components/deposit/`) | `beam` | Three $80\ \text{MeV}$ protons emitted simultaneously side by side (see [`bmos`](../apps/bmos.md)) |
 
 ### Lasers
 
@@ -423,7 +427,7 @@ A `toy_mip` source may contain only the keys in the table below and the common k
 | `groups` | none (required) | groups | Minimum number of groups created per absorption mechanism (before discarding groups outside the device) |
 | `fx_rel`, `fy_rel`, `fz_rel` | none (required) | none | Relative coordinates of the focus, giving absolute position $(f_x l_x,\ f_y l_y,\ f_z l_z)$ |
 
-#### Absorption Coefficient Table (`laser/absorption/<material>.txt`)
+#### Absorption Coefficient Table (`deposit/absorption/<material>.txt`)
 
 A whitespace-separated two-column text file with `#` comment lines: the first column is wavelength ($\text{nm}$) and the second column is the interband absorption coefficient at $300\ \text{K}$ ($\text{cm}^{-1}$), sorted in ascending order of wavelength. Only `Si.txt` is included in the library, covering $250$ to $1450\ \text{nm}$, taken from Ref. [7].
 
@@ -436,7 +440,7 @@ A whitespace-separated two-column text file with `#` comment lines: the first co
 | `PIL037_top_SiC`, `PIL037_edge_SiC` | `"SPA"` | $375\ \text{nm}$, silicon carbide, `alpha` equal to `1000` and `21000` $\text{m}^{-1}$ respectively |
 | `TPA1550_top_Si`, `TPA1550_edge_Si` | `"TPA"` | $1550\ \text{nm}$, silicon, longer than the table upper limit, $\alpha = 0$, TPA groups only |
 
-### `deposit_<job>.h5` File Format
+### `deposit.h5` File Format
 
 #### File Attributes
 
@@ -482,3 +486,11 @@ The fraction of generated events that are recorded is `recorded_events / generat
 - [5] S. Hauf et al., “Radioactive Decays in Geant4”, IEEE Trans. Nucl. Sci. 60 (2013) 2966, doi:10.1109/TNS.2013.2270894
 - [6] L. Landau, “On the energy loss of fast particles by ionization”, J. Phys. (USSR) 8 (1944) 201
 - [7] M. A. Green, “Self-consistent optical parameters of intrinsic silicon at 300 K including temperature coefficients”, Sol. Energy Mater. Sol. Cells 92 (2008) 1305, doi:10.1016/j.solmat.2008.06.009
+- [8] S. Navas et al. (Particle Data Group), “Review of Particle Physics”, Phys. Rev. D 110 (2024) 030001, doi:10.1103/PhysRevD.110.030001
+- [9] K. Ramanathan, N. Kurinsky, “Ionization yield in silicon for eV-scale electron-recoil processes”, Phys. Rev. D 102 (2020) 063026, doi:10.1103/PhysRevD.102.063026
+- [10] B. G. Lowe, “Measurements of Fano factors in silicon and germanium in the low-energy X-ray region”, Nucl. Instrum. Methods Phys. Res. A 399 (1997) 354, doi:10.1016/S0168-9002(97)00965-0
+- [11] A. Gsponer et al., Nucl. Instrum. Methods Phys. Res. A 1064 (2024) 169412, doi:10.1016/j.nima.2024.169412
+- [12] S. K. Chaudhuri, K. J. Zavalla, K. C. Mandal, Appl. Phys. Lett. 102 (2013) 031109, doi:10.1063/1.4776703
+- [13] M. E. Levinshtein, S. L. Rumyantsev, M. S. Shur (eds.), *Properties of Advanced Semiconductor Materials*, Wiley (2001)
+- [14] H. Bichsel, “Straggling in thin silicon detectors”, Rev. Mod. Phys. 60 (1988) 663, doi:10.1103/RevModPhys.60.663
+- [15] R. W. Boyd, *Nonlinear Optics*, 3rd ed., Academic Press (2008)

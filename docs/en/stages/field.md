@@ -6,9 +6,9 @@ This stage is driven by `raser field [path]` (short alias `raser fld`; see [Comm
 
 ### Standalone Solving, Import, Plotting, and Per-Experiment Completion
 
-When running `raser field [path] [options...]` (or `raser fld [path] [options...]`) standalone, omitting the path uses the current folder, while providing a path accepts either a relative or an absolute path. Passing `--draw <object>` draws only the mesh and the doping on mesh nodes; for normal solving, the command distinguishes two target types depending on whether the target path belongs to an experiment (contains an experiment `config.json`):
+When running `raser field [path]` (or `raser fld [path]`) standalone, omitting the path uses the current folder, while providing a path accepts either a relative or an absolute path. Passing `--draw <object>` draws only the mesh and the doping on mesh nodes; for normal solving, the command distinguishes two target types depending on whether the target path belongs to an experiment (contains an experiment `config.json`):
 
-- **Device or project path**: Locates the device definition according to the rules in [Device Model (`core/device`)](../core/device.md) (using the project folder's own device file if present, or searching the built-in [Detector Components (`components/device`)](../components/device.md) when given only a name), and solves or imports the field node under `work/<device>/field/<node_id>/` (or `field/<node_id>/` under the corresponding project root). Device geometry lives in the device file, while meshes belong to `field`: a single device can have multiple meshes, and which one is used is specified via `field` options. When combined with `--set` or `--scan`, settings are addressed as `"section.key"` (such as `field.voltage`, `field.irradiation_flux`, `field.mode`).
+- **Device or project path**: Locates the device definition according to the rules in [Device Model (`core/device`)](../core/device.md) (using the project folder's own device file if present, or searching the built-in [Detector Components (`components/device`)](../components/device.md) when given only a name), and solves or imports the field node under `work/<device>/field/<node_id>/` (or `field/<node_id>/` under the corresponding project root). Device geometry lives in the device file, while meshes belong to `field`: a single device can have multiple meshes, and which one is used is specified by settings in the `field` section. Solver switches—IV sweep, single-point capacitance, weighting field, noise, UMFPACK linear solver, TCAD import, and its coordinate flip—are also settings in the `field` section, modified with `--set field.<key>=<value>`. When combined with `--set` or `--scan`, settings are addressed as `"section.key"` (such as `field.voltage`, `field.irradiation_flux`, `field.mode`).
 - **Experiment folder path**: When an experiment `config.json` exists under the target, the command reads its experiment class definition, device, and sectioned configuration, switches to the experiment's project root and component paths, and checks and completes any unready shared field nodes scan point by scan point. Passing `--scan` or `--set` filters only the points prepared by this invocation (leaving the experiment's `config.json` untouched); passing `--dry-run` prints only whether each point's shared field is `ready` or `to be made`.
 
 Passing the shared field folder itself as the target aborts immediately:
@@ -19,11 +19,11 @@ Passing the shared field folder itself as the target aborts immediately:
 
 Cause: the target passed is the shared field folder itself. Pass the device name shown at the end of the error (`raser field <device>`) instead.
 
-Minimal example: after creating a project with `raser new --from HPK-Si-PiN work/my-PiN`, preview whether the shared fields for all scan points of the experiment are ready, then compute single-point small-signal capacitance on the saved `200.0V.devsim`:
+Minimal example: after creating a project with `raser new --from HPK-Si-PiN work/my-PiN`, preview whether the shared fields for all scan points of the experiment are ready, then compute single-point small-signal capacitance on the saved `200.0V.devsim` (`--set field.<key>=<value>` enables the single-point capacitance switch in the `field` section):
 
 ```bash
 raser field work/my-PiN/signal --dry-run
-raser field my-PiN -bias 200 -cv
+raser field my-PiN --set field.voltage=200 --set field.<key>=<value>
 ```
 
 The first command prints `<experiment_folder_abspath>: field ready for <options>` or `to be made` for each scan point. The second command loads `200.0V.devsim`, writes `200.0V.cv.json`, records `200.0` under solved `capacitance`, and prints the written point record dictionary to the terminal:
@@ -34,46 +34,46 @@ The first command prints `<experiment_folder_abspath>: field ready for <options>
 
 ### Three Solving Paths and Subtasks
 
-Every non-`--dry-run` field-solving job first checks `--mode`, then dispatches according to arguments along one of three paths: external TCAD import, HEMT DC transport, or standard DEVSIM solving. When `devsim` is not installed, `--mode` defaults to `fast`, and the job prints `devsim is not installed: the field of <det_name> is found in the fast mode, not the full one` at startup. Only `full` mode is currently implemented; passing `semi_fast` or `fast` immediately raises:
+Every non-`--dry-run` field-solving job first checks `field.mode`, then dispatches according to the `field` section settings along one of three paths: external TCAD import, HEMT DC transport, or standard DEVSIM solving. When `field.mode` is `"fast"` and `devsim` is not installed, the job prints `devsim is not installed: the field of <det_name> is found in the fast mode, not the full one` at startup. Only `"full"` mode is currently implemented; when `field.mode` is `"semi_fast"` or `"fast"`, it immediately raises:
 
 ```text
-NotImplementedError: the <mode> mode of a field is not there yet: only `--mode full` is
+NotImplementedError: the <mode> mode of a field is not there yet: only field.mode 'full' is
 ```
 
-Cause: only `full` mode is implemented at present. Use `--mode full` in an environment where DEVSIM is installed.
+Cause: only `"full"` mode is implemented at present. Set `field.mode` to `"full"` in an environment where DEVSIM is installed.
 
 Behavior of the three solving paths:
 
-- **External TCAD import (`-ext`)**: Skips the DEVSIM bias sweep, imports bulk fields and conductive regions from a Sentaurus TDR (HDF5) file, and solves the weighting potential of each readout electrode on that mesh; after writing to disk and updating `axes`, `read`, and `solved` records, prints `<field_dir>: the field of <TCAD_FILE> at <bias> V` and ends the job.
-- **HEMT DC transport branch**: When the device JSON sets `hemt_physics.transport_model == "drift_diffusion_v1"`, dispatches to the standalone 2D HEMT DC transfer-characteristic solver, prints `<det_name> is solved by its own transport solver: only its DC sweep is run, without CV, weighting field or noise` (appending `; <options> dropped` and discarding those flags if `-cv`, `-wf`, or `-noise` were also passed), writes `HEMT_TRANSPORT_*` outputs, and ends the job.
-- **Standard DEVSIM solving**: Determines the subtasks to run in the fixed order `iv` → `cv` → `wf`. Before launching DEVSIM, the job checks `"solved"` in the node record (the bias milestones and completed subtasks saved as DEVSIM ramps from 0 V to the target bias) and skips any subtask whose target bias is already listed. If all requested subtasks are already complete, the job prints `<field_dir>: already solved` and exits; when multiple subtasks execute sequentially, DEVSIM device state is cleared between them while preserving the selected linear solver parameters.
+- **External TCAD import**: Skips the DEVSIM bias sweep, imports bulk fields and conductive regions from a Sentaurus TDR (HDF5) file, and solves the weighting potential of each readout electrode on that mesh; after writing to disk and updating `axes`, `read`, and `solved` records, prints `<field_dir>: the field of <TCAD_FILE> at <bias> V` and ends the job.
+- **HEMT DC transport branch**: When the device JSON sets `hemt_physics.transport_model == "drift_diffusion_v1"`, dispatches to the standalone 2D HEMT DC transfer-characteristic solver, prints `<det_name> is solved by its own transport solver: only its DC sweep is run, without CV, weighting field or noise` (appending `; <switches> dropped` and discarding those switches if the single-point capacitance, weighting-field, or noise switches are also enabled), writes `HEMT_TRANSPORT_*` outputs, and ends the job.
+- **Standard DEVSIM solving**: Determines the subtasks to run in the fixed order `iv` → `cv` → `wf`. Before launching DEVSIM, the job checks `"solved"` in the node record (the checkpoints saved as DEVSIM ramps from 0 V to the target bias and the completed subtasks); one field node corresponds to one target bias, and intermediate bias files stored inside the node are checkpoints along the ramp. Any subtask whose target bias is already in the corresponding list is skipped. If all requested subtasks are already complete, the job prints `<field_dir>: already solved` and exits; when multiple subtasks execute sequentially, DEVSIM device state is cleared between them while preserving the selected linear solver parameters.
 
-| Command-line flag | What it does | `solved` keys checked and recorded |
+| Subtask enabled in `field` section | What it does | `solved` keys checked and recorded |
 | --- | --- | --- |
-| None of the three specified (default) | Sweeps from `0 V` to the target bias (including CV curve along the sweep), then solves weighting fields for all readout electrodes | `"potential"`, `"undepleted"` (1D only), `"weighting"` |
-| `-iv` | Sweeps from `0 V` to the target bias and plots the IV curve | `"potential"`, `"undepleted"` (1D only) |
-| `-cv [<V>]` | Loads the saved `<V>V.devsim`, solves single-point small-signal capacitance, and writes `<V>V.cv.json` | `"capacitance"` |
-| `-wf` | Reads `Conductive_<V>V.pkl` at the same bias and solves weighting fields for all readout electrodes (single-unit-cell strip electrodes also compute inter-strip mutual capacitance) | `"weighting"` |
+| None of the three enabled (full solve) | Sweeps from `0 V` to the target bias (including CV curve along the sweep), then solves weighting fields for all readout electrodes | `"potential"`, `"undepleted"` (1D only), `"weighting"` |
+| IV sweep | Sweeps from `0 V` to the target bias and plots the IV curve | `"potential"`, `"undepleted"` (1D only) |
+| Single-point capacitance | Loads the saved `<V>V.devsim`, solves single-point small-signal capacitance, and writes `<V>V.cv.json` | `"capacitance"` |
+| Weighting field | Reads `Conductive_<V>V.pkl` at the same bias and solves weighting fields for all readout electrodes (single-unit-cell strip electrodes also compute inter-strip mutual capacitance) | `"weighting"` |
 
-When running `-cv`, if the corresponding `<voltage>V.devsim` state archive is missing from the directory, the job aborts with:
+If the single-point capacitance subtask cannot find the corresponding `<voltage>V.devsim` state archive in the directory, the job aborts with:
 
 ```text
 FileNotFoundError: no field saved at <voltage> V in <folder>: <have>
 ```
 
-Cause: `-cv` relies on the `<V>V.devsim` archive saved during a bias sweep. Run `raser field <device> -bias <voltage> -iv` (or without flags) to save that bias first, then run `-cv`.
+Cause: single-point capacitance relies on the `<V>V.devsim` archive saved during a bias sweep. Run `raser field <device> --set field.voltage=<voltage>` for an IV sweep or full solve to save that bias first, then compute single-point capacitance.
 
-When running `-wf`, if the conductive-region file at the same bias does not exist, the job aborts with:
+If the weighting-field subtask cannot find the conductive-region file at the same bias, the job aborts with:
 
 ```text
-FileNotFoundError: the weighting field at <v_goal> V needs the field solved at that bias: <conductive_file> is missing; solve it with `raser field <simname> -bias <v_goal>`
+FileNotFoundError: the weighting field at <v_goal> V needs the field solved at that bias: <conductive_file> is missing; solve it with `raser field <simname> --set field.voltage=<v_goal>`
 ```
 
-Cause: weighting-field solving requires `Conductive_<V>V.pkl` at the same bias to merge conductive regions. Solve the electric potential at that bias as prompted, then run `-wf`.
+Cause: weighting-field solving requires `Conductive_<V>V.pkl` at the same bias to merge conductive regions. Solve the electric potential at that bias as prompted, then solve the weighting field.
 
 ### Shared Field Completion, Waiting, and Handoff in the Simulation Chain
 
-In benchmark, application, or downstream stage commands (such as `raser signal`, `raser current`, `raser readout`, `raser digitizer`, `raser trigger`, `raser reconstruction`, `raser analysis`), each experiment is a Python class inheriting from the `raser` experiment base class that declares its stages, devices, device roles, and defaults. Before launching experiment jobs, the main command deduplicates shared field requirements across scan points and checks each with `ready`; for any unready field, it prints `the field is not ready: raser field <device> -bias <V> ...` and solves it first in an isolated single-job process (running locally or submitted to the cluster with `-b` following the main command, leaving existing `field` configurations intact).
+In benchmark, application, or downstream stage commands (such as `raser signal`, `raser current`, `raser readout`, `raser digitizer`, `raser trigger`, `raser reconstruction`, `raser analysis`), each experiment is a Python class inheriting from the `raser` experiment base class that declares its stages, devices, and device roles. Before launching experiment jobs, the main command deduplicates shared field requirements across scan points and checks each with `ready`; for any unready field, it prints `the field is not ready: raser field <device> --set field.voltage=<V> ...` and solves it first in an isolated single-job process (running locally or submitted to the cluster with `-b` following the main command, leaving existing `field` configurations intact).
 
 If another process is currently solving the same shared field node (node lock contention), the main command prints `<stage>: <locked_target> is run by another process now; run the command again when it is done`, and downstream experiment jobs enter a waiting state (downstream jobs likewise wait when a cluster `-b` shared field job has not yet completed):
 
@@ -97,25 +97,25 @@ Once the shared field node is ready, the experiment records that scan point's `f
 FileNotFoundError: no field of <det_name> ready for this run: solve it with `raser field <det_name>`
 ```
 
-Cause: the shared field has not been solved, lacks the potential or weighting field at that bias, or the device file changed in the meantime. Run `raser field <det_name>` (with `-bias` or `-irr` if needed) or rerun the original chain command to complete it.
+Cause: the shared field has not been solved, lacks the potential or weighting field at that bias, or the device file changed in the meantime. Run `raser field <det_name>` (with `--set field.voltage=<value>` or `--set field.irradiation_flux=<value>` if needed) or rerun the original chain command to complete it.
 
 Minimal example: in the [Getting Started](../getting-started.md) example, when the field nodes of `HPK-Si-PiN` have not yet been solved, running:
 
 ```bash
-raser signal HPK-Si-PiN --scan field.voltage=100,200 -s 2 -evt 200 --seed 1
+raser signal HPK-Si-PiN --scan field.voltage=100,200 -s 2 --set deposit.events_per_job=200 --seed 1
 ```
 
 causes the main command to print before launching signal jobs:
 
 ```text
-the field is not ready: raser field HPK-Si-PiN -bias 100.0
-the field is not ready: raser field HPK-Si-PiN -bias 200.0
+the field is not ready: raser field HPK-Si-PiN --set field.voltage=100.0
+the field is not ready: raser field HPK-Si-PiN --set field.voltage=200.0
 ```
 
-The program launches two single-job processes sequentially to solve the `100 V` and `200 V` fields, storing the results under `field/` of the `HPK-Si-PiN` project:
+The program launches two single-job processes sequentially to solve the `100 V` and `200 V` fields, storing the results under `field/` of the `HPK-Si-PiN` project, with each target bias as its own field node:
 
 - Each field node's `node.json` records its inputs (setting values of the `field` stage and the parts of the device read), code version, runtime environment, and run status.
-- Files written include bulk-field `.pkl` files (`Potential`, `Electrons`, `Holes`, `TrappingRate_n`, `TrappingRate_p`, `Conductive`, and `NetDoping_0V.pkl`), `.devsim` and `.dd` archives for `0V`/`100.0V`/`200.0V`, `HPK-Si-PiN.dat`, `0.0V`/`100.0V`/`200.0V.undepleted.json` (both `100.0 V` and `200.0 V` are fully depleted, so `undepleted_width_um` and `specific_resistance_ohm_cm2` are `0.0` and `specific_capacitance_pF` is `null`), `weightingfield/top/Potential_100V.pkl` and `Potential_200V.pkl` with their weighting-field plots, and device parameter circuit diagram assets annotated with junction capacitance, coupling capacitance, and undepleted-layer values.
+- Together, the two nodes write bulk-field `.pkl` files (`Potential`, `Electrons`, `Holes`, `TrappingRate_n`, `TrappingRate_p`, `Conductive`, and `NetDoping_0V.pkl`), `.devsim` and `.dd` archives for `0V`/`100.0V`/`200.0V`, `HPK-Si-PiN.dat`, `0.0V`/`100.0V`/`200.0V.undepleted.json` (both `100.0 V` and `200.0 V` are fully depleted, so `undepleted_width_um` and `specific_resistance_ohm_cm2` are `0.0` and `specific_capacitance_pF` is `null`), `weightingfield/top/Potential_100V.pkl` and `Potential_200V.pkl` with their weighting-field plots, and device parameter circuit diagram assets annotated with junction capacitance, coupling capacitance, and undepleted-layer values.
 - Curves and 1D profile plots include `HPK-Si-PiN_iv.png`, `HPK-Si-PiN_cv.png`, `HPK-Si-PiN_c^-2v.png`, `Doping.png`, `simIV0to100.0.root` / `_picture.root` / `_picture.pdf`, `simIV0to200.0.root` / `_picture.root` / `_picture.pdf`, `simCV0to100.0.root` / `_picture.root` / `_picture.pdf`, `simCV0to200.0.root` / `_picture.root` / `_picture.pdf`, and `Electric Field0/100.0/200.0_1d.png`, `Potential0/100.0/200.0_1d.png`, `Electron Trapping Rate0/100.0/200.0_1d.png`, and `Hole Trapping Rate0/100.0/200.0_1d.png`.
 - The experiment records the `field` node IDs for the `voltage_100` and `voltage_200` scan points in `points.json`, and points the symlinks `points/voltage_100/field` and `points/voltage_200/field` to their corresponding field nodes (use `raser status` to inspect the status and node ID of each stage at each point in the parameter table).
 
@@ -135,7 +135,7 @@ CV curve of `HPK-Si-PiN` capacitance versus reverse bias voltage.
 
 A field node's identity is determined by its input fingerprint (see [Slices and Reruns](../lifecycle/slices.md) and [Architecture Overview](../architecture.md#nodes)):
 
-- **Input fingerprint and append-only storage**: The inputs of a `field` node consist of the setting values used by this stage (bias voltage, irradiation fluence, field mode, `-umf` linear-solver switch, SHA-256 of the `-ext` import file, etc.) and the part of the device component file used by `field` (including the device `"field"` section and the device attributes, JSON keys, and external mesh-file SHA-256 hashes recorded via `Reading` during solving); the `field` fingerprint is computed solely from these two inputs. Because bias voltage is in the fingerprint, each bias voltage is its own field node: solving an additional bias adds a new node while existing bias nodes and experiments reading them continue to be reused. The fingerprint computed from these inputs is the node ID. Any existing field node with a matching fingerprint is reused regardless of which point or run produced it. Nodes are append-only: changing a setting produces a new node while keeping the old one; reverting the setting points `points.json` and the `points/<point>/field` view back to the old node.
+- **Input fingerprint and append-only storage**: The inputs of a `field` node consist of the setting values used by this stage (bias voltage, irradiation fluence, field mode, selected mesh and its file's SHA-256, UMFPACK linear-solver switch, SHA-256 of the TCAD import file, etc.) and the part of the device component file used by `field` (including the device `"field"` section and the device attributes and JSON keys recorded via `Reading` during solving); the `field` fingerprint is computed solely from these two inputs. Because bias voltage is in the fingerprint, each bias voltage is its own field node: solving an additional bias adds a new node while existing bias nodes and experiments reading them continue to be reused. The fingerprint computed from these inputs is the node ID. Any existing field node with a matching fingerprint is reused regardless of which point or run produced it. Nodes are append-only: changing a setting produces a new node while keeping the old one; reverting the setting points `points.json` and the `points/<point>/field` view back to the old node.
 - **Per-node locking and `.part` suffix**: Each node is locked individually. A partially written field node carries the `.part` suffix and is renamed to its final node name only upon completion, so final node names always hold complete results.
 - **Notice-only code version mismatch**: Code version, runtime environment, and run status are recorded separately in `node.json` and excluded from the fingerprint. When the current code version differs from the one recorded in `node.json`, only a notice is printed and the existing field node is still reused.
 - **Downstream stage propagation**: Downstream stages include the node IDs of their upstream nodes in their own input fingerprints. When the `field` node switches to a new node ID due to changed inputs, the fingerprints of dependent stages (`current`, `readout`, `digitizer`, `trigger`, `reconstruction`, `analysis`) change accordingly and produce new nodes, while `deposit` nodes depend only on their own inputs and are reused as usual.
@@ -149,8 +149,7 @@ The table below lists the built-in constants and hardcoded thresholds related to
 | Constant name | Value | Unit | Definition location and meaning |
 | --- | --- | --- | --- |
 | `HAS_DEVSIM` | `importlib.util.find_spec("devsim") is not None` | None | `core/field/solved.py` (imported by `stages/field/__init__.py`); whether `devsim` is installed in the current environment |
-| `DEFAULT_MODE` | `"full"` if `HAS_DEVSIM` is true, else `"fast"` | None | `core/field/solved.py` (imported by `stages/field/__init__.py`); default mode for `field.mode` and `solved_field` |
-| Default `irradiation_flux` | `None` | $\text{cm}^{-2}$ | `stages/field/__init__.py`; uses the irradiation fluence from the device file when not explicitly overridden |
+| `DEFAULT_MODE` | `"full"` if `HAS_DEVSIM` is true, else `"fast"` | None | `core/field/solved.py` (imported by `stages/field/__init__.py`); mode used when `ready` calls `solved_field` to look up a shared field |
 | Fallback fluence without irradiation | `0` | $\text{cm}^{-2}$ | `core/device/build_device.py`, `core/field/solved.py`; default fluence when the device JSON has no `"irradiation"` section |
 | `per` dimension mapping | `{1: "cm^2", 2: "cm", 3: "device"}` | None | `_capacitance` in `stages/field/__init__.py`; normalization basis for specific capacitance written into `<voltage>V.cv.json` according to `my_d.dimension` |
 | Default `area_factor` | `1.0` | 1D $\text{cm}^2$, 2D $\text{cm}$, 3D dimensionless | `_capacitance` in `stages/field/__init__.py`; default conversion factor when `area_factor` is omitted from the device JSON |
@@ -165,7 +164,7 @@ When executing `raser field [path] [options...]`, routing proceeds in the follow
 
 1. **Establish project context**: `register` attaches the execution entry point to the parser. `cli/raser.py` infers the target's project root and enters `project_root_context` (see [Common Infrastructure (`supports`)](../supports/README.md) for path resolution; omitting the path uses the current folder). If `--draw <object>` is present, draw the mesh and doping on mesh nodes directly and return.
 2. **Detect target type (`run(kwargs)`)**: Check whether an experiment `config.json` exists under the target path:
-   - **False (device name or device path)**: Locate `work/<device>/field/` (or the current `field` directory) and enter field-node solving using the `field` section settings and CLI options.
+   - **False (device name or device path)**: Locate `work/<device>/field/` (or the current `field` directory) and enter field-node solving using the `field` section settings.
    - **True (existing experiment folder)**: Read the experiment's `config.json`.
 3. **Reject the field folder itself**: If the target is itself a field folder, raise `SystemExit(f"{folder}: this is the field itself; give its device, raser field {config['device']}")`.
 4. **Prepare shared fields for an experiment**: Load the corresponding experiment class definition from `config.json`, enter that experiment's project root and component context, and invoke `make_shared`:
@@ -178,27 +177,27 @@ When executing `raser field [path] [options...]`, routing proceeds in the follow
 
 When solving a field node, input checking, locking, and job-process launch follow this order:
 
-1. **Extract additional CLI settings (`settings(kwargs)`)**: Initialize `imported = None`; if `kwargs.get("input") is not None`, compute the full 64-character lowercase hexadecimal SHA-256 digest of `Path(kwargs["input"]).read_bytes()` and assign it to `imported`. Return `{"umf": bool(kwargs.get("umf")), "imported": imported}`. With no options, the default is `{"umf": False, "imported": None}`.
-2. **Check node fingerprint and reuse**: Hash the setting values used by the `field` stage (including `settings`) together with the parts of the device component file read by `field` (the device `"field"` section, plus device attributes, top-level and first-level nested JSON keys, and SHA-256 hashes of external mesh files recorded into `"read"` by `Reading`) to produce `<node_id>`:
+1. **Extract fingerprint items for solver switches (`settings(kwargs)`)**: Initialize `imported = None`; if TCAD import is enabled (`kwargs.get("input") is not None`), compute the full 64-character lowercase hexadecimal SHA-256 digest of `Path(kwargs["input"]).read_bytes()` and assign it to `imported`. Return `{"umf": bool(kwargs.get("umf")), "imported": imported}`; when neither UMFPACK nor TCAD import is enabled, this is `{"umf": False, "imported": None}`.
+2. **Check node fingerprint and reuse**: Hash the setting values used by the `field` stage (including `settings`, the selected mesh, and its file's SHA-256 hash) together with the parts of the device component file read by `field` (the device `"field"` section, plus device attributes and top-level and first-level nested JSON keys recorded into `"read"` by `Reading`) to produce `<node_id>`:
    - If the corresponding field node already exists under `work/<device>/field/<node_id>/` and has completed solving, reuse it directly; if the current code version differs from `node.json`, print a notice and still reuse the result.
    - If solving or completing subtasks is needed, acquire an individual lock on that node (partially written nodes carry the `.part` suffix and are renamed to their final name upon completion) and record inputs, code version, runtime environment, and run status in `node.json`.
 3. **Launch job and build child command (`job_command(kwargs)`)**:
    - For a single target without `jobs` and without `-b`, call `_run_job` directly in the current process through `_logged`; for multiple targets or `jobs=1` (passed by chain `start` so DEVSIM loads only in a separate subprocess or cluster job) without `-b`, spawn an isolated subprocess; with `-b`, submit to the cluster.
-   - When launching an isolated subprocess or cluster job, `job_command(kwargs)` appends CLI arguments in order: truthy flags `"-iv"`, `"-wf"`, `"-noise"`, `"-umf"`, `"-flip"`; if `kwargs["input"] is not None`, `f"-ext={os.path.abspath(kwargs['input'])}"`; if `kwargs["cv"] is True`, `"-cv"`, or if `kwargs["cv"]` is numeric, `f"-cv={kwargs['cv']}"`; if `kwargs["bias"] is not None`, `f"-bias={kwargs['bias']}"`.
+   - When launching an isolated subprocess or cluster job, `job_command(kwargs)` builds the child command `raser field <path>` and passes this node's `field` section settings (bias voltage, solver switches, absolute path of the TCAD import file, etc.) to it via `--set field.<key>=<value>`.
 
 ### Job Solving Dispatch
 
 Holding the node lock, a field-solving job enters `solve(kwargs)` and executes in the following strict order:
 
-1. **Validate `--mode`**:
+1. **Validate `field.mode`**:
    - If `kwargs["mode"] == "fast"` and `not HAS_DEVSIM`, print `f"devsim is not installed: the field of {kwargs['det_name']} is found in the fast mode, not the full one"`.
-   - If `kwargs["mode"] != "full"`, raise `NotImplementedError(f"the {kwargs['mode']} mode of a field is not there yet: only `--mode full` is")`.
+   - If `kwargs["mode"] != "full"`, raise `NotImplementedError(f"the {kwargs['mode']} mode of a field is not there yet: only field.mode 'full' is")`.
 2. **External TCAD import branch**: If `kwargs["input"] is not None`, call `_import(kwargs)`:
    - Construct `my_d = Detector(kwargs["det_name"], kwargs["_files"]["device"])`;
    - Call `bias = tcad.import_field(kwargs["input"], my_d, kwargs["_run_path"], kwargs["bias"], kwargs["flip"])` to import bulk fields, generate conductive regions, solve weighting fields for each readout electrode, and update `axes`, `read`, and `solved` in the node record;
-   - Print `f"{kwargs['_run_path']}: the field of {kwargs['input']} at {bias} V"` and return immediately (skipping `_solved` checks and `-umf` loading).
+   - Print `f"{kwargs['_run_path']}: the field of {kwargs['input']} at {bias} V"` and return immediately (skipping `_solved` checks and UMFPACK loading).
 3. **HEMT DC transport branch**: Read `physics = kwargs["_files"]["device"].get("hemt_physics", {})`. If `physics.get("transport_model") == "drift_diffusion_v1"`:
-   - Collect truthy flags into `dropped`: `("-cv", kwargs["cv"] is not None)`, `("-wf", kwargs["wf"])`, `("-noise", kwargs["noise"])`;
+   - Collect the enabled single-point capacitance (`kwargs["cv"] is not None`), weighting-field (`kwargs["wf"]`), and noise (`kwargs["noise"]`) switches into `dropped`;
    - Print `f"{kwargs['det_name']} is solved by its own transport solver: only its DC sweep is run, without CV, weighting field or noise"` (appending `f"; {' '.join(dropped)} dropped"` when `dropped` is non-empty);
    - Call `_ramp_or_weighting({**kwargs, "noise": False}, cv=False, wf=False)` and return immediately.
 4. **Select linear solver and resolve bias and solver config**:
@@ -228,14 +227,14 @@ Holding the node lock, a field-solving job enters `solve(kwargs)` and executes i
 The eight-stage simulation chain and multi-device experiments interact with shared field nodes through `chain.py` and `stages/field` in the following steps:
 
 1. **Experiment class assembly and device view switching (`_of`)**:
-   - Each experiment class declares its stages, devices, device roles (such as device under test and reference device), and defaults. Along the chain, `current` reads `deposit` and `field` nodes, `readout` reads `current` and `field` nodes, followed sequentially by `digitizer`, `trigger`, `reconstruction`, and `analysis`. Multi-device experiments switch configuration and component views to the corresponding device via `_of(kwargs, device)`.
+   - Each experiment class declares its stages, devices, and device roles (such as device under test and reference device), without specifying setting values. Along the chain, `current` reads `deposit` and `field` nodes, `readout` reads `current` and `field` nodes, followed sequentially by `digitizer`, `trigger`, `reconstruction`, and `analysis`. Multi-device experiments switch configuration and component views to the corresponding device via `_of(kwargs, device)`.
 2. **Resolve run irradiation fluence (`_flux_of_run(my_d, options)`)**: If the `field` section specifies an irradiation fluence, return `float(...)` ($\text{cm}^{-2}$); otherwise return `float(my_d.irradiation_flux)` (`0.0` $\text{cm}^{-2}$ when there is no irradiation section).
 3. **Check shared field node readiness (`ready(options, files)`)**:
    - Construct `my_d = Detector(device["det_name"], device)` from `device = files["device"]`.
    - Call `solved_field(my_d, my_d.voltage, _flux_of_run(my_d, options))` (using `DEFAULT_MODE`) under `work/<device>/field/` to match fluence, mode, `read` consistency (calling `changed(old["read"], Detector(device["det_name"], device))` to compare `"attributes"`, `"keys"`, and SHA-256 hashes of external mesh `"files"` item by item), and verify that both `solved.potential` and `solved.weighting` contain `float(my_d.voltage)`; return `None` if mismatched or incomplete, or the matched field node directory `folder` if ready.
 4. **Deduplicated completion and waiting (`_make_shared` and `start`)**:
    - The main command iterates over the shared fields required by all pending scan points, deduplicating by device and `field`-section settings; whenever a requirement has not been started in this invocation and `ready(options, files) is None`, it calls `start(kwargs, options, files)`:
-     1. Builds `raser field <device> -bias <bias>` arguments (also passing irradiation fluence if it differs from the device file, or any device-file keys other than bias modified by the scan point).
+     1. Builds `raser field <device> --set field.voltage=<bias>` arguments (also passing irradiation fluence if it differs from the device file, or any device-file keys other than bias modified by the scan point).
      2. Sets `batch=kwargs["batch"]`, `mem=kwargs["mem"]`, `jobs=1` (ensuring execution in an isolated subprocess or cluster job where DEVSIM loads exclusively), `_argv=words`, `_entry_command_prefix=("field",)`, and `_waiting=kwargs.get("_waiting")` (non-empty only under `-b`).
      3. Prints `"the field is not ready: " + " ".join(["raser", *words])` and launches the field solve.
    - If `start` raises `Running` because another process holds the node lock, `_make_shared` prints `f"{piece.name}: {running}"` and skips it; the main command subsequently sees `ready` return `None`, moves the corresponding downstream jobs into the waiting state, and prints the waiting message.
@@ -250,15 +249,15 @@ The eight-stage simulation chain and multi-device experiments interact with shar
 
 - `src/raser/stages/field/__init__.py`: Implements `raser field` (`fld`) command registration and entry routing (`register`, `run`), field-solving dispatch (`solve`, `settings`, `job_command`), solving helpers and single-point capacitance output (`_solver`, `_bias`, `_solved`, `_ramp_or_weighting`, `_capacitance`, `_import`, `_empty_devsim`), and shared-field readiness checking and completion interfaces for the simulation chain (`_flux_of_run`, `ready`, `start`).
 - `src/raser/stages/chain.py`: Connects `field` to downstream `current`, `readout`, `digitizer`, `trigger`, `reconstruction`, and `analysis` in the simulation chain, providing single/multi-device view switching `_of` and field readiness verification `_field`.
-- `src/raser/lifecycle/` (`workflow.py`, `slices.py`): Manages sectioned `config.json` loading, `points.json` parameter table and `points/<point>/<stage>` view updates, node fingerprint calculation and `node.json` I/O, per-node locking and `.part` atomic persistence, shared-field pre-checks and deduplicated completion (`make_shared`, `_make_shared`), as well as local process wrapping and cluster wakeup of waiting commands (`_start`, `_run_job`, `_start_again`).
+- `src/raser/lifecycle/` (`workflow.py`, `slices.py`): Manages sectioned `config.json` loading, `points.json` parameter table and `points/<point>/<stage>/<job>` view updates, node fingerprint calculation and `node.json` I/O, per-node locking and `.part` atomic persistence, shared-field pre-checks and deduplicated completion (`make_shared`, `_make_shared`), as well as local process wrapping and cluster wakeup of waiting commands (`_start`, `_run_job`, `_start_again`).
 - `src/raser/core/field/` (`solved.py`, `reading.py`, `solver_section.py`, `saved_point.py`, `tcad.py`, `save_milestone.py`, `circuit_parameters.py`, `device_circuit.py`): Low-level modules called directly by this stage, providing shared-field lookup (`solved_field`), tracked device-parameter comparison (`Reading`, `changed`), default solver configuration and DEVSIM entry point (`SOLVER`, `main`), single-point capacitance solving (`capacitance`), Sentaurus TDR import (`import_field`), solve-status updating (`save_solved`), and parametrized device equivalent-circuit construction.
 
 ### Core Data Structures
 
 | Data structure | Field | Type | Unit | Meaning |
 | --- | --- | --- | --- | --- |
-| `settings` dict | `umf` | `bool` | None | Whether `-umf` is enabled to switch to the UMFPACK linear solver |
-| `settings` dict | `imported` | `str \| None` | None | Full 64-character SHA-256 hash of the TDR file specified by `-ext`, or `None` if not importing |
+| `settings` dict | `umf` | `bool` | None | Whether the UMFPACK linear-solver switch is enabled |
+| `settings` dict | `imported` | `str \| None` | None | Full 64-character SHA-256 hash of the TCAD-imported TDR file, or `None` if not importing |
 | `point` capacitance dict | `voltage_V` | `float` | $\text{V}$ | Bias voltage of the single-point small-signal capacitance solve |
 | `point` capacitance dict | `specific_capacitance_pF` | `float` | 1D $\text{pF/cm}^2$, 2D $\text{pF/cm}$, 3D $\text{pF}$ | Mesh specific capacitance (device capacitance in 3D) |
 | `point` capacitance dict | `per` | `str` | None | Normalization basis for specific capacitance: `"cm^2"`, `"cm"`, or `"device"` |
@@ -269,28 +268,33 @@ The eight-stage simulation chain and multi-device experiments interact with shar
 
 ### Options and Configuration Keys
 
-Only the options and configuration keys listed below are configurable at the `stages/field` layer (shared run, scan, and cluster options `-b`/`--batch`, `-t`, `-mem`, `--dry-run`, `--scan`, `--set` are documented in [Command-Line Interface (`raser`)](../cli.md) and [Experiments, Scan Points, and Seeds](../lifecycle/experiments.md); experiment `config.json` is divided into eight stage sections, and `--set` and `--scan` use `field.<key>` addresses). Behavioral parameters outside this table—including single-job execution per field node, fixed subtask order `iv → cv → wf`, computing CV along the sweep in default mode, supporting only `--mode full`, the list of DEVSIM reset-preserved parameters, and cluster wakeup retry count and recursion-depth caps—are hardcoded.
+The command is `raser field [path]`: omitting the path uses the current folder, while providing a path accepts a relative or absolute path, which may be a device name, a device project path, or an experiment folder path containing `config.json`; passing a field folder itself aborts. `--draw <object>` draws only the mesh and doping on mesh nodes. Shared run, scan, and cluster options `-b`/`--batch`, `-t`, `-mem`, `--dry-run`, `--scan`, `--set` are documented in [Command-Line Interface (`raser`)](../cli.md) and [Experiments, Scan Points, and Seeds](../lifecycle/experiments.md).
 
-| Option or key | Default | Unit | Meaning |
+Settings in the `field` section are read from the experiment's `config.json` and modified with `--set field.<key>=<value>` or `--scan field.<key>=<value1>,<value2>`. The code keeps no defaults: the "Value in example" column shows what `examples/HPK-Si-PiN/signal/config.json` sets; if `config.json` is missing a required key, an error is raised naming the missing `"section.key"`.
+
+| Section.key | Value in example | Unit | Meaning |
 | --- | --- | --- | --- |
-| `[path]` (positional argument) | Current folder | None | Optional target path: defaults to the current folder when omitted, or accepts a relative or absolute path (either a device name/project path or an experiment folder containing `config.json`; passing a field folder itself aborts) |
-| `--draw <object>` | `None` | None | Draws objects belonging to this stage: plots only the mesh and doping on mesh nodes |
-| `-bias` / config key `field.voltage` (chain option `-vol`, `--voltage`) | `None` (takes device JSON `bias.voltage` at runtime) | $\text{V}$ | Target bias voltage (`float`); addressed as `field.voltage` in the `field` section of `config.json` and with `--set` / `--scan`; when a field is missing, chain commands automatically invoke `raser field` with `-bias <value>`; combined with `-ext`, verifies TDR contact voltage or supplies bias when absent in the TDR |
-| `-irr`, `--irradiation_flux` / config key `field.irradiation_flux` (chain option `-irr`, `--irradiation`) | `None` (takes device JSON `irradiation.irradiation_flux` at runtime, or `0` if absent) | $\text{cm}^{-2}$ | Irradiation fluence (`float`); addressed as `field.irradiation_flux` in the `field` section of `config.json` and with `--set` / `--scan` |
-| `--mode` / config key `field.mode` | `DEFAULT_MODE` (`"full"` if `devsim` is installed, else `"fast"`) | None | Field acquisition mode: `"full"`, `"semi_fast"`, or `"fast"`; currently only `"full"` is implemented |
-| `field`-section mesh options | Device-dependent | None | A single device may have multiple meshes; which one is used is selected via `field` options |
-| `-iv` | `False` | None | Standalone boolean switch; sweeps from `0 V` to target bias solving electric potential and field and writing IV curves (when none of `-iv`, `-cv`, `-wf` is specified, defaults to a bias sweep with CV followed by weighting fields) |
-| `-cv [<V>]` | `None` (uses target bias when `-cv` is passed without a value) | $\text{V}$ | Standalone optional float; reloads an existing `<V>V.devsim` at that bias to solve single-point small-signal capacitance and write `<V>V.cv.json` |
-| `-wf` | `False` | None | Standalone boolean switch; reads `Conductive_<V>V.pkl` at the same bias to solve weighting fields for all readout electrodes (single-unit-cell periodic strips also compute inter-strip mutual capacitance) |
-| `-noise` | `False` | None | Standalone boolean switch; additionally solves and plots device noise current at each sweep curve sample point (dropped under the HEMT `drift_diffusion_v1` branch) |
-| `-umf` | `False` | None | Standalone boolean switch; loads `devsim.umfpack.umfshim` before solving to switch to the UMFPACK linear solver |
-| `-ext`, `--extract` (destination key `input`) | `None` | None | Standalone path to a Sentaurus TDR file; skips the DEVSIM bias sweep, imports bulk fields, and solves weighting fields on that mesh |
-| `-flip` | `False` | None | Standalone boolean switch, used only with `-ext`; reverses node coordinate column order when importing TCAD fields and swaps `x` and `y` axes in 2D plots |
-| `-v`, `--verbose` | `0` | None | Standalone count switch; accepted by the CLI parser only |
-| `-v_current` | `None` | $\text{V}$ | Standalone float; accepted by the CLI parser only |
-| Device JSON `field.solver` | `SOLVER` (see [Field Solving and Loading (`core/field`)](../core/field.md)) | Subkey-dependent | Deeply merges onto and overrides the default solver configuration `SOLVER` |
-| Device JSON `hemt_physics.transport_model` | None (uses standard path when unset) | None | When set to `"drift_diffusion_v1"`, dispatches to the 2D HEMT DC transport branch and drops `-cv`, `-wf`, and `-noise` |
-| Device JSON `area_factor` | `1.0` | 1D $\text{cm}^2$, 2D $\text{cm}$, 3D dimensionless | Device area/length conversion factor written by `_capacitance` into `<V>V.cv.json` |
+| `field.voltage` | `200.0` (uses `bias.voltage` from the device file when set to `null`) | $\text{V}$ | Target bias voltage (`float`); when a field is missing, chain commands invoke `raser field` with `--set field.voltage=<value>`; during TCAD import, verifies the TDR contact voltage or specifies the bias when absent in the TDR |
+| `field.irradiation_flux` | `null` (uses the irradiation fluence from the device file, or `0` if the device file has no irradiation block) | $\text{cm}^{-2}$ | Irradiation fluence (`float`, $1\ \text{MeV}$ neutron-equivalent fluence) |
+| `field.mode` | `"full"` | None | Field acquisition mode: `"full"`, `"semi_fast"`, or `"fast"`; currently only `"full"` is implemented |
+
+The `field` section also has the following categories of settings, which do the following:
+
+- **Mesh**: A single device can have multiple meshes, and which one is used is specified by settings in the `field` section.
+- **Subtasks**: IV sweep ramps from `0 V` to the target bias to solve electric potential and electric field and output IV curves; single-point capacitance reloads that bias from an existing `<V>V.devsim` to perform a small-signal capacitance solve and write `<V>V.cv.json`; weighting field reads `Conductive_<V>V.pkl` at the same bias to solve weighting fields for all readout electrodes (single-unit-cell periodic strip electrodes also compute inter-strip mutual capacitance). When none of the three is enabled, a full solve is run: a bias sweep with CV along the sweep, followed by weighting fields.
+- **Noise**: Additionally solves and plots device noise current at each bias-sweep curve sample point (dropped under the HEMT `drift_diffusion_v1` branch).
+- **UMFPACK**: Loads `devsim.umfpack.umfshim` before solving to switch to the UMFPACK linear solver.
+- **TCAD import**: Given a Sentaurus TDR file, skips the DEVSIM bias sweep, imports bulk fields, and solves weighting fields on its mesh; coordinate flip is used only with TCAD import, reversing node coordinate column order and swapping the `x` and `y` axes in 2D plots.
+
+Single-job execution per field node, fixed subtask order `iv → cv → wf`, computing CV along the sweep in a full solve, supporting only `"full"` for `field.mode`, the list of DEVSIM reset-preserved parameters, and the cluster wakeup retry count and recursion-depth cap are hardcoded.
+
+Keys read by `field` from the device file:
+
+| Key | Default | Unit | Meaning |
+| --- | --- | --- | --- |
+| `field.solver` | `SOLVER` (see [Field Solving and Loading (`core/field`)](../core/field.md)) | Subkey-dependent | Deeply merges onto and overrides the solver configuration `SOLVER` |
+| `hemt_physics.transport_model` | None (uses standard path when unset) | None | When set to `"drift_diffusion_v1"`, dispatches to the 2D HEMT DC transport branch and drops the single-point capacitance, weighting-field, and noise switches |
+| `area_factor` | `1.0` | 1D $\text{cm}^2$, 2D $\text{cm}$, 3D dimensionless | Device area/length conversion factor written by `_capacitance` into `<V>V.cv.json` |
 
 ### Files Read and Written
 
@@ -301,13 +305,13 @@ The shared field node files below reside inside `<field_node_dir>` (i.e., `work/
 - **Input files read**:
   - Device JSON (`device.json` inside the project or built-in component `<device>.json`): read by this stage; the parts used by `field` enter the field node input fingerprint and are recorded in `node.json`.
   - `<experiment_folder>/config.json`: full configuration file sectioned into eight stages; its `field` section and experiment settings are read during `raser field <experiment_folder>` or when chain commands complete shared fields.
-  - `-ext <TCAD_FILE>` (Sentaurus TDR, HDF5): read in full by `settings` to compute its 64-character SHA-256 hash, and read by `tcad.import_field` for mesh, electrode voltages, and bulk fields.
-  - `<field_node_dir>/<voltage>V.devsim` and `<field_node_dir>/Conductive_<V>V.pkl`: read respectively by `-cv` (`saved_point.capacitance`) and `-wf` (`solver_section.main`).
+  - TCAD-imported TDR file (Sentaurus TDR, HDF5): read in full by `settings` to compute its 64-character SHA-256 hash, and read by `tcad.import_field` for mesh, electrode voltages, and bulk fields.
+  - `<field_node_dir>/<voltage>V.devsim` and `<field_node_dir>/Conductive_<V>V.pkl`: read respectively by the single-point capacitance (`saved_point.capacitance`) and weighting-field (`solver_section.main`) subtasks.
 - **`<field_node_dir>/node.json`** (writers: lifecycle node management and field-solving job): JSON object recording verbatim the field node's inputs (the setting values used by the `field` stage and the parts of the device component file used, from which the fingerprint is computed), along with the code version, runtime environment, and run status.
-- **`<field_node_dir>/<voltage>V.cv.json`** (filename keeps float format, e.g. `200.0V.cv.json`; writer: `-cv` subtask `_capacitance`): JSON object containing `voltage_V` (`float`, $\text{V}$), `specific_capacitance_pF` (`float`, 1D $\text{pF/cm}^2$, 2D $\text{pF/cm}$, 3D $\text{pF}$), `per` (`str`, `"cm^2"`/`"cm"`/`"device"`, None), `area_factor` (`float`, 1D $\text{cm}^2$, 2D $\text{cm}$, 3D dimensionless), and `frequency_Hz` (`float`, $\text{Hz}$).
+- **`<field_node_dir>/<voltage>V.cv.json`** (filename keeps float format, e.g. `200.0V.cv.json`; writer: single-point capacitance subtask `_capacitance`): JSON object containing `voltage_V` (`float`, $\text{V}$), `specific_capacitance_pF` (`float`, 1D $\text{pF/cm}^2$, 2D $\text{pF/cm}$, 3D $\text{pF}$), `per` (`str`, `"cm^2"`/`"cm"`/`"device"`, None), `area_factor` (`float`, 1D $\text{cm}^2$, 2D $\text{cm}$, 3D dimensionless), and `frequency_Hz` (`float`, $\text{Hz}$).
 - **Device parameter circuit diagram assets** (writer: `field` stage, under `work/<device>/field/`): parametrized device circuit diagrams annotated with junction capacitance, coupling capacitance, and undepleted-layer values, stored as device assets for the `readout` stage to connect into the device circuit.
 - **`<experiment_folder>/points.json` and `<experiment_folder>/points/<point>/field`** (writer: lifecycle experiment scheduler): `points.json` is the experiment parameter table, one row per scan point, recording scan-axis values and each stage's node ID including `field` (printed by `raser status`); `points/<point>/field` is a symlink view pointing to `work/<device>/field/<node_id>/`.
 
 #### Field Data, Archives, and Plots Written by `core/field`
 
-Inside `<field_node_dir>`, `.pkl` files and `Capacitance_<V>V.json` drop the decimal point for integer biases (such as `Potential_200V.pkl`), whereas nonzero `.devsim`, `.dd`, and all `.undepleted.json` and `.cv.json` files retain float formatting (such as `200.0V.undepleted.json`), and zero-bias archives are named `0V.devsim` and `0V.dd`. Bulk-field `.pkl` files (`Potential`, `Electrons`, `Holes`, `TrappingRate_n`, `TrappingRate_p`, `Conductive`, and `NetDoping_0V.pkl`, or `NetDoping_<V>V.pkl` under TCAD), 1D undepleted-layer files `<V>V.undepleted.json`, DEVSIM and Tecplot archives (`0V`/`<V>V.devsim`, `0V`/`<V>V.dd`, `last_solvable.dd`, `<det_name>.dat`, `converted.devsim`) written during DEVSIM bias sweeps (at `0 V`, every `saved_voltage_interval` milestone, and target bias) or `-ext` imports; weighting fields `weightingfield/<electrode>/Potential_<V>V.pkl`, `weightingfield/weightingfield.dat`, and single-unit-cell strip mutual capacitances `weightingfield/<electrode>/Capacitance_<V>V.json` written by `-wf` (including default mode) or `-ext`; IV/CV/noise curves and multi-dimensional field profile plots (`<det_name>_iv.png`, `simIV*`, `<det_name>_cv.png`, `<det_name>_c^-2v.png`, `simCV*`, `<det_name>_noise.png`, `simnoise*`, `Doping.png`, etc.); and `HEMT_TRANSPORT_*` outputs (`IdVg.csv`, `final_profile.csv`, `final.devsim`, `IdVg.png`/`.pdf`, `summary.json`) written by the HEMT `drift_diffusion_v1` branch—their internal formats, keys, shapes, types, and units, as well as physical solving and interpolation details, are documented in [Field Solving and Loading (`core/field`)](../core/field.md).
+Inside `<field_node_dir>`, `.pkl` files and `Capacitance_<V>V.json` drop the decimal point for integer biases (such as `Potential_200V.pkl`), whereas nonzero `.devsim`, `.dd`, and all `.undepleted.json` and `.cv.json` files retain float formatting (such as `200.0V.undepleted.json`), and zero-bias archives are named `0V.devsim` and `0V.dd`. Bulk-field `.pkl` files (`Potential`, `Electrons`, `Holes`, `TrappingRate_n`, `TrappingRate_p`, `Conductive`, and `NetDoping_0V.pkl`, or `NetDoping_<V>V.pkl` under TCAD), 1D undepleted-layer files `<V>V.undepleted.json`, DEVSIM and Tecplot archives (`0V`/`<V>V.devsim`, `0V`/`<V>V.dd`, `last_solvable.dd`, `<det_name>.dat`, `converted.devsim`) written during DEVSIM bias sweeps (at `0 V`, every `saved_voltage_interval` checkpoint, and target bias) or TCAD imports; weighting fields `weightingfield/<electrode>/Potential_<V>V.pkl`, `weightingfield/weightingfield.dat`, and single-unit-cell strip mutual capacitances `weightingfield/<electrode>/Capacitance_<V>V.json` written by the weighting-field subtask (including full solves) or TCAD imports; IV/CV/noise curves and multi-dimensional field profile plots (`<det_name>_iv.png`, `simIV*`, `<det_name>_cv.png`, `<det_name>_c^-2v.png`, `simCV*`, `<det_name>_noise.png`, `simnoise*`, `Doping.png`, etc.); and `HEMT_TRANSPORT_*` outputs (`IdVg.csv`, `final_profile.csv`, `final.devsim`, `IdVg.png`/`.pdf`, `summary.json`) written by the HEMT `drift_diffusion_v1` branch—their internal formats, keys, shapes, types, and units, as well as physical solving and interpolation details, are documented in [Field Solving and Loading (`core/field`)](../core/field.md).

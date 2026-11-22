@@ -14,11 +14,11 @@ where:
 
 - $\varepsilon$: material permittivity, in $\text{F/cm}$ in DEVSIM field solving and in $\text{F/m}$ in parallel-plate capacitance estimation;
 - $\varepsilon_r$: dimensionless relative permittivity (`RELATIVE_PERMITTIVITY` and `Material.permittivity` in code), equal to `11.9` for `"Si"`, `9.76` for `"SiC"` (4H-SiC, along the $c$-axis), and `5.7` for `"Diamond"`;
-- $\varepsilon_0$: vacuum permittivity, taken as `eps_0 = 8.85e-14` $\text{F/cm}$ in `create_parameter.py` of [field.md](field.md), and `8.8541878128e-12` $\text{F/m}$ in `build_device.py` of [device.md](device.md) and `circuit_parameters.py` of [field.md](field.md);
+- $\varepsilon_0$: vacuum permittivity, taken as $8.8541878128\times 10^{-12}\ \text{F/m}$ (CODATA 2018; in DEVSIM field solving, $8.8541878128\times 10^{-14}\ \text{F/cm}$ in $\text{F/cm}$);
 - $m_e$: free electron rest mass, taken as $9.109\times 10^{-31}\ \text{kg}$ in code;
 - $m_n^*, m_p^*$: electron and hole effective masses, $\text{kg}$ (`Material.electron_mass` and `Material.hole_mass` in code).
 
-Basic physical properties and default model settings for each material in `Material.mat_database` (`material.py`) are listed below:
+Basic physical properties and default models for each material in `Material.mat_database` (`material.py`) are listed below:
 
 | Material Name (`mat_name`) | Relative Permittivity `RELATIVE_PERMITTIVITY` | Electron Effective Mass `electron_mass` ($\text{kg}$) | Hole Effective Mass `hole_mass` ($\text{kg}$) | Default `mobility_model` | Default `avalanche_model` |
 | --- | --- | --- | --- | --- | --- |
@@ -26,7 +26,7 @@ Basic physical properties and default model settings for each material in `Mater
 | `"SiC"` | `9.76` | `0.29 * m_e` | `1.0 * m_e` | `"Das"` | `"Hatakeyama"` |
 | `"Diamond"` | `5.7` | Not set | Not set | `"Reggiani_diamond"` | `None` |
 
-Relative permittivity is defined in the global dictionary `RELATIVE_PERMITTIVITY` in `material.py` and assigned to `self.permittivity` in `Material(mat_name).mat_database()`; effective masses are assigned to `self.electron_mass` and `self.hole_mass` in `Material.mat_database()` (4H-SiC longitudinal effective masses for `"SiC"`, unset for `"Diamond"`). In call relationships, `Detector.capacitance` (`src/raser/core/device/build_device.py`) in [device.md](device.md) reads `Material(self.material).permittivity` to estimate parallel-plate junction capacitance; `CreateSiliconConstant`, `CreateSiliconCarbideConstant`, and `CreateDiamondConstant` (`src/raser/core/field/create_parameter.py`) in [field.md](field.md) read `RELATIVE_PERMITTIVITY` to set DEVSIM region parameters `eps` and `Permittivity`; and `capacitances` (`src/raser/core/field/solver_section.py`) in [field.md](field.md) reads `Material(MyDetector.material).permittivity` to convert contact charges computed in vacuum permittivity for weighting fields into mutual capacitance per unit length ($\text{F/cm}$) for periodic strip electrodes. The relative permittivity of silicon is from Ref. [1] (Appendix G); citations for the relative permittivities of 4H-SiC and diamond and the effective masses of silicon and 4H-SiC are to be added.
+Relative permittivity is defined in the global dictionary `RELATIVE_PERMITTIVITY` in `material.py` and assigned to `self.permittivity` in `Material(mat_name).mat_database()`; effective masses are assigned to `self.electron_mass` and `self.hole_mass` in `Material.mat_database()` (4H-SiC longitudinal effective masses for `"SiC"`, unset for `"Diamond"`). In call relationships, `Detector.capacitance` (`src/raser/core/device/build_device.py`) in [device.md](device.md) reads `Material(self.material).permittivity` to estimate parallel-plate junction capacitance; `CreateSiliconConstant`, `CreateSiliconCarbideConstant`, and `CreateDiamondConstant` (`src/raser/core/field/create_parameter.py`) in [field.md](field.md) read `RELATIVE_PERMITTIVITY` to set DEVSIM region parameters `eps` and `Permittivity`; and `capacitances` (`src/raser/core/field/solver_section.py`) in [field.md](field.md) reads `Material(MyDetector.material).permittivity` to convert contact charges computed in vacuum permittivity for weighting fields into mutual capacitance per unit length ($\text{F/cm}$) for periodic strip electrodes. The relative permittivity of silicon is from Ref. [1] (Appendix G).
 
 ### Mobility
 
@@ -69,14 +69,14 @@ where:
 - $\beta, \beta_{p,1}, \beta_{p,2}$: dimensionless transition exponents for high-field velocity saturation;
 - $\mu_{LI}, \mu$: low-field doping-corrected mobility and total mobility including high-field saturation, $\text{cm}^2/(\text{V}\cdot\text{s})$.
 
-All parameter values for the default models of the three materials (`"Selberherr"`, `"Das"`, `"Reggiani_diamond"`, corresponding to Eqs. (3)–(7)) are listed below:
+All parameter values for the models selected by default for the three materials (`"Selberherr"`, `"Das"`, `"Reggiani_diamond"`, corresponding to Eqs. (3)–(7)) are listed below:
 
 | Material and Model | Carrier (`charge`) | $\mu_L$ ($\text{cm}^2/(\text{V}\cdot\text{s})$) | $\mu_{\min}$ ($\text{cm}^2/(\text{V}\cdot\text{s})$) | $C_{\text{ref}}$ ($\text{cm}^{-3}$) | $\alpha$ (dimensionless) | $\beta$ (dimensionless) | $v_{\text{sat}}$ ($\text{cm/s}$) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `"Si"` / `"Selberherr"` | hole (`> 0`) | $460.0\,t^{-2.18}$ | $45.0\,t^{-0.45}$ | $2.23\times 10^{17}\,t^{3.2}$ | $0.72\,t^{0.065}$ | $1.0$ | $9.05\times 10^6\sqrt{\tanh(312.0/T)}$ |
 | `"Si"` / `"Selberherr"` | electron (`<= 0`) | $1430.0\,t^{-2.0}$ | $80.0\,t^{-0.45}$ | $1.12\times 10^{17}\,t^{3.2}$ | $0.72\,t^{0.065}$ | $2$ | $1.45\times 10^7\sqrt{\tanh(155.0/T)}$ |
 | `"SiC"` / `"Das"` | hole (`> 0`) | $124\,t^{-2}$ | $15.9$ | $1.76\times 10^{19}$ | $0.34$ | $1.213\,t^{0.17}$ | $2\times 10^7\,t^{0.52}$ |
-| `"SiC"` / `"Das"` | electron (`<= 0`) | $947\,t^{-2}$ | $0$ | $1.94\times 10^{19}$ | $0.61$ | $1\cdot t^{0.66}$ | $2\times 10^7\,t^{0.87}$ |
+| `"SiC"` / `"Das"` | electron (`<= 0`) | $947\,t^{-2}$ | $0$ | $1.94\times 10^{17}$ | $0.61$ | $1\cdot t^{0.66}$ | $2\times 10^7\,t^{0.87}$ |
 | `"Diamond"` / `"Reggiani_diamond"` | hole (`> 0`) | $1200\,t^{-2.5}$ | $50 / t$ | $1.0\times 10^{17}$ | $0.5$ | $1.5\,t^{0.2}$ | $1.0\times 10^7\,t^{-0.5}$ |
 | `"Diamond"` / `"Reggiani_diamond"` | electron (`<= 0`) | $1800\,t^{-2.5}$ | $100 / t$ | $2.0\times 10^{17}$ | $0.5$ | $1.0\,t^{0.3}$ | $2.7\times 10^7\,t^{-0.5}$ |
 
@@ -94,15 +94,15 @@ All parameter values for the alternative `"Reggiani"` model of silicon (correspo
 | $\beta_{p,2}$ | $0.15\,t + \dfrac{0.8 N_A^2}{N_A^2 + (8\times 10^{17})^2} + \dfrac{0.8 N_D^2}{N_D^2 + (10^{19})^2}$ | None | dimensionless |
 | $v_{\text{sat}}$ | $9.1\times 10^6\,t^{-0.4}$ | $\dfrac{2.4\times 10^7}{1 + 0.8\exp(t/2)}$ | $\text{cm/s}$ |
 
-Mobility calculation is implemented by `Material.cal_mobility(temperature, input_doping, charge, electric_field)` in `material.py`. When constructing `Material(mat_name, mobility_model=None)` without specifying `mobility_model`, the default model is uniquely determined by `mat_name`: `"Selberherr"` for `"Si"`, `"Das"` for `"SiC"`, and `"Reggiani_diamond"` for `"Diamond"`. In call relationships:
+Mobility calculation is implemented by `Material.cal_mobility(temperature, input_doping, charge, electric_field)` in `material.py`. Mobility models are registered by name and selected by name in the device file; each material has a default model: `"Selberherr"` for `"Si"`, `"Das"` for `"SiC"`, and `"Reggiani_diamond"` for `"Diamond"`. In call relationships:
 
-- `CalCurrent.drift_all` (`src/raser/core/current/cal_current.py`) in [current.md](current.md) passes `Material(my_d.material).cal_mobility` to `advance` (`src/raser/core/current/drift.py`), evaluating the local mobility at each time step using the material's default model to compute drift displacement and the Einstein thermal diffusion standard deviation;
+- `CalCurrent.drift_all` (`src/raser/core/current/cal_current.py`) in [current.md](current.md) passes `Material(my_d.material).cal_mobility` to `advance` (`src/raser/core/current/drift.py`), evaluating the local mobility at each time step using the mobility model selected by the device to compute drift displacement and the Einstein thermal diffusion standard deviation;
 - `collect_by_diffusion` (`src/raser/core/current/diffusion.py`) in [current.md](current.md) calls `Material(my_d.material).cal_mobility(my_d.temperature, neff, -1, 0)` to compute the zero-field electron mobility in field-free pixel sensors;
 - `_fits` and `sheet_resistance` (`src/raser/core/field/implanted_aluminium.py`, called by `sheet_resistance` in `src/raser/core/field/circuit_parameters.py`) in [field.md](field.md) call `Material("SiC").cal_mobility(..., 1, 0)` to calibrate the measured Hall mobility reduction ratio `MOBILITY_LEFT` against the zero-field hole mobility of `"Das"` and compute the sheet resistance of Al-implanted 4H-SiC resistive layers;
 - `Material.draw_velocity` (`material.py`) calls `self.cal_mobility` to plot electron and hole drift velocities versus electric field;
-- `"Reggiani"` is enabled when constructing `Material("Si", mobility_model="Reggiani")`.
+- when a silicon device's device file selects `"Reggiani"`, `Material("Si", mobility_model="Reggiani")` is constructed.
 
-The `"Selberherr"` model for silicon is from Ref. [2], and the `"Reggiani"` model for silicon is from Ref. [3]; citations for the `"Das"` model of 4H-SiC and the `"Reggiani_diamond"` model of diamond are to be added.
+The `"Selberherr"` model for silicon is from Ref. [2], and the `"Reggiani"` model for silicon is from Ref. [3]; the `"Das"` model for 4H-SiC is from Ref. [19], with its doping parameters originating from Ref. [20], where electron $C_{\text{ref}}$ takes the original value $1.94\times 10^{17}\ \text{cm}^{-3}$ from Ref. [20] ($1.94\times 10^{19}$ in Ref. [19] is a typo) and hole $C_{\text{ref}}$ takes $1.76\times 10^{19}\ \text{cm}^{-3}$.
 
 ### Impact Ionization Coefficients
 
@@ -116,7 +116,7 @@ $$\alpha(E, T) = \begin{cases} 0, & E < 1.75\times 10^5\ \text{V/cm} \\ \gamma(T
 
 2. **Okuto–Crowell model (`"Okuto"`, alternative for `"Si"`)**: expresses the prefactor and critical field as linear functions of temperature relative to $T_0 = 300.0\ \text{K}$, and sets the coefficient to zero for fields not exceeding $1.0\times 10^5\ \text{V/cm}$:
 
-$$\alpha(E, T) = \begin{cases} 0, & E \le 1.0\times 10^5\ \text{V/cm} \\ a\bigl[1 + c(T - T_0)\bigr] E^{\gamma_0} \exp\!\left(-\dfrac{b\bigl[1 + d(T - T_0)\bigr]}{E}\right), & E > 1.0\times 10^5\ \text{V/cm} \end{cases} \tag{13}$$
+$$\alpha(E, T) = \begin{cases} 0, & E \le 1.0\times 10^5\ \text{V/cm} \\ a\bigl[1 + c(T - T_0)\bigr] E^{\gamma_0} \exp\!\left(-\left(\dfrac{b\bigl[1 + d(T - T_0)\bigr]}{E}\right)^{\delta}\right), & E > 1.0\times 10^5\ \text{V/cm} \end{cases} \tag{13}$$
 
 3. **Hatakeyama model (`"Hatakeyama"`, default for `"SiC"`)**: accounts for the hexagonal crystal anisotropy of 4H-SiC; when the electric field tilts by angle $\theta$ from $\langle 0001\rangle$ toward $\langle 11\bar{2}0\rangle$ (direction cosines `along_0001` $= \cos\theta$, `along_1120` $= \sin\theta$), effective coefficients are synthesized from the two principal-axis pairs $(a_{0001}, b_{0001})$ and $(a_{1120}, b_{1120})$, and set to zero for fields not exceeding $10^4\ \text{V/cm}$:
 
@@ -133,7 +133,7 @@ where:
 - $k$: Boltzmann constant, `BOLTZMANN_EV_PER_K` $= 8.617333262\times 10^{-5}\ \text{eV/K}$ (CODATA 2018);
 - $\gamma(T)$: dimensionless temperature factor from optical phonon scattering; $\hbar\omega$ (`hbarOmega` in code) is the optical phonon energy, $\text{eV}$; $T_0$ is the reference temperature, $\text{K}$;
 - $E_0$: low/high-field boundary in `"vanOverstraeten"`, $4.0\times 10^5\ \text{V/cm}$; $a_{\text{low}}, a_{\text{high}}$ are low-field and high-field prefactors, $\text{cm}^{-1}$; $b_{\text{low}}, b_{\text{high}}$ are low-field and high-field critical electric fields, $\text{V/cm}$;
-- $\gamma_0$: electric-field exponent in `"Okuto"` (`_gamma` in code), $1.0$ (dimensionless); $a$ is the prefactor, $\text{V}^{-1}$; $b$ is the critical electric field, $\text{V/cm}$; $c, d$ are temperature coefficients, $\text{K}^{-1}$;
+- $\gamma_0, \delta$: electric-field exponents in `"Okuto"` (`_gamma` and `_delta` in code, dimensionless), equal to $1.0$ and $2.0$ respectively; $a$ is the prefactor, $\text{V}^{-1}$; $b$ is the critical electric field, $\text{V/cm}$; $c, d$ are temperature coefficients, $\text{K}^{-1}$;
 - $\theta$: off-axis angle (`angle_deg`) of the electric field from $\langle 0001\rangle$ toward $\langle 11\bar{2}0\rangle$ in `"Hatakeyama"`, in degrees, defaulting to `OFF_AXIS_DEG = 4.0` (corresponding to a surface-normal planar device electric field on a $4^\circ$ off-axis 4H-SiC epitaxial wafer);
 - $a_{0001}, a_{1120}$: 4H-SiC prefactors along $\langle 0001\rangle$ and $\langle 11\bar{2}0\rangle$, $\text{cm}^{-1}$; $b_{0001}, b_{1120}$ are the critical fields along those two axes, $\text{V/cm}$; $A$ (dimensionless), $B$ ($\text{V/cm}$), $a$ ($\text{cm}^{-1}$), and $b(E)$ ($\text{V/cm}$) are the synthesized parameters.
 
@@ -143,7 +143,7 @@ All parameter values for the three impact ionization models are listed below:
 | --- | --- | --- | --- |
 | `"vanOverstraeten"` | $E_{\text{th}} = 1.75\times 10^5\ \text{V/cm}$, $E_0 = 4.0\times 10^5\ \text{V/cm}$, $\hbar\omega = 0.063\ \text{eV}$, $T_0 = 293.0\ \text{K}$ | electron (`charges < 0`) | $a_{\text{low}} = 7.03\times 10^5\ \text{cm}^{-1}$, $a_{\text{high}} = 7.03\times 10^5\ \text{cm}^{-1}$, $b_{\text{low}} = 1.231\times 10^6\ \text{V/cm}$, $b_{\text{high}} = 1.231\times 10^6\ \text{V/cm}$ |
 | `"vanOverstraeten"` | Same as above | hole (`charges > 0`) | $a_{\text{low}} = 1.582\times 10^6\ \text{cm}^{-1}$, $a_{\text{high}} = 6.71\times 10^5\ \text{cm}^{-1}$, $b_{\text{low}} = 2.036\times 10^6\ \text{V/cm}$, $b_{\text{high}} = 1.693\times 10^6\ \text{V/cm}$ |
-| `"Okuto"` | $E_{\text{th}} = 1.0\times 10^5\ \text{V/cm}$, $T_0 = 300.0\ \text{K}$, $\gamma_0 = 1.0$ | electron (`charges < 0`) | $a = 0.426\ \text{V}^{-1}$, $b = 4.81\times 10^5\ \text{V/cm}$, $c = 3.05\times 10^{-4}\ \text{K}^{-1}$, $d = 6.86\times 10^{-4}\ \text{K}^{-1}$ |
+| `"Okuto"` | $E_{\text{th}} = 1.0\times 10^5\ \text{V/cm}$, $T_0 = 300.0\ \text{K}$, $\gamma_0 = 1.0$, $\delta = 2.0$ | electron (`charges < 0`) | $a = 0.426\ \text{V}^{-1}$, $b = 4.81\times 10^5\ \text{V/cm}$, $c = 3.05\times 10^{-4}\ \text{K}^{-1}$, $d = 6.86\times 10^{-4}\ \text{K}^{-1}$ |
 | `"Okuto"` | Same as above | hole (`charges > 0`) | $a = 0.243\ \text{V}^{-1}$, $b = 6.53\times 10^5\ \text{V/cm}$, $c = 5.35\times 10^{-4}\ \text{K}^{-1}$, $d = 5.67\times 10^{-4}\ \text{K}^{-1}$ |
 | `"Hatakeyama"` | $E_{\text{th}} = 10^4\ \text{V/cm}$, $\theta = 4.0^\circ$ (`OFF_AXIS_DEG`), $\hbar\omega = 0.19\ \text{eV}$, $T_0 = 300.0\ \text{K}$ | electron (`charges < 0`) | $a_{0001} = 1.76\times 10^8\ \text{cm}^{-1}$, $a_{1120} = 2.10\times 10^7\ \text{cm}^{-1}$, $b_{0001} = 3.30\times 10^7\ \text{V/cm}$, $b_{1120} = 1.70\times 10^7\ \text{V/cm}$ |
 | `"Hatakeyama"` | Same as above | hole (`charges > 0`) | $a_{0001} = 3.41\times 10^8\ \text{cm}^{-1}$, $a_{1120} = 2.96\times 10^7\ \text{cm}^{-1}$, $b_{0001} = 2.50\times 10^7\ \text{V/cm}$, $b_{1120} = 1.60\times 10^7\ \text{V/cm}$ |
@@ -154,7 +154,7 @@ The dictionary `VAN_OVERSTRAETEN` and the function `hatakeyama(carrier, angle_de
 - `DevsimField._integrate_planar_gain` (`src/raser/core/field/devsim_field.py`) in [field.md](field.md) calls `Material(my_d.material, avalanche_model=my_d.avalanche_model).cal_coefficient(abs(E), ±1, my_d.temperature)` to integrate along the 1D centerline depth profile for the steady-state planar multiplication factor (used by `CalCurrentGain._build_planar_gain_carriers` in [current.md](current.md));
 - `CalCurrentGain._build_local_gain_carriers` (`src/raser/core/current/cal_current.py`) in [current.md](current.md) calls `Material(my_d.material, avalanche_model=my_d.avalanche_model).cal_coefficient(field, charge_sign, my_d.temperature)` to integrate impact ionization coefficients piecewise along primary carrier drift paths in multi-dimensional fields.
 
-The van Overstraeten–de Man model is from Ref. [4], the Okuto–Crowell model is from Ref. [5], and the Hatakeyama principal-axis parameters and off-axis synthesis formulas are from Refs. [6, 7]; citations for the temperature factor $\gamma(T)$ introduced via the optical phonon energy $\hbar\omega$ in `"vanOverstraeten"` and `"Hatakeyama"` are to be added.
+The van Overstraeten–de Man model is from Ref. [4], the Okuto–Crowell model is from Ref. [5], and the Hatakeyama principal-axis parameters and off-axis synthesis formulas are from Refs. [6, 7]. The physical origin of the temperature factor $\gamma(T)$ introduced via the optical phonon energy $\hbar\omega$ is given in Ref. [16]; the formulation of `"vanOverstraeten"` using $\hbar\omega = 0.063\ \text{eV}$ is taken from Ref. [17]; and $\hbar\omega = 0.19\ \text{eV}$ for `"Hatakeyama"` is from Ref. [18], where it is given only for electrons while the code uses the same value for holes.
 
 ### Band Structure and Intrinsic Carrier Concentration
 
@@ -168,19 +168,19 @@ where:
 
 - $T$: temperature, $\text{K}$;
 - $N_c(T), N_v(T)$: conduction and valence band effective densities of states, $\text{cm}^{-3}$; $N_{c0}, N_{v0}$ are the prefactors at reference temperature $T_{\text{ref}}$ ($300\ \text{K}$ for `"Si"` and `"Diamond"`, $1\ \text{K}$ for `"SiC"`);
-- $E_g$: temperature-independent band gap, $\text{J}$ (obtained in code by multiplying the band gap in $\text{eV}$ by the fixed conversion factor $1.6\times 10^{-19}\ \text{J/eV}$);
-- $k$: Boltzmann constant, taken as `_K_J_PER_K` = $1.3806503\times 10^{-23}\ \text{J/K}$ in code;
+- $E_g$: temperature-independent band gap, $\text{J}$ (obtained by multiplying the band gap in $\text{eV}$ by the CODATA 2018 elementary charge $1.602176634\times 10^{-19}\ \text{J/eV}$);
+- $k$: Boltzmann constant, taken as the CODATA 2018 value $1.380649\times 10^{-23}\ \text{J/K}$ (corresponding to $8.617333262\times 10^{-5}\ \text{eV/K}$);
 - $n_i(T)$: intrinsic carrier concentration, $\text{cm}^{-3}$.
 
 Formulas and parameters for each material in `BAND_STRUCTURE` (`band_structure.py`) are listed below:
 
 | Material | `N_c` ($\text{cm}^{-3}$) | `N_v` ($\text{cm}^{-3}$) | `E_g` ($\text{J}$) | $N_c, N_v$ at $300\ \text{K}$ ($\text{cm}^{-3}$) |
 | --- | --- | --- | --- | --- |
-| `"Si"` | `2.82e19*pow(T/300, 1.5)` | `1.83e19*pow(T/300, 1.5)` | `1.12*1.6e-19` | $2.82\times 10^{19},\; 1.83\times 10^{19}$ |
-| `"SiC"` | `3.25e15*pow(T, 1.5)` | `4.8e15*pow(T, 1.5)` | `3.26*1.6*1e-19` | $1.69\times 10^{19},\; 2.49\times 10^{19}$ |
-| `"Diamond"` | `1.8e19*pow(T/300, 1.5)` | `1.5e19*pow(T/300, 1.5)` | `5.47*1.6e-19` | $1.80\times 10^{19},\; 1.50\times 10^{19}$ |
+| `"Si"` | `2.82e19*pow(T/300, 1.5)` | `1.83e19*pow(T/300, 1.5)` | `1.12*1.602176634e-19` | $2.82\times 10^{19},\; 1.83\times 10^{19}$ |
+| `"SiC"` | `3.25e15*pow(T, 1.5)` | `4.8e15*pow(T, 1.5)` | `3.26*1.602176634e-19` | $1.69\times 10^{19},\; 2.49\times 10^{19}$ |
+| `"Diamond"` | `1.8e19*pow(T/300, 1.5)` | `1.5e19*pow(T/300, 1.5)` | `5.47*1.602176634e-19` | $1.80\times 10^{19},\; 1.50\times 10^{19}$ |
 
-This model is built by `_material` in `band_structure.py` as the dictionary `BAND_STRUCTURE[material]`, whose entries contain four `Formula` objects `"N_c"`, `"N_v"`, `"E_g"`, and `"n_i"` in the independent variable `["T"]`. In call relationships, `CreateSiliconConstant`, `CreateSiliconCarbideConstant`, and `CreateDiamondConstant` (`src/raser/core/field/create_parameter.py`) in [field.md](field.md) call `.value(T=T)` on the four `Formula` entries in `BAND_STRUCTURE[material]` to write the DEVSIM region parameters `N_c`, `N_v`, `E_g`, `n_i`, along with `n1 = n_i` and `p1 = n_i`; `free_holes` in `incomplete_ionization.py` of this package calls `BAND_STRUCTURE[material]["N_v"].value(T=temperature_k)` to compute the valence-band effective density of states (used by `implanted_aluminium.py` in [field.md](field.md) to compute the sheet resistance of Al-implanted 4H-SiC layers). The effective densities of states of 4H-SiC are derived from $N = 2 M_c (2\pi m^* k T / h^2)^{3/2}$ with $M_c = 3$ conduction-band valleys ($0.37\,m_0$ per valley) and valence-band hole mass $1.0\,m_0$, see Ref. [8] (Sec. 6); citations for the silicon and diamond coefficients are to be added.
+This model is built by `_material` in `band_structure.py` as the dictionary `BAND_STRUCTURE[material]`, whose entries contain four `Formula` objects `"N_c"`, `"N_v"`, `"E_g"`, and `"n_i"` in the independent variable `["T"]`. In call relationships, `CreateSiliconConstant`, `CreateSiliconCarbideConstant`, and `CreateDiamondConstant` (`src/raser/core/field/create_parameter.py`) in [field.md](field.md) call `.value(T=T)` on the four `Formula` entries in `BAND_STRUCTURE[material]` to write the DEVSIM region parameters `N_c`, `N_v`, `E_g`, `n_i`, along with `n1 = n_i` and `p1 = n_i`; `free_holes` in `incomplete_ionization.py` of this package calls `BAND_STRUCTURE[material]["N_v"].value(T=temperature_k)` to compute the valence-band effective density of states (used by `implanted_aluminium.py` in [field.md](field.md) to compute the sheet resistance of Al-implanted 4H-SiC layers). The effective densities of states of 4H-SiC are derived from $N = 2 M_c (2\pi m^* k T / h^2)^{3/2}$ with $M_c = 3$ conduction-band valleys ($0.37\,m_0$ per valley) and valence-band hole mass $1.0\,m_0$, see Ref. [8] (Sec. 6).
 
 ### Dopants and Incomplete Ionization
 
@@ -192,7 +192,7 @@ $$n_{1,i}(T) = N_{\text{band}}\exp\!\left(-\frac{\Delta E_i(N)}{k T}\right) \tag
 
 $$\frac{N_{\text{ion}}}{N} = \sum_{i} \begin{cases} \dfrac{f_i\,n_{1,i}(T)}{n_{1,i}(T) + g\,c}, & c > 0 \\ f_i, & c \le 0 \end{cases} \tag{21}$$
 
-For a semiconductor layer containing a single-level acceptor concentration $N_A$ (partially ionized) and a fully ionized compensating donor concentration $N_D$, neglecting free electrons and intrinsic carrier concentration $n_i$, the free hole concentration $p$ solved from charge neutrality $p(p + N_D) = (N_A - N_D) p_1 / g$ is:
+For a semiconductor layer containing a single-level acceptor concentration $N_A$ (partially ionized) and a fully ionized compensating donor concentration $N_D$, neglecting free electrons and intrinsic carrier concentration $n_i$, the free hole concentration $p$ solved from the charge-neutrality condition $p + N_D = N_A^-$, i.e., $p(p + N_D) = (N_A - N_D - p)\,p_1 / g$ (where $p_1 = N_v(T)\exp\!\left(-\Delta E(N_A)/(k T)\right)$), is:
 
 $$p_{\text{freed}} = \frac{N_v(T)}{g}\exp\!\left(-\frac{\Delta E(N_A)}{k T}\right), \qquad p_{\text{taken}} = N_D + p_{\text{freed}} \tag{22}$$
 
@@ -211,7 +211,9 @@ where:
 - $k$: Boltzmann constant, `BOLTZMANN_EV_PER_K` $= 8.617333262\times 10^{-5}\ \text{eV/K}$;
 - $T$: temperature (`T` or `temperature_k`), $\text{K}$;
 - $N_A, N_D$: acceptor concentration (`acceptors_cm3`) and compensating donor concentration (`donors_cm3`), $\text{cm}^{-3}$;
-- $p_{\text{freed}}, p_{\text{taken}}, p$: reduced characteristic hole concentration, its sum with compensating donors, and the resulting free hole concentration (`freed_cm3`, `taken_cm3`, and return value in code), $\text{cm}^{-3}$.
+- $\Delta E(N_A)$: effective ionization energy at acceptor concentration $N_A$ (computed by Eq. (19)), $\text{eV}$;
+- $p_1$: characteristic hole concentration of the single-level acceptor $N_v(T)\exp\!\left(-\Delta E(N_A)/(k T)\right)$, $\text{cm}^{-3}$;
+- $p_{\text{freed}}, p_{\text{taken}}, p$: reduced characteristic hole concentration ($p_1 / g$), its sum with compensating donors, and the resulting free hole concentration (`freed_cm3`, `taken_cm3`, and return value in code), $\text{cm}^{-3}$.
 
 All material and dopant parameters registered in `DOPANTS` (`dopants.py`) are listed below:
 
@@ -258,7 +260,7 @@ where:
 - `CreateSRH` (`src/raser/core/field/physics_drift_diffusion.py`) in [field.md](field.md) calls `SRH.devsim(n="Electrons", p="Holes", n_i="n_i", n1="n1", p1="p1", tau_n="taun", tau_p="taup")` to create node model `USRH`, which is added to the additional recombination term `U_const` (and, when irradiation is enabled, the irradiation-defect recombination rate `U_r` generated by `src/raser/core/field/physics_irradiation.py`, see [field.md](field.md)) to form the continuity-equation source terms `ElectronGeneration` and `HoleGeneration`;
 - `CreateFESRH` (`src/raser/core/field/physics_avalanche.py`) in [field.md](field.md), when impact ionization is enabled in a `"SiliconCarbide"` region, calls `TAT_FIELD_ENHANCEMENT.devsim(E="abs(ElectricField)", F_sat="F_sat")` to build the edge model `R_TAT = (TAT_FIELD_ENHANCEMENT)*(U_const@n1)` and subtracts `R_TAT` from `Ion_coeff_rate`.
 
-The SRH recombination formula is from Ref. [1] (Sec. 1.5.4) and the original paper [14], and the Hurkx trap-assisted tunneling field-enhancement formula is from Ref. [15]; citations for the three materials' lifetimes in `SRH_LIFETIME` as well as `F_gamma = 3.9e4` $\text{V/cm}$, `F_sat = 1e5` $\text{V/cm}$, and `pi = 3.14159` for 4H-SiC are to be added.
+The SRH recombination formula is from Ref. [1] (Sec. 1.5.4) and the original paper [14], and the Hurkx trap-assisted tunneling field-enhancement formula is from Ref. [15]; the electron lifetime $2.5\ \mu\text{s}$ of 4H-SiC is from Ref. [19], and the hole lifetime $0.5\ \mu\text{s}$ is from Ref. [21] (confirmed by our group's time-resolved photoluminescence measurements).
 
 ## Algorithms
 
@@ -277,7 +279,7 @@ The table below lists all built-in physical constants and hardcoded numerical pa
 | `_VAN_OVERSTRAETEN` thresholds and constants | $E_{\text{th}} = 1.75\times 10^5$, $E_0 = 4.0\times 10^5$, $\hbar\omega = 0.063$, $T_0 = 293.0$ | — | — | — | $\text{V/cm}$, $\text{V/cm}$, $\text{eV}$, $\text{K}$ | `impact_ionization.py`, van Overstraeten–de Man ionization threshold, low/high-field boundary, optical phonon energy, and reference temperature |
 | `"Okuto"` thresholds and constants | $E_{\text{th}} = 1.0\times 10^5$, $T_0 = 300.0$, `_gamma = 1.0`, `_delta = 2.0` | — | — | — | $\text{V/cm}$, $\text{K}$, dimensionless, dimensionless | `material.py` (`Material.cal_coefficient`), Okuto–Crowell ionization threshold, reference temperature, and exponents |
 | `_HATAKEYAMA` thresholds and constants | — | $E_{\text{th}} = 10^4$, `OFF_AXIS_DEG = 4.0`, $\hbar\omega = 0.19$, $T_0 = 300.0$ | — | — | $\text{V/cm}$, deg, $\text{eV}$, $\text{K}$ | `impact_ionization.py`, Hatakeyama ionization threshold, off-axis angle, optical phonon energy, and reference temperature |
-| `_K_J_PER_K`, band-gap conversion factor | — | — | — | `1.3806503e-23`, `1.6e-19` | $\text{J/K}$, $\text{J/eV}$ | `band_structure.py`, Boltzmann constant and charge conversion factor used for $n_i(T)$ and $E_g$ |
+| `_K_J_PER_K`, band-gap conversion factor | — | — | — | `1.380649e-23`, `1.602176634e-19` | $\text{J/K}$, $\text{J/eV}$ | `band_structure.py`, CODATA 2018 Boltzmann constant and elementary-charge conversion factor used for $n_i(T)$ and $E_g$ |
 | `SRH_LIFETIME` (`tau_n`, `tau_p`) | `7e-3`, `7e-3` | `2.5e-6`, `0.5e-6` | `5.6e-7`, `2.4e-7` | — | $\text{s}$ | `recombination.py`, default electron and hole SRH lifetimes |
 | `TAT_SATURATION_FIELD` | — | `1e5` | — | — | $\text{V/cm}$ | `recombination.py`, default saturation field for 4H-SiC trap-assisted tunneling enhancement (overridable as `"F_sat"` via the device file `parameter` key) |
 | `F_gamma`, `pi` | — | `3.9e4`, `3.14159` | — | — | $\text{V/cm}$, dimensionless | `recombination.py` (`TAT_FIELD_ENHANCEMENT`), TAT characteristic field and pi constant |
@@ -345,7 +347,7 @@ So that carrier drift (Python numerical evaluation) and the DEVSIM field solver 
 
 ## Interface
 
-Users can configure in the device file only the keys listed below that relate to this package's models; all other model parameters (relative permittivity, effective masses, default mobility models and coefficients, impact ionization parameters and the $4.0^\circ$ off-axis angle, band parameters, dopant levels and degeneracies, SRH lifetimes, and TAT characteristic field `F_gamma`) are hardcoded, though the copies written as DEVSIM region parameters can be overridden during field solving via `parameter` (one per device file, see Built-in Constants above). Command-line usage for field solving and carrier transport is documented in [../stages/field.md](../stages/field.md) and [../stages/current.md](../stages/current.md).
+Users can configure in the device file only the keys listed below that relate to this package's models; all other model parameters (relative permittivity, effective masses, default mobility models for each material and their coefficients, impact ionization parameters and the $4.0^\circ$ off-axis angle, band parameters, dopant levels and degeneracies, SRH lifetimes, and TAT characteristic field `F_gamma`) are hardcoded, though the copies written as DEVSIM region parameters can be overridden during field solving via `parameter` (one per device file, see Built-in Constants above). On the command line, use `raser model --draw <model>` to plot model curves (see [Command-Line Interface](../cli.md)); command-line usage for field solving and carrier transport is documented in [../stages/field.md](../stages/field.md) and [../stages/current.md](../stages/current.md).
 
 ### Keys Read from the Device File
 
@@ -362,11 +364,11 @@ The following keys in the device JSON are read by [device.md](device.md), [field
 
 ### Input and Output Files
 
-`core/model` is an in-memory physical model library; its numerical values and symbolic expressions are passed directly in memory to [device.md](device.md), [field.md](field.md) (which writes `.pkl` and `.json` files into the `<project>/field/<node_id>/` field node), and [current.md](current.md) (which writes `current_<job>.h5`).
+`core/model` is an in-memory physical model library; its numerical values and symbolic expressions are passed directly in memory to [device.md](device.md), [field.md](field.md) (which writes `.pkl` and `.json` files into the `<project>/field/<node_id>/` field node), and [current.md](current.md) (which writes `current.h5`).
 
 ### Plot Outputs
 
-Calling `Material(<material>).draw_velocity(temperature, Neff)` in Python (for example `Material("SiC").draw_velocity(300, 1e14)`) generates a drift-velocity plot under `<project_root>/model/model/` via `output(__file__, "model")` in [../supports/README.md](../supports/README.md); `<project_root>` comes from the environment variable `RASER_PROJECT_PATH`, defaulting to the current working directory:
+On the command line, use `raser model --draw <model>` to plot curves of physical models such as mobility, drift velocity, and impact ionization coefficients versus electric field, temperature, or doping concentration (see [Command-Line Interface](../cli.md)). You can also call `Material(<material>).draw_velocity(temperature, Neff)` in Python (for example `Material("SiC").draw_velocity(300, 1e14)`) to generate a drift-velocity plot under `<project_root>/model/model/` via `output(__file__, "model")` in [../supports/README.md](../supports/README.md); `<project_root>` comes from the environment variable `RASER_PROJECT_PATH`, defaulting to the current working directory:
 
 | Filename | Content | Unit |
 | --- | --- | --- |
@@ -389,3 +391,9 @@ Calling `Material(<material>).draw_velocity(temperature, Neff)` in Python (for e
 - [13] E. Gheeraert, S. Koizumi, T. Teraji, H. Kanda, “Electronic transitions of electrons bound to phosphorus donors in diamond”, Solid State Commun. 113 (2000) 577, doi:10.1016/S0038-1098(99)00546-3
 - [14] W. Shockley, W. T. Read, Jr., “Statistics of the Recombinations of Holes and Electrons”, Phys. Rev. 87 (1952) 835, doi:10.1103/PhysRev.87.835
 - [15] G. A. M. Hurkx, D. B. M. Klaassen, M. P. G. Knuvers, “A new recombination model for device simulation including tunneling”, IEEE Trans. Electron Devices 39 (1992) 331, doi:10.1109/16.121690
+- [16] C. R. Crowell, S. M. Sze, “Temperature dependence of avalanche multiplication in semiconductors”, Appl. Phys. Lett. 9 (1966) 242, doi:10.1063/1.1754731
+- [17] Synopsys, *Sentaurus Device User Guide*, Synopsys Inc., section on the van Overstraeten–de Man impact ionization model
+- [18] T. Hatakeyama, “Measurements of impact ionization coefficients of silicon carbide for high voltage power devices”, Phys. Status Solidi A 206 (2009) 2284, doi:10.1002/pssa.200925213
+- [19] A. Das, S. P. Duttagupta, “TCAD simulation for alpha-particle spectroscopy using SiC Schottky diode”, Radiat. Prot. Dosim. 167 (2015) 443, doi:10.1093/rpd/ncu369
+- [20] W. J. Schaffer, G. H. Negley, K. G. Irvine, J. W. Palmour, “Conductivity anisotropy in epitaxial 6H and 4H SiC”, MRS Proc. 339 (1994) 595, doi:10.1557/PROC-339-595
+- [21] Z. Li et al., “Mechanisms of proton irradiation-induced defects on the electrical performance of 4H-SiC PIN detectors”, JINST 21 (2026) P03010, doi:10.1088/1748-0221/21/03/P03010, arXiv:2503.09016

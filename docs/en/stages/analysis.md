@@ -12,10 +12,10 @@ The example below first scans two bias voltages on `HPK-Si-PiN`, with `2` jobs p
 
 ```bash
 raser signal HPK-Si-PiN --scan field.voltage=100,200 -s 2 --seed 1
-raser analysis work/HPK-Si-PiN/signal
+raser analysis examples/HPK-Si-PiN/signal
 ```
 
-In the second command, all upstream node fingerprints match the previous run and are reused; the `analysis` node is likewise reused when its fingerprint matches. After each point finishes writing, its `result.json` path is printed; when the sample size is insufficient, the missing result and its reason are printed first.
+When `HPK-Si-PiN` is not present under `work/`, the first command runs in place under `examples/HPK-Si-PiN/`, with the experiment folder `examples/HPK-Si-PiN/signal`. Along the chain, `digitizer` samples and quantizes each job's waveforms and writes `digitizer.h5`; `trigger` writes the IDs of events exceeding the amplitude threshold into `trigger.h5`, and only those events enter `reconstruction`. In the second command, all upstream node fingerprints match the previous run and are reused; the `analysis` node is likewise reused when its fingerprint matches. After each point finishes writing, its `result.json` path is printed; when the sample size is insufficient, the missing result and its reason are printed first.
 
 ### Per-Point Statistics and Distribution Plots
 
@@ -25,8 +25,8 @@ The job completes normally when sample sizes are insufficient: if there are fewe
 
 In the example above (`2` jobs and `400` events per point), key results in `result.json` for the two points are:
 
-- `200 V` (`work/HPK-Si-PiN/signal/points/voltage_200/analysis/result.json`): across all `400` events, charge collection efficiency `mean = 0.9348` (`0.9347645480767679`), `mean_error = 0.007225`, `spread = 0.1445`; `276` selected events exceed the `10 mV` amplitude threshold (`polarity = -1.0`); `ToA` retains `241` events inside the window after `5` iteration rounds, giving `sigma = 123.99 ps` (`1.2399e-10 s`) and `sigma68 = 123.69 ps`, while `CFD30` gives `sigma = 33.35 ps` and `sigma68 = 31.66 ps`.
-- `100 V` (`work/HPK-Si-PiN/signal/points/voltage_100/analysis/result.json`): across `400` events, collection efficiency `mean = 0.9195` (`0.9194852059626839`), `mean_error = 0.008746`, `spread = 0.1749`; `257` selected events, with `CFD30` giving `sigma = 43.58 ps` and `sigma68 = 38.87 ps`.
+- `200 V` (`examples/HPK-Si-PiN/signal/points/voltage_200/analysis/result.json`): across all `400` events, charge collection efficiency `mean = 0.9348` (`0.9347645480767679`), `mean_error = 0.007225`, `spread = 0.1445`; `276` selected events recorded by `trigger` with a cluster seed at or above the `10 mV` amplitude threshold (`polarity = -1.0`); `ToA` retains `241` events inside the window after `5` iteration rounds, giving `sigma = 123.99 ps` (`1.2399e-10 s`) and `sigma68 = 123.69 ps`, while `CFD30` gives `sigma = 33.35 ps` and `sigma68 = 31.66 ps`.
+- `100 V` (`examples/HPK-Si-PiN/signal/points/voltage_100/analysis/result.json`): across `400` events, collection efficiency `mean = 0.9195` (`0.9194852059626839`), `mean_error = 0.008746`, `spread = 0.1749`; `257` selected events, with `CFD30` giving `sigma = 43.58 ps` and `sigma68 = 38.87 ps`.
 
 The three distribution plots at `200 V` are shown below:
 
@@ -36,7 +36,7 @@ Histogram of charge collection efficiency for `400` events at `200 V`, with the 
 
 ![HPK-Si-PiN pulse amplitude distribution](../images/analysis-amplitude-HPK-Si-PiN.png)
 
-Histogram of pulse amplitudes for the `276` selected events reaching or exceeding the `10 mV` threshold at `200 V`, with the dashed line marking the amplitude threshold.
+Histogram of pulse amplitudes for the `276` selected events (recorded by `trigger` with cluster seed amplitude at or above `10 mV`) at `200 V`, with the dashed line marking the amplitude threshold.
 
 ![HPK-Si-PiN time difference distribution and truncated Gaussian fit](../images/analysis-time-difference-HPK-Si-PiN.png)
 
@@ -46,13 +46,13 @@ Time-difference distributions relative to `truth`, shaded fit windows, and trunc
 
 When more than `1` scan point has results, the program writes `points.json` under `<experiment_folder>/analysis/`. It retains only the scan options whose values differ across points and gathers each point's efficiency and time resolution. When there is exactly `1` scan option with differing values and all of its values are non-boolean numbers, it also draws the side-by-side two-panel plot `points.png` sorted in ascending order of that variable.
 
-An excerpt of `work/HPK-Si-PiN/signal/analysis/points.json` written by the example above is shown below (`CoG` and `CFD10`–`CFD90` channels share the same structure as `ToA` and are omitted here):
+An excerpt of `examples/HPK-Si-PiN/signal/analysis/points.json` written by the example above is shown below (`CoG` and `CFD10`–`CFD90` channels share the same structure as `ToA` and are omitted here):
 
 ```json
 [
   {
     "point": "voltage_100",
-    "voltage": 100,
+    "field.voltage": 100,
     "events": 400,
     "efficiency": 0.9194852059626839,
     "efficiency_error": 0.00874583566620318,
@@ -65,7 +65,7 @@ An excerpt of `work/HPK-Si-PiN/signal/analysis/points.json` written by the examp
   },
   {
     "point": "voltage_200",
-    "voltage": 200,
+    "field.voltage": 200,
     "events": 400,
     "efficiency": 0.9347645480767679,
     "efficiency_error": 0.007224687825783201,
@@ -79,7 +79,7 @@ An excerpt of `work/HPK-Si-PiN/signal/analysis/points.json` written by the examp
 ]
 ```
 
-The corresponding `work/HPK-Si-PiN/signal/analysis/points.png` is:
+The corresponding `examples/HPK-Si-PiN/signal/analysis/points.png` is:
 
 ![HPK-Si-PiN charge collection efficiency and time resolution vs. bias voltage](../images/analysis-points-HPK-Si-PiN.png)
 
@@ -107,7 +107,7 @@ The table below lists all built-in constants and hardcoded parameters used in `s
 
 ### Zero-Event Jobs and Missing Files
 
-`job_file(folder, index, name)` in `files.py` locates `<name>_<job>.h5` for a job. If the file exists, it is returned directly. Otherwise it reads `deposit_<job>.h5` of the same job (via `read_deposits`) and counts `recorded = len(deposits.events)`:
+`job_file(folder, index, name)` in `files.py` locates `<name>.h5` in a job's `<name>` node via the view `points/<point>/<name>/<job>`. If the file exists, it is returned directly. Otherwise it reads `deposit.h5` in the same job's `deposit` node (via `read_deposits`) and counts `recorded = len(deposits.events)`:
 
 - When `recorded == 0`, returns `None` and silently skips that zero-event job;
 - When `recorded > 0`, raises:
@@ -116,7 +116,9 @@ The table below lists all built-in constants and hardcoded parameters used in `s
   FileNotFoundError: <path>: job <index> recorded <recorded> events but left no <name> file
   ```
 
-  Cause: the job should have produced a downstream file that is missing (deleted by mistake, or produced by a multi-position chain that wrote only files with a `.<position>` suffix); restore the missing file, or read the position-suffixed files directly for multi-position outputs.
+  Cause: the job should have produced a downstream file that is missing (for example, deleted by mistake); restore the missing file.
+
+Limitation: multi-position chains write only files with a `.<position>` suffix; `analysis` does not currently read them and raises the error above on such jobs; multi-position statistics are not yet implemented.
 
 ### Per-Point Statistics and Plotting
 
@@ -131,27 +133,27 @@ For each scan point, `collect` calls `write_point(jobs, <point_output_folder>)`,
    ValueError: the jobs of the point were reconstructed with different settings: <settings>
    ```
    Cause: jobs within the same scan point used different reconstruction parameters; rerun reconstruction with uniform settings before analyzing.
-2. **Verify current files and compute per-event collection efficiency (`event_efficiencies`)**: For each `(place, folder, index, table)` in `tables`, call `job_file(folder, index, "current")` and `read_currents(path).events`. Compare `sorted(event.event for event in events)` with `sorted(int(number) for number in table.columns["event"])`:
-   - If they differ, raise:
+2. **Verify current files and compute per-event collection efficiency (`event_efficiencies`)**: Collection efficiency is computed over all events in the job's `current` node, without passing through trigger; the reconstruction table contains only events recorded by `trigger`, which is a subset of the events in the current file. For each `(place, folder, index, table)` in `tables`, call `job_file(folder, index, "current")` and `read_currents(path).events`, letting `numbers = {event.event for event in events}` and `rows = {int(number) for number in table.columns["event"]}`:
+   - If `rows - numbers` is non-empty, raise:
 
      ```text
-     ValueError: <path>: events <list> are in the currents or in the reconstruction of the job, not in both
+     ValueError: <path>: events <list> are in the reconstruction of the job, not in its currents
      ```
 
-     where `<list>` is the symmetric difference `sorted(set(numbers) ^ set(rows))`; cause: the event sets in the job's current file and reconstruction table disagree; rerun `current` and downstream stages for that job.
-   - If they match, call `collection_efficiency([event.charge for event in events], [event.pairs for event in events])` to compute the dimensionless collection efficiency of each event, concatenating all jobs into a 1D array `efficiencies` (returning an empty array when `tables` is empty).
+     where `<list>` is `sorted(rows - numbers)`; cause: the job's reconstruction table was not produced from this current file; rerun `current` and downstream stages for that job. Events present in the current file but absent from the reconstruction table are events not recorded by trigger, which is normal.
+   - Otherwise call `collection_efficiency([event.charge for event in events], [event.pairs for event in events])` to compute the dimensionless collection efficiency of each event in the current file, concatenating all jobs into a 1D array `efficiencies` (returning an empty array when `tables` is empty).
 3. **Record reconstruction parameters and compute efficiency spread (`efficiency_spread`)**: When `tables` is non-empty, write `table_setting(tables[0][3])` into `result["reconstruction"]` (both thresholds in `mV`). Count `count = len(efficiencies)`:
    - If `count < 2`, `efficiency_spread` raises `TooFewValues` with message `<count> events in the point, a mean and a spread need at least 2`. `write_point` catches it, writes `result["collection"] = {"events": count, "error": str(too_few)}`, appends `no efficiency: <too_few>` to `missing`, and skips `efficiency.png`.
    - If `count >= 2`, compute sample standard deviation `spread = float(np.std(efficiencies, ddof=1))`, mean `mean = float(np.mean(efficiencies))`, and standard error of the mean `mean_error = spread / np.sqrt(count)`, store them in `result["collection"]`, and call `plots.draw_efficiencies` to draw `efficiency.png` (`60`-bin histogram with a dashed line at the mean, `150 dpi`).
 4. **Early return when the point has 0 events**: If `len(efficiencies) == 0`, write `result["timing"] = {"events": 0, "selected": 0, "error": "the jobs recorded no event"}`, append `"no time resolution: the jobs recorded no event"` to `missing`, write `result.json`, and return `"; ".join(missing)`.
 5. **Extract single-electrode selected-event times and truth (`event_times`)**:
-   - First check every table in `tables`; if any satisfies `len(table.electrodes) > 1`, raise:
+   - Limitation: `analysis` currently computes statistics only for single-electrode results; multi-electrode statistics are not yet implemented. First check every table in `tables`; if any satisfies `len(table.electrodes) > 1`, raise:
 
      ```text
      NotImplementedError: <len> electrodes; the time of an event with several electrodes is not settled
      ```
 
-     Cause: this stage currently defines event time only for single-electrode devices; multi-electrode timing analysis must be performed by reading `reconstruction_<job>.h5` directly.
+     Cause: `analysis` currently defines event time only for single-electrode devices.
    - For each `(place, folder, index, table)`, locate the job's deposit file `deposits` via `slice_file(folder, index, "deposit")` and build the mapping `earliest = {event.event: min(event.t) for event in read_deposits(str(deposits)).events}` (in `s`). Check every event ID `number` in `table.columns["event"]` (including unselected events); if `number not in earliest`, raise:
 
      ```text
@@ -168,7 +170,7 @@ For each scan point, `collect` calls `write_point(jobs, <point_output_folder>)`,
    - When all channels fit successfully, write `result["timing"]["times"] = widths` and draw two plots:
      - `plots.draw_differences` writes `time_difference.png`: plots up to the first `12` channels (`ToA`, `CoG`, and the first `10` `CFD*` channels, hiding unused axes) on a `3 × 4` grid. For each channel, non-`NaN` `difference` values are divided by `PICOSECOND` to convert to `ps`, binned into `64` uniform bins (`65` edges) over `[mean - 8 * sigma, mean + 8 * sigma]`, shaded in light gray across the final-round window `[low, high]`, and overlaid with the normalized truncated Gaussian curve evaluated at `200` evenly spaced points over `[low, high]`:
        $$y(x) = N_{\text{win}}\,\Delta x_{\text{bin}}\,\frac{\exp\!\left(-\frac{(x - \mu)^2}{2\sigma^2}\right)}{\sqrt{2\pi}\,\sigma \cdot \frac{1}{2}\left[\operatorname{erf}\!\left(\frac{\text{high} - \mu}{\sqrt{2}\,\sigma}\right) - \operatorname{erf}\!\left(\frac{\text{low} - \mu}{\sqrt{2}\,\sigma}\right)\right]}$$
-       saved at `130 dpi`.
+       where $x$ is the time difference ($\text{ps}$), $\mu$ and $\sigma$ are the channel's final-round fitted `mean` and `sigma` ($\text{ps}$), $N_{\text{win}}$ is the number of events inside the final-round window `window_events` (events), $\Delta x_{\text{bin}}$ is the histogram bin width ($\text{ps}$), and $y(x)$ is the expected number of events per bin (events). The plot is saved at `130 dpi`.
      - `plots.draw_fractions` writes `resolution_of_fraction.png`: selects all `CFD*` channels, recovers each constant fraction via `int(name[3:]) / 100`, plots `sigma ± sigma_error` (`ps`) with error bars and `sigma68` (`ps`) with open square markers, sets the lower y-axis limit to `0`, and saves at `150 dpi`.
 8. **Persist per-point result and print summary**: Write `result.json` with 2-space indentation and return `"; ".join(missing) or None`. Back in `collect`, if the return value is not `None`, print `<point_output_folder>: <error>` first, then print the path to `result.json`, and retain that point's options and parsed `result.json` for the cross-point summary.
 
@@ -186,7 +188,7 @@ After all scan points are processed, if more than `1` point has results, `collec
 ### Module and File Responsibilities
 
 - `src/raser/stages/analysis/__init__.py`: Registers subcommand `analysis` (short alias `ana`) and implements job function `collect` (orchestrating per-point analysis and cross-point aggregation).
-- `src/raser/stages/analysis/files.py`: Provides `slice_file` and `job_file` to locate upstream files of a job and inspect `deposit_<job>.h5` when a file is missing, distinguishing valid zero-event jobs from missing-file errors.
+- `src/raser/stages/analysis/files.py`: Provides `slice_file` and `job_file` to locate upstream files of a job and inspect `deposit.h5` in that job's `deposit` node when a file is missing, distinguishing valid zero-event jobs from missing-file errors.
 - `src/raser/stages/analysis/collection.py`: Provides `event_efficiencies` and `efficiency_spread`, verifying that event IDs match between current and reconstruction files, calling `collection_efficiency` to compute per-event collection efficiency, and summarizing mean, standard error of the mean, and sample standard deviation.
 - `src/raser/stages/analysis/timing.py`: Provides `table_setting`, `point_tables`, `event_times`, `time_widths`, and the standalone summary interface `point_resolution`, handling per-point reconstruction parameter consistency checks, single-electrode checks, earliest deposit time `truth` extraction, and core-width fitting per timing channel.
 - `src/raser/stages/analysis/point.py`: Provides `write_point`, chaining single-point table loading, efficiency calculation, time extraction, writing `events.h5` and `result.json`, and drawing the four single-point plots, while catching `TooFewValues` into result `error` fields.
@@ -210,7 +212,7 @@ After all scan points are processed, if more than `1` point has results, `collec
 
 ### Command-Line and Run Options
 
-`raser analysis [path]`: omits path to use the current folder, or takes a relative or absolute path such as `work/HPK-Si-PiN/signal`. Global options and shared run parameters are documented in [Command-Line Interface](../cli.md):
+`raser analysis [path]`: omits path to use the current folder, or takes a relative or absolute path such as `examples/HPK-Si-PiN/signal`. Global options and shared run parameters are documented in [Command-Line Interface](../cli.md):
 
 | Option | Default | Meaning |
 | --- | --- | --- |
@@ -222,14 +224,14 @@ After all scan points are processed, if more than `1` point has results, `collec
 | `--scan` | None | Scan a setting addressed as `"section.key"`, for example `--scan field.voltage=100,200` |
 | `--dry-run` | Off | Print only the scan points, stages, and job states to be run |
 
-The minimum event count `2` for collection efficiency, the minimum event count `20` and maximum `6` rounds for truncated Gaussian fitting, histogram bin counts and fit-curve point counts, the `3 × 4` subplot cap, and PNG resolutions are all hardcoded. The timing threshold, event-selection amplitude threshold, constant fractions, and pulse edge direction belong to the `reconstruction` section; `analysis` reads the values recorded in `reconstruction_<job>.h5` directly, and changing them updates the `reconstruction` node ID so `analysis` recomputes automatically.
+The minimum event count `2` for collection efficiency, the minimum event count `20` and maximum `6` rounds for truncated Gaussian fitting, histogram bin counts and fit-curve point counts, the `3 × 4` subplot cap, and PNG resolutions are all hardcoded. The timing threshold, cluster seed amplitude threshold, constant fractions, and pulse edge direction belong to the `reconstruction` section; `analysis` reads the values recorded in `reconstruction.h5` inside the `reconstruction` node directly, and changing them updates the `reconstruction` node ID so `analysis` recomputes automatically.
 
 ### Input Files
 
 - **`<experiment_folder>/points.json`**: Parameter table giving the node ID of each stage at every scan point.
-- **`deposit_<job>.h5` in the `deposit` node**: File format documented in [Energy Deposition and Ionization (`core/deposit`)](../core/deposit.md). This stage reads only the event count `len(events)` and the earliest deposit-step time `min(event.t)` ($\text{s}$) of each event.
-- **`current_<job>.h5` in the `current` node**: File format documented in [Carrier Drift and Induced Current (`core/current`)](../core/current.md). This stage reads only per-event `event`, `charge` ($\text{C}$), and `pairs` (pairs).
-- **`reconstruction_<job>.h5` in the `reconstruction` node**: File format documented in [Event Reconstruction (`core/reconstruction`)](../core/reconstruction.md). This stage reads attributes `electrodes`, `threshold` ($\text{V}$), `amplitude_threshold` ($\text{V}$), `fractions`, and `edge`, and datasets `event`, `selected`, `ToA`, `ToT`, `amplitude`, `baseline`, `noise`, `CoG`, and `CFD`.
+- **`deposit.h5` in the `deposit` node**: File format documented in [Energy Deposition and Ionization (`core/deposit`)](../core/deposit.md). This stage reads only the event count `len(events)` and the earliest deposit-step time `min(event.t)` ($\text{s}$) of each event.
+- **`current.h5` in the `current` node**: File format documented in [Carrier Drift and Induced Current (`core/current`)](../core/current.md). This stage reads only per-event `event`, `charge` ($\text{C}$), and `pairs` (pairs).
+- **`reconstruction.h5` in the `reconstruction` node**: File format documented in [Event Reconstruction (`core/reconstruction`)](../core/reconstruction.md). This stage reads attributes `electrodes`, `threshold` ($\text{V}$), `amplitude_threshold` ($\text{V}$), `fractions`, and `edge`, and datasets `event`, `selected`, `ToA`, `ToT`, `amplitude`, `baseline`, `noise`, `CoG`, and `CFD`.
 
 ### Output Files
 

@@ -24,7 +24,7 @@ where:
 - $\sigma_t$: standard deviation of the impulse response $h(t) \propto \exp(-t^2 / 2\sigma_t^2)$, $\text{s}$;
 - $t_r^{10\text{–}90}$: time for the step response to rise from $10\%$ to $90\%$ of its final value, $\text{s}$.
 
-The response shape is fixed to Gaussian. The bandwidths of the amplifier and this module act in cascade: waveforms pass first through the `readout` amplifier chain and then through this module's Gaussian filter, so the output rise time is jointly determined by both filtering stages. Sources for Eqs. (1)–(3) are to be added.
+The response shape is fixed to Gaussian. The bandwidths of the amplifier and this module act in cascade: waveforms pass first through the `readout` amplifier chain and then through this module's Gaussian filter, so the output rise time is jointly determined by both filtering stages. For the Gaussian response and rise time $0.34/B$, see Ref. [3].
 
 ### Sampling
 
@@ -36,7 +36,7 @@ where:
 
 - $t_k$: $k$-th sampling instant ($k = 0, 1, \dots$), $\text{s}$;
 - $t_0$: start time `t0` of the event in the `readout` waveform, $\text{s}$;
-- $T_s$: sampling period, $\text{s}$, equal to the reciprocal of the component's `sampling_rate_GSps` ($\text{GS/s}$);
+- $T_s$: sampling period, $T_s = 10^{-9}/$`sampling_rate_GSps`, $\text{s}$, where `sampling_rate_GSps` is the component's sampling rate ($\text{GS/s}$);
 - $\varphi$: clock phase for that event and instrument, $\text{s}$, uniformly distributed on $[0, T_s)$;
 - $\delta_k$: aperture jitter at the $k$-th sample, $\text{s}$, following a zero-mean Gaussian distribution;
 - $\sigma_a$: root-mean-square aperture jitter, $\text{s}$, taken from the component's `aperture_jitter_ps` (multiplied by $10^{-12}$).
@@ -80,17 +80,16 @@ Each event is processed in the following order:
    3. Compute the sampling instants according to Eq. (4), drawing an aperture jitter from $\mathcal{N}(0, \sigma_a^2)$ for each sample.
    4. Linearly interpolate on the filtered voltage sequence to obtain the voltage at each sampling instant.
 4. **Quantization**: Convert each sampled voltage into a code via Eqs. (5) and (6); count, per electrode, the number of samples whose pre-clipping code in Eq. (6) is $< 0$ or $> 2^N - 1$ as the clipped count.
-5. **Output**: Pass the codes, clipped counts, and the event's first sampling instant $t_0 + \varphi$ to the digitizer stage to write into the digital waveform file.
+5. **Output**: Pass the codes, clipped counts, and each instrument's first sampling instant $t_0 + \varphi$ to the digitizer stage to write into the digital waveform file.
 
-The random quantities $\varphi$ and $\delta_k$ are drawn using `digitizer`'s own seed, independent of `readout`'s seed.
+The random quantities $\varphi$ and $\delta_k$ are drawn using `digitizer`'s own seed. This seed is derived from the job's seed (see [experiments, scan points, and seeds](../lifecycle/experiments.md#seeds)), enters the `digitizer` node's fingerprint, and is independent of `readout`'s seed.
 
 ## Software Implementation
 
 ### Module and Function Responsibilities
 
-- `__init__.py`: package docstring declaring that this package covers sampling, quantization, and the underlying digital circuitry.
-- Sampling and quantization functions (to be added in the future, implemented in numpy): take the voltage waveforms of an event and the settings as input, and output codes and clipped sample counts.
-- `regincr.py`, `regincr_sim.py`: legacy: existing `pymtl3` example in the package, retained as a reference for future pure digital logic (such as FPGA trigger logic), run directly in Python by calling `regincr_sim.main()`. `RegIncr` is an 8-bit register incrementer that latches its input every clock cycle and outputs the latched value plus 1; `main()` simulates 7 clock cycles using a hard-coded input sequence, writes the VCD waveform to `<project_root>/digitizer/fpga/regincr_sim.vcd` (where `<project_root>` comes from the environment variable `RASER_PROJECT_PATH`, defaulting to the current directory), and prints per-cycle port values and a text waveform to standard output.
+- `__init__.py`: package docstring declaring that this package covers bandwidth filtering, sampling, and quantization.
+- Bandwidth, sampling, and quantization functions (implemented in `numpy`): take an event's voltage waveforms, the component settings, and `digitizer`'s seed as input, and output the codes, clipped sample counts, and each instrument's first sampling instant.
 
 ## Interface
 
@@ -100,11 +99,11 @@ All settings used by this module come from the [digitizer component](../componen
 
 ### Input
 
-The waveform file of the `readout` node written by the [electronics readout stage (`stages/readout`)](../stages/readout.md): this module uses attributes `electrodes`, `dt` ($\text{s}$), and `pulse_edge`, and datasets `event`, `t0` ($\text{s}$), `count`, `stored`, `index`, and `voltage` ($\text{V}$). See [electronics readout (`core/readout`)](readout.md) for the format.
+`readout.h5` of the `readout` node (`readout.<position>.h5` in the same node for multi-position experiments), written by the [electronics readout stage (`stages/readout`)](../stages/readout.md): this module uses attributes `electrodes`, `dt` ($\text{s}$), and `pulse_edge`, and datasets `event`, `t0` ($\text{s}$), `count`, `stored`, `index`, and `voltage` ($\text{V}$). See [electronics readout (`core/readout`)](readout.md) for the format.
 
-### Output: `digitizer_<job>.h5`
+### Output: `digitizer.h5`
 
-The digitizer stage writes this module's output to `nodes/digitizer/<node>/digitizer_<job>.h5`, following the sparse storage layout of `readout` waveform files by storing only the electrodes that have waveforms saved in the `readout` file.
+The digitizer stage writes this module's output to `nodes/digitizer/<node>/digitizer.h5` (`digitizer.<position>.h5` in the same node for multi-position experiments), following the sparse storage layout of `readout` waveform files by storing only the electrodes that have waveforms saved in the `readout` file.
 
 **File Attributes**
 
@@ -123,16 +122,17 @@ The digitizer stage writes this module's output to `nodes/digitizer/<node>/digit
 | Dataset | Shape and Type | Unit | Meaning |
 | --- | --- | --- | --- |
 | `event` | `(events,)`, `int64` | none | Event ID |
-| `t0` | `(events,)`, `float64` | $\text{s}$ | Time of the first sample $t_0 + \varphi$, already including clock phase |
 | `count` | `(events,)`, `int64` | samples | Number of samples per electrode for the event |
 | `stored` | `(events,)`, `int64` | count | Number of electrodes with stored digital waveforms in the event |
 | `index` | `(sum(stored),)`, `int64` | none | 0-based index of each stored electrode in `electrodes`, partitioned by `stored` across events |
+| `t0` | `(sum(stored),)`, `float64` | $\text{s}$ | Time of the first sample $t_0 + \varphi$ for that electrode, already including the clock phase of its instrument, partitioned by `stored` across events; electrodes on the same instrument share the same value |
 | `clipped` | `(sum(stored),)`, `int64` | samples | Number of samples on that electrode clipped to the maximum or minimum code |
 | `code` | `(sum(stored * count),)`, `int16` | none | Codes $c$, flattened in order of events and stored electrodes, with each electrode occupying `count` samples of its event |
 
-Codes are converted back to voltage according to Eq. (7): $\hat V = (\texttt{code} - 2^{N-1} + 0.5)\cdot\texttt{lsb\_V} + \texttt{offset\_V}$, with $N$ taken from attribute `bits`.
+Codes are converted back to voltage according to Eq. (7): $\hat V = (\texttt{code} - 2^{N-1} + 0.5)\cdot\texttt{lsb\_V} + \texttt{offset\_V}$ ($\text{V}$), with $N$ taken from attribute `bits`; the nominal time of the $k$-th sample (0-based) for each electrode is that electrode's `t0` $+ k\cdot$`sampling_period` ($\text{s}$).
 
 ## References
 
 - [1] M. Shinagawa, Y. Akazawa, T. Wakimoto, “Jitter analysis of high-speed sampling systems”, IEEE J. Solid-State Circuits 25 (1990) 220, doi:10.1109/4.50307
 - [2] W. R. Bennett, “Spectra of Quantized Signals”, Bell Syst. Tech. J. 27 (1948) 446, doi:10.1002/j.1538-7305.1948.tb01340.x
+- [3] Keysight Technologies, “Understanding Oscilloscope Frequency Response and Its Effect on Rise-Time Accuracy”, Application Note 5988-8008EN

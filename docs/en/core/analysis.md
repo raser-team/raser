@@ -186,7 +186,7 @@ The table below lists all built-in physical constants and hard-coded algorithmic
 
 ## Interface
 
-For the command-line entry point and multi-point experiment aggregation workflow, see [../stages/analysis.md](../stages/analysis.md). All inputs to `collection_efficiency` and `core_width` come from function arguments; the statistical analysis stage calls `core_width` with default `window=None`, so an explicit initial window can be given only when calling it directly from Python (the reconstruction thresholds, constant-fraction list, and edge directions needed by [../stages/analysis.md](../stages/analysis.md) are read from the attributes of upstream `reconstruction_<job>.h5`). When instantiating `WaveformStatistics(my_d, threshold, amplitude_threshold)` in Python, the device keys listed below are read from the `Detector` instance; all other parameters—number of fit rounds, minimum event count, window multipliers, Hessian step size, and histogram binning—are hard-coded.
+For the command-line entry point and multi-point experiment aggregation workflow, see [../stages/analysis.md](../stages/analysis.md). All inputs to `collection_efficiency` and `core_width` come from function arguments; the statistical analysis stage calls `core_width` with default `window=None`, so an explicit initial window can be given only when calling it directly from Python (the reconstruction thresholds, constant-fraction list, and edge directions needed by [../stages/analysis.md](../stages/analysis.md) are read from the attributes of upstream `reconstruction.h5`). When instantiating `WaveformStatistics(my_d, threshold, amplitude_threshold)` in Python, the device keys listed below are read from the `Detector` instance; all other parameters—number of fit rounds, minimum event count, window multipliers, Hessian step size, and histogram binning—are hard-coded.
 
 ### Keys Read from Device Files
 
@@ -206,15 +206,17 @@ When [../stages/analysis.md](../stages/analysis.md) invokes `collection_efficien
 
 | Source File | Name and Category | Shape and Type | Unit | Purpose |
 | --- | --- | --- | --- | --- |
-| `current_<job>.h5` ([current.md](current.md)) | Dataset `event` | `(events,)`, `int64` | none | Verified to match the event ID set of `reconstruction_<job>.h5` exactly |
-| `current_<job>.h5` ([current.md](current.md)) | Dataset `charge` | `(events, len(electrodes))`, `float64` | $\text{C}$ | Passed as `charge` to `collection_efficiency(charge, pairs)` |
-| `current_<job>.h5` ([current.md](current.md)) | Dataset `pairs` | `(events,)`, `float64` | pairs | Passed as `pairs` to `collection_efficiency(charge, pairs)` |
-| `reconstruction_<job>.h5` ([reconstruction.md](reconstruction.md)) | Attribute `electrodes` | string array | none | Checks the single-electrode constraint (`len(electrodes) == 1`) |
-| `reconstruction_<job>.h5` ([reconstruction.md](reconstruction.md)) | Attributes `threshold`, `amplitude_threshold`, `fractions`, `edge` | `float64`, `float64`, `float64[]`, string array | $\text{V}$, $\text{V}$, dimensionless, none | Verifies that reconstruction parameters agree across all jobs of the scan point, and divides both thresholds by `1e-3` to write them in $\text{mV}$ to `result.json` |
-| `reconstruction_<job>.h5` ([reconstruction.md](reconstruction.md)) | Datasets `event`, `selected` | `(events,)`, `int64` / `bool` | none | Filters selected events satisfying `selected == True` |
-| `reconstruction_<job>.h5` ([reconstruction.md](reconstruction.md)) | Datasets `ToA`, `ToT`, `CoG`, `amplitude`, `baseline`, `noise` | `(events, electrodes)`, `float64` | first three $\text{s}$, last three $\text{V}$ | Extracts timing and waveform voltage quantities on electrode `0` for selected events |
-| `reconstruction_<job>.h5` ([reconstruction.md](reconstruction.md)) | Dataset `CFD` | `(events, electrodes, fractions)`, `float64` | $\text{s}$ | Extracts `CFD<round(100*part)>` timestamps on electrode `0` for each constant fraction `part` of selected events |
-| `deposit_<job>.h5` ([deposit.md](deposit.md)) | Datasets `event`, `count`, `t` | `(recorded_events,)`, `int64` / `(sum(count),)`, `float64` | none, steps, $\text{s}$ | Takes the minimum `t` across all deposition steps of each event as the true reference time `truth` ($\text{s}$), passing `time - truth` to `core_width` |
+| `current.h5` ([current.md](current.md)) | Dataset `event` | `(events,)`, `int64` | none | Verified to match the event ID set of `reconstruction.h5` exactly |
+| `current.h5` ([current.md](current.md)) | Dataset `charge` | `(events, len(electrodes))`, `float64` | $\text{C}$ | Passed as `charge` to `collection_efficiency(charge, pairs)` |
+| `current.h5` ([current.md](current.md)) | Dataset `pairs` | `(events,)`, `float64` | pairs | Passed as `pairs` to `collection_efficiency(charge, pairs)` |
+| `reconstruction.h5` ([reconstruction.md](reconstruction.md)) | Attribute `electrodes` | string array | none | Checks the single-electrode constraint (`len(electrodes) == 1`) |
+| `reconstruction.h5` ([reconstruction.md](reconstruction.md)) | Attributes `threshold`, `amplitude_threshold`, `fractions`, `edge` | `float64`, `float64`, `float64[]`, string array | $\text{V}$, $\text{V}$, dimensionless, none | Verifies that reconstruction parameters agree across all jobs of the scan point, and divides both thresholds by `1e-3` to write them in $\text{mV}$ to `result.json` |
+| `reconstruction.h5` ([reconstruction.md](reconstruction.md)) | Datasets `event`, `selected` | `(events,)`, `int64` / `bool` | none | Filters selected events satisfying `selected == True` |
+| `reconstruction.h5` ([reconstruction.md](reconstruction.md)) | Datasets `ToA`, `ToT`, `CoG`, `amplitude`, `baseline`, `noise` | `(events, electrodes)`, `float64` | first three $\text{s}$, last three $\text{V}$ | Extracts timing and waveform voltage quantities on electrode `0` for selected events |
+| `reconstruction.h5` ([reconstruction.md](reconstruction.md)) | Dataset `CFD` | `(events, electrodes, fractions)`, `float64` | $\text{s}$ | Extracts `CFD<round(100*part)>` timestamps on electrode `0` for each constant fraction `part` of selected events |
+| `deposit.h5` ([deposit.md](deposit.md)) | Datasets `event`, `count`, `t` | `(recorded_events,)`, `int64` / `(sum(count),)`, `float64` | none, steps, $\text{s}$ | Takes the minimum `t` across all deposition steps of each event as the true reference time `truth` ($\text{s}$), passing `time - truth` to `core_width` |
+
+Limitation: `analysis` currently computes statistics only for single-electrode results; multi-electrode and multi-position statistics (such as telescope residuals and summaries across cflm pads) are not yet implemented.
 
 #### Output File `events.h5`
 
@@ -229,7 +231,7 @@ When the total number of recorded events at a scan point is $\ge 1$, `points/<po
 | `amplitude` | `(selected,)`, `float64` | $\text{V}$ | Maximum pulse amplitude above baseline |
 | `baseline` | `(selected,)`, `float64` | $\text{V}$ | Arithmetic mean of the leading `200` samples of the waveform |
 | `noise` | `(selected,)`, `float64` | $\text{V}$ | Population standard deviation of the leading `200` samples of the waveform |
-| `truth` | `(selected,)`, `float64` | $\text{s}$ | Time of the earliest deposition step of the event in `deposit_<job>.h5` |
+| `truth` | `(selected,)`, `float64` | $\text{s}$ | Time of the earliest deposition step of the event in `deposit.h5` |
 | `CoG` | `(selected,)`, `float64` | $\text{s}$ | Sample-weighted center-of-gravity time over the interval above threshold |
 | `CFD<percent>` | `(selected,)`, `float64` | $\text{s}$ | Constant-fraction timing timestamp, where `<percent>` is `round(100 * part)` (`NaN` if not found) |
 
@@ -239,7 +241,7 @@ In the table below, `result.json` refers to `points/<point>/analysis/result.json
 
 | File and Key Path | Type or Shape | Unit | Meaning |
 | --- | --- | --- | --- |
-| `result.json`: `reconstruction.threshold`, `amplitude_threshold` | `float` | $\text{mV}$ | Reconstruction crossing threshold and event-selection amplitude threshold (written when recorded events exist) |
+| `result.json`: `reconstruction.threshold`, `amplitude_threshold` | `float` | $\text{mV}$ | Reconstruction crossing threshold and cluster-seed channel amplitude threshold (written when recorded events exist) |
 | `result.json`: `reconstruction.fractions`, `edge` | `list[float]`, `list[str]` | dimensionless, none | Constant-fraction timing fraction list and per-electrode pulse-edge directions (written when recorded events exist) |
 | `result.json`: `collection.events` | `int` | count | Total number of recorded events at the scan point |
 | `result.json`: `collection.mean`, `mean_error`, `spread` | `float` | dimensionless | Mean, standard error of the mean, and sample standard deviation (`ddof=1`) of `collection_efficiency` over all recorded events (written when `events >= 2`) |
@@ -273,7 +275,7 @@ The table below lists the ROOT statistical plots generated directly by `Waveform
 
 ## References
 
-- [1] H. Spieler, *Semiconductor Detector Systems*, Oxford University Press (2005), source to be added
+- [1] H. Spieler, *Semiconductor Detector Systems*, Oxford University Press (2005), ISBN 978-0-19-852784-8, doi:10.1093/acprof:oso/9780198527848.001.0001
 - [2] E. Tiesinga, P. J. Mohr, D. B. Newell, B. N. Taylor, “CODATA recommended values of the fundamental physical constants: 2018”, Rev. Mod. Phys. 93 (2021) 025010, doi:10.1103/RevModPhys.93.025010
 - [3] A. C. Cohen, “Estimating the Mean and Variance of Normal Populations from Singly Truncated and Doubly Truncated Samples”, Ann. Math. Statist. 21 (1950) 557, doi:10.1214/aoms/1177729751
 - [4] F. James, *Statistical Methods in Experimental Physics*, 2nd ed., World Scientific (2006), doi:10.1142/6096

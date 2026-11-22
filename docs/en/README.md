@@ -11,8 +11,8 @@ RASER is full-chain simulation software for semiconductor radiation detectors, c
 
 ## lifecycle
 
-- [lifecycle/experiments.md](lifecycle/experiments.md): Projects and experiment folders, `config.json`, `run.json`, `--set` and `--scan` parameter scans, and random seeds.
-- [lifecycle/slices.md](lifecycle/slices.md): Stage slice dependencies, code version notices, completion markers, and `raser status` status inspection.
+- [lifecycle/experiments.md](lifecycle/experiments.md): Projects and experiment folders, `config.json`, nodes and `points.json`, `--set` and `--scan` parameter scans, and random seeds.
+- [lifecycle/slices.md](lifecycle/slices.md): Nodes and fingerprints, reuse, code version notices, and `raser status` status inspection.
 - [lifecycle/jobs.md](lifecycle/jobs.md): Parallel job splitting, logs, file locks, resuming, and cluster submission.
 
 ## Stages (stages)
@@ -57,7 +57,7 @@ Official benchmark classes all live in the `raser_bench` package; each benchmark
 - [bench/signal.md](bench/signal.md): `raser signal`, single-device full-chain signal benchmark giving charge collection efficiency.
 - [bench/timeres.md](bench/timeres.md): `raser timeres`, Time Resolution benchmark.
 - [bench/tct.md](bench/tct.md): `raser tct`, Transient Current Technique benchmark scanning the laser position relative to the device.
-- [bench/telescope.md](bench/telescope.md): `raser telescope`, beam telescope spatial resolution benchmark using TAICHU as the default reference device.
+- [bench/telescope.md](bench/telescope.md): `raser telescope`, beam telescope spatial resolution benchmark using 3 upstream and 3 downstream `TAICHU3` reference layers by default, with 2 devices under test in the middle.
 
 ## Applications (apps)
 

@@ -1,6 +1,6 @@
 # Carrier Drift and Induced Current (`core/current`)
 
-`src/raser/core/current/` takes electron-hole pairs together with their creation coordinates and times from [energy deposition](deposit.md), and the electric field, doping, conductive flag, trapping rates, and weighting potential from [device field](field.md). This package simulates drift, diffusion, trapping, and avalanche multiplication of carrier clusters, computes the time-domain induced current and net induced charge on each readout electrode, and writes `current_<job>.h5` files (it also provides interfaces for laser pulse convolution and diffusion-only collection in field-free pixels). The output current waveforms are passed to [electronics readout](readout.md), and net induced charges and initial pair counts are passed to [statistical analysis](analysis.md).
+`src/raser/core/current/` takes electron-hole pairs together with their creation coordinates and times from [energy deposition](deposit.md), and the electric field, doping, conductive flag, trapping rates, and weighting potential from [device field](field.md). This package simulates drift, diffusion, trapping, and avalanche multiplication of carrier clusters, computes the time-domain induced current and net induced charge on each readout electrode, and writes `current.h5` files (`current.<position>.h5` for multi-position experiments; it also provides interfaces for laser pulse convolution and diffusion-only collection in field-free pixels). The output current waveforms are passed to [electronics readout](readout.md), and net induced charges and initial pair counts are passed to [statistical analysis](analysis.md).
 
 ## Physics
 
@@ -19,7 +19,7 @@ where:
 - $N_{\text{eff}}(\mathbf{r})$: effective net doping concentration at position $\mathbf{r}$, $\text{cm}^{-3}$;
 - $\mu$: carrier mobility, $\text{cm}^2/(\text{V}\cdot\text{s})$.
 
-Mobility is computed by `Material(material).cal_mobility`; see [model.md](model.md) for parameterizations. `core/current` uses each material's default mobility model: `"Selberherr"` for Si, `"Das"` for SiC (4H-SiC), and `"Reggiani_diamond"` for Diamond. The mobility model depends solely on `material`: there is no device-file key to select a mobility model, and `CalCurrent` passes no model name when constructing `Material(material)`. Carrier drift transport in semiconductors is covered in Ref. [1].
+Mobility is computed by `Material(material).cal_mobility`; see [model.md](model.md) for parameterizations. Mobility models are registered by name and selected by name in the device file; each material has a default model: `"Selberherr"` for Si, `"Das"` for SiC (4H-SiC), and `"Reggiani_diamond"` for Diamond. `core/current` computes mobility using the model selected by the device. Carrier drift transport in semiconductors is covered in Ref. [1].
 
 ### Diffusion
 
@@ -33,7 +33,7 @@ where:
 
 - $D$: diffusion coefficient, $\text{cm}^2/\text{s}$;
 - $\mu$: carrier mobility, $\text{cm}^2/(\text{V}\cdot\text{s})$ (at the current electric field for drift in a field; zero-field electron mobility $\mu_n(T, N_{\text{eff}}, 0)$ for field-free diffusion-only collection);
-- $k_B/e$: ratio of the Boltzmann constant to the elementary charge, taken in code as constant `kboltz` (`BOLTZMANN`) = $8.617385\times 10^{-5}\ \text{eV/K}$ (numerically equal to $k_B/e$ in $\text{V/K}$);
+- $k_B/e$: ratio of the Boltzmann constant to the elementary charge, taken as the CODATA 2018 value $8.617333262\times 10^{-5}\ \text{eV/K}$ (numerically equal to $k_B/e$ in $\text{V/K}$);
 - $T$: device temperature, $\text{K}$;
 - $\Delta t$: time step, $\text{s}$;
 - $\sigma$: standard deviation of the Gaussian random displacement along each coordinate axis in one step, $\mu\text{m}$ ($10^4$ is the $\mu\text{m/cm}$ conversion factor).
@@ -65,7 +65,7 @@ $$\Delta Q = \int_{t_1}^{t_2} i(t)\,dt = q\,\bigl[\phi_w(\mathbf{r}_2) - \phi_w(
 where:
 
 - $i(t)$: instantaneous induced current on the electrode, $\text{A}$;
-- $q = N e_0$: charge carried by the cluster, $\text{C}$ ($N$ is the signed carrier count, positive for holes and negative for electrons; elementary charge $e_0 = 1.60217733\times 10^{-19}\ \text{C}$);
+- $q = N e_0$: charge carried by the cluster, $\text{C}$ ($N$ is the signed carrier count, positive for holes and negative for electrons; elementary charge taken as the CODATA 2018 value $e_0 = 1.602176634\times 10^{-19}\ \text{C}$);
 - $\mathbf{v}(t)$: carrier velocity, $\text{cm/s}$;
 - $\mathbf{E}_w(\mathbf{r})$: weighting electric field, $\text{cm}^{-1}$;
 - $\phi_w(\mathbf{r})$: dimensionless weighting potential (also written $U_w$ in code comments), returned by `DevsimField.get_w_p` and clamped to $[0, 1]$;
@@ -101,9 +101,9 @@ where:
 
 The 1D steady-state two-carrier multiplication integral is from Ref. [7]. Impact ionization coefficients are supplied by `Material(material, avalanche_model=avalanche_model).cal_coefficient` (see [model.md](model.md) for formulas and parameters), supporting three models:
 
-- `"vanOverstraeten"` (default for Si): van Overstraeten–de Man piecewise Chynoweth law, set to zero below $1.75\times 10^5\ \text{V/cm}$ [8]; citation for the temperature factor introduced via the optical phonon energy in code is to be added.
+- `"vanOverstraeten"` (default for Si): van Overstraeten–de Man piecewise Chynoweth law, set to zero below $1.75\times 10^5\ \text{V/cm}$ [8]; the physical origin of the temperature factor introduced via the optical phonon energy $\hbar\omega = 0.063\ \text{eV}$ is given in [12], and this formulation is taken from [13].
 - `"Okuto"` (Si): Okuto–Crowell model, set to zero for fields not exceeding $1.0\times 10^5\ \text{V/cm}$ [9].
-- `"Hatakeyama"` (default for 4H-SiC): Hatakeyama anisotropic model evaluated at a $4^\circ$ off-axis angle from $\langle 0001\rangle$ toward $\langle 11\bar{2}0\rangle$, set to zero for fields not exceeding $10^4\ \text{V/cm}$ [10, 11]; citation for the temperature factor introduced via the optical phonon energy in code is to be added.
+- `"Hatakeyama"` (default for 4H-SiC): Hatakeyama anisotropic model evaluated at a $4^\circ$ off-axis angle from $\langle 0001\rangle$ toward $\langle 11\bar{2}0\rangle$, set to zero for fields not exceeding $10^4\ \text{V/cm}$ [10, 11]; the physical origin of the temperature factor introduced via the optical phonon energy $\hbar\omega = 0.19\ \text{eV}$ is given in [12], and the value is from [14] (given only for electrons in the original paper, while the code uses the same value for holes).
 
 ## Algorithms
 
@@ -111,7 +111,7 @@ The 1D steady-state two-carrier multiplication integral is from Ref. [7]. Impact
 
 The table below lists all built-in physical constants and numerical step parameters in `drift.py`, `cal_current.py`, and `diffusion.py`. They are module constants with no corresponding keys in the device file; the time window, step size, and `max_drift_time` are selected from the table by device dimension:
 
-| Constant | 1D (or `is_plugin()` true) | 2D / 3D | Unit | Location and Meaning |
+| Constant | 1D (or selected 2D mesh in the transverse $x$-$y$ plane) | 2D / 3D | Unit | Location and Meaning |
 | --- | --- | --- | --- | --- |
 | `t_bin` | `5e-12` | `50e-12` | $\text{s}$ | Output time step of current: induced-current time-bin width (file attribute `dt`) |
 | `t_start` (relative) | `-1.25e-9` | `-12.5e-9` | $\text{s}$ | Start offset relative to the event's earliest creation time (`-0.25 * t_end`) |
@@ -119,18 +119,18 @@ The table below lists all built-in physical constants and numerical step paramet
 | `delta_t` | `2e-12` | `20e-12` | $\text{s}$ | Single-step carrier drift time step $\Delta t$ |
 | `min_intensity` | `1` | `1` | $\text{V/cm}$ | Minimum electric-field threshold for stopping drift (`"low_field"`) |
 | `max_drift_time` | `100e-9` | `100e-9` | $\text{s}$ | Upper cap on single-cluster drift duration (`"time_out"`) |
-| `kboltz` | `8.617385e-5` | `8.617385e-5` | $\text{eV/K}$ | Boltzmann constant for thermal diffusion in `drift.py` (numerically equal to $k_B/e$ [$\text{V/K}$]) |
-| `e0` | `1.60217733e-19` | `1.60217733e-19` | $\text{C}$ | Elementary charge for Shockley-Ramo induced charge in `drift.py` |
+| `kboltz` | `8.617333262e-5` | `8.617333262e-5` | $\text{eV/K}$ | CODATA 2018 Boltzmann constant for thermal diffusion in `drift.py` (numerically equal to $k_B/e$ [$\text{V/K}$]) |
+| `e0` | `1.602176634e-19` | `1.602176634e-19` | $\text{C}$ | CODATA 2018 elementary charge for Shockley-Ramo induced charge in `drift.py` |
 | `edge_sampling` | `0.05` | `0.05` | $\mu\text{m}$ | Default sampling spacing in `split_at_conductor_edges` for locating conductive boundaries |
 | `edge_tolerance` | `1e-4` | `1e-4` | $\mu\text{m}$ | Default bisection tolerance in `split_at_conductor_edges` for locating conductive boundaries |
-| `BOLTZMANN` | `8.617385e-5` | `8.617385e-5` | $\text{eV/K}$ | Boltzmann constant for diffusion-only collection in `diffusion.py` |
-| `ELEMENTARY_CHARGE` | `1.602176634e-19` | `1.602176634e-19` | $\text{C}$ | Elementary charge converting current and charge in `diffusion.py` |
+| `BOLTZMANN` | `8.617333262e-5` | `8.617333262e-5` | $\text{eV/K}$ | CODATA 2018 Boltzmann constant for diffusion-only collection in `diffusion.py` |
+| `ELEMENTARY_CHARGE` | `1.602176634e-19` | `1.602176634e-19` | $\text{C}$ | CODATA 2018 elementary charge converting current and charge in `diffusion.py` |
 
 ### Time Window, Time Bins, and Initial Cluster Filtering
 
 When an event enters `CalCurrent`, it initializes in the following steps:
 
-1. **Select profile**: if `my_d.is_plugin()` is true, use `t_bin[1]`, `t_end[1]`, `t_start[1]`, and `delta_t[1]`; otherwise select the profile by `my_d.dimension`.
+1. **Select profile**: if the 2D mesh selected in the `field` section lies in the transverse $x$-$y$ plane, use `t_bin[1]`, `t_end[1]`, `t_start[1]`, and `delta_t[1]`; otherwise select the profile by `my_d.dimension`.
 2. **Determine time window and bin count**: find the minimum $t_{\min}$ and maximum $t_{\max}$ of all input deposition creation times $t_m$ ($\text{s}$) (both $0.0$ if there are no inputs). Set the left edge of the first time bin to $t_{\text{start}} = t_{\min} + \text{relative\_start}$ and the initial bin count to $n_{\text{bin}} = \lceil (t_{\max} + \text{relative\_end} - t_{\text{start}}) / t_{\text{bin}} \rceil$. If floating-point rounding causes $t_{\text{start}} + n_{\text{bin}} t_{\text{bin}} < t_{\max} + \text{relative\_end}$, increment $n_{\text{bin}}$ until coverage is satisfied, and finally set $t_{\text{end}} = t_{\text{start}} + n_{\text{bin}} t_{\text{bin}}$.
 3. **Determine readout electrode names**: call `electrode_names(read_out_contact, read_ele_num)`. If `len(read_out_contact) == read_ele_num`, take each entry's `"name"`; if length is `1`, generate `"<name>1"` through `"<name><read_ele_num>"`; otherwise raise `ValueError`.
 4. **Total pair count and spatial filtering**: sum all input `ionized_pairs` into `pairs`. Retain only deposition steps $(x, y, z, t)$ satisfying both:
@@ -239,7 +239,7 @@ Limitation: `"local_path"` computes gain only once along primary carrier paths; 
 
 ### Diffusion-Only Collection
 
-`collect_by_diffusion(my_d, pairs, positions, window, step)` (`diffusion.py`, called by [../bench/telescope.md](../bench/telescope.md)) simulates pure diffusion collection of electrons in low-bias, field-free pixel sensors:
+`collect_by_diffusion(my_d, pairs, positions, window, step)` (`diffusion.py`) simulates pure diffusion collection of electrons in low-bias, field-free pixel sensors:
 
 1. **Validation and geometry precomputation**: requires `my_d.is_pixel` to be true and `e_width_x`, `e_width_y` ($\mu\text{m}$) to be defined on the device. Computes intra-pixel margins `low_x = (p_x - e_width_x)/2`, `low_y = (p_y - e_width_y)/2`, and the centered pixel-array origin `first_x = (l_x - x_ele_num * p_x)/2`, `first_y = (l_y - y_ele_num * p_y)/2`.
 2. **Zero-field mobility and step standard deviation**: takes effective doping $N_{\text{eff}} = \text{Donors} - \text{Acceptors}$ ($\text{cm}^{-3}$), calls `Material(material).cal_mobility(T, N_eff, -1, 0)` for zero-field electron mobility $\mu_n(0)$, and computes the Gaussian displacement standard deviation $\sigma$ ($\mu\text{m}$) for time step `step` ($\text{s}$) using Eq. (3).
@@ -259,7 +259,7 @@ Limitation: this model omits junction electric fields and drift, $z$-direction m
 - `drift.py`: implements single-cluster transport and per-step physics. `advance` performs one step advance and stop checks, and `drift` loops a cluster until stopped; `induced_charges` computes Shockley-Ramo induced charges per step on a specified electrode; `surviving` and `surviving_at` compute surviving carrier counts under trapping.
 - `cal_current.py`: implements event-level transport orchestration, binning, avalanche multiplication, laser convolution, and batch output. `CalCurrent` handles time-window setup, spatial filtering, carrier drift, and binning; `CalCurrentGain` subclasses `CalCurrent` to execute `"planar_integral"` or `"local_path"` multiplication selected by `gain_algorithm`; `CalCurrentG4P` wraps `CarrierListFromG4P` inputs; `CalCurrentLaser` performs laser pulse convolution using `pulse_in_bins`; `spread_over_bins`, `fill_histogram`, `electrode_names`, `split_at_conductor_edges`, `deposits_in`, and `log_ends` are helper functions; `write_induced_currents` and `write_laser_currents` write event results to HDF5 files and trigger plotting.
 - `diffusion.py`: provides `time_bin` and `collect_by_diffusion` for 2D diffusion-only collection in field-free pixel sensors.
-- `currents.py`: defines `EventCurrents`, `Currents`, `append_currents`, and `read_currents` for sparse per-event appending to `current_<job>.h5` and full-electrode restoration on read.
+- `currents.py`: defines `EventCurrents`, `Currents`, `append_currents`, and `read_currents` for sparse per-event appending to `current.h5` and full-electrode restoration on read.
 - `draw.py` and `draw_drift_path.py`: use PyROOT to plot induced-current waveforms (`draw_currents`), strip/pixel collected charge (`charge_collection_strip`, `charge_collection_pixel`), and 3D/$x$-$z$ drift paths (`draw_drift_path`).
 
 ### Core Data Structures
@@ -270,15 +270,15 @@ Limitation: this model omits junction electric fields and drift, $z$-direction m
 
 ## Interface
 
-See [../stages/current.md](../stages/current.md) for the command-line entry point and slice scheduling options, and [field.md](field.md) for bias, irradiation fluence, and 3D interpolation settings used to construct `DevsimField`.
+See [../stages/current.md](../stages/current.md) for commands and `current` section settings, and [field.md](field.md) for bias, irradiation fluence, and 3D interpolation settings used to construct `DevsimField`.
 
 ### Keys Read from the Device File
 
-Users can configure only the keys listed in the table below. All other parameters on this page (mobility model, time window, step sizes, diffusion switch) are hardcoded.
+Users can configure only the keys listed in the table below; the mobility model is selected by name in the device file (see [model.md](model.md)). All other parameters on this page (time window, step sizes, diffusion switch) are hardcoded.
 
 | Key or Derived Attribute | Default | Unit | Meaning |
 | --- | --- | --- | --- |
-| `default_dimension`, `field_dimension`, `mesh.plugin` | see [device.md](device.md) (`mesh.plugin` defaults to `False`) | None | Map to `dimension` and `is_plugin()`, selecting the time-window and step-size profile |
+| `default_dimension`, `field_dimension` | see [device.md](device.md) | None | Maps to `dimension`, which together with the mesh selected in the `field` section (whether a 2D mesh lies in the transverse $x$-$y$ plane) selects the time-window and step-size profile |
 | `l_x`, `l_y`, `l_z` | None (required) | $\mu\text{m}$ | Device bounds $[0, l_x] \times [0, l_y] \times [0, l_z]$ |
 | `electrodes`, `p_x`, `p_y`, `x_ele_num`, `y_ele_num`, `read_ele_num` | see [device.md](device.md) | $\mu\text{m}$ / count | Layout, pitch, and counts of the centered readout electrode array; `electrodes` (`"strip"`/`"pixel"`) also determines the charge-collection plot type, and `"pixel"` is required for `collect_by_diffusion` |
 | `read_out_contact` | None (required) | None | List of readout electrode dicts, each containing `"name"`; for a single repeated electrode, optional `"y_span"` (default `0`) sets neighbor span along `y` (`x` span comes from `cells_either_side` of the field object) |
@@ -294,7 +294,7 @@ Users can configure only the keys listed in the table below. All other parameter
 | `e_width_x`, `e_width_y` | None (required for `collect_by_diffusion`) | $\mu\text{m}$ | Dimensions of the central rectangular collection zone in each pixel for diffusion-only collection |
 | `doping.Donors`, `doping.Acceptors` | None (required for `collect_by_diffusion`) | $\text{cm}^{-3}$ | Numeric donor and acceptor concentrations used to compute zero-field electron mobility in diffusion-only collection |
 
-### `current_<job>.h5` File Format
+### `current.h5` File Format
 
 Written event by event via `append_currents`, storing only electrodes whose current array is not identically zero; `read_currents` restores unstored electrodes as all-zero arrays.
 
@@ -328,7 +328,7 @@ Written event by event via `append_currents`, storing only electrodes whose curr
 | --- | --- | --- |
 | `<det_model>_drift_path.pdf`, `.root` | Top panel: 3D device bounding box with deposition points (black), hole (red), electron (blue), gain hole (magenta), and gain electron (light blue) paths; bottom panel: $x$-$z$ plane projection | spatial axes $\mu\text{m}$ |
 | `<tag>No_<k>electrode_basic_infor.pdf`, `.root` | Drawn only for the $k$-th electrode (`1`-based) having non-zero current components, showing `electron`, `hole`, `total` (plus `electron gain` and `hole gain` when avalanche is enabled); `tag` defaults to empty | `Time [s]`, `Current [A]` |
-| `cce.pdf`, `.root` | Line graph of collected charge per strip (`TGraph`) when `is_strip` is true; 2D pixel distribution (`TH2I`) when `is_pixel` is true; values are in electron counts (converted by `charge / 1.6e-19`), though the axis title in code is still labeled `charge[Coulomb]` | electron count |
+| `cce.pdf`, `.root` | Line graph of collected charge per strip (`TGraph`) when `is_strip` is true; 2D pixel distribution (`TH2I`) when `is_pixel` is true; values are collected electron counts (converted by `charge / 1.602176634e-19`), with the vertical axis (color axis for 2D pixel plots) titled "Collected electrons" | electron count |
 
 ## References
 
@@ -343,3 +343,6 @@ Written event by event via `append_currents`, storing only electrodes whose curr
 - [9] Y. Okuto, C. R. Crowell, “Threshold energy effect on avalanche breakdown voltage in semiconductor junctions”, Solid-State Electronics 18 (1975) 161, doi:10.1016/0038-1101(75)90099-4
 - [10] T. Hatakeyama, T. Watanabe, T. Shinohe, K. Kojima, K. Arai, N. Sano, “Impact ionization coefficients of 4H silicon carbide”, Appl. Phys. Lett. 85 (2004) 1380, doi:10.1063/1.1784520
 - [11] T. Hatakeyama, J. Nishio, C. Ota, T. Shinohe, “Physical modeling and scaling properties of 4H-SiC power devices”, Proc. Int. Conf. Simulation of Semiconductor Processes and Devices (SISPAD) (2005) 171, doi:10.1109/SISPAD.2005.201500
+- [12] C. R. Crowell, S. M. Sze, “Temperature dependence of avalanche multiplication in semiconductors”, Appl. Phys. Lett. 9 (1966) 242, doi:10.1063/1.1754731
+- [13] Synopsys, *Sentaurus Device User Guide*, Synopsys Inc., section on the van Overstraeten–de Man impact ionization model
+- [14] T. Hatakeyama, “Measurements of impact ionization coefficients of silicon carbide for high voltage power devices”, Phys. Status Solidi A 206 (2009) 2284, doi:10.1002/pssa.200925213

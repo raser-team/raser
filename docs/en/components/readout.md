@@ -1,6 +1,6 @@
 # Front-End Readout Circuit Components (`components/readout`)
 
-Front-end readout circuit components are SPICE subcircuit files (`.cir`, stored under `components/readout/` following the top-level design in [Architecture Overview](../architecture.md#components)). They take the electrode induced currents output by [`current`](../stages/current.md) ([`core/current`](../core/current.md)) and the device equivalent circuit `DeviceCircuit` provided by [`field`](../stages/field.md) ([`core/field`](../core/field.md)) and [Detector Components](device.md). The [`readout`](../stages/readout.md) stage ([`core/readout`](../core/readout.md)) reads the `.cir` files in the `+`-joined order, cascades them into an amplifier and termination-load chain connected after the device equivalent circuit, and hands the netlist to `ngspice` to solve the transient response and frequency-domain thermal noise; the resulting output voltage waveforms are passed to [`digitizer`](../stages/digitizer.md) ([`core/digitizer`](../core/digitizer.md)) or [`reconstruction`](../stages/reconstruction.md) ([`core/reconstruction`](../core/reconstruction.md)).
+Front-end readout circuit components are SPICE subcircuit files (`.cir`, stored under `components/readout/`, see [Architecture Overview](../architecture.md#components)). They take the electrode induced currents output by [`current`](../stages/current.md) ([`core/current`](../core/current.md)) and the device equivalent circuit `DeviceCircuit` provided by [`field`](../stages/field.md) ([`core/field`](../core/field.md)) and [Detector Components](device.md). The [`readout`](../stages/readout.md) stage ([`core/readout`](../core/readout.md)) reads the `.cir` files in the `+`-joined order, cascades them into an amplifier and termination-load chain connected after the device equivalent circuit, and hands the netlist to `ngspice` to solve the transient response and frequency-domain thermal noise; the resulting output voltage waveforms are passed to [`digitizer`](../stages/digitizer.md) ([`core/digitizer`](../core/digitizer.md)).
 
 ```mermaid
 flowchart LR
@@ -8,7 +8,7 @@ flowchart LR
     DEV --> S1["SantaCruz (.cir)"]
     S1 --> S2["Gali52 (.cir)"]
     S2 --> LOAD["Termination50 (.cir)"]
-    LOAD --> OUT["Output voltage waveform (to digitizer / reconstruction)"]
+    LOAD --> OUT["Output voltage waveform (to digitizer)"]
 ```
 
 When looking up a component, the project folder's own component takes priority; if not found, it is searched by name in the component library.
@@ -75,7 +75,7 @@ Schematic of the `Termination50` termination load: a `50 Ohm` resistor `R1` to g
 
 ## Key Meanings
 
-Front-end circuit components are `.cir` text files; users can define and modify the subcircuit ports, SPICE element lines inside the main subcircuit, auxiliary models (`.subckt` and `.MODEL`) outside the main subcircuit, and schematic layout hints following `;` at the end of a line. In the experiment `config.json` or via CLI `--set` / `--scan`, element values inside the main subcircuit can also be overridden or scanned using `readout.<stage_name>.<element_name>` (such as `readout.SantaCruz.R1`).
+Front-end circuit components are `.cir` text files; users can define and modify the subcircuit ports, SPICE element lines inside the main subcircuit, auxiliary models (`.subckt` and `.MODEL`) outside the main subcircuit, and schematic layout hints following `;` at the end of a line. `readout.amplifier` is a slot composed of cascaded stages, and quantities inside components are addressed as "section.slot.stage.element": in the experiment `config.json` or via CLI `--set` / `--scan`, use `readout.amplifier.<stage_name>.<element_name>` (such as `readout.amplifier.SantaCruz.R1`) to override or scan element values inside the main subcircuit. To switch the amplifier chain, write `--set readout.amplifier=<component_name>`, and to scan amplifier chains, write `--scan readout.amplifier=<component_name1>,<component_name2>`, which replaces the entire slot with that component chain and drops any previously overridden element values.
 
 ### Subcircuit Ports and Element Line Syntax
 
@@ -109,20 +109,20 @@ All remaining parameters related to netlist solving, frequency-domain noise samp
 
 | Constant or Fixed Item | Value | Unit | Definition Location and Meaning |
 | --- | --- | --- | --- |
-| `LOWEST_NOISE_HZ` | `1e3` | `Hz` | `src/raser/core/readout/job.py:17`, lower frequency bound of `ngspice` frequency-domain noise analysis (upper bound is the Nyquist frequency $0.5 / \Delta t$) |
-| `PER_DECADE` | `50` | points/decade | `src/raser/core/readout/spice.py:210`, number of frequency sample points per decade in `ngspice` `noise` analysis |
-| `ngspice` noise analysis temperature | `27` (`300.15`) | `°C` (`K`) | `src/raser/core/readout/spice.py:239`, fixed operating temperature for `ngspice` frequency-domain noise analysis, independent of `temperature` in the device file |
-| `RECORD` | `256` | multiple | `src/raser/core/readout/spectral_noise.py:7`, ratio of the frequency-domain record length to the waveform time-bin count when `noise_from_spectrum` synthesizes time-domain Gaussian noise |
-| `PART_EDGE` | `1e-3` | dimensionless | `src/raser/core/readout/job.py:23`, voltage-swing fraction relative to the event's largest-swing channel used to retain output channel waveforms and to stop strip-row local circuit expansion |
-| Pulse-polarity probe parameters | probe capacitance `1e-12`, injected charge `1e-15`, `dt = 10e-12`, `2000` bins (injected at bin `5`) | `F`, `C`, `s`, bins | `src/raser/core/readout/pulse_edge.py:38-41`, fixed probe input used by `chain_sign` to test whether an amplifier chain is non-inverting or inverting |
-| `NO_ANSWER_V` | `1e-9` | `V` | `src/raser/core/readout/pulse_edge.py:30`, minimum output swing threshold for `chain_sign` to judge that an amplifier chain responds to a `1 fC` injection |
-| `COLLECTOR`, `EMITTER`, `dpi` | `(2, 1)`, `(2, -1)`, `160` | grid steps, grid steps, `dpi` | `src/raser/core/readout/schematic.py:38-39, 612`, grid offsets of the NPN transistor collector and emitter relative to the base, and resolution of exported schematics |
+| `LOWEST_NOISE_HZ` | `1e3` | `Hz` | `src/raser/core/readout/job.py`, lower frequency bound of `ngspice` frequency-domain noise analysis (upper bound is the Nyquist frequency $0.5 / \Delta t$) |
+| `PER_DECADE` | `50` | points/decade | `src/raser/core/readout/spice.py`, number of frequency sample points per decade in `ngspice` `noise` analysis |
+| `ngspice` noise analysis temperature | `27` (`300.15`) | `°C` (`K`) | `src/raser/core/readout/spice.py`, fixed operating temperature for `ngspice` frequency-domain noise analysis, independent of `temperature` in the device file |
+| `RECORD` | `256` | multiple | `src/raser/core/readout/spectral_noise.py`, ratio of the frequency-domain record length to the waveform time-bin count when `noise_from_spectrum` synthesizes time-domain Gaussian noise |
+| `PART_EDGE` | `1e-3` | dimensionless | `src/raser/core/readout/job.py`, voltage-swing fraction relative to the event's largest-swing channel used to retain output channel waveforms and to stop strip-row local circuit expansion |
+| Pulse-polarity probe parameters | probe capacitance `1e-12`, injected charge `1e-15`, `dt = 10e-12`, `2000` bins (injected at bin `5`) | `F`, `C`, `s`, bins | `src/raser/core/readout/pulse_edge.py`, fixed probe input used by `chain_sign` to test whether an amplifier chain is non-inverting or inverting |
+| `NO_ANSWER_V` | `1e-9` | `V` | `src/raser/core/readout/pulse_edge.py`, minimum output swing threshold for `chain_sign` to judge that an amplifier chain responds to a `1 fC` injection |
+| `COLLECTOR`, `EMITTER`, `dpi` | `(2, 1)`, `(2, -1)`, `160` | grid steps, grid steps, `dpi` | `src/raser/core/readout/schematic.py`, grid offsets of the NPN transistor collector and emitter relative to the base, and resolution of exported schematics |
 
 ## How the Program Uses the Component
 
 ### Reading and Parsing the Subcircuit Chain (`circuit.py`)
 
-1. **Splitting the chain name on `+` (`named_chain`, `read_chain`)**: `named_chain(name)` splits the `amplifier` setting on `"+"`, locates each segment via `component_path("afe", f"{part}.cir")`, and passes the paths to `read_chain(paths)`.
+1. **Splitting the chain name on `+` (`named_chain`, `read_chain`)**: `named_chain(name)` splits the `amplifier` setting on `"+"`, locates each segment via `component_path("readout", f"{part}.cir")`, and passes the paths to `read_chain(paths)`.
 2. **Parsing a single stage file (`read_subcircuit`)**: Reads the `.cir` file line by line, strips trailing schematic layout hints at `";"`, and skips blank lines and comment lines starting with `"*"`. All non-comment lines outside `.subckt <filename> ...` and `.ends` (auxiliary `.subckt` and `.MODEL` definitions) are preserved verbatim in the `"models"` list; inside the main subcircuit, `spice_number` converts element values into standard SI units ($\Omega$, $\text{F}$, $\text{H}$, $\text{V}$).
 3. **Port validation and duplicate numbering (`read_chain`)**: The first $N - 1$ entries in the chain must declare two ports `in` and `out` (raising `ValueError` otherwise) and are stored in order in `"stages"`, automatically appending `_2`, `_3`, etc., from the second occurrence onward if the same amplifier stage appears repeatedly in the chain; the final entry must declare only a single port `in` as the termination load `"load"` (raising `ValueError` if it includes `out`; naming an amplifier stage `"load"` raises `ValueError` when assembling the netlist).
 
@@ -184,7 +184,7 @@ The netlist generated by `write_netlist` (`spice.py`) has five sections from top
 4. **Piecewise-linear induced current sources (`_current_sources`)**: Writes `I<k> <from> <to> PWL(...)`, with positive current flowing from `<from>` to `<to>` (from `0` to `top_pad` when fully depleted). To prevent `ngspice` from treating the first point as a steady-state DC current present before the start, the code prepends one zero-current bin (`0 A` at bin center $0.5\,\Delta t = 2.5\times 10^{-12}\ \text{s}$), followed by the $m$-th time bin ($m = 0, \dots, n_{\text{bin}} - 1$) centered at $t_m = (m + 1.5)\,\Delta t$ (in `s`) with the average induced current of that bin (in `A`; the example above illustrates three bins of `2`, `5`, and `1 uA`).
 5. **Transient solve and interpolated output (`_transient`, `_run`)**: `.save` retains only the output node voltages to export; `tran <dt> <dt * (bins + 1)>` solves for duration $(n_{\text{bin}} + 1)\,\Delta t$ with step equal to the induced-current bin width $\Delta t$ (`5e-12 s`) and exports via `wrdata`; after invoking `ngspice -b`, `_run` linearly interpolates output voltages back onto bin centers $t_m = (m + 1.5)\,\Delta t$, returning output voltage waveforms of shape `(outputs, bins)` (in `V`).
 
-For single-contact multi-strip devices, `write_waveforms` (`job.py`) uses `_solve_part` around hit strips carrying non-zero induced current, starting from `margin = 1` on both sides and doubling `margin` iteratively to expand the local circuit until the maximum voltage change between consecutive expansions across all channels with swing $\ge \text{PART\_EDGE} \times V_{\max}$ (`PART_EDGE = 1e-3`) is $< 10^{-3} V_{\max}$ or the full row is covered; for each event, only channels whose maximum absolute voltage swing is $\ge 10^{-3} V_{\max}$ (with $V_{\max} > 0$) are written to `readout_<job>.h5`.
+For single-contact multi-strip devices, `write_waveforms` (`job.py`) uses `_solve_part` around hit strips carrying non-zero induced current, starting from `margin = 1` on both sides and doubling `margin` iteratively to expand the local circuit until the maximum voltage change between consecutive expansions across all channels with swing $\ge \text{PART\_EDGE} \times V_{\max}$ (`PART_EDGE = 1e-3`) is $< 10^{-3} V_{\max}$ or the full row is covered; for each event, only channels whose maximum absolute voltage swing is $\ge 10^{-3} V_{\max}$ (with $V_{\max} > 0$) are written to `readout.h5`.
 
 ### Undepleted Layer Connection in the Netlist (`device_circuit.planar_circuit`)
 
@@ -207,18 +207,18 @@ The depletion-layer junction capacitance `Ctop_depleted` now connects between th
    where:
    - $\Delta P_k$: noise voltage variance in the frequency band of width $\Delta f$ around $f_k$, $\text{V}^2$;
    - $N_{\text{rec}} = 256\,n_{\text{bin}}$: extended time-domain record length (dimensionless);
-   - $\sigma_k$: standard deviation of the independent zero-mean Gaussian draws for the real and imaginary parts of interior complex spectral bins $X_k$ ($0 < k < N_{\text{rec}}/2$), $\text{V}$; the DC component $X_0$ (which represents slow noise below $f_{\min}$ as an event-by-event baseline shift) and, for even $N_{\text{rec}}$, the Nyquist component $X_{N_{\text{rec}}/2}$ are drawn from the real Gaussian distribution $\mathcal{N}(0,\, N_{\text{rec}}^2 \Delta P_k)$.
+   - $\sigma_k$: standard deviation of the independent zero-mean Gaussian draws for the real and imaginary parts of interior complex spectral bins $X_k$ ($0 < k < N_{\text{rec}}/2$), $\text{V}$; the DC component $X_0$ (which carries all power below $\Delta f / 2$, so that low-frequency noise slower than the waveform duration appears as an event-by-event baseline shift) and, for even $N_{\text{rec}}$, the Nyquist component $X_{N_{\text{rec}}/2}$ are drawn from the real Gaussian distribution $\mathcal{N}(0,\, N_{\text{rec}}^2 \Delta P_k)$.
 3. **Inverse transform, truncation, and superposition**: The random number generator is initialized independently by seed, event number, and global channel index via `np.random.default_rng([noise_seed, event.event, place[name]])`; `np.fft.irfft(X, n=N_rec)[:bins]` takes the first $n_{\text{bin}}$ samples (in `V`) and adds them directly to that channel's output voltage waveform.
 
 ### Pulse Edge Polarity Determination (`pulse_edge.py`)
 
 1. **Determining collected charge sign (`collected_charge_sign`)**: Reads `bias.electrode` and `bias.voltage` (`V`) from the device file. If the readout electrode is the biased electrode, its potential relative to the opposite electrode is $V_{\text{above}} = V_{\text{bias}}$; otherwise $V_{\text{above}} = -V_{\text{bias}}$ (raising `ValueError` if $V_{\text{above}} == 0$). When $V_{\text{above}} > 0$, the electrode is at higher potential and collects electrons, returning $s_q = -1$; when $V_{\text{above}} < 0$, it collects holes, returning $s_q = +1$.
 2. **Probing amplifier-chain polarity (`chain_sign`)**: On a single-electrode planar circuit with junction capacitance $1\ \text{pF}$ (`1e-12 F`), time bin width $\Delta t = 10\ \text{ps}$ (`10e-12 s`), and `2000` bins, injects $+1\ \text{fC}$ of positive charge at bin `5` (current $10^{-15} / \Delta t = 10^{-4}\ \text{A}$) and solves for the largest-magnitude deviation $V_{\text{largest}}$ of the amplifier-chain output voltage relative to the first-bin quiescent voltage `voltage[0]`: if $|V_{\text{largest}}| < 10^{-9}\ \text{V}$ (`NO_ANSWER_V`), raises `ValueError`; returns $s_{\text{chain}} = +1$ for $V_{\text{largest}} > 0$ and $s_{\text{chain}} = -1$ for $V_{\text{largest}} < 0$.
-3. **Combining channel pulse edge (`pulse_edges`)**: Computes $s_q \cdot s_{\text{chain}}$ for each output channel, recording `"rising"` if greater than `0` and `"falling"` if less than `0`, and writes the result to the `pulse_edge` attribute of `readout_<job>.h5` for downstream timing and triggering.
+3. **Combining channel pulse edge (`pulse_edges`)**: Computes $s_q \cdot s_{\text{chain}}$ for each output channel, recording `"rising"` if greater than `0` and `"falling"` if less than `0`, and writes the result to the `pulse_edge` attribute of `readout.h5` for downstream timing and triggering.
 
 ## Built-in Components
 
-`components/readout/` (source path `src/raser/components/afe/`) contains the following 5 SPICE circuit components:
+`raser/components/readout/` contains the following 5 SPICE circuit components:
 
 | Component Name | Ports | Circuit Description | Source | Applicable Devices or Experiments |
 | --- | --- | --- | --- | --- |

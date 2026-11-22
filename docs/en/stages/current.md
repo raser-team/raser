@@ -1,6 +1,6 @@
 # Carrier Transport and Induced Current Stage (`stages/current`)
 
-`src/raser/stages/current.py` is the 3rd stage, `current`, of the eight-stage simulation chain. It consumes the electron-hole pair depositions from the [Energy Deposition Stage (`stages/deposit`)](deposit.md) node and the field nodes solved under `work/<device>/field/` by the [Field Solving Stage (`stages/field`)](field.md). Using the device file, this stage constructs the device model and interpolated field, calls [Carrier Drift and Induced Current (`core/current`)](../core/current.md) to drift electron-hole pairs in the electric field and weighting field, writes the time-domain induced currents on each readout electrode into its own node `nodes/current/<node_id>/`, and draws drift-path and current plots for the first `plots` events of each job. The induced currents are passed downstream to the [Electronics Readout Stage (`stages/readout`)](readout.md); net induced charge `charge` and initial pair count `pairs` are passed to the [Statistical Analysis Stage (`stages/analysis`)](analysis.md) to compute charge collection efficiency.
+`src/raser/stages/current.py` is the 3rd stage, `current`, of the eight-stage simulation chain. It consumes the electron-hole pair depositions from the [Energy Deposition Stage (`stages/deposit`)](deposit.md) node and the field nodes solved under `<device_project>/field/<node_id>/` by the [Field Solving Stage (`stages/field`)](field.md). Using the device file, this stage constructs the device model and interpolated field, calls [Carrier Drift and Induced Current (`core/current`)](../core/current.md) to drift electron-hole pairs in the electric field and weighting field, writes the time-domain induced currents on each readout electrode into its own node `nodes/current/<node_id>/`, and draws drift-path and current plots for the first `plots` events of each job. The induced currents are passed downstream to the [Electronics Readout Stage (`stages/readout`)](readout.md); net induced charge `charge` and initial pair count `pairs` are passed to the [Statistical Analysis Stage (`stages/analysis`)](analysis.md) to compute charge collection efficiency.
 
 ## Behavior
 
@@ -9,23 +9,23 @@
 `raser current` (short alias `raser cur`) runs up through `current` on the experiment in the current folder or at the given path, computing missing `field` and `deposit` nodes first:
 
 ```bash
-raser current [path] [<source>] [options...]
-raser cur [path] [<source>] [options...]
+raser current [path]
+raser cur [path]
 ```
 
-The optional positional argument `<source>` is passed to `deposit`. `tct` and `telescope` also have stages named `current` that compute laser-pulse currents and pixel charge collection, respectively; running `raser current` on those experiments executes their own calculations. This page documents the standard simulation chain's `current` stage.
+The `current` stage of `tct` additionally convolves the standard drift result with the laser temporal pulse (see [Transient Current Technique Test (`bench/tct`)](../bench/tct.md)); this page documents the standard simulation chain's `current` stage.
 
 For example, scanning $100\ \text{V}$ and $200\ \text{V}$ bias on the `HPK-Si-PiN` example, with $2$ jobs per scan point and $200$ recorded events per job, stopping at the induced current stage:
 
 ```bash
-raser current work/HPK-Si-PiN/signal --scan field.voltage=100,200 -s 2 -evt 200 --seed 1
+raser current examples/HPK-Si-PiN/signal --scan field.voltage=100,200 -s 2 --set deposit.events_per_job=200 --seed 1
 ```
 
-The program first checks that field nodes for both biases exist in `work/HPK-Si-PiN/field/` and solves any missing ones; it then computes `deposit` and `current` nodes for the two scan points `voltage_100` and `voltage_200`, with `points/voltage_100/current` and `points/voltage_200/current` pointing to their respective `current` nodes. Changing the bias voltage constitutes a separate measurement, so the two bias points are measured independently and `deposit` and `current` each have $2$ nodes. Running the full `raser signal` afterward leaves these node fingerprints unchanged, reusing them directly and computing only `readout` and subsequent stages.
+The program first checks that field nodes for both biases exist in `examples/HPK-Si-PiN/field/` and solves any missing ones before jobs start, storing them in `examples/HPK-Si-PiN/field/`; it then computes `deposit` and `current` nodes for the two scan points `voltage_100` and `voltage_200`, with `points/voltage_100/current/<job>` and `points/voltage_200/current/<job>` pointing to each job's `current` node. Changing the bias voltage constitutes a separate measurement, so the two bias points are measured independently with $2$ jobs per point, giving $4$ nodes each for `deposit` and `current` ($2$ per point). Running the full `raser signal` afterward leaves these node fingerprints unchanged, reusing them directly and computing only `readout` and subsequent stages.
 
 ### Locating the Field Node and Constructing the Interpolated Field
 
-This stage first confirms that the device field for the current bias voltage and irradiation fluence is ready. If the field is not ready when a job starts, the job raises:
+Required fields are solved before jobs start and stored in the device project's `field/`. If the field is not ready when a job starts, the job raises:
 
 ```text
 FileNotFoundError: no field of <det_name> ready for this run: solve it with `raser field <det_name>`
@@ -33,16 +33,16 @@ FileNotFoundError: no field of <det_name> ready for this run: solve it with `ras
 
 This usually occurs after bypassing the main command's automatic field solve or modifying a field node midway. Follow the message by running `raser field` to solve the field for the required bias voltage and irradiation fluence, then rerun this command.
 
-Next, this stage resolves the run's irradiation fluence (using `-irr` if provided, otherwise `irradiation_flux` from the device file, or $0\ \text{cm}^{-2}$ if no irradiation configuration exists) and bias voltage (in $\text{V}$), and calls `solved_field` to locate the solved device field whose irradiation fluence, solve mode, and device parameters all match and which has both potential and weighting field solved at that bias, constructing `DevsimField` from [Field Solving and Loading (`core/field`)](../core/field.md) to provide interpolated electric field, conductive-region flags, trapping rates, weighting potential, and the 1D planar gain interface for drift calculation. If no matching field is found, it raises an error specifying the missing item:
+Next, this stage resolves the run's irradiation fluence (using `field.irradiation_flux` when it is not `null`, otherwise `irradiation_flux` from the device file, or $0\ \text{cm}^{-2}$ if the device file has no irradiation block) and bias voltage (in $\text{V}$), and calls `solved_field` to locate the solved device field whose irradiation fluence, solve mode, and device parameters all match and which has both potential and weighting field solved at that bias, constructing `DevsimField` from [Field Solving and Loading (`core/field`)](../core/field.md) to provide interpolated electric field, conductive-region flags, trapping rates, weighting potential, and the 1D planar gain interface for drift calculation. If no matching field is found, it raises an error specifying the missing item:
 
 ```text
-FileNotFoundError: no <mode> field of <det_name> at the irradiation flux <flux> in <root> (flux and mode of those solved: <have>); solve it with `raser field <det_name> -bias <voltage> --mode <mode> -irr <flux>`
-ValueError: the field in <folder> was solved for another device (<differing>); solve it again with `raser field <det_name> -bias <voltage> --mode <mode>`
-FileNotFoundError: the field in <folder> is not solved at <voltage> V (solved at: <solved>); solve it with `raser field <det_name> -bias <voltage> --mode <mode>`
-FileNotFoundError: the field in <folder> has no weighting field at <voltage> V (solved at: <solved>); solve it with `raser field <det_name> -bias <voltage> --mode <mode> -wf`
+FileNotFoundError: no <mode> field of <det_name> at the irradiation flux <flux> in <root> (flux and mode of those solved: <have>); solve it with `raser field <det_name> --set field.voltage=<voltage> --set field.mode=<mode> --set field.irradiation_flux=<flux>`
+ValueError: the field in <folder> was solved for another device (<differing>); solve it again with `raser field <det_name> --set field.voltage=<voltage> --set field.mode=<mode>`
+FileNotFoundError: the field in <folder> is not solved at <voltage> V (solved at: <solved>); solve it with `raser field <det_name> --set field.voltage=<voltage> --set field.mode=<mode>`
+FileNotFoundError: the field in <folder> has no weighting field at <voltage> V (solved at: <solved>); solve it with `raser field <det_name> --set field.voltage=<voltage> --set field.mode=<mode>` with the weighting field switched on in the field settings
 ```
 
-The four messages indicate, respectively: no field at that irradiation fluence and mode; the field was solved for device parameters prior to a change; missing electric potential at the target bias; missing weighting field at the target bias. Run the `raser field` command shown at the end of the error message and then rerun.
+The four messages indicate, respectively: no field at that irradiation fluence and mode; the field was solved for device parameters prior to a change; missing electric potential at the target bias; missing weighting field at the target bias. Run the `raser field` command shown at the end of the error message and then rerun; when the weighting field is missing, enable weighting-field solving in the `field` section (modify field settings with `--set field.<key>=<value>`).
 
 ### Zero-Deposit Events and Multi-Position Filtering by Detector
 
@@ -71,7 +71,7 @@ After all events are written, the job log summarizes cluster and carrier counts 
 
 This indicates that drift trajectories reached coordinates outside the field mesh, so subsequent induced current is missing. Verify that the device dimensions match the field mesh extent.
 
-Taking job `0`'s current file at the $200\ \text{V}$ point in the example above: `current` reads the $200$ events from `deposit` together with the $200\ \text{V}$ electric field and `top` electrode weighting field from the field node, writes the current file, and draws `planar_drift_path.pdf`/`.root` and `No_1electrode_basic_infor.pdf`/`.root` for each of the first $100$ recorded events (`HPK-Si-PiN` is a single-electrode `pad` device; `cce.pdf`/`.root` is drawn only for strip or pixel devices). The file attributes (`attrs`) are `dt = 5e-12` (default time-bin width for 1D devices, in $\text{s}$) and `electrodes = ['top']` (list of readout electrode names), and the datasets (`datasets`) are:
+Taking job `0`'s `current.h5` at the $200\ \text{V}$ point in the example above: `current` reads `deposit.h5` ($200$ events) from the `deposit` node together with the $200\ \text{V}$ electric field and `top` electrode weighting field from the field node, writes `current.h5`, and draws `planar_drift_path.pdf`/`.root` and `No_1electrode_basic_infor.pdf`/`.root` under `event_<event>/` inside the node for each of the first $100$ recorded events (`HPK-Si-PiN` is a single-electrode `pad` device; `cce.pdf`/`.root` is drawn only for strip or pixel devices). The file attributes (`attrs`) are `dt = 5e-12` (default time-bin width for 1D devices, in $\text{s}$) and `electrodes = ['top']` (list of readout electrode names), and the datasets (`datasets`) are:
 
 | Dataset name | Example shape | Type | Unit | Meaning |
 | --- | --- | --- | --- | --- |
@@ -98,7 +98,7 @@ Single-event induced current on the `top` electrode of `HPK-Si-PiN`, showing the
 
 ### Reuse and Recomputation
 
-`current` is a measurement stage; its fingerprint includes the setting values used by this stage, the part of the device file it uses, the upstream `deposit` and field node IDs, and the seed. Matching fingerprints are reused regardless of which point or run produced them; changing bias voltage, fluence, or `current.plots` computes a new node while keeping the old node, and reverting the setting points the view back to the old node. When the code version differs from the one recorded in the node, only a notice is printed and the result is still reused. Each node is locked individually; a partially written node carries the `.part` suffix and is renamed to its final name only after writing finishes. See [Slices and Reruns](../lifecycle/slices.md) for node and reuse rules.
+`current` is a measurement stage; its fingerprint includes the setting values used by this stage, the part of the device file it uses, the upstream `deposit` and field node IDs, and the seed (derived from the job seed; see [Experiments, Scan Points, and Seeds](../lifecycle/experiments.md#seeds)). Matching fingerprints are reused regardless of which point or run produced them; changing bias voltage, fluence, or `current.plots` computes a new node while keeping the old node, and reverting the setting points the view back to the old node. When the code version differs from the one recorded in the node, only a notice is printed and the result is still reused. Each node is locked individually; a partially written node carries the `.part` suffix and is renamed to its final name only after writing finishes. See [Slices and Reruns](../lifecycle/slices.md) for node and reuse rules.
 
 ## Rules
 
@@ -106,13 +106,11 @@ Single-event induced current on the `top` electrode of `HPK-Si-PiN`, showing the
 
 | Constant name | Value | Unit | Definition location and meaning |
 | --- | --- | --- | --- |
-| `STAGES["current"]` | `("cur", "the induced currents, after the deposits and the field", (chain.deposit_arguments, chain.current_arguments))` | None | `src/raser/stages/stage_commands.py`: short alias, help string, and sequential argument registration functions for `raser current` |
-| `CURRENT_DEFAULTS["plots"]` | `100` | events | `src/raser/stages/chain.py`: default maximum number of events per job for which drift-path and current plots are drawn |
-| `DEFAULT_MODE` | `"full"` when `devsim` is installed, otherwise `"fast"` | None | `src/raser/core/field/solved.py`: default solve mode used by `solved_field` when locating fields |
+| `STAGES["current"]` | `("cur", "the induced currents, after the deposits and the field", ...)` | None | `src/raser/stages/stage_commands.py`: short alias and help string for `raser current` |
 
 ### Parsing and Launching Stage Commands (`stage_commands.run`)
 
-1. **Mount arguments (`register`)**: Register `current` (alias `cur`), sequentially mount the options of the `deposit` and `current` stages along with shared run parameters, and bind the execution entry point to `partial(run, "current")`.
+1. **Mount arguments (`register`)**: Register `current` (alias `cur`), mount shared run parameters and this stage's command options (settings for upstream stages live in their respective sections; see [Field Solving Stage (`stages/field`)](field.md) and [Energy Deposition Stage (`stages/deposit`)](deposit.md)), and bind the execution entry point to `partial(run, "current")`.
 2. **Resolve experiment**: Read `config.json` in the experiment folder to identify its experiment class.
 3. **Validate stage**: If the experiment class does not include the `current` stage, exit with:
 
@@ -124,8 +122,8 @@ Single-event induced current on the `top` electrode of `HPK-Si-PiN`, showing the
 
 ### Field Lookup and Interpolated Field Construction (`current.solved` and `solved_field`)
 
-1. **Irradiation fluence**: Take `my_d.irradiation_flux` (in $\text{cm}^{-2}$); if `irradiation` is supplied for this run, use `float(irradiation)` instead.
-2. **Locate and validate field (`solved_field(my_d, my_d.voltage, flux, mode=DEFAULT_MODE)`)**:
+1. **Irradiation fluence**: Take `my_d.irradiation_flux` (in $\text{cm}^{-2}$); when `field.irradiation_flux` is not `null`, use `float(irradiation_flux)` instead.
+2. **Locate and validate field (`solved_field(my_d, my_d.voltage, flux, mode)`, with `mode` taken from `field.mode`)**:
    - Filter the device's solved fields to those with irradiation fluence equal to `flux` and solve mode equal to `mode`; if none exist, raise `FileNotFoundError` for missing fluence and mode.
    - Compare the device parameters read at solve time against the current `my_d` using `changed`, preferring a field with no differences; if all differ, take the first and raise `ValueError: the field in <folder> was solved for another device ...`.
    - If `float(my_d.voltage)` (in $\text{V}$) is not in the biases with solved potential, raise `FileNotFoundError` for missing potential; if it is not in the biases with solved weighting field, raise `FileNotFoundError` for missing weighting field. Once all checks pass, return that field folder.
@@ -146,7 +144,7 @@ Single-event induced current on the `top` electrode of `HPK-Si-PiN`, showing the
 ### Source File Responsibilities
 
 - `src/raser/stages/current.py`: `solved(my_d, kwargs)` resolves the run irradiation fluence and calls `solved_field` to construct `DevsimField`; `currents(kwargs, position=None)` performs the multi-position pre-check, constructs `Detector`, assembles output and plot paths, and calls `write_induced_currents`.
-- `src/raser/stages/chain.py`: Defines `CURRENT_DEFAULTS`, argument registration function `current_arguments` (`-vol`, `-irr`), lazy-import entry point `_currents` for the `current` module, and `_field` for verifying field readiness at job startup.
+- `src/raser/stages/chain.py`: Defines the lazy-import entry point `_currents` for the `current` module and `_field` for verifying field readiness at job startup.
 - `src/raser/stages/stage_commands.py`: Registers stage commands; resolves the target experiment, verifies it includes the target stage, sets the cutoff stage, and switches into the experiment folder to run.
 - `src/raser/stages/files.py`: Provides the output file paths for this stage in the current job.
 
@@ -158,28 +156,28 @@ Single-event induced current on the `top` electrode of `HPK-Si-PiN`, showing the
 | --- | --- | --- | --- |
 | `"det_name"` | `str` | None | Current device name |
 | `"_files"` | `dict` | None | Component file contents; `kwargs["_files"]["device"]` is the device JSON dictionary already updated with the run's bias voltage (in $\text{V}$) |
-| `"irradiation"` | `float \| None` | $\text{cm}^{-2}$ | Run irradiation fluence; when `None`, `solved` falls back to `my_d.irradiation_flux` |
+| `"irradiation_flux"` | `float \| None` | $\text{cm}^{-2}$ | Run irradiation fluence ($1\ \text{MeV}$ neutron-equivalent fluence); when `None`, `solved` falls back to `my_d.irradiation_flux` |
 | `"plots"` | `int` | events | Maximum number of events per job for which single-event drift-path and current plots are drawn |
 
 ## Interface
 
 ### Options and Configuration Keys
 
-Only the options and keys listed below are configurable in this stage; the cutoff stage, default field-lookup mode `DEFAULT_MODE`, thermal diffusion switch `diffusion=True` passed to `CalCurrent`, and plot filenames are hardcoded. `--set` and `--scan` use `"section.key"` addresses, such as `--set field.voltage=100`. Shared run parameters (`-s`, `--seed`, `--same-seeds`, `--set`, `--scan`, `-b`, `-t`, `--dry-run`) are documented in [Command-Line Interface (`raser`)](../cli.md) and [Experiments, Scan Points, and Seeds](../lifecycle/experiments.md); `deposit` options mounted by the same command (`source`, `--g4setup`, `-evt`, `-gen`, `--generated-limit`, `--edep-min`, `--edep-max`, `-g4_vis`, `--g4-vis-driver`) are documented in [Energy Deposition Stage (`stages/deposit`)](deposit.md); device geometry, electrodes, temperature, material, doping, irradiation model, and avalanche multiplication keys are documented in [Carrier Drift and Induced Current (`core/current`)](../core/current.md).
+Only the options and keys listed below are configurable in this stage; the cutoff stage, thermal diffusion switch `diffusion=True` passed to `CalCurrent`, and plot filenames are hardcoded. `--set` and `--scan` use `"section.key"` addresses, such as `--set field.voltage=100`. Shared run parameters (`-s`, `--seed`, `--same-seeds`, `--set`, `--scan`, `-b`, `-t`, `-mem`, `--dry-run`) are documented in [Command-Line Interface (`raser`)](../cli.md) and [Experiments, Scan Points, and Seeds](../lifecycle/experiments.md); settings for upstream stages live in their respective sections, see [Field Solving Stage (`stages/field`)](field.md) and [Energy Deposition Stage (`stages/deposit`)](deposit.md); device geometry, electrodes, temperature, material, doping, irradiation model, and avalanche multiplication keys are documented in [Carrier Drift and Induced Current (`core/current`)](../core/current.md). For configuration keys, "Value in example" shows the value written in `examples/HPK-Si-PiN/signal/config.json`, with different values from other examples in parentheses; if `config.json` is missing a key that is needed, an error is raised naming the missing `section.key`.
 
-| Option or key | Default | Unit | Meaning |
+| Section.Key or CLI option | Value in example | Unit | Meaning |
 | --- | --- | --- | --- |
 | `[path]` | Current folder | None | Experiment folder |
-| `current.plots` | `100` for `signal`; `0` for `timeres`, `bmos`, `cflm` | events | Maximum number of events per job for which `current` draws its own plots: drift paths, electrode currents, and (for strip/pixel devices) collected-charge plots ($\le 0$ disables plotting); drift paths are drawn from the deposit list provided by `deposit`. In multi-position experiments, each position counts from its own events with deposits; changing it triggers recomputation of `current` and downstream stages |
-| `-vol`, `--voltage` (`field.voltage`) | Device file `bias.voltage` | $\text{V}$ | Device bias voltage, belonging to the `field` section; determines which bias field is used, and changing it triggers recomputation of `field`, `current`, and downstream stages |
-| `-irr`, `--irradiation` (`field` section, see the `field` page) | Device file `irradiation.irradiation_flux`, or `0` if there is no `irradiation` block | $\text{cm}^{-2}$ | Device irradiation fluence, belonging to the `field` section; determines which fluence field is used, and changing it triggers recomputation of `field`, `current`, and downstream stages |
-| Device file key `field_interpolation_bins` | `None` (`DevsimField` internally defaults to `{"x": 30, "y": 30, "z": 30}`) | bins | Number of bins along each axis of the 3D unstructured inverse-distance-weighted field interpolation grid when constructing `DevsimField` |
+| `current.plots` | `100` (`0` in the `timeres`, `bmos`, and `cflm` examples) | events | Maximum number of events per job for which `current` draws its own plots: drift paths, electrode currents, and (for strip/pixel devices) collected-charge plots ($\le 0$ disables plotting); drift paths are drawn from the deposit list provided by `deposit`. In multi-position experiments, each position counts from its own events with deposits; changing it triggers recomputation of `current` and downstream stages |
+| `field.voltage` | `200.0` (uses bias voltage from the device file when `null`) | $\text{V}$ | Device bias voltage, belonging to the `field` section; determines which bias field is used, and changing it triggers recomputation of `field`, `current`, and downstream stages |
+| `field.irradiation_flux` | `null` (uses irradiation fluence from the device file, or `0` if the device file has no irradiation block) | $\text{cm}^{-2}$ | Device irradiation fluence ($1\ \text{MeV}$ neutron-equivalent fluence), belonging to the `field` section; determines which fluence field is used, and changing it triggers recomputation of `field`, `current`, and downstream stages |
+| Device file key `field_interpolation_bins` | Omitted (`DevsimField` uses `{"x": 30, "y": 30, "z": 30}`) | bins | Number of bins along each axis of the 3D unstructured inverse-distance-weighted field interpolation grid when constructing `DevsimField` |
 
 ### Files Read and Written
 
-- **Read: deposit file in the `deposit` node**. `current` reads each recorded event's Geant4 ID `event`, deposit-step logical volume name `detector`, local coordinates `x`/`y`/`z` ($\mu\text{m}$), global time `t` ($\text{s}$), and number of electron-hole pairs `pairs` (pairs); see [Energy Deposition Stage (`stages/deposit`)](deposit.md) for the format.
-- **Read: field node in `work/<device>/field/`**. Written by `raser field`. `DevsimField` reads `Potential_<V>V.pkl`, `Conductive_<V>V.pkl`, `NetDoping_0V.pkl` (`NetDoping_<V>V.pkl` for TCAD imports), `TrappingRate_n_<V>V.pkl`, `TrappingRate_p_<V>V.pkl`, and `weightingfield/<electrode>/Potential_<V>V.pkl`; see [Field Solving and Loading (`core/field`)](../core/field.md) for data structures and units.
-- **Write: current file in `nodes/current/<node_id>/`**. Written when upstream `deposit` has recorded events and (in multi-position experiments) the position has deposit steps in this job; any old file is removed before recomputing and events are appended one by one. Passed to `readout` for output waveforms, while `charge` ($\text{C}$) and `pairs` (pairs) are also passed to `analysis` for charge collection efficiency; see [Carrier Drift and Induced Current (`core/current`)](../core/current.md) for HDF5 attributes (`electrodes`, `dt` [$\text{s}$]) and the shapes, types, and units of all datasets.
-- **Write: single-event plots in `nodes/current/<node_id>/`**. Written for the first `plots` events when `plots > 0` (clearing the event's `event_<event>/` subfolder beforehand): 3D and $x$-$z$ plane drift-path plot `<det_model>_drift_path.pdf`/`.root` (coordinates in $\mu\text{m}$), current-component waveform plots `No_<k>electrode_basic_infor.pdf`/`.root` for each electrode with nonzero current (`<k>` starting from `1`, horizontal axis `Time [s]`, vertical axis `Current [A]`), and collected-charge distribution plot `cce.pdf`/`.root` for `strip` or `pixel` devices (values in electrons obtained by dividing net charge by $1.6\times 10^{-19}\ \text{C}$); see [Carrier Drift and Induced Current (`core/current`)](../core/current.md) for contents and axis units.
+- **Read: `deposit.h5` in the `deposit` node**. `current` reads each recorded event's Geant4 ID `event`, deposit-step logical volume name `detector`, local coordinates `x`/`y`/`z` ($\mu\text{m}$), global time `t` ($\text{s}$), and number of electron-hole pairs `pairs` (pairs); see [Energy Deposition Stage (`stages/deposit`)](deposit.md) for the format.
+- **Read: field node in `<device_project>/field/<node_id>/`**. Written by `raser field`. `DevsimField` reads `Potential_<V>V.pkl`, `Conductive_<V>V.pkl`, `NetDoping_0V.pkl` (`NetDoping_<V>V.pkl` for TCAD imports), `TrappingRate_n_<V>V.pkl`, `TrappingRate_p_<V>V.pkl`, and `weightingfield/<electrode>/Potential_<V>V.pkl`; see [Field Solving and Loading (`core/field`)](../core/field.md) for data structures and units.
+- **Write: `nodes/current/<node_id>/current.h5`** (in multi-position experiments, one file `current.<position>.h5` per position inside the same node). Written when upstream `deposit` has recorded events and (in multi-position experiments) the position has deposit steps in this job; any old file is removed before recomputing and events are appended one by one. Passed to `readout` for output waveforms, while `charge` ($\text{C}$) and `pairs` (pairs) are also passed to `analysis` for charge collection efficiency; see [Carrier Drift and Induced Current (`core/current`)](../core/current.md) for HDF5 attributes (`electrodes`, `dt` [$\text{s}$]) and the shapes, types, and units of all datasets.
+- **Write: single-event plots in `nodes/current/<node_id>/event_<event>/`**. Written for the first `plots` events when `plots > 0` (clearing the event's `event_<event>/` subfolder beforehand): 3D and $x$-$z$ plane drift-path plot `<det_model>_drift_path.pdf`/`.root` (coordinates in $\mu\text{m}$), current-component waveform plots `No_<k>electrode_basic_infor.pdf`/`.root` for each electrode with nonzero current (`<k>` starting from `1`, horizontal axis `Time [s]`, vertical axis `Current [A]`), and collected-charge distribution plot `cce.pdf`/`.root` for `strip` or `pixel` devices (values in collected electrons obtained by dividing net charge by the elementary charge $e_0 = 1.602176634\times 10^{-19}\ \text{C}$, unit: electrons); see [Carrier Drift and Induced Current (`core/current`)](../core/current.md) for contents and axis units.
 - **Write: `nodes/current/<node_id>/node.json`**. Records this node's inputs along with the code version, runtime environment, and run status.
-- **Write: `points.json` and `points/<point>/current`**. The parameter table records the `current` node ID used by each point; the view symlink points to that node.
+- **Write: `points.json` and `points/<point>/current/<job>`**. The parameter table records the `current` node ID used by each point; the view symlink points to `../../../nodes/current/<node_id>`.

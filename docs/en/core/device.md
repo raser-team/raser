@@ -55,10 +55,9 @@ The table below lists all module-level constants, layout constraint tables, and 
 
 1. **Resolve path and copy dictionary**: call `path = device_file(device_name)` (raising `FileNotFoundError` here if lookup by name fails). If `device_dict is None`, read the dict from disk with `device_json(device_name)`. Assign `copy.deepcopy(device_dict)` to `self.device_dict` to isolate the detector's dict from the caller's dict, and assign `path.resolve()` to `self.definition_path`.
 2. **Map top-level keys to attributes**: execute `self.__dict__.update(self.device_dict)` to write every top-level JSON key-value pair directly into the instance attribute dict.
-3. **Extract nested bias, irradiation, and mesher keys**:
+3. **Extract nested bias and irradiation keys**:
    - Compute `self.voltage = float(self.device_dict['bias']['voltage'])` ($\text{V}$). Raises `KeyError` if `'bias'` or `'voltage'` is missing, or `TypeError`/`ValueError` if the value cannot be converted to `float`.
    - Check `"irradiation" in self.device_dict`: if true, set `self.irradiation_model = self.device_dict['irradiation']['irradiation_model']` and `self.irradiation_flux = self.device_dict['irradiation']['irradiation_flux']` ($\text{cm}^{-2}$; raises `KeyError` if `'irradiation_model'` or `'irradiation_flux'` is missing from `'irradiation'`); if false, set `self.irradiation_model = None` and `self.irradiation_flux = 0`.
-   - Compute `self.mesher = self.device_dict.get('mesh', {}).get('mesher')` (`None` if `'mesh'` or `'mesher'` is absent).
 4. **Compute name, solve dimension, and 3D bounds**:
    - Set `self.det_name = self.device_dict.get('det_name', path.stem)`, and also set `self.device = self.det_name` and `self.region = self.det_name`.
    - Set `self.dimension = self.device_dict.get('field_dimension', self.device_dict['default_dimension'])`. `default_dimension` is required and raises `KeyError` if absent.
@@ -92,14 +91,13 @@ A `Detector` instance provides the following on-demand properties and methods at
 2. **Auxiliary file resolution (`Detector.file(name)`)**:
    - Compute `path = Path(name).expanduser()`; if `not path.is_absolute()`, join it relative to the directory containing the device JSON: `path = Path(self.definition_path).parent / path`.
    - Call `path = path.resolve()`. If `not path.is_file()`, raise `FileNotFoundError` (`Cannot find <path>, named by <definition_path>`); otherwise return the resolved `Path` object.
-3. **Transverse 2D mesh check (`Detector.is_plugin()`)**: returns `bool(self.device_dict.get('mesh', {}).get('plugin', False))`.
 
 ## Software Implementation
 
 ### Module and Function Responsibilities
 
 - `__init__.py`: package docstring file.
-- `build_device.py`: implements device JSON path resolution `device_file`, JSON loader `device_json`, and the detector data structure `Detector` (including construction validation, electrode-layout properties `is_strip` and `is_pixel`, single-electrode area calculation `_readout_area_um2`, cached junction capacitance property `capacitance`, external file resolution method `file`, and transverse-mesh check `is_plugin`).
+- `build_device.py`: implements device JSON path resolution `device_file`, JSON loader `device_json`, and the detector data structure `Detector` (including construction validation, electrode-layout properties `is_strip` and `is_pixel`, single-electrode area calculation `_readout_area_um2`, cached junction capacitance property `capacitance`, and external file resolution method `file`).
 
 ### Core Data Structures
 
@@ -114,7 +112,6 @@ A `Detector` instance provides the following on-demand properties and methods at
 | `voltage` | `float` | $\text{V}$ | Bias voltage `float(device_dict["bias"]["voltage"])` |
 | `irradiation_model` | `str \| None` | None | Irradiation defect model name (`None` if no `irradiation` block) |
 | `irradiation_flux` | `float \| int` | $\text{cm}^{-2}$ | Irradiation fluence (`0` if no `irradiation` block) |
-| `mesher` | `str \| None` | None | Mesh generator identifier `device_dict.get("mesh", {}).get("mesher")` |
 | `bound` | `dict[str, tuple]` | $\mu\text{m}$ | 3D coordinate bounds `{'x': (0, l_x), 'y': (0, l_y), 'z': (0, l_z)}` |
 | `electrodes` | `str` | None | Readout electrode layout (`"pad"`, `"strip"`, or `"pixel"`) |
 | `is_strip`, `is_pixel` | `bool` | None | Whether `electrodes` is `"strip"` or `"pixel"` |
@@ -124,7 +121,6 @@ A `Detector` instance provides the following on-demand properties and methods at
 | `has_avalanche` | `bool` | None | Whether both `avalanche_model is not None` and `bool(enable_gain)` hold |
 | `capacitance` | `float \| None` | $\text{pF}$ | Single-electrode junction capacitance (explicit value, parallel-plate estimate, or `None` for 3D models) |
 | `file(name)` | `Path` | None | Resolves the absolute path of an auxiliary file referenced by the device JSON and verifies it exists |
-| `is_plugin()` | `bool` | None | Whether the 2D mesh lies in the transverse $x$-$y$ plane |
 
 ## Interface
 
@@ -170,15 +166,14 @@ Users can configure the device JSON keys listed in the tables below; vacuum perm
 | `undepleted_resistance_ohm`, `undepleted_capacitance_pF` | None (downstream default `None`) | $\Omega$, $\text{pF}$ | Equivalent resistance and capacitance of the undepleted bulk; normally computed by [field.md](field.md) from the 1D field at runtime bias, overridden when specified in the device file; both keys must be given together or both omitted |
 | `resistive_layer` | None (optional) | None | Resistive layer definition object containing `"sheet_resistance"` ($\Omega$) or implant parameters, cell spans (`"strips"` or `"pads"`), and optional `"grounded"` and `"coupling"` (mapped verbatim as an attribute) |
 
-#### Physical Models, Mesh, and Solving Dimension
+#### Physical Models and Solving Dimension
+
+The device file has no `mesh` section: geometry (layer thicknesses, materials, and which face each electrode lies on) is an intrinsic property of the device, whereas meshes belong to `field`, and which mesh to use is specified by the `field` section settings (see [field.md](field.md)). Physical models are registered by name and selected by name in the device file; each material has a default model (see [model.md](model.md)).
 
 | Key | Default | Unit | Meaning |
 | --- | --- | --- | --- |
 | `default_dimension` | None (required) | None | Default field solving dimension: `1`, `2`, or `3` |
 | `field_dimension` | `default_dimension` | None | Field solving dimension overriding `default_dimension`, assigned to `Detector.dimension` on construction |
-| `mesh.mesher` | `None` | None | Mesh generator identifier (e.g. `"sde"`), extracted as `Detector.mesher` on construction |
-| `mesh.gmsh_mesh.file` | None (required when using a Gmsh mesh) | None | Gmsh `.msh` mesh filename, resolved via `Detector.file`: relative paths are relative to the directory of the device JSON, so copying the device file requires copying the mesh file at the same relative path |
-| `mesh.plugin` | `False` | None | Whether the 2D mesh lies in the transverse $x$-$y$ plane, read and converted to `bool` by `Detector.is_plugin()` |
 | `area_factor` | None (downstream `field` defaults to `1.0`) | 1D $\text{cm}^2$, 2D $\text{cm}$, 3D dimensionless | Area or length factor converting 1D or 2D IV, CV, and specific impedance to whole-device totals (mapped verbatim as an attribute when given) |
 
 ### Library Components
@@ -213,7 +208,7 @@ Users can configure the device JSON keys listed in the tables below; vacuum perm
 
 ### Input/Output Files and Plot Outputs
 
-- **Input files**: UTF-8 encoded device JSON file (`<work_root>/<device_name>/device.json`, `components/device/<device_name>.json`, or an explicit path) and auxiliary files resolved through `Detector.file(name)` (such as Gmsh `.msh` mesh files).
+- **Input files**: UTF-8 encoded device JSON file (`<work_root>/<device_name>/device.json`, `components/device/<device_name>.json`, or an explicit path) and auxiliary files resolved through `Detector.file(name)`.
 - **Output files and datasets**: None. `core/device` only constructs `Detector` instances in memory and writes no disk data files, attributes, or datasets.
 - **Plot outputs**: None.
 

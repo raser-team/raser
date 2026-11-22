@@ -25,12 +25,12 @@ To run only up to a specific stage in the chain, invoke that stage's command, fo
 
 ### Nodes and Fingerprints
 
-One result computed by a stage for a given set of inputs is a node, stored in `<experiment>/nodes/<stage>/<node_id>/`. A node's inputs consist of four items:
+One result computed by a stage for a given set of inputs is a node, stored in `<experiment>/nodes/<stage>/<node_id>/`. `deposit` through `reconstruction` have one node per job, and `field` and `analysis` have one node per scan point; the upstream nodes of `analysis` are the per-job nodes of that point, so its fingerprint records which jobs it aggregated. A node's inputs consist of four items:
 
 - the setting values used by this stage;
 - the part of the component files used by this stage;
 - the node IDs of its upstream nodes;
-- the seeds of the measurement stages (`deposit`, `current`), and `readout`'s own seed (NGspice noise).
+- the seeds of the measurement stages (`deposit`, `current`), as well as the own seeds of `readout` (NGspice noise) and `digitizer` (clock phase, aperture jitter), all derived from the job seed; the job seed is derived from the master seed, the job index, and the values of the measurement-related scan axes (see [Experiments, Scan Points, and Seeds](experiments.md#seeds)).
 
 The fingerprint is computed from these inputs, and the fingerprint is the node ID. The node folder contains the files written by this stage and a `node.json`. `node.json` records the inputs verbatim, and additionally records the code version, runtime environment, and run status. A device's field is likewise a node, stored under `work/<device>/field/`.
 
@@ -59,7 +59,7 @@ On each run, the program computes the parameter table `points.json` from `config
 
 ### Views
 
-`<experiment>/points/<point>/<stage>` is a symlink pointing to the node. Point names are derived from scan-axis values, such as `voltage_100`, serving as human-readable entry points. After changing settings or adding a scan axis, the point name may stay the same while the node it points to updates accordingly, so parameters and results always match.
+`<experiment>/points/<point>/<stage>/` is a folder containing one symlink per job at that scan point, named by the job index and pointing to that job's node at that stage; `field` and `analysis` have only one node per point, so `points/<point>/field` and `points/<point>/analysis` are symlinks directly. Point names are derived from scan-axis values, such as `voltage_100`, serving as human-readable entry points. After changing settings or adding a scan axis, the point name may stay the same while the node it points to updates accordingly, so parameters and results always match.
 
 ### Code Version
 
@@ -97,7 +97,7 @@ Adding `--dry-run` before running prints only the scan points, stages, and job s
 
 ### Propagation of Node IDs
 
-1. A stage has only four inputs: the setting values used by this stage, the part of the component files it uses, the node IDs of the upstream nodes it directly reads, and the seeds of the measurement stages (`deposit`, `current`) as well as `readout`'s own seed (NGspice noise).
+1. A stage has only four inputs: the setting values used by this stage, the part of the component files it uses, the node IDs of the upstream nodes it directly reads, and the seeds of the measurement stages (`deposit`, `current`) as well as the own seeds of `readout` (NGspice noise) and `digitizer` (clock phase, aperture jitter).
 2. The node ID is the fingerprint of these four inputs. The code version, runtime environment, and run status are recorded separately in `node.json`.
 3. Upstream node IDs enter downstream inputs, so changes propagate downward along the table in "Stages in the Chain": when a stage's node ID changes, the node IDs of stages that read it change too, all the way to the end of the chain.
 
@@ -136,6 +136,6 @@ Adding `--dry-run` before running prints only the scan points, stages, and job s
 - `<experiment>/points.json`: Parameter table. Computed from `config.json` on each run, one row per scan point, listing scan-axis values and the node ID used for each stage. Printed by `raser status`.
 - `<experiment>/nodes/<stage>/<node_id>/`: Node directory. Contains the files written by this stage and `node.json`; carries a `.part` suffix while being written.
 - `work/<device>/field/<node_id>/`: Device field node referenced by all experiments on that device.
-- `<experiment>/points/<point>/<stage>`: View, a symlink pointing to the node.
+- `<experiment>/points/<point>/<stage>/<job>`: View, a symlink pointing to that job's node at that stage; `points/<point>/field` and `points/<point>/analysis` are each a single symlink.
 
 Formats of data files written by each stage inside its node are documented in [Field Solving and Loading (`core/field`)](../core/field.md), [Energy Deposition and Ionization (`core/deposit`)](../core/deposit.md), [Carrier Drift and Induced Current (`core/current`)](../core/current.md), [Electronics Readout (`core/readout`)](../core/readout.md), [Digitizer (`core/digitizer`)](../core/digitizer.md), [Trigger Stage (`stages/trigger`)](../stages/trigger.md), and [Event Reconstruction (`core/reconstruction`)](../core/reconstruction.md).

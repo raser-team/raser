@@ -9,7 +9,7 @@
 | `raser signal <device>` | Runs the signal benchmark on this device: completes the whole chain and gives charge collection efficiency | [bench/signal.md](bench/signal.md) |
 | `raser timeres <device>` | Runs the Time Resolution benchmark on this device | [bench/timeres.md](bench/timeres.md) |
 | `raser tct <device>` | Runs the Transient Current Technique benchmark on this device | [bench/tct.md](bench/tct.md) |
-| `raser telescope <device>` | Places this device in the middle of the beam telescope as the device under test and runs the spatial resolution benchmark | [bench/telescope.md](bench/telescope.md) |
+| `raser telescope <device>` | Replaces both middle devices under test in the beam telescope with this device and runs the spatial resolution benchmark | [bench/telescope.md](bench/telescope.md) |
 | `raser bmos` | Runs the Beam Monitor Online System | [apps/bmos.md](apps/bmos.md) |
 | `raser cflm` | Runs the CEPC Fast Luminosity Monitor | [apps/cflm.md](apps/cflm.md) |
 | `raser hbf` | Runs Hydrogen–Boron Fusion (p–¹¹B) | [apps/hbf.md](apps/hbf.md) |
@@ -32,6 +32,7 @@
 
 - `-b`: Submits jobs to the cluster queue.
 - `-t`: Combined with `-b`, checks and previews submission details without actually submitting jobs.
+- `-mem <tier>`: Combined with `-b`, requests `8000 × <tier>` MB of memory per job (default `1`); when `-bb`, `-bbb`, etc. are stacked, the tier is the larger of the count of `b` and `-mem`.
 - `--help`: Prints help for the top-level command or a subcommand and exits.
 - `--version`: Prints the current `raser` version number and exits.
 

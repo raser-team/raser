@@ -76,7 +76,7 @@ This means the network filesystem hosting the experiment directory does not supp
 
 When `-b` (`--batch`) is passed, the main command writes an executable script `<command_name>.job` (mode `0o755`) for each pending job and submits it via the cluster scheduler specified by `RASER_SCHEDULER`; if `-s` is omitted, job `0` is submitted. When written before the subcommand as a global option, `-b` can be stacked as `-b`, `-bb`, `-bbb`, etc., setting the memory tier to $\max(\text{-mem},\, \text{count of global } \texttt{b})$ and requesting $8000 \times \text{tier}\ \text{MB}$ of memory from the scheduler. Top-level `-t` (`--test`) takes effect only when given together with top-level `-b`, checking and previewing submission information without submitting.
 
-Job scripts and submission files are stored in `<project_root>/<first_command_word>/jobs/`; see [Common Infrastructure (`supports`)](../supports/README.md) for path resolution. At the start of the script, login-node X11 environment variables are unset, `RASER_CLUSTER_JOB=1` is exported, and X11 bind entries are filtered out of container bind variables. When running from a source tree, the script first `cd`s to the repository root and sources `env/setup_cvmfs.sh <route>` (or `env/setup.sh` when `RASER_ENV_ROUTE` is unset); when running as an installed Python package, the script `cd`s to the working directory at submission time and inherits the scheduler environment.
+Job scripts and submission files are stored in `<experiment>/jobs/`; see [Common Infrastructure (`supports`)](../supports/README.md) for path resolution. At the start of the script, login-node X11 environment variables are unset, `RASER_CLUSTER_JOB=1` is exported, and X11 bind entries are filtered out of container bind variables. When running from a source tree, the script first `cd`s to the repository root and sources `env/setup_cvmfs.sh <route>` (or `env/setup.sh` when `RASER_ENV_ROUTE` is unset); when running as an installed Python package, the script `cd`s to the working directory at submission time and inherits the scheduler environment.
 
 As an example submitting two jobs requesting two memory tiers (`16000 MB`):
 
@@ -87,10 +87,10 @@ raser -bb signal HPK-Si-PiN -s 2 --seed 1
 Under the default scheduler `hep_sub`, each job executes `hep_sub -o <jobs_dir> -e <jobs_dir> <job_file> -mem 16000 -g <current_dir_group>`. Under `RASER_SCHEDULER=condor`, an additional `<command_name>.sub` is generated and `condor_submit <sub_file>` is executed, with `.sub` contents like:
 
 ```text
-executable = /.../work/HPK-Si-PiN/signal/jobs/<command_name>.job
-output = /.../work/HPK-Si-PiN/signal/jobs/<command_name>.out
-error = /.../work/HPK-Si-PiN/signal/jobs/<command_name>.err
-log = /.../work/HPK-Si-PiN/signal/jobs/<command_name>.log
+executable = /.../examples/HPK-Si-PiN/signal/jobs/<command_name>.job
+output = /.../examples/HPK-Si-PiN/signal/jobs/<command_name>.out
+error = /.../examples/HPK-Si-PiN/signal/jobs/<command_name>.err
+log = /.../examples/HPK-Si-PiN/signal/jobs/<command_name>.log
 request_memory = 16000
 getenv = True
 +JobFlavour = "workday"
@@ -149,7 +149,7 @@ not starting the command again: <depth> starts deep, as many as the slices of th
 not starting raser ...: 8 starts deep
 ```
 
-The first line indicates that all `4` attempts (each `30 s` apart) returned non-zero, commonly because another job held the lock or the worker node lacked the runtime environment or scheduler client. The last two lines indicate that automatic relaunch reached its nesting depth limit (the number of stages in the chain for this experiment's command, or `8` levels for external waiting commands), so the program stopped intentionally to prevent cyclic submission. Check the output below each `starting the command again: raser ...` in `.out`/`.err` under `<project_root>/<first_command_word>/jobs/`; once prerequisite jobs complete, rerun the original command manually on a login node to continue.
+The first line indicates that all `4` attempts (each `30 s` apart) returned non-zero, commonly because another job held the lock or the worker node lacked the runtime environment or scheduler client. The last two lines indicate that automatic relaunch reached its nesting depth limit (the number of stages in the chain for this experiment's command, or `8` levels for external waiting commands), so the program stopped intentionally to prevent cyclic submission. Check the output below each `starting the command again: raser ...` in `.out`/`.err` under `<experiment>/jobs/`; once prerequisite jobs complete, rerun the original command manually on a login node to continue.
 
 ### Resuming After Interruption
 
@@ -182,7 +182,7 @@ Terminal notices for each situation are shown below. `<location>` at the start o
   <location>: job 0 (123456) is no more on the cluster: it failed and is submitted again
   ```
 
-  The scheduler confirmed that the job is no longer on the cluster while it remains unfinished. The program deleted the stale submission record and resubmitted it; the resubmitted job still reuses completed upstream nodes. Check the previous job's `.out`/`.err` under `<project_root>/<first_command_word>/jobs/` to diagnose the failure (for example, raise `-mem` if it was killed for exceeding memory).
+  The scheduler confirmed that the job is no longer on the cluster while it remains unfinished. The program deleted the stale submission record and resubmitted it; the resubmitted job still reuses completed upstream nodes. Check the previous job's `.out`/`.err` under `<experiment>/jobs/` to diagnose the failure (for example, raise `-mem` if it was killed for exceeding memory).
 
 - **Scheduler cannot be queried**:
 
@@ -299,7 +299,7 @@ For each scan point, execution proceeds in the following order:
 ### Module and Function Responsibilities
 
 - `src/raser/lifecycle/jobs.py`: Plan construction for indexed jobs, trailing CLI option stripping, and local/cluster batch dispatch. `command_tail` strips the command prefix, `--batch`/`--dry-run`, and specified options; `plan_indexed_jobs` validates job count and memory tier to build `IndexedJobPlan`; `_run_local_job` and `last_line` handle subprocess execution, dual terminal/log writing, and extracting Python exception summaries while skipping trailing C++ lines; `run_indexed_jobs` submits serially to the cluster via `scheduler.main` or executes locally in parallel via `ProcessPoolExecutor` according to `use_cluster`, summarizing failed jobs.
-- `src/raser/lifecycle/scheduler.py`: Cluster job directory resolution, script generation, scheduler submission, and live status querying. `job_dir` resolves `<project_root>/<destination_subfolder>/jobs/`; `plan_job` builds a `ClusterJobPlan` for `hep_sub` or HTCondor (including `200`-byte script name truncation and memory conversion); `worker_script` and `gen_job` generate `0o755` bash scripts that strip X11 variables and container binds and export `RASER_CLUSTER_JOB=1`; `submit_job` writes to the host queue `RASER_SUBMIT_QUEUE` or invokes the scheduler and parses the cluster job ID; `main` coordinates planning, previewing, writing, and submission; `job_alive` queries whether a job is still present via `hep_q` or `condor_q`; `run_cmd` provides generic external command preview and execution.
+- `src/raser/lifecycle/scheduler.py`: Cluster job directory resolution, script generation, scheduler submission, and live status querying. `job_dir` resolves `<experiment>/jobs/`; `plan_job` builds a `ClusterJobPlan` for `hep_sub` or HTCondor (including `200`-byte script name truncation and memory conversion); `worker_script` and `gen_job` generate `0o755` bash scripts that strip X11 variables and container binds and export `RASER_CLUSTER_JOB=1`; `submit_job` writes to the host queue `RASER_SUBMIT_QUEUE` or invokes the scheduler and parses the cluster job ID; `main` coordinates planning, previewing, writing, and submission; `job_alive` queries whether a job is still present via `hep_q` or `condor_q`; `run_cmd` provides generic external command preview and execution.
 - `src/raser/lifecycle/workflow.py` (job scheduling, locking, logging, and resume portion): `Running` and `_lock` implement non-blocking file locking; `_make_shared` and `make_shared` deduplicate and trigger missing device field solves; `_start`, `_logged` (`_Both`), and `_own_process` implement three-way launching; `_run_job` executes a single job and prints `JOB_ENDED`; `_note_submitted` and `_not_submitted` manage atomic submission-record writes and login-node resubmission decisions; `_start_again`, `_run_again`, and `waited_for_by` implement automatic cluster relaunch and external waiting lists.
 
 ### Core Data Structures
@@ -340,16 +340,16 @@ The only job and cluster parameters configurable by users are the command-line o
 | `RASER_CLUSTER_JOB` | Unset | None | Automatically exported as `"1"` by cluster job scripts to indicate execution on a cluster worker node; enables automatic resume after job completion and skips jobs with existing submission records; normally set automatically by the program |
 | `RASER_RESUBMIT_DEPTH` | `"0"` | levels | Current recursion depth of automatic cluster command relaunches, incremented by `1` per level; normally set automatically by the program |
 
-When dispatching jobs, the main command also passes a hidden internal option `--job-index <job_index>`.
+When dispatching jobs, the main command also passes a hidden internal option `--job-index <job>`.
 
 ### Files Read and Written
 
 - **Nodes**: Jobs write each stage's results into `<experiment>/nodes/<stage>/<node_id>/`; half-written nodes carry a `.part` suffix and are renamed to their final names upon completion. Each node is locked individually. See [Slices and Reruns](slices.md) for nodes and `node.json`.
 - **Job logs**: One plain-text log per job recording stdout and stderr (current-process mode contains only Python-layer output and tracebacks). After finishing all requested stages, the job prints `raser: the job ran its slices: <comma-separated stage names>` at the end; on local job failure, `jobs.last_line` reads the summary from it.
 - **Submission records**: JSON written after direct cluster submission obtains a job ID, containing two string fields: `"job"` (cluster job ID) and `"time"` (local time formatted as `YYYY-MM-DD HH:MM:SS`). Written first to `<record_name>.<pid>.part` in the same directory, atomically placed via `os.link`, and `.part` is then removed. Deleted once the corresponding stage finishes or the login node confirms the job has left the cluster.
-- **`<project_root>/<first_command_word>/jobs/<command_name>.job`**: UTF-8 executable bash script (mode `0o755`) written by `scheduler.gen_job`. It clears X11 environment variables and container binds, exports `RASER_CLUSTER_JOB=1`, changes directory and activates the environment according to source-tree or package-install mode, and executes `raser <job_command>`.
-- **`<project_root>/<first_command_word>/jobs/<command_name>.sub`**: UTF-8 HTCondor submission description written by `scheduler.main` only when `RASER_SCHEDULER=condor`, recording absolute paths for `executable`, `output`, `error`, and `log`, memory request `request_memory` (in $\text{MB}$), `getenv = True`, `+JobFlavour`, and `queue`.
-- **`<project_root>/<first_command_word>/jobs/<command_name>.out`, `.err` (and `.log`)**: Cluster job stdout, stderr, and scheduler event logs (plain text). `hep_sub` writes `.out`/`.err` carrying the cluster job ID under `<jobs_dir>` via `-o`/`-e`; `condor` writes `<command_name>.out`, `<command_name>.err`, and scheduler log `<command_name>.log` as specified in `.sub`.
+- **`<experiment>/jobs/<command_name>.job`**: UTF-8 executable bash script (mode `0o755`) written by `scheduler.gen_job`. It clears X11 environment variables and container binds, exports `RASER_CLUSTER_JOB=1`, changes directory and activates the environment according to source-tree or package-install mode, and executes `raser <job_command>`.
+- **`<experiment>/jobs/<command_name>.sub`**: UTF-8 HTCondor submission description written by `scheduler.main` only when `RASER_SCHEDULER=condor`, recording absolute paths for `executable`, `output`, `error`, and `log`, memory request `request_memory` (in $\text{MB}$), `getenv = True`, `+JobFlavour`, and `queue`.
+- **`<experiment>/jobs/<command_name>.out`, `.err` (and `.log`)**: Cluster job stdout, stderr, and scheduler event logs (plain text). `hep_sub` writes `.out`/`.err` carrying the cluster job ID under `<jobs_dir>` via `-o`/`-e`; `condor` writes `<command_name>.out`, `<command_name>.err`, and scheduler log `<command_name>.log` as specified in `.sub`.
 - **Queue file pointed to by `RASER_SUBMIT_QUEUE`**: UTF-8 text appended by `scheduler.submit_job`, one `shlex.join`-escaped scheduler submission command per line, submitted line by line by the host `raser` wrapper after the container exits.
 
 See [Experiments, Scan Points, and Seeds](experiments.md) and [Slices and Reruns](slices.md) for `config.json` and `points.json`.

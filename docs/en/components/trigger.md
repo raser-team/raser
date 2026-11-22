@@ -6,7 +6,7 @@ When looking up a component, the project folder's own component takes priority; 
 
 ## Component File
 
-One component file describes one trigger device; its filename is the component name, selected by name in the `trigger` section of the experiment's `config.json`. Coincidence triggers requiring multiple devices to cross threshold simultaneously (such as [`timeres`](../bench/timeres.md)) also specify their coincidence conditions in the trigger component.
+One component file describes one trigger device; its filename is the component name, selected by name via `device` in the `trigger` section of the experiment's `config.json`. Coincidence triggers requiring multiple devices to cross threshold simultaneously (such as [`timeres`](../bench/timeres.md)) also specify their coincidence conditions in the trigger component.
 
 ## Key Meanings
 
@@ -15,9 +15,9 @@ A trigger component sets the following categories of quantities:
 - **Amplitude threshold**: events whose waveform crosses the threshold are recorded, and those that do not are discarded (for example, the `HPK-Si-PiN` example; see [Trigger Stage](../stages/trigger.md#amplitude-threshold-triggering)).
 - **Coincidence condition**: which devices must all cross the amplitude threshold in the same event for that event to be recorded (for example, the two-device coincidence in `timeres`).
 
-Whether an event is recorded is determined by the trigger conditions here; to adjust the trigger threshold, change the trigger condition. `threshold` and `amplitude_threshold` in the [`reconstruction`](../stages/reconstruction.md) section are reconstruction thresholds acting on events that have already been recorded: `threshold` is used for threshold-crossing timing, and `amplitude_threshold` is used only to find cluster seeds.
+Whether an event is recorded is determined by the trigger conditions here; to adjust the trigger threshold, change the trigger condition. `reconstruction.threshold` and `reconstruction.amplitude_threshold` in the [`reconstruction`](../stages/reconstruction.md) section are reconstruction thresholds acting on events that have already been recorded: `reconstruction.threshold` is used for threshold-crossing timing; `reconstruction.amplitude_threshold` is the amplitude threshold for cluster seed channels, and recorded events in which a seed is found are marked `selected`.
 
-Quantities inside a component are addressed as "section.component.key": those of a standalone trigger device are written `trigger.<component_name>.<key>`, modified individually with `--set trigger.<component_name>.<key>=<value>` or scanned with `--scan trigger.<component_name>.<key>=<value1>,<value2>`. For an oscilloscope that also handles triggering, its trigger conditions belong to its component in the `digitizer` section and are written `digitizer.MXR608A.<key>` (see [Digitizer Components](digitizer.md#key-meanings)). Settings of the stage itself are described in [Trigger Stage](../stages/trigger.md#settings).
+`trigger.device` is a slot, and quantities inside a component are addressed as `"section.slot.key"`: those of a standalone trigger device are written `trigger.device.<key>`, modified individually with `--set trigger.device.<key>=<value>` or scanned with `--scan trigger.device.<key>=<value1>,<value2>`. For an oscilloscope that also handles triggering, its trigger conditions live in the `digitizer.device` slot and are written `digitizer.device.<key>`, for example `digitizer.device.trigger_level_V` (see [Digitizer Components](digitizer.md#key-meanings)). `name` cannot be modified with `--set` or `--scan`; to swap the device, write `--set trigger.device=<component_name>`, and to scan devices, write `--scan trigger.device=<component_name1>,<component_name2>`, which replaces the entire slot with that component file and drops any previously overridden keys. Settings of the stage itself are described in [Trigger Stage](../stages/trigger.md#settings).
 
 ## How the Program Uses the Component
 

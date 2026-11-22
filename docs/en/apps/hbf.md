@@ -6,7 +6,7 @@
 
 In laser- or proton-beam-driven aneutronic hydrogen–boron fusion ($\text{p} + {}^{11}\text{B} \to 3\alpha + 8.68\ \text{MeV}$) experiments, wide-bandgap silicon carbide (4H-SiC) detectors—resistant to strong electromagnetic pulses, radiation-hard, and visible-blind—are arranged around the target chamber. Using the time-of-flight (ToF) method together with pixelated spatial readout, they simultaneously measure the arrival times and angular flux distributions of multi-$\text{MeV}$ fusion $\alpha$ particles to characterize fusion yield and energy spectra.
 
-In RASER's `hbf` design, $\alpha$ particles produced by the fusion reaction (with main-peak kinetic energies of roughly $2.9\ \text{MeV}$ to $4.0\ \text{MeV}$) travel from the fusion target source toward a SiC AC-LGAD pixel device at distance $L_{\text{ToF}}$. The $\alpha$-particle hit time $t_{\text{hit}}$ and the particle flux $\Phi_{i_x, i_y}(t)$ within time bin $[t, t + \Delta t]$ measured by pixel $(i_x, i_y)$ are:
+In RASER's `hbf`, $\alpha$ particles produced by the fusion reaction (with main-peak kinetic energies of roughly $2.9\ \text{MeV}$ to $4.0\ \text{MeV}$) travel from the fusion target source toward a SiC AC-LGAD pixel device at distance $L_{\text{ToF}}$. The $\alpha$-particle hit time $t_{\text{hit}}$ and the particle flux $\Phi_{i_x, i_y}(t)$ within time bin $[t, t + \Delta t]$ measured by pixel $(i_x, i_y)$ are:
 
 $$\text{p} + {}^{11}\text{B} \longrightarrow 3\,{}^{4}\text{He} + 8.68\ \text{MeV}, \qquad t_{\text{hit}} = t_{0} + L_{\text{ToF}}\sqrt{\frac{m_{\alpha}}{2 E_{\alpha}}}, \qquad \Phi_{i_x, i_y}(t) = \frac{N_{i_x, i_y}(t,\, t + \Delta t)}{p_x p_y \times 10^{-8}\,\Delta t} \tag{1}$$
 
@@ -26,13 +26,13 @@ Avalanche multiplication in the SiC AC-LGAD device is calculated by `CalCurrentG
 
 ### Stages
 
-- [`field`](../stages/field.md): solves or reuses the electric field, gain-layer profile, and weighting field of the SiC AC-LGAD pixel device at the operating bias, stored under `work/<device>/field/`.
+- [`field`](../stages/field.md): reuses the field node containing the electric field, gain-layer profile, and weighting field of the SiC AC-LGAD pixel device at the operating bias; if no field is found, it is solved before jobs begin and stored in `work/<device>/field/<node>/`.
 - [`deposit`](../stages/deposit.md): uses Geant4 to simulate energy deposition and electron-hole pair generation near the entrance surface of the SiC AC-LGAD pixel device by $\alpha$ particles emitted from the hydrogen–boron fusion source in the target-chamber geometry.
 - [`current`](../stages/current.md): simulates electron and hole drift and `"Hatakeyama"` avalanche multiplication in the SiC multiplication field, computing the induced current in each cell.
 - [`readout`](../stages/readout.md): feeds the induced currents into the 2D resistive-layer and AC-coupling capacitance grid (`device_grid`) of the AC-LGAD and the front-end amplifier chain to solve output voltage waveforms for each pixel channel.
 - [`digitizer`](../stages/digitizer.md) and [`trigger`](../stages/trigger.md): performs digitization sampling/quantization and threshold-crossing trigger selection on each pixel channel's waveform.
-- [`reconstruction`](../stages/reconstruction.md): extracts arrival time (`ToA`, `CFD`), amplitude, and pixel cluster position for each hit from the triggered pixel waveforms.
-- [`analysis`](../stages/analysis.md): aggregates all events and computes and plots the $\alpha$-particle hit-time spectrum and 2D pixel flux distribution under `work/hbf/analysis/`.
+- [`reconstruction`](../stages/reconstruction.md): reads the events recorded by `trigger` from `digitizer.h5`, converts the quantized codes back to voltage ($\text{V}$), and extracts arrival time (`ToA`, `CFD`), amplitude, and pixel cluster position for each hit from the pixel waveforms.
+- [`analysis`](../stages/analysis.md): Limitation: `analysis` currently only aggregates single-electrode results; multi-electrode and multi-position statistics (such as telescope residuals and per-pad summaries for cflm) are not yet implemented.
 
 ### Components
 
@@ -42,36 +42,56 @@ Avalanche multiplication in the SiC AC-LGAD device is calculated by `CalCurrentG
 
 ## Usage and Configuration
 
-Following the top-level design ([Command-Line Interface](../cli.md#commands)), run the `hbf` application directly, or use `--set` and `--scan` to scan device bias voltage and resistive-layer sheet resistance:
+Run the `hbf` application directly, or use `--set` and `--scan` to scan device bias voltage and resistive-layer sheet resistance (the device is specified in `config.json` and can serve as a scan axis; see [Command-Line Interface](../cli.md#commands) for CLI usage):
 
 ```bash
 raser hbf
 raser hbf --scan field.voltage=400,500
 ```
 
-Experiment configuration is written in `work/hbf/config.json`, sectioned by stage. This scenario requires three types of components: a SiC AC-LGAD pixel device (detector component), a fusion α-particle source, and a target-chamber-to-device flight-distance setup (both energy deposition components, selected in the `deposit` section).
+Experiment configuration is written in `work/hbf/config.json`, sectioned by stage. This scenario requires three types of components: a SiC AC-LGAD pixel device (detector component), a fusion α-particle source `fusion/pB11_alpha`, and a target-chamber-to-device flight-distance setup `target_chamber` (both energy deposition components, selected in the `deposit` section). Only the sections relevant to this page are excerpted below; `examples/hbf/config.json` specifies all eight sections in full.
 
-The user-configurable keys under this design are listed below:
+```json
+{
+  "workflow": "hbf",
+  "field": {
+    "voltage": null,
+    "irradiation_flux": null
+  },
+  "deposit": {
+    "source": "fusion/pB11_alpha",
+    "g4setup": "target_chamber"
+  },
+  "readout": {
+    "amplifier": "SantaCruz+Gali52+Termination50",
+    "sheet_resistance": null
+  },
+  "reconstruction": {
+    "threshold": 10.0,
+    "amplitude_threshold": 10.0
+  }
+}
+```
 
-| Section.Key | Default (Design) | Unit | Meaning |
+The user-configurable keys are listed below. "Value in Example" lists the values written in `examples/hbf/config.json`; if a required key is missing from `config.json`, an error is raised naming the missing `section.key`:
+
+| Section.Key | Value in Example | Unit | Meaning |
 | --- | --- | --- | --- |
-| `field.voltage` | `bias.voltage` from the device file | $\text{V}$ | Reverse bias voltage of the SiC AC-LGAD pixel device |
-| `field.irradiation` | `None` | $\text{neq/cm}^2$ | Device irradiation fluence |
+| `field.voltage` | `null` (uses the bias voltage in the device file) | $\text{V}$ | Reverse bias voltage of the SiC AC-LGAD pixel device |
+| `field.irradiation_flux` | `null` (uses the irradiation fluence in the device file, or `0` if the device file has no irradiation block) | $\text{cm}^{-2}$ | Device irradiation fluence ($1\ \text{MeV}$ neutron-equivalent fluence) |
 | `readout.amplifier` | `"SantaCruz+Gali52+Termination50"` | None | Front-end amplifier and termination load component chain joined by `+` |
-| `readout.sheet_resistance` | `None` (`resistive_layer.sheet_resistance` from the device file) | $\Omega$ | Overrides the sheet resistance of the AC-LGAD resistive charge-sharing layer |
-| `reconstruction.threshold`, `reconstruction.amplitude_threshold` | `10.0`, `10.0` | $\text{mV}$ | Threshold-crossing timing threshold and cluster-seed amplitude threshold for pixel waveforms |
+| `readout.sheet_resistance` | `null` (uses the resistive-layer sheet resistance in the device file) | $\Omega$ | Overrides the sheet resistance of the AC-LGAD resistive charge-sharing layer |
+| `reconstruction.threshold`, `reconstruction.amplitude_threshold` | `10.0`, `10.0` | $\text{mV}$ | Threshold-crossing timing threshold and cluster-seed channel amplitude threshold for pixel waveforms (events recorded by `trigger` in which a seed is found are marked as `selected`) |
 
-All other underlying physical and numerical parameters (silicon carbide mean ionization energy `8.4 eV` and Fano factor `0.128`, default `"Das"` mobility model, drift time-window and time-step profiles, `ngspice` noise-analysis lower frequency bound `1e3 Hz` and temperature `27 °C`, and `200` reconstruction baseline sample points) are hardcoded in the `core` modules.
+All other underlying physical and numerical parameters (4H-SiC electron-hole pair creation energy `7.83 eV` (A. Gsponer et al., NIM A 1064 (2024) 169412, doi:10.1016/j.nima.2024.169412) and Fano factor `0.128` (S. K. Chaudhuri, K. J. Zavalla, K. C. Mandal, Appl. Phys. Lett. 102 (2013) 031109, doi:10.1063/1.4776703), drift time-window and time-step profiles, `ngspice` noise-analysis lower frequency bound `1e3 Hz` and temperature `27 °C`, and `200` reconstruction baseline sample points) are hardcoded in the `core` modules. Mobility models are registered by name and selected by name in the device file; 4H-SiC uses `"Das"` by default.
 
 ## Outputs
 
-Following the design in [Architecture Overview](../architecture.md#results), outputs are stored under `work/hbf/`: per-stage nodes are stored by input fingerprint under `work/hbf/nodes/<stage>/<node>/` (each carrying a `node.json`), symlink views named by scan point are placed at `work/hbf/points/<point>/<stage>`, the parameter table is written to `work/hbf/points.json`, the device shared field is stored under `work/<device>/field/`, and statistical summaries and trend plots are stored under `work/hbf/analysis/`.
+Results are stored under `work/hbf/` (see [Architecture Overview](../architecture.md#results) for the storage layout): per-stage nodes are stored by input fingerprint under `work/hbf/nodes/<stage>/<node>/` (each carrying a `node.json`; one node per job from `deposit` through `reconstruction`, and one node per scan point for `analysis`), symlink views named by scan point are placed at `work/hbf/points/<point>/<stage>/<job>` (with `points/<point>/field` and `points/<point>/analysis` each being a single symlink), the parameter table is written to `work/hbf/points.json`, the device field nodes are stored under `work/<device>/field/<node>/`, and cross-point statistical summaries and trend plots are stored under `work/hbf/analysis/`.
 
-The designed output data files and plots are listed below:
+The output data files and plots are listed below:
 
 | Filename | Writer Stage | Content | Unit |
 | --- | --- | --- | --- |
-| `deposit_<job>.h5`, `current_<job>.h5`, `readout_<job>.h5`, `reconstruction_<job>.h5` | `deposit` through `reconstruction` | Per-job $\alpha$-particle deposition steps, induced currents per AC-LGAD pixel, coupled readout voltage waveforms, and per-event pixel timing/amplitude reconstruction tables | Coordinates $\mu\text{m}$, time $\text{s}$, energy $\text{MeV}$, current $\text{A}$, voltage $\text{V}$ |
-| `analysis/[<point>/]result.json`, `events.h5` | [`analysis`](../stages/analysis.md) | Aggregated $\alpha$-particle hit-time statistics, total counts, mean flux across pixel channels, and per-event hit-time and pixel-coordinate tables | Time $\text{s}$, flux $\text{cm}^{-2}\cdot\text{s}^{-1}$ |
-| Hit-time distribution plot | [`analysis`](../stages/analysis.md) | Hit-time (ToF) distribution of fusion $\alpha$ particles on the SiC AC-LGAD pixel device | Horizontal axis hit time $\text{ns}$ or $\text{ps}$, vertical axis events |
-| Flux distribution plot | [`analysis`](../stages/analysis.md) | 2D spatial distribution of $\alpha$-particle flux across the pixel array | Horizontal and vertical axes pixel coordinates ($\mu\text{m}$ or pixel indices), color scale flux $\text{cm}^{-2}\cdot\text{s}^{-1}$ |
+| `deposit.h5`, `current.h5`, `readout.h5`, `digitizer.h5`, `trigger.h5`, `reconstruction.h5` | `deposit` through `reconstruction` | Per-job node $\alpha$-particle deposition steps, induced currents per AC-LGAD pixel, coupled readout voltage waveforms, digitized quantized codes (see [`stages/digitizer`](../stages/digitizer.md) for the format), trigger-recorded event numbers `event` (`int64`), and per-event pixel timing/amplitude reconstruction tables | Coordinates $\mu\text{m}$, time $\text{s}$, energy $\text{MeV}$, current $\text{A}$, voltage $\text{V}$ |
+| `points/<point>/analysis/` | [`analysis`](../stages/analysis.md) | Limitation: `analysis` currently only aggregates single-electrode results; multi-electrode and multi-position statistics (such as telescope residuals and per-pad summaries for cflm) are not yet implemented. | None |

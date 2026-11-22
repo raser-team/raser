@@ -1,20 +1,20 @@
 # Electronics Readout Stage (`stages/readout`)
 
-`src/raser/stages/readout.py` is the 4th stage, `readout`, of the eight-stage simulation chain, dispatched by `raser readout` (short alias `raser rdo`) or by benchmark and application experiment commands. It consumes electrode induced currents from the [Carrier Transport and Induced Current Stage (`stages/current`)](current.md) node and device circuit parameters supplied by the [Field Solving Stage (`stages/field`)](field.md) field node under `work/<device>/field/`. This stage calls [Field Solving and Loading (`core/field`)](../core/field.md) to assemble the device equivalent circuit, and calls [Electronics Readout (`core/readout`)](../core/readout.md) to load the front-end amplifier chain, determine the pulse edge direction of each output channel, solve the transient output voltage waveform for every event, superpose circuit thermal noise, and write the waveforms into its own node `nodes/readout/<node_id>/`. The output waveforms are passed downstream to the [Digitization Stage (`stages/digitizer`)](digitizer.md) to be converted into digital waveforms via oscilloscope or digitizer-board sampling and quantization.
+`src/raser/stages/readout.py` is the 4th stage, `readout`, of the eight-stage simulation chain, dispatched by `raser readout` (short alias `raser rdo`) or by benchmark and application experiment commands. It consumes electrode induced currents from the [Carrier Transport and Induced Current Stage (`stages/current`)](current.md) node and device circuit parameters supplied by the [Field Solving Stage (`stages/field`)](field.md) field node under `<device_project>/field/<node_id>/`. This stage calls [Field Solving and Loading (`core/field`)](../core/field.md) to assemble the device equivalent circuit, and calls [Electronics Readout (`core/readout`)](../core/readout.md) to load the front-end amplifier chain, determine the pulse edge direction of each output channel, solve the transient output voltage waveform for every event, superpose circuit thermal noise, and write the waveforms into its own node `nodes/readout/<node_id>/`. The output waveforms are passed downstream to the [Digitization Stage (`stages/digitizer`)](digitizer.md) to be converted into digital waveforms via oscilloscope or digitizer-board sampling and quantization.
 
 ## Behavior
 
 ### Device Equivalent Circuit and Front-End Waveforms
 
-This stage feeds the induced currents of each electrode into the device equivalent circuit and the front-end amplifier chain specified by `amplifier`, computes the voltage waveforms of each output channel for every event along with the device circuit parameter record and pulse edge directions (`"rising"` or `"falling"`), and writes them into the waveform file. `readout` has its own seed controlling NGspice noise sampling, which enters this stage's node fingerprint just like the seeds of `deposit` and `current`; only seeded runs draw and superpose independent time-domain thermal noise for each stored channel. For each event, only output channels whose maximum absolute voltage swing is at least `1e-3` times the event's largest channel swing are stored; events with no nonzero induced current store `0` channels.
+This stage feeds the induced currents of each electrode into the device equivalent circuit and the front-end amplifier chain specified by `amplifier`, computes the voltage waveforms of each output channel for every event along with the device circuit parameter record and pulse edge directions (`"rising"` or `"falling"`), and writes them into the waveform file. `readout` has its own seed, derived from the job's seed (see [Experiments, Scan Points, and Seeds](../lifecycle/experiments.md#seeds)), controlling NGspice noise sampling, which enters this stage's node fingerprint just like the seeds of `deposit` and `current`; only seeded runs draw and superpose independent time-domain thermal noise for each stored channel. For each event, only output channels whose maximum absolute voltage swing is at least `1e-3` times the event's largest channel swing are stored; events with no nonzero induced current store `0` channels.
 
 For example, scanning two bias voltages on the `HPK-Si-PiN` example:
 
 ```bash
-raser signal HPK-Si-PiN --scan field.voltage=100,200 -s 2 -evt 200 --seed 1
+raser signal HPK-Si-PiN --scan field.voltage=100,200 -s 2 --set deposit.events_per_job=200 --seed 1
 ```
 
-`HPK-Si-PiN` is a standard single-electrode planar device whose device file directly specifies `capacitance_pF = 3.44162280284` (`3.44162280284e-12 F`), with a default bias of `200 V`. At the `voltage_200` point using the default amplifier chain `SantaCruz+Gali52+Termination50`, inside the node pointed to by `points/voltage_200/readout`, job `0`'s waveform file attributes (`attrs`) are:
+When `HPK-Si-PiN` is not present under `work/`, the command runs in place under `examples/HPK-Si-PiN/`, and the experiment folder is `examples/HPK-Si-PiN/signal`. `HPK-Si-PiN` is a standard single-electrode planar device whose device file directly specifies `capacitance_pF = 3.44162280284` (`3.44162280284e-12 F`), with a bias of `200 V` in the device file. At the `voltage_200` point using the example amplifier chain `SantaCruz+Gali52+Termination50`, inside the node pointed to by `points/voltage_200/readout/0`, job `0`'s `readout.h5` attributes (`attrs`) are:
 
 - `dt = 5e-12` (in `s`)
 - `electrodes = ['top']`
@@ -39,17 +39,17 @@ The datasets (`datasets`) are:
 `raser readout` (or `raser rdo`) runs up through `readout` on the experiment in the current folder or at the given path, computing any missing `field`, `deposit`, and `current` nodes first:
 
 ```bash
-raser readout [path] [<source>] [options...]
-raser rdo [path] [<source>] [options...]
+raser readout [path]
+raser rdo [path]
 ```
 
 The amplifier chain is read only by `readout`. Adding a scan over two amplifier chains on the experiment above:
 
 ```bash
-raser rdo work/HPK-Si-PiN/signal --scan field.voltage=100,200 --scan readout.amplifier=SantaCruz+Gali52+Termination50,BroadBandCividec+Termination50 -s 2 --seed 1
+raser rdo examples/HPK-Si-PiN/signal --scan field.voltage=100,200 --scan readout.amplifier=SantaCruz+Gali52+Termination50,BroadBandCividec+Termination50 -s 2 --seed 1
 ```
 
-When a scan affects only downstream settings, upstream nodes are shared across points. `deposit` and `current` still have $1$ node per bias ($2$ nodes in total) with unchanged fingerprints and are reused directly; `readout` has two biases times two chains ($4$ nodes in total), of which the two for `SantaCruz+Gali52+Termination50` are already computed, so only the two for `BroadBandCividec+Termination50` are newly computed. Downstream `digitizer`, `trigger`, `reconstruction`, and `analysis` read `readout`'s node ID and therefore also have $4$ nodes each. Nodes are append-only, so reverting the chain points the view back to the original node. When the code version differs from the one recorded in the node, only a notice is printed and the result is still reused. Each node is locked individually, and a partially written node carries the `.part` suffix. See [Slices and Reruns](../lifecycle/slices.md) for node and reuse rules.
+When a scan affects only downstream settings, upstream nodes are shared across points. `deposit` and `current` still have $2$ jobs per bias ($4$ nodes in total) with unchanged fingerprints and are reused directly; `readout` has two biases times two chains with $2$ jobs per point ($8$ nodes in total), of which the $4$ for `SantaCruz+Gali52+Termination50` are already computed, so only the $4$ for `BroadBandCividec+Termination50` are newly computed. Downstream `digitizer`, `trigger`, and `reconstruction` read `readout`'s node ID and therefore also have $8$ nodes each; `analysis` has one node per scan point, for $4$ in total. Nodes are append-only, so reverting the chain points the view back to the original node. When the code version differs from the one recorded in the node, only a notice is printed and the result is still reused. Each node is locked individually, and a partially written node carries the `.part` suffix. See [Slices and Reruns](../lifecycle/slices.md) for node and reuse rules.
 
 ### Upstream Zero-Event Jobs and Empty Multi-Position Currents
 
@@ -65,15 +65,12 @@ When upstream `deposit` records `0` valid events in a job, `readout` skips that 
 
 | Constant name | Value | Unit | Definition location and meaning |
 | --- | --- | --- | --- |
-| `READOUT_DEFAULTS["amplifier"]` | `"SantaCruz+Gali52+Termination50"` | None | `src/raser/stages/chain.py`: default front-end amplifier and termination-load subcircuit chain |
-| `READOUT_DEFAULTS["sheet_resistance"]` | `None` | $\Omega$ | `src/raser/stages/chain.py`: default resistive-layer sheet-resistance override (`None` uses the device file value or the value derived from an Al-implanted layer) |
 | `STAGES["readout"]` | `("rdo", "the waveforms of the electronics, after all before them", ...)` | None | `src/raser/stages/stage_commands.py`: short alias, help string, and argument-mounting functions for `raser readout` |
-| `DEFAULT_MODE` | `"full"` (`devsim` installed) or `"fast"` (`devsim` not installed) | None | `src/raser/core/field/solved.py`: default solve mode used by `solved_field` when locating fields |
 | `PART_EDGE` | `1e-3` | dimensionless | `src/raser/core/readout/job.py`: relative maximum voltage-swing threshold used by `write_waveforms` to decide which output channels to save and to determine convergence of local strip-row circuit expansion |
 
 ### Parsing and Launching Stage Commands (`stage_commands.run`)
 
-1. **Mount arguments (`register`)**: Register `readout` (alias `rdo`), sequentially mount the options of the `deposit`, `current`, and `readout` stages along with shared run parameters, and set the execution entry point to `partial(run, "readout")`.
+1. **Mount arguments (`register`)**: Register `readout` (alias `rdo`), mount shared run parameters and this stage's command options (settings for upstream stages live in their own sections; see [Field Solving Stage (`stages/field`)](field.md), [Energy Deposition Stage (`stages/deposit`)](deposit.md), and [Carrier Transport and Induced Current Stage (`stages/current`)](current.md)), and set the execution entry point to `partial(run, "readout")`.
 2. **Resolve experiment**: Read `config.json` in the experiment folder to identify its experiment class.
 3. **Validate stage**: If the experiment class does not include the `readout` stage, exit with:
 
@@ -108,32 +105,32 @@ Follow the message to run `raser field <det_name>` first, then rerun.
      ValueError: <det_name> has no resistive layer to give a sheet resistance of <sheet_ohm> Ohm
      ```
 
-     Remove `--sheet-resistance` (and any corresponding configuration setting or scan) and rerun.
+     Remove the setting or scan for `readout.sheet_resistance` and rerun.
    - **Standard device**:
-     1. **Irradiation fluence**: Take `my_d.irradiation_flux` ($\text{cm}^{-2}$); if `irradiation` is supplied, use `float(irradiation)` instead.
-     2. **Locate field (`solved_field(my_d, my_d.voltage, flux)`)**: Filter the device's solved fields to those with irradiation fluence equal to `float(flux)` and solve mode equal to `DEFAULT_MODE`, compare device parameters with `changed`, and check that both potential and weighting field are solved at that bias. If missing, raises respectively:
+     1. **Irradiation fluence**: Take `my_d.irradiation_flux` ($\text{cm}^{-2}$); if `field.irradiation_flux` is not `null`, use `float(irradiation_flux)` instead.
+     2. **Locate field (`solved_field(my_d, my_d.voltage, flux, mode)`)**: Filter the device's solved fields to those with irradiation fluence equal to `float(flux)` and solve mode equal to `field.mode`, compare device parameters with `changed`, and check that both potential and weighting field are solved at that bias. If missing, raises respectively:
 
         ```text
-        FileNotFoundError: no <mode> field of <det_name> at the irradiation flux <flux> in <root> (flux and mode of those solved: <have>); solve it with `raser field <det_name> -bias <voltage> --mode <mode> -irr <flux>`
-        ValueError: the field in <folder> was solved for another device (<differing>); solve it again with `raser field <det_name> -bias <voltage> --mode <mode>`
-        FileNotFoundError: the field in <folder> is not solved at <voltage> V (solved at: <solved>); solve it with `raser field <det_name> -bias <voltage> --mode <mode>`
-        FileNotFoundError: the field in <folder> has no weighting field at <voltage> V (solved at: <solved>); solve it with `raser field <det_name> -bias <voltage> --mode <mode> -wf`
+        FileNotFoundError: no <mode> field of <det_name> at the irradiation flux <flux> in <root> (flux and mode of those solved: <have>); solve it with `raser field <det_name> --set field.voltage=<voltage> --set field.mode=<mode> --set field.irradiation_flux=<flux>`
+        ValueError: the field in <folder> was solved for another device (<differing>); solve it again with `raser field <det_name> --set field.voltage=<voltage> --set field.mode=<mode>`
+        FileNotFoundError: the field in <folder> is not solved at <voltage> V (solved at: <solved>); solve it with `raser field <det_name> --set field.voltage=<voltage> --set field.mode=<mode>`
+        FileNotFoundError: the field in <folder> has no weighting field at <voltage> V (solved at: <solved>); solve it with `raser field <det_name> --set field.voltage=<voltage> --set field.mode=<mode>` with the weighting field switched on in the field settings
         ```
 
-        The four errors indicate, respectively: missing field for that fluence and mode; field solved for previous device parameters; missing electric potential at that bias; missing weighting field at that bias. Run the command shown at the end of the error message.
+        The four errors indicate, respectively: missing field for that fluence and mode; field solved for previous device parameters; missing electric potential at that bias; missing weighting field at that bias. Run the command shown at the end of the error message; if the weighting field is missing, enable weighting-field solving in the `field` section (modify field settings with `--set field.<key>=<value>`).
      3. **Read circuit parameters from the field (`row, solved_f, undepleted = field_circuit(folder, my_d)`)**:
         - When `my_d.is_strip and len(my_d.read_out_contact) == 1 and my_d.read_ele_num > 1` (a periodic row of strips with a single repeated readout contact): read `weightingfield/<electrode>/Capacitance_<bias>V.json` as `row` and set `solved_f = None`. If missing, raises:
 
           ```text
-          FileNotFoundError: the field in <folder> has no capacitances between the strips of <det_name> at <voltage> V: <path> is missing, and the readout of a row of strips needs it. A field solved by raser stores it with its weighting field: `raser field <det_name> -wf`. A field imported from TCAD (-ext) does not store it yet, so the strips of an imported field cannot be read out
+          FileNotFoundError: the field in <folder> has no capacitances between the strips of <det_name> at <voltage> V: <path> is missing, and the readout of a row of strips needs it. A field solved by raser stores it with its weighting field: switch the weighting field on in the field settings. A field imported from TCAD does not store it yet, so the strips of an imported field cannot be read out
           ```
 
-          This file is written alongside DEVSIM weighting fields; run `raser field <det_name> -wf` to solve the weighting field with DEVSIM.
+          This file is written alongside DEVSIM weighting fields; enable weighting-field solving in the `field` section (modify field settings with `--set field.<key>=<value>`) to solve the weighting field with DEVSIM.
         - When `row is None`: if capacitance has been solved at that bias, read `specific_capacitance_pF * area_factor * 1e-12` ($\text{F}$) from `<float(voltage)>V.cv.json` as `solved_f`; otherwise `solved_f = None`.
         - When `int(my_d.dimension) == 1`: `solved_undepleted(Path(folder), my_d.voltage)` reads `<float(voltage)>V.undepleted.json`. If the undepleted bulk is not stored for that bias, raises:
 
           ```text
-          FileNotFoundError: the field in <folder> has no undepleted bulk at <voltage> V (solved at: <solved>): it is stored for a field in one dimension; solve it with `raser field <det_name> -bias <voltage>`
+          FileNotFoundError: the field in <folder> has no undepleted bulk at <voltage> V (solved at: <solved>): it is stored for a field in one dimension; solve it with `raser field <det_name> --set field.voltage=<voltage>`
           ```
 
      4. **Assemble circuit (`circuit, values = device_circuit(my_d, electrodes, solved_f, row=row, solved_undepleted=undepleted)`)**:
@@ -157,10 +154,10 @@ Follow the message to run `raser field <det_name>` first, then rerun.
           ValueError: <det_name> has no capacitance: its device file gives none, its field was not asked for one, and the device has no estimate
           ```
 
-          Add `capacitance_pF` to the device file, or solve capacitance with `raser field -cv`.
+          Add `capacitance_pF` to the device file, or enable CV solving in the `field` section (modify field settings with `--set field.<key>=<value>`) to solve capacitance.
         - When `row` is not `None`, requires `row["unit"] == "F/cm"`, otherwise raises `ValueError: The capacitances of the row are in <unit>`. Once verified, scales nearest-neighbor inter-strip capacitances by strip length `l_y * 1e-4` ($\text{cm}$), assembles `row_of_electrodes`, and defines `part_of(hit, margin) = part_of_row(my_d, electrodes, hit, margin, solved_f, row)`.
 4. **Amplifier chain and pulse edge directions**:
-   - `chain = named_chain(str(kwargs["amplifier"]))` splits `amplifier` on `"+"` and loads each `afe/<part>.cir` sequentially from component directories (see [Front-End Readout Circuit Components (`components/readout`)](../components/readout.md) for subcircuit syntax and built-in components). If missing, raises `FileNotFoundError: Cannot find RASER component afe/<part>.cir:`; check the spelling of the subcircuit name or confirm the file is placed under `afe/`.
+   - `chain = named_chain(str(kwargs["amplifier"]))` splits `amplifier` on `"+"` and loads each `readout/<part>.cir` sequentially from component directories (see [Front-End Readout Circuit Components (`components/readout`)](../components/readout.md) for subcircuit syntax and built-in components). If missing, raises `FileNotFoundError: Cannot find RASER component readout/<part>.cir:`; check the spelling of the subcircuit name or confirm the file is placed under `readout/`.
    - `pulse_edges(my_d, chain, list(circuit.outputs))` returns the pulse edge directions matching `circuit.outputs` one-to-one.
 5. **Solve and write (`write_waveforms`)**: Removes any existing waveform file at the same path, then solves transient voltages event by event, superposes time-domain thermal noise according to the seed, drops channels whose maximum absolute swing is `< 1e-3 * largest`, and writes the result.
 
@@ -169,7 +166,7 @@ Follow the message to run `raser field <det_name>` first, then rerun.
 ### Source File Responsibilities
 
 - `src/raser/stages/readout.py`: `waveforms(kwargs, position=None)` performs the multi-position pre-check, constructs `Detector` and electrode names, assembles the device equivalent circuit according to whether `resistive_layer` is present, loads the front-end subcircuit chain, determines pulse edge directions, and calls `write_waveforms`.
-- `src/raser/stages/chain.py`: Defines `READOUT_DEFAULTS`, argument registration function `readout_arguments` (`-amp`, `--sheet-resistance`), and lazy-import entry point `_waveforms` for the `readout` module.
+- `src/raser/stages/chain.py`: Defines the lazy-import entry point `_waveforms` for the `readout` module.
 - `src/raser/stages/stage_commands.py`: Registers stage commands; resolves the target experiment, verifies it includes the target stage, sets the cutoff stage, and switches into the experiment folder to run.
 - `src/raser/stages/files.py`: Provides input and output file paths for each stage in the current job.
 
@@ -183,7 +180,7 @@ Follow the message to run `raser field <det_name>` first, then rerun.
 | `"_files"` | `dict` | Device-key dependent | Component file contents; `_files["device"]` is the device configuration dictionary already updated with the run's bias voltage |
 | `"amplifier"` | `str` | None | Front-end amplifier and termination-load subcircuit chain joined with `"+"` |
 | `"sheet_resistance"` | `float \| None` | $\Omega$ | Sheet-resistance override for resistive-layer devices |
-| `"irradiation"` | `float \| None` | $\text{cm}^{-2}$ | Irradiation fluence overriding device `irradiation_flux` during field lookup |
+| `"irradiation_flux"` | `float \| None` | $\text{cm}^{-2}$ | Irradiation fluence of this run (`field.irradiation_flux`, $1\ \text{MeV}$ neutron-equivalent fluence); uses `my_d.irradiation_flux` when `None` |
 | `"seed"` | `int \| None` | None | Random seed for thermal noise; `None` in unseeded workflows (such as `tct`), skipping noise addition |
 
 `values` returned when assembling the device equivalent circuit (serialized into the `device_circuit` attribute of the waveform file):
@@ -203,28 +200,27 @@ Follow the message to run `raser field <det_name>` first, then rerun.
 
 ### Options and Configuration Keys
 
-Only the options and keys listed below are configurable in this stage; default field-lookup mode `DEFAULT_MODE`, relative swing threshold `PART_EDGE = 1e-3` for saving channels, and the frequency band and temperature of frequency-domain noise analysis are hardcoded. `--set` and `--scan` use `"section.key"` addresses, such as `--set readout.amplifier=BroadBandCividec+Termination50`. Shared run parameters (`-s`, `--seed`, `--same-seeds`, `--set`, `--scan`, `-b`, `-t`, `--dry-run`) are documented in [Command-Line Interface (`raser`)](../cli.md) and [Experiments, Scan Points, and Seeds](../lifecycle/experiments.md).
+Only the keys listed below are configurable in this stage; the relative swing threshold `PART_EDGE = 1e-3` for saving channels, and the frequency band and temperature of frequency-domain noise analysis are hardcoded. `--set` and `--scan` use `"section.key"` addresses, such as `--set readout.amplifier=BroadBandCividec+Termination50`. Shared run parameters (`-s`, `--seed`, `--same-seeds`, `--set`, `--scan`, `-b`, `-t`, `-mem`, `--dry-run`) are documented in [Command-Line Interface (`raser`)](../cli.md) and [Experiments, Scan Points, and Seeds](../lifecycle/experiments.md); settings for upstream stages live in their own sections—see [Energy Deposition Stage (`stages/deposit`)](deposit.md) and [Carrier Transport and Induced Current Stage (`stages/current`)](current.md). The "Value in example" column for configuration keys shows what `examples/HPK-Si-PiN/signal/config.json` sets; if `config.json` is missing a required key, an error is raised naming the missing `"section.key"`. Rows for device file keys show how they are written in the device file.
 
-| Option or key | Default | Unit | Meaning |
+| Section.key | Value in example | Unit | Meaning |
 | --- | --- | --- | --- |
 | `[path]` | Current folder | None | Experiment folder |
-| `-amp`, `--amplifier` (`readout.amplifier`) | `"SantaCruz+Gali52+Termination50"` | None | Chain of `afe/<name>.cir` subcircuits joined with `"+"`, where leading entries are two-port amplifier stages and the final entry is a one-port load |
-| `--sheet-resistance` (`readout.sheet_resistance`) | `None` | $\Omega$ | Overrides sheet resistance of a resistive-layer device; passing it for a standard device raises `ValueError` |
-| `-vol`, `--voltage` (`field.voltage`) | Device file `bias.voltage` | $\text{V}$ | Belongs to the `field` section: bias voltage used to locate the field and determine collected charge polarity |
-| `-irr`, `--irradiation` (`field` section, see the `field` page) | Device file `irradiation.irradiation_flux`, defaulting to `0` | $\text{cm}^{-2}$ | Belongs to the `field` section: irradiation fluence used during field lookup |
-| `source`, `--g4setup`, `-evt`, `-gen`, `--generated-limit`, `--edep-min`, `--edep-max`, `deposit.plots`, `current.plots`, `-g4_vis`, `--g4-vis-driver` | See the `deposit` and `current` pages | Option-dependent | Upstream options mounted alongside `raser readout`; changing them triggers recomputation of the corresponding upstream stages and this stage |
+| `readout.amplifier` | `"SantaCruz+Gali52+Termination50"` | None | Chain of `readout/<name>.cir` subcircuits joined with `"+"`, where leading entries are two-port amplifier stages and the final entry is a one-port load |
+| `readout.sheet_resistance` | `null` (uses the resistive-layer sheet resistance from the device file) | $\Omega$ | Overrides sheet resistance of a resistive-layer device; passing it for a standard device raises `ValueError` |
+| `field.voltage` | `200.0` (uses the bias from the device file when set to `null`) | $\text{V}$ | Belongs to the `field` section: bias voltage used to locate the field and determine collected charge polarity |
+| `field.irradiation_flux` | `null` (uses the irradiation fluence from the device file, or `0` if the device file has no irradiation block) | $\text{cm}^{-2}$ | Belongs to the `field` section: irradiation fluence used during field lookup |
 | Device file keys `read_out_contact`, `read_ele_num`, `electrodes`, `l_y`, `p_x`, `p_y`, `x_ele_num`, `y_ele_num` | See the `components/device` page | $\mu\text{m}$ / count | Define readout electrode names, layout (`"pad"`, `"strip"`, `"pixel"`), strip length, and mesh cell dimensions |
 | Device file key `capacitance_pF` | None (optional) | $\text{pF}$ | Directly specified single-electrode depleted junction capacitance (or resistive-layer cell capacitance), taking precedence over field capacitance and parallel-plate estimates |
-| Device file key `bias_resistance_ohm` | `None` | $\Omega$ | Per-electrode bias resistance of a standard device; required whenever `coupling_capacitance_pF` is provided |
-| Device file key `coupling_capacitance_pF` | `None` | $\text{pF}$ | Per-electrode AC coupling capacitance of a standard device |
-| Device file keys `undepleted_resistance_ohm`, `undepleted_capacitance_pF` | `None`, `None` | $\Omega$, $\text{pF}$ | Parallel resistance and capacitance of the undepleted layer in a standard device; must be given as a pair, otherwise read from the field for 1D devices |
+| Device file key `bias_resistance_ohm` | Omitted (optional) | $\Omega$ | Per-electrode bias resistance of a standard device; required whenever `coupling_capacitance_pF` is provided |
+| Device file key `coupling_capacitance_pF` | Omitted (optional) | $\text{pF}$ | Per-electrode AC coupling capacitance of a standard device |
+| Device file keys `undepleted_resistance_ohm`, `undepleted_capacitance_pF` | Omitted (optional) | $\Omega$, $\text{pF}$ | Parallel resistance and capacitance of the undepleted layer in a standard device; must be given as a pair, otherwise read from the field for 1D devices |
 | Device file key `resistive_layer` | None (optional) | $\Omega$, $\text{cm}^{-2}$, $\mu\text{m}$, $^\circ\text{C}$ | Resistive-layer configuration block containing sheet resistance `sheet_resistance` (or Al-implantation parameters `implanted`, `thickness`, `anneal`), readout `strips` or `pads`, grounded contacts `grounded`, and optional dielectric `coupling` (`thickness`, `permittivity`) |
 
 ### Files Read and Written
 
-- **Read: circuit files in the `work/<device>/field/` field node** (`<V>V.cv.json`, `<V>V.undepleted.json`, `weightingfield/<electrode>/Capacitance_<bias>V.json`). Standard devices read junction capacitance, 1D undepleted-layer RC parameters, and strip-row inter-strip capacitances from these files; see [Field Solving and Loading (`core/field`)](../core/field.md) for formats.
-- **Read: current file in the `current` node**. Reads `electrodes`, `dt` ($\text{s}$), and per-event induced currents; see [Carrier Drift and Induced Current (`core/current`)](../core/current.md) for the format.
-- **Write: waveform file in `nodes/readout/<node_id>/`**. Written when upstream stages have recorded events and (in multi-position experiments) that position has a current file; any old file is removed first and events are appended one by one. See [Electronics Readout (`core/readout`)](../core/readout.md) for underlying I/O functions; HDF5 attributes and datasets are:
+- **Read: circuit files in the `<device_project>/field/<node_id>/` field node** (`<V>V.cv.json`, `<V>V.undepleted.json`, `weightingfield/<electrode>/Capacitance_<bias>V.json`). Standard devices read junction capacitance, 1D undepleted-layer RC parameters, and strip-row inter-strip capacitances from these files; see [Field Solving and Loading (`core/field`)](../core/field.md) for formats.
+- **Read: `current.h5` in the `current` node** (one `current.<position>.h5` per position in multi-position experiments). Reads `electrodes`, `dt` ($\text{s}$), and per-event induced currents; see [Carrier Drift and Induced Current (`core/current`)](../core/current.md) for the format.
+- **Write: `nodes/readout/<node_id>/readout.h5`** (one file `readout.<position>.h5` per position in the same node in multi-position experiments). Written when upstream stages have recorded events and (in multi-position experiments) that position has a current file; any old file is removed first and events are appended one by one. See [Electronics Readout (`core/readout`)](../core/readout.md) for underlying I/O functions; HDF5 attributes and datasets are:
 
   | Kind | Name | Shape and type | Unit | Meaning |
   | --- | --- | --- | --- | --- |
@@ -240,4 +236,4 @@ Only the options and keys listed below are configurable in this stage; default f
   | Dataset (`datasets`) | `voltage` | `(sum(stored * count),)`, `float64` (`gzip`-compressed) | $\text{V}$ | Bin-center output voltage flattened sequentially across events and stored channels, with `count` points per channel of an event |
 
 - **Write: `nodes/readout/<node_id>/node.json`**. Records this node's inputs along with the code version, runtime environment, and run status.
-- **Write: `points.json` and `points/<point>/readout`**. The parameter table records the `readout` node ID used by each point; the view symlink points to that node.
+- **Write: `points.json` and `points/<point>/readout/<job>`**. The parameter table records the `readout` node ID used by each point; the view symlink points to that node.

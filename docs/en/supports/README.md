@@ -6,17 +6,17 @@
 
 ### Workspace, Project, and Component Path Resolution (`paths`)
 
-Whether RASER is run from a source tree or as an installed package, CLI startup, experiment initialization, and component loading across stages all use `raser.supports.paths` to resolve the workspace root, active project root, and packaged app-private files, and to locate component files across a four-level priority order. When running the following scan command:
+Whether RASER is run from a source tree or as an installed package, CLI startup, experiment initialization, and component loading across stages all use `raser.supports.paths` to resolve the workspace root, active project root, and packaged files of benchmark and application classes, and to locate component files across a four-level priority order. When running the following scan command:
 
 ```bash
 raser signal HPK-Si-PiN --scan field.voltage=100,200 -s 2 --seed 1
 ```
 
-Before entering the subcommand, the CLI entry point calls `infer_project_root("HPK-Si-PiN")` and sets the path context via `project_root_context()`, so each layer resolves the following paths:
+Before entering the subcommand, the CLI entry point calls `infer_project_root("HPK-Si-PiN")` (resolving to `examples/HPK-Si-PiN/` when `HPK-Si-PiN` does not exist under `work/`) and sets the path context via `project_root_context()`, so each layer resolves the following paths:
 
 ```text
 work_root()           -> work/
-project_root()        -> work/HPK-Si-PiN/
+project_root()        -> examples/HPK-Si-PiN/
 component_file_path() -> src/raser/components/device/HPK-Si-PiN.json
                          src/raser/components/deposit/   source decay/Sr90, Geant4 setup device_alone
                          src/raser/components/readout/   SantaCruz, Gali52, Termination50
@@ -29,9 +29,9 @@ Components are grouped into folders by the stage that reads them: `device/` hold
 When stages and core modules construct output directories or remove old files under the active project, they validate relative path segments and deletion targets through `raser.supports.output`. If a path segment is an absolute path or contains `".."`, if the owner name is empty, or if a resolved deletion target lies outside `project_root()`, the operation aborts with `ValueError` before touching disk:
 
 ```text
-owned_path("field", "batch")  -> <project_root>/field/batch
-owned_path("field", "../out") -> ValueError: Output label must remain inside the project: ../out
-delete_file("/tmp/test.h5")   -> ValueError: File removal must remain inside the project: /tmp/test.h5
+owned_path("field", "<node_id>") -> <device_project>/field/<node_id>/
+owned_path("field", "../out")    -> ValueError: Output label must remain inside the project: ../out
+delete_file("/tmp/test.h5")      -> ValueError: File removal must remain inside the project: /tmp/test.h5
 ```
 
 ### Missing Dependency Catching and Reporting (`dependency`)
@@ -101,7 +101,7 @@ When the CLI entry point infers the project root from an input argument and temp
    - `len(path.parts) > 1` (multi-segment path);
    - `bool(path.suffix)` is true (has a file suffix).
 
-   If none of the three holds (for example, a plain device name `"HPK-Si-PiN"`), returns `work_root() / str(input_value)`, placing experiment folders under that project root. The round-6 lookup order checks `work/<name>/` first, then `examples/<name>/`, and finally `./<name>/`; see [Experiments, Scan Points, and Seeds](../lifecycle/experiments.md). If any condition holds, the input is treated as a path, `Path(input_value).expanduser()` is called to expand `~`, and execution proceeds to step 3.
+   If none of the three holds (a plain name, such as `"HPK-Si-PiN"` or `"bmos"`), looks up the project in order of `work/<name>/` (`work_root() / str(input_value)`), `examples/<name>/` (`REPO_ROOT / "examples" / str(input_value)` in a source tree), and `./<name>/` (`Path.cwd() / str(input_value)`), returning the first existing directory; if none of the three exists, exits with an error (use `raser new --from` to create a new project; see [Experiments, Scan Points, and Seeds](../lifecycle/experiments.md)). For example, `raser signal HPK-Si-PiN` resolves to `examples/HPK-Si-PiN/` when it does not exist under `work/`. If any condition holds, the input is treated as a path, `Path(input_value).expanduser()` is called to expand `~`, and execution proceeds to step 3.
 3. **Extracting the project root from a path input (`_project_root_from_path(path)`)**: Takes the path segment tuple `parts = path.parts`:
    - If `"components" in parts`, takes its first occurrence `index = parts.index("components")`; when `index > 0` (i.e., `"components"` appears after the first segment), returns the parent path preceding the first `"components"`, `Path(*parts[:index])`;
    - Otherwise checks `path.is_dir()`: if the path itself is an existing directory, returns `path`; in all other cases, returns its parent directory `path.parent`.
@@ -112,12 +112,12 @@ When the CLI entry point infers the project root from an input argument and temp
 
 ### Component Search Priority and File Lookup
 
-Component files and packaged app files are located in the following steps:
+Component files and packaged files of benchmark and application classes are located in the following steps:
 
 1. **Assembling and deduplicating search root directories (`component_roots(extra_roots=None)`)**:
    - Collects four tiers of directories into list `roots` in fixed order from highest to lowest priority:
      1. `project_path("components")`: the `components/` directory of the active project;
-     2. `_as_path_list(extra_roots)`: `[]` when `extra_roots` is `None`, `[Path(extra_roots)]` for a single `str | os.PathLike`, or item-by-item `Path` conversion for a list; calling `app_component_roots(app_name, *app_names)` passes each app's `app_component_root(name)` (i.e., `PACKAGE_ROOT / name / "components"`) as `extra_roots` to `component_roots()`;
+     2. `_as_path_list(extra_roots)`: `[]` when `extra_roots` is `None`, `[Path(extra_roots)]` for a single `str | os.PathLike`, or item-by-item `Path` conversion for a list; benchmark and application classes live in the sibling packages `raser_bench` (`src/raser_bench/`) and `raser_app` (`src/raser_app/`) alongside `raser`, and calling `app_component_roots(app_name, *app_names)` passes one or more benchmarks' or apps' `app_component_root(name)` (resolved from each package's own root, i.e., `<package_root>/<name>/components`) as `extra_roots` to `component_roots()`;
      3. `os.environ.get("RASER_COMPONENT_PATH", "")`: split by `os.pathsep` (`:` on Linux and macOS, `;` on Windows), dropping empty string segments and converting each remaining entry to `Path(path)`;
      4. `DEFAULT_COMPONENT_ROOT`: the package's built-in `PACKAGE_ROOT / "components"`.
    - Iterates over `roots`, deduplicating by string `key = str(root)` in set `seen` while preserving first appearance, and returns `deduped` (`list[Path]`).
@@ -140,17 +140,17 @@ Component files and packaged app files are located in the following steps:
      - Raises `IsADirectoryError: RASER <kind> input must be a file: <path>` when `path.exists()` is true but it is not a file (for example, a directory was passed), so the caller should point to a specific file instead;
      - Raises `FileNotFoundError: Cannot find RASER <kind> file: <path>` when `path.exists()` is false, indicating the file path should be checked.
    - If `name_or_path` is a plain component name, delegates to and returns `component_path(kind, str(name_or_path) + suffix)`; if not found, raises `component_path()`'s `FileNotFoundError` as in step 3.
-5. **Locating packaged app files (`app_file_path(app_name, filename)`)**: Constructs `path = PACKAGE_ROOT / app_name / filename`. Returns `path` when `path.exists()` is true; raises `FileNotFoundError: Cannot find RASER app file: <path>` if missing. This occurs when the app directory name or filename is wrong or the data file was not included in the installed package; verify spelling and confirm the file exists in the corresponding directory inside the package.
+5. **Locating packaged files of benchmark and application classes (`app_file_path(app_name, filename)`)**: Benchmark classes live in the `raser_bench` package (`src/raser_bench/`) and application classes live in the `raser_app` package (`src/raser_app/`), alongside `raser`, constructing `path = <package_root>/<name>/<filename>` from each package's own root. Returns `path` when `path.exists()` is true; raises `FileNotFoundError: Cannot find RASER app file: <path>` if missing. This occurs when the benchmark or app name or filename is wrong or the data file was not included in the installed package; verify spelling and confirm the file exists in the corresponding package directory.
 
 ### Module Work Paths and In-Project Output Boundary Protection
 
 `paths.py` and `output.py` derive module work directories and enforce directory-creation and file-deletion boundaries in the following steps:
 
 1. **Computing module work directory name and path (`module_work_name(current_file_path)`, `module_work_path(current_file_path, *labels)`)**:
-   - Resolves `current_file_path` to an absolute path `path = Path(current_file_path).resolve()` and computes its path relative to `PACKAGE_ROOT`, `relative = path.relative_to(PACKAGE_ROOT)`; if the file is outside `PACKAGE_ROOT` (raising `ValueError`), returns the filename stem `path.stem`;
-   - Takes `parts = relative.parts`: if `len(parts) >= 2` and the first segment satisfies `parts[0] in {"apps", "bench", "core"}`, returns the second segment `parts[1]` (such as `"field"` or `"current"`);
-   - If `parts` is non-empty and `parts[0] == "cli"`, returns `"cli"`;
-   - Otherwise returns `path.stem`;
+   - Resolves `current_file_path` to an absolute path `path = Path(current_file_path).resolve()`;
+   - If the file lies under the root directory of the `raser_bench` (`src/raser_bench/`) or `raser_app` (`src/raser_app/`) package, computes `relative` relative to that `<package_root>`: if it is under `<package_root>/<name>/...` (i.e., `len(relative.parts) >= 2`), returns `<name>` (`relative.parts[0]`, such as `"signal"` or `"bmos"`), otherwise returns `path.stem`;
+   - If the file lies under `PACKAGE_ROOT` (the `raser` package root), computes `relative = path.relative_to(PACKAGE_ROOT)` and takes `parts = relative.parts`: if `len(parts) >= 2` and `parts[0] == "core"`, returns the second segment `parts[1]` (such as `"field"` or `"current"`); if `parts` is non-empty and `parts[0] == "cli"`, returns `"cli"`; otherwise returns `path.stem`;
+   - If the file does not lie under any of the three package roots above, returns the filename stem `path.stem`;
    - `module_work_path(current_file_path, *labels)` returns `project_path(module_work_name(current_file_path), *labels)`.
 2. **Validating in-project relative path segments (`_relative_parts(parts)`)**: Converts each segment into string tuple `values = tuple(str(part) for part in parts)` and sets `path = Path(value)` for each entry. If `path.is_absolute()` is true or `".." in path.parts`, raises `ValueError: Output label must remain inside the project: <value>`. Output paths must stay within the project directory, so relative path segments inside the project must be used. Returns `values` once all checks pass.
 3. **Constructing an owned in-project path (`owned_path(owner, *parts)`)**:
@@ -206,7 +206,7 @@ Component files and packaged app files are located in the following steps:
 
 ### Source File Responsibilities
 
-- `src/raser/supports/paths.py`: defines `PACKAGE_ROOT`, `REPO_ROOT`, and `DEFAULT_COMPONENT_ROOT`; implements source tree detection (`source_tree`), workspace and project root resolution (`default_work_root`, `work_root`, `project_root`, `project_path`, `infer_project_root`), environment-variable context management (`project_root_context`, `_environment`), component and app file lookup (`component_roots`, `app_component_root`, `app_component_roots`, `app_file_path`, `component_candidates`, `component_path`, `optional_component_path`, `component_file_path`), and module work directory derivation (`module_work_name`, `module_work_path`).
+- `src/raser/supports/paths.py`: defines `PACKAGE_ROOT`, `REPO_ROOT`, and `DEFAULT_COMPONENT_ROOT`; implements source tree detection (`source_tree`), workspace and project root resolution (`default_work_root`, `work_root`, `project_root`, `project_path`, `infer_project_root`), environment-variable context management (`project_root_context`, `_environment`), component and benchmark/app packaged file lookup (`component_roots`, `app_component_root`, `app_component_roots`, `app_file_path`, `component_candidates`, `component_path`, `optional_component_path`, `component_file_path`), and module work directory derivation (`module_work_name`, `module_work_path`).
 - `src/raser/supports/output.py`: implements in-project relative path segment validation (`_relative_parts`), owned in-project path construction (`owned_path`), backward-compatible module output directory creation (`output`), on-demand directory creation (`create_path`), and project-root-bounded single-file deletion (`delete_file`).
 - `src/raser/supports/dependency.py`: defines the missing-dependency exception `MissingDependency`, the PyROOT module name set `ROOT_MODULES`, and the preconstructed exception instance `ROOT_MISSING`.
 - `src/raser/supports/process.py`: maintains the module-level cleanup callback list `_callbacks`, providing deduplicated registration `at_process_end` and LIFO cleanup `close`.
@@ -235,7 +235,7 @@ The only three environment variables users can set are listed in the table below
 | --- | --- | --- | --- |
 | `RASER_WORK_PATH` | Unset (falls back to `default_work_root()`: `<REPO_ROOT>/work` in a source tree, or `work` under the current working directory in package-install mode) | None | Workspace root directory path read by `work_root()`; when set, resolved directly as `Path(RASER_WORK_PATH)` |
 | `RASER_PROJECT_PATH` | Unset (`project_root()` falls back to `Path.cwd()`) | None | Active project root directory path read by `project_root()` and `infer_project_root()`; when set and non-empty, adopted directly by `infer_project_root()`; temporarily overridden inside `project_root_context()` and restored on exit |
-| `RASER_COMPONENT_PATH` | `""` | None | List of additional component search root directories read by `component_roots()`; multiple directories are separated by `os.pathsep` (`:` on Linux and macOS, `;` on Windows) with empty segments ignored; when `project_root_context()` receives an app list, each app's `components/` directory is prepended to this variable and the original value is restored on exit |
+| `RASER_COMPONENT_PATH` | `""` | None | List of additional component search root directories read by `component_roots()`; multiple directories are separated by `os.pathsep` (`:` on Linux and macOS, `;` on Windows) with empty segments ignored; when `project_root_context()` receives a benchmark or app list, each corresponding `<package_root>/<name>/components` directory is prepended to this variable and the original value is restored on exit |
 
 ### Files and Directories Read, Written, and Checked
 
@@ -243,5 +243,5 @@ The only three environment variables users can set are listed in the table below
 
 - **`<REPO_ROOT>/pyproject.toml`**: checked read-only for existence via `.is_file()` by `source_tree()`, paired with `PACKAGE_ROOT.parent.name == "src"` to determine whether RASER is running from a source tree (TOML text file).
 - **Component candidate files `<component_root>/<kind>/<name><suffix>`**: checked via `.exists()` or `.is_file()` by `component_path()`, `optional_component_path()`, and `component_file_path()` in order `<project_root>/components/`, `extra_roots`, `RASER_COMPONENT_PATH`, `<PACKAGE_ROOT>/components/`, returning `Path` (`suffix` defaults to `".json"`); file contents and field units are parsed by the calling stage or component module.
-- **Packaged app files `<PACKAGE_ROOT>/<app_name>/<filename>`**: checked via `.exists()` by `app_file_path()`, returning `Path` for `raser_bench` and `raser_app` to read built-in configuration or data files under benchmark or app directories.
+- **Packaged files of benchmark and application classes `<package_root>/<name>/<filename>`**: checked via `.exists()` by `app_file_path()` against each package's own root directory in `raser_bench` (`src/raser_bench/`) or `raser_app` (`src/raser_app/`), returning `Path` for benchmarks or apps to read built-in configuration or data files under their respective directories.
 - **In-project output directories `<project_root>/<owner>/<parts...>` and `<project_root>/<module_work_name>/<label...>`**: constructed by `owned_path()` and `module_work_path()`, and created via `mkdir(parents=True, exist_ok=True)` by `create_path()` and `output()`; single files `<project_root>/<relative_path>` inside the project root are validated for containment and deleted via `unlink()` by `delete_file()`.
