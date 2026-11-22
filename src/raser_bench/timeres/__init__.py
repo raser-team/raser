@@ -8,10 +8,13 @@ from raser.lifecycle.workflow import Workflow
 
 DEFAULTS = json.loads((Path(__file__).parent / "time_resolution.json").read_text("utf-8"))
 
+# The two slots of the time_resolution setup: the reference, the device of the
+# command under test.
+DEVICES = {"ref": ("HPK-Si-LGAD", ["ref"]), "dut": (None, ["dut"])}
 
 WORKFLOW = Workflow(
     name="timeres",
-    keys=chain.KEYS,
+    keys=chain.keys_of(DEVICES),
     defaults={
         **chain.DEFAULTS,
         **{f"deposit.{key}": value for key, value in DEFAULTS.items()},
@@ -24,8 +27,9 @@ WORKFLOW = Workflow(
     slots=chain.SLOTS,
     components=chain.COMPONENTS,
     readers=chain.READERS,
-    in_file=chain.IN_FILE,
-    slices=chain.SLICES,
+    in_file=chain.in_file_of(DEVICES),
+    slices=chain.expand(DEVICES),
+    devices=DEVICES,
     exclusive=chain.EXCLUSIVE,
     command=chain.job_command,
     analysis=chain.analyse,

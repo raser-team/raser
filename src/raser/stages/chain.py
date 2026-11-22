@@ -4,12 +4,15 @@ Building the command line imports this file: it loads nothing heavy. The
 slices import their stage when they run.
 """
 
+from contextlib import nullcontext
 from functools import partial
 
 from raser.components.loader import read_g4setup
 from raser.lifecycle.slices import Shared
 from raser.lifecycle.slices import Slice
 from raser.stages import field
+from raser.supports.paths import project_root_context
+from raser.supports.paths import work_root
 
 SECTIONS = ("field", "deposit", "current", "readout", "digitizer", "trigger", "reconstruction", "analysis")
 # What is measured is set up to the readout; from the digitizer on the events are analysed.
@@ -91,10 +94,10 @@ def analyse(root):
     return analysis.collect(root)
 
 
-def _deposits(kwargs):
+def _deposits(kwargs, slots=None):
     from . import deposit
 
-    deposit.deposits(kwargs)
+    deposit.deposits(kwargs, slots)
 
 
 def _of(kwargs, device):
@@ -108,11 +111,24 @@ def _of(kwargs, device):
     return {**seen, "_files": {**kwargs["_files"], "device": device_file}, "det_name": device_file["det_name"]}
 
 
+def _home(files):
+    """The project of a device, work/<device>, where its field is solved and
+    found, whichever device the command of the experiment is given."""
+    return project_root_context(work_root() / files["device"]["det_name"])
+
+
+def _at(kwargs, device):
+    """The project of the device a slice works for, none for a single device."""
+    return nullcontext() if device is None else _home(kwargs["_files"])
+
+
 def _field(kwargs, device=None):
     """The field the currents take: found, not solved. A command of the
     chain solves it before the jobs start."""
     kwargs = _of(kwargs, device)
-    folder = field.SHARED.ready(kwargs, kwargs["_files"])
+    shared = field.SHARED if device is None else _shared_field(device)
+    with _at(kwargs, device):
+        folder = shared.ready(kwargs, kwargs["_files"])
     if folder is None:
         raise FileNotFoundError(
             f"no field of {kwargs['det_name']} ready for this run: solve it with `raser field {kwargs['det_name']}`"
@@ -123,19 +139,25 @@ def _field(kwargs, device=None):
 def _currents(kwargs, device=None, position=None):
     from . import current
 
-    return current.currents(_of(kwargs, device), position)
+    seen = _of(kwargs, device)
+    with _at(seen, device):
+        return current.currents(seen, position)
 
 
 def _waveforms(kwargs, device=None, position=None):
     from . import readout
 
-    return readout.waveforms(_of(kwargs, device), position)
+    seen = _of(kwargs, device)
+    with _at(seen, device):
+        return readout.waveforms(seen, position)
 
 
 def _reconstruction(kwargs, device=None, position=None):
     from . import reconstruction
 
-    return reconstruction.run(_of(kwargs, device), position)
+    seen = _of(kwargs, device)
+    with _at(seen, device):
+        return reconstruction.run(seen, position)
 
 
 def _shared_field(device):
@@ -145,11 +167,19 @@ def _shared_field(device):
         of = _of({**options, "_files": files}, device)
         return of, of["_files"]
 
-    return Shared(
-        ready=lambda options, files: field.ready(*seen(options, files)),
-        start=lambda kwargs, options, files: field.start(kwargs, *seen(options, files)),
-        stamp=lambda options, files: field.stamp(*seen(options, files)),
-    )
+    def ready(options, files):
+        with _home(seen(options, files)[1]):
+            return field.ready(*seen(options, files))
+
+    def start(kwargs, options, files):
+        with _home(seen(options, files)[1]):
+            field.start(kwargs, *seen(options, files))
+
+    def stamp(options, files):
+        with _home(seen(options, files)[1]):
+            return field.stamp(*seen(options, files))
+
+    return Shared(ready=ready, start=start, stamp=stamp)
 
 
 DEPOSIT_KEYS = tuple(key for key in KEYS if key.startswith("deposit."))
@@ -157,7 +187,7 @@ DEPOSIT_KEYS = tuple(key for key in KEYS if key.startswith("deposit."))
 EXCLUSIVE = (("deposit.events_per_job", "deposit.generated_per_job"),)
 
 
-def expand(devices=None, deposit=_deposits) -> tuple:
+def expand(devices=None, deposit=None) -> tuple:
     """The slices of the chain for the devices of an experiment, the table of
     Workflow.devices: name -> (device, positions). None is one device in one
     place, the chain as it always was: deposit, field, current, readout,
@@ -172,6 +202,9 @@ def expand(devices=None, deposit=_deposits) -> tuple:
     scripts place its devices (a stopgap for cflm)."""
     devices = devices or {None: (None, [None])}
     several = len(devices) > 1
+    if deposit is None:
+        # With several devices the slots of the setup are the names of the table.
+        deposit = partial(_deposits, slots=tuple(devices)) if several else _deposits
     places = sum(len(positions) for _, positions in devices.values()) > 1
     pieces = [
         Slice(

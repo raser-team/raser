@@ -16,7 +16,16 @@ from raser.stages.files import output
 from raser.stages.files import plots
 
 
-def deposits(kwargs):
+def detectors(kwargs, slots=None):
+    """The detectors of the slots of the setup, in the order of the slots; for
+    a single device, {"Device": detector}."""
+    files = kwargs["_files"]
+    if slots is None:
+        return {"Device": bdv.Detector(kwargs["det_name"], files["device"])}
+    return {slot: bdv.Detector(files[slot]["device"]["det_name"], files[slot]["device"]) for slot in slots}
+
+
+def deposits(kwargs, slots=None):
     """The source in the g4setup, or the device alone: deposit_<job>.h5.
 
     The job records events_per_job events, the source generating until there
@@ -24,7 +33,7 @@ def deposits(kwargs):
     generated_per_job generated events; one of the two is set. A job that
     recorded no event ends here."""
     files = kwargs["_files"]
-    my_d = bdv.Detector(kwargs["det_name"], files["device"])
+    placed = detectors(kwargs, slots)
     events, generated = kwargs.get("events_per_job"), kwargs.get("generated_per_job")
     if (events is None) == (generated is None):
         raise ValueError(
@@ -40,7 +49,7 @@ def deposits(kwargs):
         if driver.upper() in ("TSG", "TSG_FILE", "TSG_OFFSCREEN"):
             picture = os.path.join(kwargs["_run_path"], "g4_geometry")
         view_geometry(
-            {"Device": my_d},
+            placed,
             files["source"],
             files.get("g4setup"),
             int(events if generated is None else generated),
@@ -51,12 +60,12 @@ def deposits(kwargs):
         raise SystemExit
     recorded = write_simulated_deposits(
         output(kwargs, "deposit"),
-        {"Device": my_d},
+        placed,
         files["source"],
         files.get("g4setup"),
         None if events is None else int(events),
         kwargs["seed"],
-        {"Device": (kwargs.get("edep_min"), kwargs.get("edep_max"))},
+        dict.fromkeys(placed, (kwargs.get("edep_min"), kwargs.get("edep_max"))),
         "any",
         None,
         kwargs["fano"],
