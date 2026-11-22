@@ -8,6 +8,7 @@
 import json
 import os
 import pickle
+import re
 
 import devsim
 import numpy as np
@@ -18,7 +19,18 @@ from .create_parameter import create_parameter, delete_init
 from .conductive import conductive
 from .conductive import undepleted_bulk
 from .conductive import undepleted_layer_of_mesh
+from raser.supports import figures
 from raser.supports.output import create_path
+
+def _depth_um(x_cm):
+    """Positions [cm] of the field solver in um, the unit of the depth axis."""
+    return np.asarray(x_cm) * 1e-2 / figures.UNIT["um"]
+
+
+def _electric_field_kv_per_cm(field):
+    """Electric field [V/cm] in kV/cm."""
+    return np.asarray(field) * 1e2 / figures.UNIT["kV/cm"]
+
 
 def conductive_of_region(device, region):
     """Which nodes of a solved region are conductive at its bias, 1.0 or 0.0 each,
@@ -112,9 +124,15 @@ def milestone_save_1D(device, v, path, is_tcad):
     TrappingRate_n = np.array(TrappingRate_n)
     TrappingRate_p = np.array(TrappingRate_p)
 
-    devsim_draw.draw1D(x,Potential,"Potential","Depth[um]","Potential[V]", v, path)
-    devsim_draw.draw1D(x,TrappingRate_n,"Electron Trapping Rate","Depth[um]","Trapping Rate[1/s]", v, path,)
-    devsim_draw.draw1D(x,TrappingRate_p,"Hole Trapping Rate","Depth[um]","Trapping Rate[1/s]", v, path,)
+    devsim_draw.draw_profile(
+        _depth_um(x), [(Potential, figures.TOTAL, None)],
+        figures.label("Potential", "V"), path, "potential", (v, "V"))
+    if TrappingRate_n.any() or TrappingRate_p.any():
+        devsim_draw.draw_profile(
+            _depth_um(x),
+            [(TrappingRate_n / figures.UNIT["s-1"], figures.ELECTRON, "electrons"),
+             (TrappingRate_p / figures.UNIT["s-1"], figures.HOLE, "holes")],
+            figures.label("Trapping rate", "s-1"), path, "trapping_rate", (v, "V"), log=True)
 
     if is_tcad:
         ElectricField = []
@@ -124,7 +142,9 @@ def milestone_save_1D(device, v, path, is_tcad):
                 continue
             ElectricField.extend(devsim.get_node_model_values(device=device, region=region, name=E))
         ElectricField = np.array(ElectricField)
-        devsim_draw.draw1D(x,ElectricField,"Electric Field","Depth[um]","Electric Field[V/cm]", v, path,)
+        devsim_draw.draw_profile(
+            _depth_um(x), [(_electric_field_kv_per_cm(ElectricField), figures.TOTAL, None)],
+            figures.label("Electric field", "kV/cm"), path, "electric_field", (v, "V"))
     else:
         x_mid = []
         ElectricField = []
@@ -137,7 +157,9 @@ def milestone_save_1D(device, v, path, is_tcad):
             ElectricField.extend(devsim.get_edge_model_values(device=device, region=region, name=E)) # get y-node values
         x_mid = np.array(x_mid) # get x-node values
         ElectricField = np.array(ElectricField) # get y-node values
-        devsim_draw.draw1D(x_mid,ElectricField,"Electric Field","Depth[um]","Electric Field[V/cm]", v, path,)
+        devsim_draw.draw_profile(
+            _depth_um(x_mid), [(_electric_field_kv_per_cm(ElectricField), figures.TOTAL, None)],
+            figures.label("Electric field", "kV/cm"), path, "electric_field", (v, "V"))
 
     metadata = {}
     metadata['voltage'] = v
@@ -181,8 +203,15 @@ def milestone_save_wf_1D(device, v, path, contact_name, is_tcad):
     x_mid = np.array(x_mid) # get x-node values
     ElectricField = np.array(ElectricField) # get y-node values
 
-    devsim_draw.draw1D(x,Potential,"Weighting Potential","Depth[um]","Weighting Potential", v, save_wf_path,)
-    devsim_draw.draw1D(x_mid,ElectricField,"Weighting Field","Depth[um]","Weighting Field[1/cm]",v, save_wf_path,)
+    # `path` is the weightingfield folder of the field folder, which holds the plots
+    field_path = os.path.dirname(os.path.normpath(path))
+    electrode = re.sub(r"[^a-z0-9_]", "_", contact_name.lower())
+    devsim_draw.draw_profile(
+        _depth_um(x), [(Potential, figures.TOTAL, None)],
+        "Weighting potential", field_path, "weighting_potential", electrode, (v, "V"))
+    devsim_draw.draw_profile(
+        _depth_um(x_mid), [(ElectricField * 1e2 / figures.UNIT["cm-1"], figures.TOTAL, None)],
+        figures.label("Weighting field", "cm-1"), field_path, "weighting_field", electrode, (v, "V"))
 
     metadata = {}
     metadata['voltage'] = v

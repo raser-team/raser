@@ -37,6 +37,7 @@ Convert data to the units in the table below when plotting: first convert data t
 | Setup dimensions | mm | `x [mm]` |
 | Electric field | kV/cm | `Electric field [kV/cm]` |
 | Potential, weighting potential | V; weighting potential is dimensionless | `Weighting potential` |
+| Weighting field | cm⁻¹ | `Weighting field [cm⁻¹]` |
 | Doping concentration | cm⁻³, log axis | `Doping [cm⁻³]` |
 | Trapping rate | s⁻¹, log axis | `Trapping rate [s⁻¹]` |
 | Capacitance | pF | `Capacitance [pF]` |
@@ -92,8 +93,9 @@ Each stage draws at least the figures listed below. "Per-event" figures are draw
 | field | `doping` | Doping concentration profile along depth | One per node |
 | field | `iv` | Leakage current versus reverse bias | One per node |
 | field | `cv` | Left: capacitance versus reverse bias; right: $1/C^2$ versus reverse bias | One per node |
+| field | `noise` | Noise current versus reverse bias | One per node when noise is computed |
 | field | `electric_field_<V>V`, `potential_<V>V` | Electric field and potential profiles along depth; 2D and 3D devices add a transverse profile and a 2D slice | One per bias |
-| field | `weighting_potential_<electrode>` | Weighting potential profile along depth; same additions for 2D and 3D devices | One per readout electrode |
+| field | `weighting_potential_<electrode>_<V>V`, `weighting_field_<electrode>_<V>V` | Weighting potential and weighting field profiles along depth; same for 2D and 3D devices | One per readout electrode and per bias with a weighting field solved |
 | field | `trapping_rate_<V>V` | Electron and hole trapping rate profiles along depth | One per bias when irradiated |
 | field | `device_circuit_<V>V` | Device parameter circuit diagram: junction capacitance, coupling capacitance, and undepleted layer, labeled with values | One per bias |
 | deposit | `geometry` | Geant4 setup geometry and tracks of the first few events, on a white background | One per node |
@@ -142,7 +144,7 @@ figures.save_canvas(canvas, folder, "drift_path", 17)   # drift_path_17.png, .pd
 | `save_canvas(canvas, folder, name, *suffixes)` | Saves `.png`, `.pdf`, and `.root` copies and returns the `.png` path |
 | `file_name(name, *suffixes)` | Builds the filename without extension according to the rules above. Suffixes may be numbers, lowercase words, or `(value, unit)` pairs: `file_name("electric_field", (200.0, "V"))` yields `electric_field_200V`, and `file_name("current", 17, "electrode", 2)` yields `current_17_electrode_2` |
 | `label(quantity, unit=None, root=False)` | Builds an axis title: `label("Depth", "um")` yields `Depth [μm]`; omits the unit brackets when no unit is given |
-| `UNIT` | Conversion factors from units to SI, e.g., `UNIT["ns"] == 1e-9`; divide SI data by this factor when plotting. Keys cover all units in the unit table above, written in ASCII: `ns`, `ps`, `uA`, `A`, `V`, `mV`, `um`, `mm`, `kV/cm`, `cm-3`, `s-1`, `pF`, `fC`, `keV` |
+| `UNIT` | Conversion factors from units to SI, e.g., `UNIT["ns"] == 1e-9`; divide SI data by this factor when plotting. Keys cover all units in the unit table above, written in ASCII: `ns`, `ps`, `uA`, `A`, `V`, `mV`, `um`, `mm`, `kV/cm`, `cm-1`, `cm-3`, `s-1`, `pF`, `fC`, `keV` |
 | `ELECTRON`, `HOLE`, `GAIN_ELECTRON`, `GAIN_HOLE`, `TOTAL`, `DEPOSIT`, `HISTOGRAM` | Colors from the color table above |
 | `series(count, ordered)` | Colors for several curves of the same kind in one figure: equidistantly sampled from viridis when `ordered=True`, otherwise sequentially from Okabe–Ito |
 | `root_color(color)` | Converts a color above to a ROOT color index |

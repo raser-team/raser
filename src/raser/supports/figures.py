@@ -48,10 +48,11 @@ UNIT: dict[str, float] = {
     "pF": 1e-12,
     "fC": 1e-15,
     "keV": 1.602176634e-16,
+    "cm-1": 100.0,
 }
 
-_DISPLAY = {"cm-3": "cm⁻³", "s-1": "s⁻¹"}
-_ROOT_DISPLAY = {"cm-3": "cm^{-3}", "s-1": "s^{-1}"}
+_DISPLAY = {"cm-3": "cm⁻³", "s-1": "s⁻¹", "cm-1": "cm⁻¹"}
+_ROOT_DISPLAY = {"cm-3": "cm^{-3}", "s-1": "s^{-1}", "cm-1": "cm^{-1}"}
 
 ELECTRON = "#1f6fb4"
 HOLE = "#d1352b"
