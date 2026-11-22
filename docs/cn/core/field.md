@@ -88,9 +88,9 @@ $$G(z) = \frac{K(z)}{1 - I_{\text{bd}}} - 1 \tag{11}$$
 
 ### 辐照缺陷与俘获率
 
-辐照在禁带中引入深能级缺陷。缺陷按 SRH 统计占据电子，带电的缺陷进入泊松方程，空缺陷俘获电子、满缺陷俘获空穴，并贡献复合。对每个缺陷 $i$：
+辐照在禁带中引入深能级缺陷，材料本身也带有生长中留下的缺陷。缺陷按 SRH 统计占据电子，带电的缺陷进入泊松方程，空缺陷俘获电子、满缺陷俘获空穴，并贡献复合。对每个缺陷 $i$：
 
-$$N_{t,i} = g_i\,\Phi, \qquad f_i = \frac{c_{n,i}\,n + c_{p,i}\,p_{1,i}}{c_{n,i}(n + n_{1,i}) + c_{p,i}(p + p_{1,i})} \tag{12}$$
+$$N_{t,i} = N_{0,i} + g_i\,\Phi, \qquad f_i = \frac{c_{n,i}\,n + c_{p,i}\,p_{1,i}}{c_{n,i}(n + n_{1,i}) + c_{p,i}(p + p_{1,i})} \tag{12}$$
 
 $$U_r = \sum_i \frac{N_{t,i}\,c_{n,i}\,c_{p,i}\,(np - n_i^2)}{c_{n,i}(n + n_{1,i}) + c_{p,i}(p + p_{1,i})} \tag{13}$$
 
@@ -100,13 +100,13 @@ $$n_{1,i} = N_c \exp\!\Bigl(-\frac{E_g/2 - E_{t,i}}{kT}\Bigr), \qquad p_{1,i} = 
 
 其中：
 
-- $\Phi$：辐照注量，$\text{cm}^{-2}$；$g_i$：缺陷引入率（`g_int`），$\text{cm}^{-1}$；$N_{t,i}$：缺陷浓度，$\text{cm}^{-3}$；
+- $\Phi$：辐照注量，$\text{cm}^{-2}$；$g_i$：缺陷引入率（`g_int`），$\text{cm}^{-1}$；$N_{0,i}$：与注量无关的本底浓度（`N_t0`，缺陷字典没写时为 `0`），$\text{cm}^{-3}$；$N_{t,i}$：缺陷浓度，$\text{cm}^{-3}$；
 - $f_i$：缺陷被电子占据的比例（无量纲）；受主型缺陷贡献 $N_t^{-} = \sum N_{t,i} f_i$，施主型缺陷贡献 $N_t^{+} = \sum N_{t,i}(1 - f_i)$；
 - $E_{t,i}$：缺陷能级（`E_t_ev`，以禁带中央为零点、向导带为正，$\text{eV}$，乘以 $1.602176634\times10^{-19}\ \text{J/eV}$ 换成 J）；$E_g$：禁带宽度，J；$N_c$、$N_v$：导带、价带有效态密度，$\text{cm}^{-3}$；
 - $\sigma_{n,i}$、$\sigma_{p,i}$：电子、空穴俘获截面，$\text{cm}^2$；$v_{\text{th}}$ = `vel_mean` $= 10^7\ \text{cm/s}$；
 - $\Gamma_n$、$\Gamma_p$：电子、空穴俘获率（`TrappingRate_n`、`TrappingRate_p`），$\text{s}^{-1}$，存盘后由 `DevsimField.get_trap_e`、`get_trap_h` 交给 [current.md](current.md)。
 
-`physics_irradiation.CreateIrradiation` 按 `irradiation.irradiation_model` 选缺陷表；其余名字取参数 `custom_defect`，缺省为空表。有 `irradiation` 块且求解电场时建立辐照项；其余情况俘获率为 `0`。缺陷字典的 `"type"` 不是 `"donor"` 或 `"acceptor"` 时抛出 `ValueError`。`"Schwandt"` 是 Hamburg Penta Trap Model [15]，`"XingChen"` 是组里拟合质子辐照硅的结果 [16]，`"Perugia"` 是 p 型 FZ 硅的三能级模型 [17]：
+`physics_irradiation.CreateIrradiation` 按 `irradiation.irradiation_model` 选缺陷表；`"CommonDefect"` 在 `Diamond` 区域取金刚石本底缺陷表，在其他区域取 SiC 表；其余名字取参数 `custom_defect`，缺省为空表。有 `irradiation` 块且求解电场时建立辐照项；其余情况俘获率为 `0`。缺陷字典的 `"type"` 不是 `"donor"` 或 `"acceptor"` 时抛出 `ValueError`。`"Schwandt"` 是 Hamburg Penta Trap Model [15]，`"XingChen"` 是组里拟合质子辐照硅的结果 [16]，`"Perugia"` 是 p 型 FZ 硅的三能级模型 [17]：
 
 | 模型 | 缺陷 | 类型 | `E_t_ev` [eV] | `g_int` [$\text{cm}^{-1}$] | $\sigma_n$ [$\text{cm}^2$] | $\sigma_p$ [$\text{cm}^2$] |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -125,6 +125,13 @@ $$n_{1,i} = N_c \exp\!\Bigl(-\frac{E_g/2 - E_{t,i}}{kT}\Bigr), \qquad p_{1,i} = 
 | | `CiOi` | 施主 | `-0.56+0.36` | `0.3780` | `3.230e-17` | `2.036e-14` |
 | `"CommonDefect"`（SiC） | `Z12` | 受主 | `1.63-0.67` | `1` | `3e-16` | `2e-12` |
 | | `EH67` | 施主 | `1.63-1.65` | `1` | `2e-17` | `3e-17` |
+| `"CommonDefect"`（金刚石） | `BoronAcceptor` | 受主 | `-5.47/2+0.37` | `0` | `1.0e-15` | `2.0e-14` |
+| | `SubstitutionalNitrogen_P1` | 施主 | `5.47/2-1.70` | `0` | `2.0e-14` | `1.0e-15` |
+| | `VacancyRelated` | 受主 | `-5.47/2+2.00` | `0` | `1.0e-14` | `1.0e-14` |
+
+金刚石表的本底浓度 `N_t0`：硼 `2.0e14`、氮 `5.0e14`、空位 `1.0e14` $\text{cm}^{-3}$。能级取硼受主 $E_v + 0.37\ \text{eV}$ [23]、替位氮施主 $E_c - 1.70\ \text{eV}$ [24]；空位以负电荷态 $V^-$ 存在 [25]，按受主处理，能级取 $E_v + 2.00\ \text{eV}$。本底浓度、俘获截面与空位能级是待用 IV、TCT、CCE 拟合的起始值。
+
+`Diamond` 区域照 peiyao 的做法处理，以便不掺杂的金刚石能解：式 (12)–(14) 里的 $n$、$p$ 取 $\max(n, n_f)$、$\max(p, n_f)$，$n_f$ = `CARRIER_FLOOR` $= 1\ \text{cm}^{-3}$；每个缺陷都按 $N_{t,i} f_i$ 计入俘获电子、按 $N_{t,i}(1 - f_i)$ 计入俘获空穴，不分受主、施主；欧姆接触的电势等于偏压，不掺杂节点在接触处的电子、空穴浓度取 $n_f$；漂移扩散的初值取 $\max(N_{\text{net}}, n_f)$ 与 $\max(-N_{\text{net}}, n_f)$。$n_f$ 与这种计电荷的方式没有出处，是数值上能解的假设。
 
 ### 权重势
 
@@ -186,7 +193,7 @@ $$\text{1D:}\quad r = \sum_{k} w_k\,\bar\rho_k, \quad W_{\text{und}} = \sum_k w_
 
 一维的集总模型是精确的。二维、三维中共用节点只保留所有电极同相的那一部分，对所有电极信号之和是精确的，对单个电极在成形时间远大于 $\max(\tau_0, 2\tau_r)$ 时趋于精确，对相邻电极的信号不准（$\tau_r = \varepsilon\rho$，$\tau_0 = \tau_r\,l_z/d_0$，$d_0 = l_z - W_{\text{und}}$ 为耗尽深度）。二维、三维器件有未耗尽层时，组装器件电路的一步打印一条警告，给出偏压、$d_0$、$\tau_r$ 与 $\tau_0$，说明偏压过低、未耗尽层的集总参数对相邻电极不准。
 
-条形电极行（`field_circuit` 读到 `Capacitance_<V>V.json`）中，相隔 $k$ 个位置的两条之间接电容 $C_k = \tfrac12 C_{\text{neighbour}k}\,L$，$k \le$ `neighbours_coupled`，$L$ 为条长 `l_y`（换成 cm）；每条接到 `undepleted` 的电容为 $C_{\text{total}}L$（或 `capacitance_pF`）减去它到行内其他条的互容之和。只为击中条附近的一段条搭电路时（`part_of_row`），段外的 $n$ 根条在虚地上，它们的这份电容合成 $n$ 倍行中部一根条的值，接在 `undepleted` 与地之间（`C_undepleted_rest`）。
+条形电极行（一个读出电极重复排布、没有 `resistive_layer` 的器件，`field_circuit` 读 `Capacitance_<V>V.json`）中，相隔 $k$ 个位置的两条之间接电容 $C_k = \tfrac12 C_{\text{neighbour}k}\,L$，$k \le$ `neighbours_coupled`，$L$ 为条长 `l_y`（换成 cm）；每条接到 `undepleted` 的电容为 $C_{\text{total}}L$（或 `capacitance_pF`）减去它到行内其他条的互容之和。只为击中条附近的一段条搭电路时（`part_of_row`），段外的 $n$ 根条在虚地上，它们的这份电容合成 $n$ 倍行中部一根条的值，接在 `undepleted` 与地之间（`C_undepleted_rest`）。
 
 阻性电荷共享层（`resistive_layer`）把层切成宽为间距的 RC 格点，每个 RC 格点是一个节点，经耗尽层电容接到 `undepleted`；相邻 RC 格点之间接层电阻：
 
@@ -299,7 +306,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 网格属于 `field`：器件文件里没有 `mesh` 段，几何（各层厚度、材料、电极在哪一面）是器件的固有性质；用哪一套网格由 `field` 段的设置指定。
 
 1. **取坐标轴**：`mesh_axes` 给出存盘坐标对应的器件轴：1D 为 `("z",)`；2D 为 `("x", "y")`（所选网格在横向 $x$-$y$ 平面）或 `("z", "x")`；3D 为 `("x", "y", "z")`（所选网格由 `sde` 生成）或 `("z", "x", "y")`。DEVSIM 内部长度单位为 cm。
-2. **建网格**（`DevsimMesh.mesh_define`）：求单晶胞拼接的权重场时（$s > 0$）调用 `createRowOfCells`；否则 1D 用所选一维网格的 `mesh_line`、`region`、`contact`；2D 用所选的 Gmsh 网格文件或内置二维网格（`mesh_line`、`region`、`contact`）；3D 一律读 Gmsh 网格文件。`dimension` 不是 1、2、3 时抛出 `ValueError`。
+2. **建网格**（`DevsimMesh.mesh_define`）：求单晶胞拼接的权重场时（$s > 0$）调用 `createRowOfCells`；否则 1D 用所选一维网格的 `mesh_line`、`region`、`contact`；2D 用所选的 Gmsh 网格文件或内置二维网格（`mesh_line`、`region`、`contact`）；3D 一律读 Gmsh 网格文件。`dimension` 不是 1、2、3 时抛出 `ValueError`。网格里放半导体的区域是主区域：`main_region(mesh)` 取所选网格 `region` 列表中 `material` 为 `"Silicon"`、`"SiliconCarbide"` 或 `"Diamond"` 的一项，返回它的 `region` 名；这样的项不是恰好一项时抛出 `ValueError`，写明器件名和各项的名字、材料。区域的名字由网格自己起，与器件名无关，库里的网格写 `"bulk"`；Gmsh 网格文件里物理组的名字写在 `gmsh_name`，不随之改。参数、方程、掺杂、存盘时读的模型都建在主区域上。`<V>V.devsim` 存点里记着区域名，区域改名之前解出的存点不能用来求单点电容，要重解。
 3. **权重场的材料与掺杂**：求权重场时 `_regions` 把每个区域材料换成 `"gas"`（内置 2D 网格里的 `"air"` 区域保留；Gmsh 网格不保留），`setDoping` 把掺杂换成 `Acceptors = "0"`、`Donors = "1"`。
 4. **掺杂**：`Acceptors` 取 `doping.Acceptors`，有 `doping.Acceptors_ir` 时以 `+` 相接；`Donors` 同理；`NetDoping = Donors - Acceptors`。不求权重场的 1D 器件画 `plots/doping`。最后写出 `<det_name>.dat`（Tecplot）。
 5. **HEMT 界面**：`hemt_physics.transport_model == "drift_diffusion_v1"` 时 2D 网格还加所选二维网格的 `interface`，没有界面时抛出 `ValueError`。
@@ -321,9 +328,9 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 6. **零偏压**：在 $0\ \text{V}$ 求解并存盘，写 `0V.dd`、`0V.devsim`，在 `node.json` 的 `solved.potential` 记 `0.0`。
 7. **目标与停点**：目标偏压 $V_g$ 取 `field.voltage`，为 `null` 时取 `bias.voltage`。一个场节点对应一个目标偏压；节点里存的中间偏压文件是升压到 $V_g$ 途中的存盘点。存盘点为 $\pm k\Delta_s$（$k = 1, \dots, \lfloor |V_g|/\Delta_s\rfloor$，$\Delta_s$ = `saved_voltage_interval`），末点不足 $|V_g|$ 时补上 $V_g$；曲线点同样按 `curve_voltage_interval` 生成。正负号随 $V_g$。间隔为 `0` 时抛出 `ValueError`。
 8. **步进**：初始步长 $\Delta$ = `voltage_step.initial`，符号随 $V_g$。每步试探 $V_t = V_c + \Delta$；若 $|V_t|$ 超过最近的停点（$V_g$、下一个存盘点、下一个曲线点中绝对值最小者），把 $V_t$ 截到该停点。
-9. **单步求解**（`loop_solver`）：初值取上一个解；已有两个解时电势按两点线性外推到 $V_t$。设偏压后用 `voltage_step` 的容差直流求解。
+9. **单步求解**（`loop_solver`）：初值取上一个解，电子、空穴浓度不低于最小正浮点数；已有两个解时电势按两点线性外推到 $V_t$。设偏压后用 `voltage_step` 的容差直流求解。
 10. **成功**：$\Delta \leftarrow \Delta \times$ `increase_factor`。$V_t$ 是曲线点时记录电压、电流 $(I_n + I_p)\times$ `area_factor`（A），以及下节的电容、噪声。$V_t$ 是存盘点或 $V_g$ 时存盘，写 `<V_t>V.dd`、`<V_t>V.devsim`，记入 `solved.potential`；到达 $V_g$ 即结束。
-11. **失败**：单步求解出任何 DEVSIM 错误时先写 `last_solvable.dd`。报错信息含 `"Convergence failure"` 时令 $\Delta \leftarrow (V_t - V_c)\times$ `decrease_factor` 后重试；其他 DEVSIM 错误原样抛出。$|\Delta| < 10^{-7}\ \text{V}$ 时停止并抛出 `RuntimeError("Step size too small (less than 1e-7). Exiting loop.")`。
+11. **失败**：单步求解出任何 DEVSIM 错误时先写 `last_solvable.dd`。报错信息含 `"Convergence failure"` 或 `"negative or zero value before update"` 时令 $\Delta \leftarrow (V_t - V_c)\times$ `decrease_factor` 后重试；其他 DEVSIM 错误原样抛出。$|\Delta| < 10^{-7}\ \text{V}$ 时停止并抛出 `RuntimeError("Step size too small (less than 1e-7). Exiting loop.")`。
 12. **收尾**：在 `node.json` 写 `read`，画 IV 曲线；CV 模式画 CV 与 $1/C^2$ 曲线；打开噪声开关时画噪声曲线。
 
 ### 小信号电容与噪声
@@ -567,3 +574,6 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 - [20] A. Das, S. P. Duttagupta, “TCAD simulation for alpha-particle spectroscopy using SiC Schottky diode”, Radiat. Prot. Dosim. 167 (2015) 443, doi:10.1093/rpd/ncu369
 - [21] Z. Li et al., “Mechanisms of proton irradiation-induced defects on the electrical performance of 4H-SiC PIN detectors”, JINST 21 (2026) P03010, doi:10.1088/1748-0221/21/03/P03010, arXiv:2503.09016
 - [22] S. Mägdefessel, R. Mori, N. Sorgenfrei, U. Parzefall, “Understanding the frequency dependence of capacitance measurements of irradiated silicon detectors”, arXiv:2301.09371, eqs. (2), (3)
+- [23] A. T. Collins, A. W. S. Williams, “The nature of the acceptor centre in semiconducting diamond”, J. Phys. C: Solid State Phys. 4 (1971) 1789, doi:10.1088/0022-3719/4/13/030
+- [24] R. G. Farrer, “On the substitutional nitrogen donor in diamond”, Solid State Commun. 7 (1969) 685, doi:10.1016/0038-1098(69)90593-6
+- [25] A. Mainwood, A. M. Stoneham, “Stability of electronic states of the vacancy in diamond”, J. Phys.: Condens. Matter 9 (1997) 2453, doi:10.1088/0953-8984/9/11/013

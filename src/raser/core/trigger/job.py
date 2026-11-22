@@ -126,16 +126,21 @@ def write_coincidence(
     """Write one identical ``trigger.h5`` per slot for a coincidence trigger.
 
     ``digitizer_paths`` and ``trigger_paths`` map every slot of ``settings`` to
-    a path. Events are matched by event number over the union of the events of
-    all slot files; a slot without the event, or without a stored electrode in
-    it, is not hit.
+    a path; a slot whose digitizer path is ``None`` has no file and is hit in
+    no event. Events are matched by event number over the union of the events
+    of the slot files; a slot without the event, or without a stored electrode
+    in it, is not hit.
     """
     slots = list(settings.slots)
     if set(digitizer_paths) != set(slots) or set(trigger_paths) != set(slots):
         raise ValueError(
             f"digitizer_paths and trigger_paths must have exactly the slots {slots}"
         )
-    waveforms = {slot: read_digitized(digitizer_paths[slot]) for slot in slots}
+    waveforms = {
+        slot: read_digitized(digitizer_paths[slot])
+        for slot in slots
+        if digitizer_paths[slot] is not None
+    }
     events = {}
     for slot, digitized in waveforms.items():
         numbers = [event.event for event in digitized.events]
@@ -146,7 +151,7 @@ def write_coincidence(
     recorded = []
     for number in numbers:
         hit_times = {}
-        for slot in slots:
+        for slot in events:
             event = events[slot].get(number)
             if event is None:
                 continue
@@ -171,7 +176,7 @@ def write_coincidence(
     panels = []
     for slot in slots:
         kept, dropped = [], []
-        for event in waveforms[slot].events:
+        for event in waveforms[slot].events if slot in waveforms else []:
             if event.code.shape[0] == 0:
                 continue
             digitized = waveforms[slot]

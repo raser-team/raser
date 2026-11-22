@@ -1,0 +1,152 @@
+{
+  "det_name": "MIM-Diamond",
+  "det_model": "planar",
+  "material": "Diamond",
+  "l_x": 4500,
+  "l_y": 4500,
+  "l_z": 500,
+  "doping": {
+    "Acceptors": "0",
+    "Donors": "0"
+  },
+  "bias": {
+    "electrode": "top",
+    "voltage": 300.0
+  },
+  "temperature": 300.0,
+  "U_const": 0.0,
+  "irradiation": {
+    "irradiation_model": "CommonDefect",
+    "irradiation_flux": 0
+  },
+  "field_source": "devsim",
+  "field_dimension": 2,
+  "default_dimension": 2,
+  "area_factor": 1,
+  "read_out_contact": [
+    {
+      "x_span": 0,
+      "y_span": 0,
+      "name": "top"
+    }
+  ],
+  "mesh": {
+    "2D_mesh": {
+      "mesh_line": [
+        {
+          "dir": "x",
+          "pos": -0.01,
+          "ps": 0.001
+        },
+        {
+          "dir": "x",
+          "pos": 0.0,
+          "ps": 1e-05
+        },
+        {
+          "dir": "x",
+          "pos": 0.0001,
+          "ps": 0.0001
+        },
+        {
+          "dir": "x",
+          "pos": 0.005,
+          "ps": 0.001
+        },
+        {
+          "dir": "x",
+          "pos": 0.025,
+          "ps": 0.005
+        },
+        {
+          "dir": "x",
+          "pos": 0.045,
+          "ps": 0.001
+        },
+        {
+          "dir": "x",
+          "pos": 0.0499,
+          "ps": 0.0001
+        },
+        {
+          "dir": "x",
+          "pos": 0.05,
+          "ps": 1e-05
+        },
+        {
+          "dir": "x",
+          "pos": 0.06,
+          "ps": 0.001
+        },
+        {
+          "dir": "y",
+          "pos": 0.0,
+          "ps": 0.001
+        },
+        {
+          "dir": "y",
+          "pos": 0.45,
+          "ps": 0.001
+        }
+      ],
+      "region": [
+        {
+          "material": "air",
+          "region": "bottom_air",
+          "xl": -0.01,
+          "xh": 0.0,
+          "yl": 0.0,
+          "yh": 0.45
+        },
+        {
+          "material": "Diamond",
+          "region": "MIM-Diamond",
+          "xl": 0.0,
+          "xh": 0.05,
+          "yl": 0.0,
+          "yh": 0.45
+        },
+        {
+          "material": "air",
+          "region": "top_air",
+          "xl": 0.05,
+          "xh": 0.06,
+          "yl": 0.0,
+          "yh": 0.45
+        }
+      ],
+      "contact": [
+        {
+          "name": "bot",
+          "material": "metal",
+          "region": "MIM-Diamond",
+          "xl": 0.0,
+          "xh": 0.0,
+          "yl": 0.0,
+          "yh": 0.45,
+          "bloat": 1e-06
+        },
+        {
+          "name": "top",
+          "material": "metal",
+          "region": "MIM-Diamond",
+          "xl": 0.05,
+          "xh": 0.05,
+          "yl": 0.0,
+          "yh": 0.45,
+          "bloat": 1e-06
+        }
+      ]
+    }
+  },
+  "field": {
+    "solver": {
+      "voltage_step": {
+        "initial": 0.1,
+        "increase_factor": 1.2,
+        "maximum_iterations": 150
+      },
+      "saved_voltage_interval": 10
+    }
+  }
+}

@@ -59,7 +59,7 @@ $$C = \frac{\varepsilon_0 \varepsilon_r \left(A \times 10^{-12}\right)}{d \times
    - 计算 `self.voltage = float(self.device_dict['bias']['voltage'])`（$\text{V}$）。若缺少 `'bias'` 或 `'voltage'`，抛出 `KeyError`；若电压值无法转换为 `float`，抛出 `TypeError` 或 `ValueError`。
    - 检查 `"irradiation" in self.device_dict`：若为真，令 `self.irradiation_model = self.device_dict['irradiation']['irradiation_model']`、`self.irradiation_flux = self.device_dict['irradiation']['irradiation_flux']`（$\text{cm}^{-2}$；若 `'irradiation'` 字典内缺少 `'irradiation_model'` 或 `'irradiation_flux'`，抛出 `KeyError`）；若为假，令 `self.irradiation_model = None`、`self.irradiation_flux = 0`。
 4. **计算名称、求解维度与三维边界**：
-   - 令 `self.det_name = self.device_dict.get('det_name', path.stem)`，并同时令 `self.device = self.det_name`、`self.region = self.det_name`。
+   - 令 `self.det_name = self.device_dict.get('det_name', path.stem)`，并同时令 `self.device = self.det_name`。
    - 令 `self.dimension = self.device_dict.get('field_dimension', self.device_dict['default_dimension'])`。`default_dimension` 必填，缺少时抛出 `KeyError`。
    - 构造边界字典 `self.bound = {'x': (0, self.l_x), 'y': (0, self.l_y), 'z': (0, self.l_z)}`（$\mu\text{m}$）。若 JSON 顶层缺少 `l_x`、`l_y`、`l_z` 中任一键，此处访问同名属性时抛出 `AttributeError`。
 5. **校验读出电极布局与专属键**：
@@ -107,7 +107,7 @@ $$C = \frac{\varepsilon_0 \varepsilon_r \left(A \times 10^{-12}\right)}{d \times
 | --- | --- | --- | --- |
 | `device_dict` | `dict` | 无 | 器件 JSON 字典的深拷贝 |
 | `definition_path` | `Path` | 无 | `device_file(device_name)` 解析并 `resolve()` 后的器件 JSON 绝对路径 |
-| `det_name`, `device`, `region` | `str` | 无 | 探测器名称（三者同值，缺省取 `device_file(device_name)` 返回路径的 `stem`，即 `resolve()` 之前的文件名词干） |
+| `det_name`, `device` | `str` | 无 | 探测器名称（两者同值，缺省取 `device_file(device_name)` 返回路径的 `stem`，即 `resolve()` 之前的文件名词干） |
 | `dimension` | `int` | 无 | 器件场求解维度（优先取 `field_dimension`，缺省取 `default_dimension`） |
 | `voltage` | `float` | $\text{V}$ | 偏置电压 `float(device_dict["bias"]["voltage"])` |
 | `irradiation_model` | `str \| None` | 无 | 辐照缺陷模型名称（无 `irradiation` 块时为 `None`） |
@@ -132,7 +132,7 @@ $$C = \frac{\varepsilon_0 \varepsilon_r \left(A \times 10^{-12}\right)}{d \times
 
 | 键名 | 默认值 | 单位 | 含义 |
 | --- | --- | --- | --- |
-| `det_name` | JSON 文件名词干（`path.stem`） | 无 | 探测器名称，构造时同时赋给 `det_name`、`device`、`region` |
+| `det_name` | JSON 文件名词干（`path.stem`） | 无 | 探测器名称，构造时同时赋给 `det_name`、`device` |
 | `det_model` | 无（未给 `capacitance_pF` 时访问 `capacitance` 必选；下游必填） | 无 | 探测器模型标识，取 `"planar"`、`"lgad"`、`"ilgad_planar"`、`"strip"`、`"lgadstrip"`、`"pixel"`、`"lgad_pixel"`、`"lgadpixel"`、`"3D_pixel"`、`"3D_column_series"` 之一；转小写后含 `"3d"` 时平行板电容分支返回 `None` |
 | `material` | 无（`capacitance` 平行板分支及下游必填） | 无 | 半导体材料，取 `"Si"`、`"SiC"`、`"Diamond"` 或 `"GaN"`；平行板电容分支传入 [model.md](model.md) 的 `Material(material)`，相对介电常数只有 `"Si"`、`"SiC"`、`"Diamond"` 三种，`"GaN"` 器件须给出 `capacitance_pF` |
 | `l_x`, `l_y`, `l_z` | 无（必填） | $\mu\text{m}$ | 探测器沿 $x$、$y$、$z$ 方向的全尺寸（$z$ 为厚度方向），用于构造 `bound`、缺省电极尺寸与缺省耗尽层深度 |

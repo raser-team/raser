@@ -10,6 +10,7 @@ from array import array
 
 import ROOT
 
+from raser.core.current.draw import _place_legend
 from raser.supports import figures
 
 ROOT.gROOT.SetBatch(True)
@@ -170,7 +171,7 @@ def draw_drift_path(my_d, deposits, my_f, my_current, path, event):
     c1.Update()
     
     # 添加图例
-    legend = ROOT.TLegend(0.74, 0.76, 0.9, 0.92)
+    legend = _place_legend(ROOT.gPad, [mg], 0.22, 0.18)
     
     # 创建临时图形用于图例
     dummy_hole = ROOT.TGraph()
