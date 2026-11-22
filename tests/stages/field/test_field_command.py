@@ -44,7 +44,7 @@ def solves(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 @pytest.mark.parametrize(
     ("options", "solved"),
     [
-        ((), ["iv+cv", "emptied", "wf"]),
+        ((), ["iv+cv", "emptied", "cv at None", "emptied", "wf"]),
         (("-iv",), ["iv"]),
         (("-cv",), ["cv at True"]),
         (("-cv", "0"), ["cv at 0.0"]),
@@ -98,9 +98,9 @@ def test_a_field_is_out_of_date_for_what_its_solve_read_its_flux_and_its_setting
 @pytest.mark.parametrize(
     ("options", "solved"),
     [
-        ((), []),
+        ((), ["cv at None"]),
         (("-bias", "100"), []),
-        (("-bias", "300"), ["iv+cv", "emptied", "wf"]),
+        (("-bias", "300"), ["iv+cv", "emptied", "cv at None", "emptied", "wf"]),
         (("-cv",), ["cv at True"]),
         (("-cv", "100"), []),
         (("-iv", "-cv", "0", "-wf"), ["cv at 0.0"]),
