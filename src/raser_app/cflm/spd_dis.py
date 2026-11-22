@@ -6,8 +6,8 @@ from raser.supports.paths import app_file_path
 
 def main():
 
-    root_path = 'src/raser/apps/cflm/input/datafile_p1.root'
-    g4_json_path = app_file_path("apps/cflm", "cflm_spd.json")
+    root_path = 'src/raser_app/cflm/input/datafile_p1.root'
+    g4_json_path = app_file_path("raser_app/cflm", "cflm_spd.json")
     
     root_file = ROOT.TFile(root_path, "READ")
     tree = root_file.Get("electrons")

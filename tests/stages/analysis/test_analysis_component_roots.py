@@ -17,9 +17,9 @@ def test_ana_finds_the_components_as_the_command_of_the_experiment_does(
     monkeypatch.setenv("RASER_WORK_PATH", str(tmp_path))
     monkeypatch.delenv("RASER_PROJECT_PATH", raising=False)
     monkeypatch.delenv("RASER_COMPONENT_PATH", raising=False)
-    experiment = tmp_path / "HPK-Si-PiN" / "cce"
+    experiment = tmp_path / "HPK-Si-PiN" / "signal"
     experiment.mkdir(parents=True)
-    config = {"workflow": "cce", "device": "HPK-Si-PiN", "set": {}, "scan": {}}
+    config = {"workflow": "signal", "device": "HPK-Si-PiN", "set": {}, "scan": {}}
     (experiment / "config.json").write_text(json.dumps(config))
     roots: list[list[str]] = []
     monkeypatch.setattr(
@@ -30,4 +30,4 @@ def test_ana_finds_the_components_as_the_command_of_the_experiment_does(
 
     main(["ana", str(experiment)])
 
-    assert roots == [[str(app_component_root("bench/cce")), str(app_component_root("bench/signal"))]]
+    assert roots == [[str(app_component_root("raser_bench/signal"))]]

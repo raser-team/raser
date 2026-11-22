@@ -3,9 +3,11 @@
 
 import argparse
 import importlib
+import importlib.metadata
 import json
 import re
 import sys
+import tomllib
 from pathlib import Path
 from contextlib import contextmanager
 
@@ -15,10 +17,11 @@ from raser.supports.dependency import ROOT_MISSING
 from raser.supports.dependency import ROOT_MODULES
 from raser.supports.dependency import MissingDependency
 from raser.supports.paths import infer_project_root
+from raser.supports.paths import REPO_ROOT
 from raser.supports.paths import project_root_context
 from raser.supports.paths import work_root
 
-APPLICATIONS = {  # command -> the module that registers it
+LIBRARY = {  # command of the library -> the module that registers it
     "analysis": "raser.stages.analysis",
     "field": "raser.stages.field",
     "deposit": "raser.stages.stage_commands",
@@ -26,16 +29,48 @@ APPLICATIONS = {  # command -> the module that registers it
     "readout": "raser.stages.stage_commands",
     "reconstruction": "raser.stages.stage_commands",
     "status": "raser.lifecycle.status",
-    "bmos": "raser.apps.bmos",
-    "cce": "raser.bench.cce",
-    "cflm": "raser.apps.cflm",
-    "signal": "raser.bench.signal",
-    "tct": "raser.bench.tct",
-    "telescope": "raser.bench.telescope",
-    "timeres": "raser.bench.timeres",
 }
+GROUP = "raser.experiments"  # the entry points of the experiments: command -> module
+
+
+def experiments(tree=REPO_ROOT) -> dict[str, str]:
+    """command -> the module that registers it, for each experiment in the
+    entry points of GROUP. Run from a source tree, which is not installed,
+    the experiments of raser itself are those its pyproject.toml lists."""
+    given = [
+        (point.name, point.value, point.dist.name if point.dist else "?")
+        for point in importlib.metadata.entry_points(group=GROUP)
+        if tree is None or point.dist is None or point.dist.name != "raser"
+    ]
+    if tree is not None:
+        project = tomllib.loads((tree / "pyproject.toml").read_text(encoding="utf-8"))
+        listed = project["project"]["entry-points"][GROUP]
+        given = [(name, value, "raser") for name, value in listed.items()] + given
+    found: dict[str, str] = {}
+    by: dict[str, str] = {}
+    for name, value, dist in given:
+        if name in LIBRARY or name in SHORT:
+            raise SystemExit(
+                f"raser: {dist} registers an experiment {name}: {name} is a command of raser"
+            )
+        if name in found:
+            raise SystemExit(
+                f"raser: the experiment {name} is registered by {by[name]} and by {dist}"
+            )
+        found[name], by[name] = value, dist
+    return found
+
+
 # The short commands of the stages; files and folders hold the full names.
-SHORT = {"fld": "field", "dep": "deposit", "cur": "current", "rdo": "readout", "reco": "reconstruction", "ana": "analysis"}
+SHORT = {
+    "fld": "field",
+    "dep": "deposit",
+    "cur": "current",
+    "rdo": "readout",
+    "reco": "reconstruction",
+    "ana": "analysis",
+}
+APPLICATIONS = {**LIBRARY, **experiments()}  # command -> the module that registers it
 
 
 @contextmanager
@@ -51,7 +86,9 @@ def _context(kwargs):
 
 def build_parser():
     parser = argparse.ArgumentParser(prog="raser")
-    parser.add_argument("--version", action="version", version=f"%(prog)s {raser.__version__}")
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {raser.__version__}"
+    )
     parser.add_argument(
         "-b",
         "--batch",

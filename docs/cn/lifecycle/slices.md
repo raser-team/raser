@@ -113,6 +113,7 @@ raser status work/my-PiN
 ### 模块与文件分工
 
 - `src/raser/lifecycle/slices.py`：环节之间的依赖查询（谁读谁、上游的传递闭包），以及一个作业里按依赖顺序逐个运行各环节。
+- `src/raser/lifecycle/nodes.py`：节点本身：输入的规范写法与指纹（`fingerprint`、`node_of`）、作业种子与环节种子（`job_seed`、`stage_seed`）、节点的加锁与写入（`lock`、`start`、`finish`、`found`）、视图链接（`link_view`）和参数表（`write_points`）。
 - `src/raser/lifecycle/workflow.py`：判断哪些结果复用、哪些新算，安排扫描点之间的共用和各扫描点的运行顺序。
 - `src/raser/lifecycle/status.py`：`raser status` 子命令。
 - `src/raser/stages/chain.py`：把各环节组装成标准链。
@@ -139,3 +140,39 @@ raser status work/my-PiN
 - `<实验>/points/<点名>/<环节>/<作业号>`：视图，指向这个作业在这一环节的节点的软链接；`points/<点名>/field`、`points/<点名>/analysis` 各是一个软链接。
 
 节点里各环节写出的数据文件，格式见 [场求解与加载（`core/field`）](../core/field.md)、[能量沉积与电离（`core/deposit`）](../core/deposit.md)、[载流子漂移与感应电流（`core/current`）](../core/current.md)、[电子学读出（`core/readout`）](../core/readout.md)、[数字化器（`core/digitizer`）](../core/digitizer.md)、[触发环节（`stages/trigger`）](../stages/trigger.md) 和 [事件重建（`core/reconstruction`）](../core/reconstruction.md)。
+
+### `node.json` 与 `points.json` 的格式
+
+节点号是指纹的前 `12` 位十六进制；指纹是输入的规范 JSON 的 SHA-256。规范 JSON 的写法：键按字母序、不带空格；取整数值的浮点数写成整数（`100.0` 与 `100` 是同一个值），其余浮点数原样保留；布尔值不当数；`NaN`、无穷大报错。组件按路径引用的文件（网格、宏、`.cir`、GDML）以文件内容的 SHA-256 进输入，路径本身不进。
+
+`node.json` 的键：
+
+| 键 | 类型 | 进指纹 | 含义 |
+| --- | --- | --- | --- |
+| `stage` | 字符串 | 否 | 环节名 |
+| `node` | 字符串 | 否 | 节点号 |
+| `fingerprint` | 字符串 | 否 | 完整指纹，`64` 位十六进制；复用前核对它，同名而指纹不同时报错 |
+| `inputs.settings` | 对象 | 是 | `config.json` 本段里这个环节读的键和取值 |
+| `inputs.components` | 对象 | 是 | 槽位 → 组件文件里用到的部分 |
+| `inputs.upstream` | 对象 | 是 | 直接读的上游环节 → 节点号；场按槽位写；`analysis` 写这个点各作业的节点号列表 |
+| `inputs.seed` | 整数 | 是 | 这个环节的种子，只有 `deposit`、`current`、`readout`、`digitizer` 有 |
+| `job` | 对象 | 否 | 作业号 `index` 与主种子 `master_seed` |
+| `code` | 字符串 | 否 | 代码版本，工作树有未提交改动时带 `+dirty` |
+| `environment` | 对象 | 否 | 运行环境 |
+| `state` | 字符串 | 否 | `running`（在 `.part` 里写）、`done`、`ended`（上游没留下可算的东西，节点里没有数据文件）、`failed` |
+| `notes` | 对象 | 否 | 环节运行后留下的记录 |
+
+环节自己要记的东西用自己的顶层键，例如 `field` 的 `axes`、`read`、`solved`，写入时与上表的键合并。
+
+`points.json` 是一个对象，键是点名，每个点有两项：`values` 是各扫描轴的“段.键”和取值；`nodes` 是各环节的节点号，`field`、`analysis` 是一个节点号，`deposit` 到 `reconstruction` 是按作业号排列的节点号列表。
+
+```json
+{
+  "voltage_100": {
+    "values": {"field.voltage": 100},
+    "nodes": {"field": "c41f0a9d2b7e", "deposit": ["3f9a0c1d22e4", "8b02e6f4a1c9"], "analysis": "e07d5b3a914c"}
+  }
+}
+```
+
+每个节点的锁文件是节点目录旁的 `.<节点号>.lock`。
