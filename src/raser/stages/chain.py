@@ -29,6 +29,8 @@ KEYS = (
     "deposit.generated_limit",
     "deposit.edep_min",
     "deposit.edep_max",
+    "deposit.require",
+    "deposit.coincidence_window_ns",
     "deposit.fano",
     "deposit.plots",
     "current.plots",
@@ -73,6 +75,8 @@ DEFAULTS = {
     "deposit.source": "decay/Sr90",
     "deposit.g4setup": "device_alone",
     "deposit.events_per_job": 1,
+    "deposit.require": "any",
+    "deposit.coincidence_window_ns": None,
     "deposit.fano": True,
     "deposit.plots": 100,
     "current.plots": 100,
@@ -224,8 +228,14 @@ def _shared_field(device):
 
 
 DEPOSIT_KEYS = tuple(key for key in KEYS if key.startswith("deposit."))
+EDEP_BOUNDS = ("edep_min", "edep_max")  # the keys a slot may set for itself: deposit.<slot>.<bound>
 # A job records a number of events or generates one: one of the two is given.
 EXCLUSIVE = (("deposit.events_per_job", "deposit.generated_per_job"),)
+
+
+def _slot_bounds(devices) -> tuple:
+    """The energy bounds each slot of several may set for itself."""
+    return tuple(f"deposit.{device}.{bound}" for device in devices for bound in EDEP_BOUNDS)
 
 
 def expand(devices=None, deposit=None) -> tuple:
@@ -253,7 +263,7 @@ def expand(devices=None, deposit=None) -> tuple:
         Slice(
             "deposit",
             deposit,
-            keys=DEPOSIT_KEYS,
+            keys=DEPOSIT_KEYS + (_slot_bounds(devices) if several else ()),
             counts=("deposit.events_per_job", "deposit.generated_per_job", "deposit.plots"),
             kinds=("deposit.source", "deposit.g4setup"),
             needs=(),
@@ -353,6 +363,7 @@ def keys_of(devices) -> tuple:
     return (
         *(key for key in KEYS if key not in own),
         *(f"field.{device}.{key.split('.', 1)[1]}" for device in devices for key in own),
+        *_slot_bounds(devices),
     )
 
 

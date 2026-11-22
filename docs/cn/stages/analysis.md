@@ -25,6 +25,8 @@ raser analysis examples/HPK-Si-PiN/signal
 
 每个点还对收集电荷与读出幅度各算两个能量分辨率估计量（式见[统计分析](../core/analysis.md#能量分辨率估计量)），写入 `result.json` 的 `energy_resolution`：全体样本的 FWHM/均值 `resolution`，和只取中位数 ± 5 σ_MAD 以内核心样本的 FWHM/均值 `core_resolution`，其中 σ_MAD = 1.4826 × 中位绝对偏差，系数 `5` 无出处。收集电荷取全部记录事例各电极净电荷代数和的绝对值，不依赖重建；读出幅度取选中事例的 `amplitude`，已扣基线，且只含不低于幅度阈值的事例，分布在下端被阈值截去。样本不足 `2` 个，或过半样本等于中位数使核心无法确定时，该量只写 `events` 与 `error`，不影响其余结果，也不进入点结束时打印的缺项说明。每点还把全部记录事例在灵敏层内的沉积能量（各沉积步 `e` 之和）的事例数、平均值与样本标准差（`ddof=1`，$\text{MeV}$）写入 `result.json` 的 `deposited_energy`；事例不足 `2` 个时只写 `events` 与 `error`。
 
+多位置定时实验里，对每个被 `trigger` 记录的事例、每个槽位，按 `digitizer` 的 `noise_only` 标记分两类：**S**（signal，该槽位在这个事例命中，波形里有信号）和 **B**（background，该槽位在这个事例是纯噪声道，它过阈值靠的是噪声）。`result.json` 的 `timing` 里，对每个槽位写 `signal`（S 的事例数）与 `noise_only`（B 的事例数）；对每个定时通道的槽位间时间差 $\Delta t = t_{\text{DUT}} - t_{\text{ref}}$，分别给出“两个槽位都是 S 的事例”与“全部被记录事例（S + B）”两套核心宽度、`sigma68` 和拟合误差；相对真实沉积时刻的时间差只对 S 有定义（B 没有 `truth`），只用 S。`events.h5` 每个槽位加一列 `noise_only`（`bool`），`time_difference` 图里 $\Delta t$ 的每个子图叠画 S + B（全部被记录事例）、S、B 三条分布，图例写各自事例数，拟合曲线画 S 的。
+
 在上面的例子中（每点 `2` 个作业、共 `400` 个事例），两个点的 `result.json` 关键结果如下：
 
 - `200 V`（`examples/HPK-Si-PiN/signal/points/voltage_200/analysis/result.json`）：全部 `400` 个事例的电荷收集效率 `mean = 0.9348`（`0.9347645480767679`）、`mean_error = 0.007225`、`spread = 0.1445`；被 `trigger` 记录、且找到不低于 `10 mV` 幅度阈值的团簇种子的选中事例 `276` 个（`polarity = -1.0`），`ToA` 经 `5` 轮迭代在窗口内保留 `241` 个事例得 `sigma = 123.99 ps`（`1.2399e-10 s`）、`sigma68 = 123.69 ps`，`CFD30` 得 `sigma = 33.35 ps`、`sigma68 = 31.66 ps`。
@@ -267,7 +269,8 @@ raser analysis examples/HPK-Si-PiN/signal
 | `collection` | `error` | `str` | 无 | `events < 2` 时替代 `mean`/`mean_error`/`spread` 写入，原文为 `<count> events in the point, a mean and a spread need at least 2` |
 | `timing` | `events`, `selected` | `int` | 个 | 总写入；总事例数与选中事例数 |
 | `timing` | `polarity` | `float` | 无 | 至少有 `1` 个事例时写入；`+1.0` 对应 `"rising"`，`-1.0` 对应 `"falling"` |
-| `timing` | `times.<通道>` | `dict` | 见含义 | 全部通道拟合成功时写入；`<通道>` 为 `"ToA"`、`"CoG"` 与各 `"CFD<percent>"`，含 `events`（`int`，个）、`window`（`[low, high]`，$\text{s}$）、`window_events`（`int`，个）、`rounds`（`int`，轮）、`mean`、`mean_error`、`sigma`、`sigma_error`、`sigma68`（均为 `float`，$\text{s}$）与 `missing`（`int`，个，为 `NaN` 的选中事例数） |
+| `timing` | `<槽位>.signal`, `<槽位>.noise_only` | `int` | 个 | 多位置定时实验写入；各槽位在被记录事例中为 S（命中）与 B（纯噪声道）的事例数 |
+| `timing` | `times.<通道>` | `dict` | 见含义 | 全部通道拟合成功时写入；`<通道>` 为 `"ToA"`、`"CoG"` 与各 `"CFD<percent>"`，含 `events`（`int`，个）、`window`（`[low, high]`，$\text{s}$）、`window_events`（`int`，个）、`rounds`（`int`，轮）、`mean`、`mean_error`、`sigma`、`sigma_error`、`sigma68`（均为 `float`，$\text{s}$）与 `missing`（`int`，个，为 `NaN` 的选中事例数）；多位置定时实验里，$\Delta t = t_{\text{DUT}} - t_{\text{ref}}$ 分别给出“两个槽位都是 S 的事例”与“全部被记录事例（S + B）”两套核心宽度、`sigma68` 和拟合误差，相对 `truth` 的时间差只用 S |
 | `timing` | `error` | `str` | 无 | 全点 `0` 事例时写入 `"the jobs recorded no event"`；有事例但任一通道触发 `TooFewValues` 时替代 `times` 写入 `<len> values, fewer than 20` 或 `<inside> of <len> values are inside [<low>, <high>], fewer than 20` |
 | `energy_resolution` | `charge` | `dict` | 见含义 | 总写入；全部记录事例收集电荷（$\text{C}$，各电极净电荷代数和的绝对值）的 `mad_core_resolution`：`events`（个）、`mean`、`sigma`、`median`、`mad_sigma`、`core_mean`、`core_sigma`（$\text{C}$）、`core_events`（个）、`resolution`、`core_resolution`（无量纲）；样本不足 `2` 个或过半样本等于中位数时只写 `events` 与 `error` |
 | `energy_resolution` | `amplitude` | `dict` | 见含义 | 点上至少有 `1` 个记录事例时写入；选中事例读出幅度的 `mad_core_resolution`，键同 `charge`，带单位的量为 $\text{V}$；同样可只写 `events` 与 `error` |
@@ -289,6 +292,7 @@ raser analysis examples/HPK-Si-PiN/signal
 | `truth` | `(selected,)`, `float64` | $\text{s}$ | 事例在 `deposit` 中最早能量沉积步的时刻 |
 | `CoG` | `(selected,)`, `float64` | $\text{s}$ | 过阈区间的时间重心 |
 | `CFD<percent>` | `(selected,)`, `float64`（同名比例拼接时按倍数拉长） | $\text{s}$ | 恒比定时时刻，`<percent>` 为 `round(100 * part)` |
+| `noise_only`（多位置为每个槽位一列） | `(selected,)`, `bool` | 无 | 多位置定时实验写入；该槽位在该事例是否为纯噪声道（`True` 为 B，`False` 为 S） |
 
 #### `<实验文件夹>/analysis/points.json`
 
@@ -310,7 +314,7 @@ raser analysis examples/HPK-Si-PiN/signal
 | --- | --- | --- | --- |
 | `points/<点名>/analysis/plots/efficiency.png`、`.pdf` | 事例数 $\ge 2$ | 全部事例电荷收集效率的 `60` 箱直方图、均值黑色虚线；图例写事例数 `<N> events` 与均值 `mean <均值>` | 横轴 `Charge collection efficiency`（无量纲），纵轴 `Events` |
 | `points/<点名>/analysis/plots/amplitude.png`、`.pdf` | 事例数 $\ge 1$ | 选中事例基线以上脉冲幅度的 `60` 箱直方图、`amplitude_threshold` 黑色虚线；图例写选中数与总事例数 `<n> of <N> events` 和阈值 `threshold <阈值> mV` | 横轴 `Amplitude [mV]`，纵轴 `Events` |
-| `points/<点名>/analysis/plots/time_difference.png`、`.pdf` | `timing.times` 全部算出 | 最多 `3 × 4` 子图展示 `ToA`、`CoG` 与前 `10` 个 `CFD*` 通道相对 `truth` 的时间差分布（`mean ± 8 * sigma` 分 `64` 箱）、末轮拟合窗口阴影与黑色截断高斯拟合曲线；每幅小标题写通道名，左上角写 `sigma68`、`sigma` 与窗内事例数 | 横轴 `<通道名> - truth [ps]`，纵轴 `Events` |
+| `points/<点名>/analysis/plots/time_difference.png`、`.pdf` | `timing.times` 全部算出 | 最多 `3 × 4` 子图展示 `ToA`、`CoG` 与前 `10` 个 `CFD*` 通道相对 `truth` 的时间差分布（`mean ± 8 * sigma` 分 `64` 箱）、末轮拟合窗口阴影与黑色截断高斯拟合曲线；每幅小标题写通道名，左上角写 `sigma68`、`sigma` 与窗内事例数；多位置定时实验的 $\Delta t$ 每个子图叠画 S + B（全部被记录事例）、S、B 三条分布（图例写各自事例数），拟合曲线画 S 的，相对 `truth` 的分布只用 S | 横轴 `<通道名> - truth [ps]`，纵轴 `Events` |
 | `points/<点名>/analysis/plots/resolution_of_fraction.png`、`.pdf` | `timing.times` 全部算出 | 各 `CFD*` 通道的截断高斯拟合 `sigma`（黑色实心圆，带误差棒）与 `sigma68`（黑色空心方块）随恒比比例变化 | 横轴 `CFD fraction`（无量纲），纵轴 `Time resolution [ps]` |
 | `<实验文件夹>/analysis/trend.png`、`.pdf` | 有结果的扫描点多于 `1` 个、变化选项恰有 `1` 个且取值均为非布尔数值 | 按扫描变量升序绘制左右双图：左图为收集效率及误差棒，右图为各 `CFD*` 通道的 `sigma` 及误差棒，每个通道一条线 | 横轴为扫描选项名；左图纵轴 `Charge collection efficiency`，右图纵轴 `Time resolution [ps]` |
 | `<实验文件夹>/analysis/energy_resolution.png`、`.pdf` | 同 `trend` | 按扫描变量升序，左图收集电荷、右图读出幅度，各画 `resolution`（黑色圆点实线）与 `core_resolution`（蓝色方点虚线）；缺该量结果的点在该幅中省略 | 横轴为扫描选项名；纵轴 `Energy resolution of the charge`、`Energy resolution of the amplitude`（无量纲，下限 `0`） |

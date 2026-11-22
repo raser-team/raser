@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -101,3 +102,32 @@ def test_the_field_of_each_device_is_stamped_as_that_device_sees_it(monkeypatch:
 
     assert pieces["field.A"].shared.stamp(options, files) == "devA at 100.0"
     assert pieces["field.B"].shared.stamp(options, files) == "devB at 200.0"
+
+
+def test_the_energy_bound_of_a_slot_is_a_setting_of_the_deposits_of_several_devices() -> None:
+    assert "deposit.A.edep_min" in chain.keys_of(DEVICES) and "deposit.B.edep_max" in chain.keys_of(DEVICES)
+    assert "deposit.A.edep_min" in chain.expand(DEVICES)[0].keys
+    assert not any(key.startswith("deposit.A.") for key in chain.keys_of({"A": ("devA", ["a1"])}))
+
+
+def test_a_slot_the_experiment_does_not_have_is_told_with_its_key(two: dict[str, Any]) -> None:
+    with pytest.raises(ValueError, match=r"deposit\.C\.edep_min"):
+        execute(two["workflow"], _kwargs(set=["deposit.C.edep_min=0.03"]))
+
+
+def _deposit_node(two: dict[str, Any], *given: str) -> str:
+    """The node of the deposits of a fresh run with the settings `given`."""
+    shutil.rmtree(two["root"], ignore_errors=True)
+    execute(two["workflow"], _kwargs(set=list(given)))
+    record = json.loads((two["root"] / "seed_1" / "run.json").read_text())
+    return str(workflow.job_nodes(two["workflow"], record, 0)["deposit"][1])
+
+
+def test_the_logic_and_the_bound_of_a_slot_make_new_deposits(two: dict[str, Any]) -> None:
+    nodes = [
+        _deposit_node(two),
+        _deposit_node(two, "deposit.require=A"),
+        _deposit_node(two, "deposit.coincidence_window_ns=2.5"),
+        _deposit_node(two, "deposit.B.edep_min=0.03"),
+    ]
+    assert len(set(nodes)) == 4

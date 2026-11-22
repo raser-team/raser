@@ -3,7 +3,7 @@ Geant4 world.
 
 The key "along_beam" of a g4setup is a column that starts at "source". The
 world origin is on the source and z runs along the beam, downstream. Every
-item takes its length along z: a gap its width, an object its side_z, a slot
+item takes its length along z: a gap its width, an object its thickness, a slot
 the thickness of its device, a list of items side by side the thickest of
 them; the front face of an item is at the sum of the lengths before it. Reading
 this imports no Geant4.
@@ -152,12 +152,88 @@ class Layout:
 
 
 def objects_of(g4setup: Mapping) -> dict[str, dict]:
-    """The objects of the g4setup by name, whichever of "elemental" and
-    "binary_compounds" lists them."""
-    table: dict[str, dict] = {}
-    for group in (g4setup.get("object") or {}).values():
-        table.update(group)
-    return table
+    """The objects of the g4setup by name."""
+    return dict(g4setup.get("objects") or {})
+
+
+def object_thickness(body: Mapping) -> float:
+    """The length [um] an object takes along z: size[2] of a "box", the
+    length of a "tube"."""
+    return float(body["size"][2] if body["shape"] == "box" else body["length"])
+
+
+def object_side(body: Mapping) -> tuple[float, float]:
+    """The full width [um] of an object along x and y: size[0] and size[1] of
+    a "box", twice the outer_radius of a "tube"."""
+    if body["shape"] == "box":
+        return (float(body["size"][0]), float(body["size"][1]))
+    return (2.0 * float(body["outer_radius"]), 2.0 * float(body["outer_radius"]))
+
+
+def check_materials(g4setup: Mapping) -> None:
+    """Check the materials of the g4setup that need no Geant4: a density and
+    an atom share of every element that is a positive number. ValueError
+    otherwise."""
+    for name, material in (g4setup.get("materials") or {}).items():
+        for key in ("density", "elements"):
+            if key not in material:
+                raise ValueError(f"material {name!r} is missing required key {key!r}")
+        if not material["density"] > 0:
+            raise ValueError(f"density of material {name!r} must be positive")
+        if not material["elements"]:
+            raise ValueError(f"material {name!r} has no elements")
+        for symbol, share in material["elements"].items():
+            if not share > 0:
+                raise ValueError(
+                    f"element share of {symbol!r} in material {name!r} must be positive"
+                )
+
+
+def check_objects(g4setup: Mapping) -> None:
+    """Check the objects of the g4setup, which need no Geant4: a shape that
+    is "box" or "tube", the keys of the shape, sizes that are positive, a
+    hole smaller than the half width of the box, an inner_radius smaller than
+    the outer_radius, and a material of the g4setup or of NIST ("G4_..."). A
+    ValueError otherwise."""
+    materials = g4setup.get("materials") or {}
+    for name, body in (g4setup.get("objects") or {}).items():
+        shape = body.get("shape")
+        if shape not in ("box", "tube"):
+            raise ValueError(
+                f"object {name!r} has unknown shape {shape!r}: expected 'box' or 'tube'"
+            )
+        required = ("size",) if shape == "box" else ("outer_radius", "length")
+        for key in (*required, "material"):
+            if key not in body:
+                raise ValueError(f"object {name!r} is missing required key {key!r}")
+        if shape == "box":
+            if len(body["size"]) != 3:
+                raise ValueError(f"size of object {name!r} is not [x, y, z]")
+            dimensions = list(body["size"])
+        else:
+            dimensions = [body["outer_radius"], body["length"]]
+        if "hole" in body:
+            dimensions.append(body["hole"])
+        if not all(value > 0 for value in dimensions):
+            raise ValueError(f"dimensions of object {name!r} must be positive")
+        if shape == "box" and "hole" in body:
+            if body["hole"] >= min(body["size"][0], body["size"][1]) / 2:
+                raise ValueError(
+                    f"hole radius ({body['hole']} um) of object {name!r} "
+                    "must be less than half of x and y sizes"
+                )
+        if shape == "tube":
+            inner = body.get("inner_radius", 0)
+            if inner < 0:
+                raise ValueError(f"dimensions of object {name!r} must be positive")
+            if inner >= body["outer_radius"]:
+                raise ValueError(
+                    f"inner_radius ({inner} um) of object {name!r} "
+                    f"must be less than outer_radius ({body['outer_radius']} um)"
+                )
+        material = body["material"]
+        if material not in materials and not str(material).startswith("G4_"):
+            raise ValueError(f"unknown material {material!r} for object {name!r}")
 
 
 def slot_names(g4setup: Mapping) -> list[str]:
@@ -217,8 +293,8 @@ def parse_along_beam(g4setup: Mapping, devices: Mapping) -> Layout:
                         name=item["object"],
                         z=z,
                         offset=offset,
-                        thickness=float(body["side_z"]),
-                        side=(float(body["side_x"]), float(body["side_y"])),
+                        thickness=object_thickness(body),
+                        side=object_side(body),
                     )
                 )
         _no_overlap(members)
@@ -265,6 +341,8 @@ def _structure(g4setup: Mapping):
     column = list(g4setup["along_beam"])
     if not column or column[0] != "source":
         raise ValueError("the first item of along_beam must be 'source'")
+    check_materials(g4setup)
+    check_objects(g4setup)
     table = objects_of(g4setup)
     seen: set[str] = set()
     steps: list = []
@@ -287,7 +365,7 @@ def _structure(g4setup: Mapping):
             )
         name = str(item.get("slot", item.get("object")))
         if "object" in item and name not in table:
-            raise ValueError(f"object {name!r} is not in object")
+            raise ValueError(f"object {name!r} is not in objects")
         if name in seen:
             raise ValueError(f"duplicate {name!r} in along_beam")
         seen.add(name)

@@ -7,17 +7,10 @@ G4SETUP = {
     "description": "Alphas on the MIM diamond pad with 0.2 um of gold on both faces, in vacuum",
     "geant4_model": "device",
     "world": "G4_Galactic",
-    "object": {
-        "elemental": {
-            "FrontAu": {
-                "name": "FrontAu", "material": "G4_Au", "side_x": 4500.0, "side_y": 4500.0, "side_z": 0.2,
-                "colour": [1.0, 0.8, 0.0],
-            },
-            "BackAu": {
-                "name": "BackAu", "material": "G4_Au", "side_x": 4500.0, "side_y": 4500.0, "side_z": 0.2,
-                "colour": [1.0, 0.8, 0.0],
-            },
-        }
+    "materials": {},
+    "objects": {
+        "FrontAu": {"shape": "box", "size": [4500.0, 4500.0, 0.2], "material": "G4_Au", "colour": [1.0, 0.8, 0.0]},
+        "BackAu": {"shape": "box", "size": [4500.0, 4500.0, 0.2], "material": "G4_Au", "colour": [1.0, 0.8, 0.0]},
     },
     "source": {"angle": 0},
     # the alphas enter through the face z = l_z of the device, its top electrode

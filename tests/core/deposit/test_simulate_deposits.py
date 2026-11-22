@@ -23,7 +23,7 @@ G4SETUP = {
     "name": "time_resolution",
     "geant4_model": "time_resolution",
     "total_events": 10000,
-    "object": {"elemental": {}},
+    "objects": {},
     "world": "G4_Galactic",
     "maxstep": 2,
     "g4_vis": False,
@@ -59,7 +59,7 @@ def test_experiment_overrides_source_overrides_g4setup() -> None:
     assert configuration["par_energy"] == 1000.0
     # the surroundings are of the g4setup; the names of the files are gone
     assert configuration["geant4_model"] == "time_resolution"
-    assert configuration["object"] == {"elemental": {}}
+    assert configuration["objects"] == {}
     assert "name" not in configuration and "kind" not in configuration
     # the source is at the origin and aims at the front face of the first slot
     assert configuration["par_in"] == [0, 0, 0] and configuration["par_out"] == [0, 0, 1000]
@@ -179,7 +179,7 @@ def _wide(side_x, side_y=100.0, l_z=50.0):
 
 def _box(side_x, offset_x=0.0, side_z=10.0):
     return {
-        "elemental": {"box": {"side_x": side_x, "side_y": 10, "side_z": side_z}}
+        "box": {"shape": "box", "size": [side_x, 10, side_z], "material": "G4_Al"}
     }, {"object": "box", "offset": [offset_x, 0]}
 
 
@@ -196,7 +196,7 @@ def test_world_holds_the_column_the_objects_and_the_source() -> None:
     assert world_half_side(_layout(setup, wide), {}) == 96791 + _layout(setup, wide).length / 2
     # an object that starts beyond the world
     objects, item = _box(2000, 29000)
-    far = {**setup, "object": objects, "along_beam": ["source", {"gap": 17000}, item, {"slot": "Device"}]}
+    far = {**setup, "objects": objects, "along_beam": ["source", {"gap": 17000}, item, {"slot": "Device"}]}
     far_layout = _layout(far, small)
     assert world_half_side(far_layout, {}) == 60000 + far_layout.length / 2
     # a disk of a source reaches by its radius
@@ -205,6 +205,20 @@ def test_world_holds_the_column_the_objects_and_the_source() -> None:
     long = {**setup, "along_beam": ["source", {"gap": 60000}, {"slot": "Device"}]}
     long_layout = _layout(long, small)
     assert world_half_side(long_layout, {}) == 2 * (long_layout.length / 2) + long_layout.length / 2
+
+
+def test_world_reaches_the_outer_radius_of_a_tube() -> None:
+    small = {"Device": _wide(1300, 1300)}
+    pipe = {"shape": "tube", "outer_radius": 30000, "length": 10, "material": "G4_Al"}
+    setup = {
+        **G4SETUP,
+        "objects": {"pipe": pipe},
+        "along_beam": ["source", "pipe", {"slot": "Device"}],
+    }
+    layout = _layout(setup, small)
+
+    # the tube reaches 30000 um from the axis: twice that, with the half of the column
+    assert world_half_side(layout, {}) == 60000 + layout.length / 2
 
 
 def test_generated_fraction_is_the_solid_angle_of_the_cone() -> None:

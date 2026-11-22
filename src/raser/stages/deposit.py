@@ -65,9 +65,9 @@ def deposits(kwargs, slots=None):
         files.get("g4setup"),
         None if events is None else int(events),
         kwargs["seed"],
-        dict.fromkeys(placed, (kwargs.get("edep_min"), kwargs.get("edep_max"))),
-        "any",
-        None,
+        _windows(kwargs, placed),
+        kwargs["require"],
+        kwargs.get("coincidence_window_ns"),
         kwargs["fano"],
         None if generated is None else int(generated),
         GENERATED_LIMIT if limit is None else int(limit),
@@ -76,6 +76,20 @@ def deposits(kwargs, slots=None):
     if not recorded:
         # the file keeps the number of generated events; nothing is left to drift
         raise Ended
+
+
+def _windows(kwargs, placed):
+    """The energy window (edep_min, edep_max) of each slot: deposit.edep_min and
+    deposit.edep_max, each side replaced by the slot's own deposit.<slot>.edep_min
+    or deposit.<slot>.edep_max where that is given."""
+    bounds = ("edep_min", "edep_max")
+    return {
+        slot: tuple(
+            kwargs[f"{slot}.{bound}"] if kwargs.get(f"{slot}.{bound}") is not None else kwargs.get(bound)
+            for bound in bounds
+        )
+        for slot in placed
+    }
 
 
 def _picture(kwargs):

@@ -31,7 +31,7 @@ raser digi --set digitizer.device.full_scale_V=0.08
 
 ### 纯噪声道
 
-不在触发条件里、沉积能量低于使用者给的能量 cut 的道，不走 `current`、`readout`：`digitizer` 按该道电子学的噪声谱，直接在采样点上抽出噪声并量化，得到它的数字波形。哪些道是纯噪声道由上游在 `current` 之前判断，`digitizer` 按给定的列表处理；噪声谱是实验通用的资产，一种器件、偏压和放大器链只算一次。式子和判断函数见[数字化器（`core/digitizer`）](../core/digitizer.md#纯噪声道)。
+两类道不走 `current`、`readout`，由 `digitizer` 按该道电子学的噪声谱直接在采样点上抽出噪声并量化，得到它的数字波形：一类是不在触发条件里、沉积能量低于使用者给的能量 cut 的道；另一类是多位置实验里在该事例未命中的槽位（没有沉积步，或沉积能量低于该槽位的能量下限 `deposit.<槽位>.edep_min`，没设时取 `deposit.edep_min`），无论该槽位在不在触发条件里（触发条件里的槽位照样拿这条纯噪声波形去过阈值，噪声造成的假触发自然出现）。两类的区别在于：前一类是不参与触发的道，后一类是槽位整个未命中，使用者用能量下限选择不算它的信号。前一类由上游在 `current` 之前判断，后一类由本环节按 `deposit.h5` 的 `detector`、`e` 两列和能量下限判断，`current`、`readout` 按同一判断跳过这个槽位的这个事例，`digitizer` 按给定的列表处理；噪声谱是实验通用的资产，一种器件、偏压和放大器链只算一次。式子和判断函数见[数字化器（`core/digitizer`）](../core/digitizer.md#纯噪声道)。
 
 ## 规则
 
@@ -41,8 +41,8 @@ raser digi --set digitizer.device.full_scale_V=0.08
 2. **分组与相位**：一台设备的所有通道共用一个采样时钟。`readout.h5` 属性 `electrodes` 里的通道数多于组件的 `channels` 时，按 `electrodes` 的顺序每 `channels` 个分为一组，每组一台同型号设备，各台的时钟相位各自抽取。
 3. **带宽与采样**：按组件的 `response`（`"brickwall"` 或 `"none"`）限带宽，在采样时刻 $t_k = t_0 + \varphi + k\,T_s + \delta_k$ 按带限插值取电压（$\text{V}$）：$t_0$ 为 `readout.h5` 里该事例的 `t0`（$\text{s}$），$T_s = 10^{-9}/$`sampling_rate_GSps`（$\text{s}$），$\varphi$ 在 $[0, T_s)$ 上均匀分布，$\delta_k$ 是均方根为 `aperture_jitter_ps`（$\text{ps}$）的高斯孔径抖动。每个电极取 $\lfloor n_{\text{bin}}\,\Delta t / T_s \rfloor$ 个点（$n_{\text{bin}}$、$\Delta t$ 为该事例 `readout` 波形的箱数和箱宽）。式子见[数字化器（`core/digitizer`）](../core/digitizer.md)。
 4. **量化**：$\text{LSB} = $`full_scale_V`$/2^N$（$\text{V}$），$N$ 为组件的 `bits`；码 $= \lfloor(V - $`offset_V`$)/\text{LSB}\rfloor + 2^{N-1}$，截到 $[0,\ 2^N - 1]$。每个电极被截的点数逐个记下。
-5. **纯噪声道**：该事例列为纯噪声的道按其噪声谱资产抽出采样点上的噪声，再量化；点数和时钟相位与同一事例的其他道相同。
-6. **写出**：把数字波形文件 `digitizer.h5` 和本环节的图写进 `digitizer` 节点。图有两种：前 `digitizer.plots` 个存了波形的事例各一张 `samples_<事例号>`（带宽滤波后的模拟波形叠上数字化后的样点），以及每个节点一张 `codes`（码的直方图）；`digitizer.plots` 为 `0` 时都不画。
+5. **纯噪声道**：该事例列为纯噪声的道按其噪声谱资产抽出采样点上的噪声，再量化；点数和时钟相位与同一事例的其他道相同。多位置实验里，某槽位在 `deposit` 记录的某个事例未命中时，该槽位的全部电极均列为纯噪声道，点数、时钟相位与同一事例其他槽位相同。
+6. **写出**：把数字波形文件 `digitizer.h5` 和本环节的图写进 `digitizer` 节点（多位置实验里每个位置的 `digitizer.<位置>.h5` 含 `deposit` 记录的全部事例，未命中的事例其电极标 `noise_only`）。图有两种：前 `digitizer.plots` 个存了波形的事例各一张 `samples_<事例号>`（带宽滤波后的模拟波形叠上数字化后的样点），以及每个节点一张 `codes`（码的直方图）；`digitizer.plots` 为 `0` 时都不画。
 
 ### 种子
 
@@ -73,8 +73,8 @@ raser digi --set digitizer.device.full_scale_V=0.08
 ### 读写的文件
 
 - **读：`readout` 节点的 `readout.h5`**（多位置实验里为同节点下的 `readout.<位置>.h5`）：放大后的波形，由[电子学读出环节（`stages/readout`）](readout.md)写出，本环节只读。
-- **读：纯噪声道列表与噪声谱资产**：每个事例列为纯噪声的电极下标，由上游给出；各输出的噪声谱由 `readout` 算出、作为资产存放，本环节只读。
-- **写：`nodes/digitizer/<节点号>/digitizer.h5`**（多位置实验里为同节点下的 `digitizer.<位置>.h5`）：数字波形文件，沿用 `readout.h5` 的稀疏存法，存 `readout.h5` 里存了波形的电极和纯噪声道。
+- **读：`deposit` 节点的 `deposit.h5`（多位置实验）、纯噪声道列表与噪声谱资产**：多位置实验按 `deposit.h5` 的 `detector`、`e` 两列和能量下限判断各事例哪些槽位未命中；其余纯噪声道列表由上游给出；各输出的噪声谱由 `readout` 算出、作为资产存放，本环节只读。
+- **写：`nodes/digitizer/<节点号>/digitizer.h5`**（多位置实验里为同节点下的 `digitizer.<位置>.h5`）：数字波形文件，沿用 `readout.h5` 的稀疏存法，存 `readout.h5` 里存了波形的电极和纯噪声道；多位置实验里每个位置的 `digitizer.<位置>.h5` 含 `deposit` 记录的全部事例，未命中的事例其电极标 `noise_only`。
 
   | 类别 | 名称 | 形状与类型 | 单位 | 含义 |
   | --- | --- | --- | --- | --- |

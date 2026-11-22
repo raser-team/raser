@@ -155,7 +155,7 @@ def _column(**slots):
     column: list = ["source"]
     for name, options in slots.items():
         column += [{"gap": 100}, {"slot": name, **options}]
-    return devices, parse_along_beam({"object": {}, "along_beam": column}, devices)
+    return devices, parse_along_beam({"objects": {}, "along_beam": column}, devices)
 
 
 def _mip_slots(devices, layout, require, windows=None, source=None, generated=1):

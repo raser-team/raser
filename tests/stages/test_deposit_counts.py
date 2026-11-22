@@ -21,6 +21,7 @@ def _options(tmp_path, **counts):
         "seed": 1,
         "fano": False,
         "edep_min": 0.0185,
+        "require": "any",
         **counts,
     }
 

@@ -6,7 +6,8 @@ What surrounds the device in Geant4; reading it imports no Geant4."""
 G4SETUP = {
     "geant4_model": "gdml_import",
     "total_events": 1,
-    "object": {},
+    "materials": {},
+    "objects": {},
     "world": "G4_Galactic",
     "world_half_size_um": 2000000,
     "par_type": "proton",

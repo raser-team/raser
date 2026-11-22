@@ -11,7 +11,7 @@ from raser.lifecycle.workflow import Workflow
 from raser.lifecycle.workflow import execute
 
 SCRIPT = """
-G4SETUP = {"world": "G4_Galactic", "maxstep": 2, "object": {}}
+G4SETUP = {"world": "G4_Galactic", "maxstep": 2, "objects": {}}
 RUNS.append(1) if "RUNS" in globals() else None
 
 
