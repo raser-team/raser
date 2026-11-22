@@ -15,8 +15,8 @@ def solved(my_d, kwargs):
     """The solved field of the device at its bias; the flux is of the field
     the run takes, not of the device."""
     flux = my_d.irradiation_flux
-    if kwargs.get("irradiation") is not None:
-        flux = float(kwargs["irradiation"])
+    if kwargs.get("irradiation_flux") is not None:
+        flux = float(kwargs["irradiation_flux"])
     return devfield.DevsimField(
         my_d.device,
         my_d.voltage,
