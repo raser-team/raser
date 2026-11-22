@@ -172,3 +172,23 @@ def test_a_path_that_names_no_experiment_is_told_in_one_line(tmp_path: Path, mon
     for target in ("empty", "nowhere", str(tmp_path)):
         with pytest.raises(SystemExit, match="neither an experiment folder .* nor a project that holds one"):
             status.experiments(target)
+
+
+# Deliberate change: the column twelve characters wide, so that a longer name runs into the count.
+def test_the_names_of_the_slices_stand_in_one_column_whatever_their_length(tmp_path: Path) -> None:
+    long = Workflow(
+        name="toy",
+        keys=(),
+        slices=(Slice("deposit", print, needs=()), Slice("reconstruction.left", print, needs=("deposit",))),
+        device=False,
+    )
+    folder = tmp_path / "toy" / "seed_1"
+    (folder / "batch").mkdir(parents=True)
+    record = {"seed": 1, "point": "", "jobs": 1, "held_in": {"deposit": "", "reconstruction.left": ""}}
+
+    lines = status._folder_lines(long, folder, record, None, lambda piece: True)
+
+    assert lines[1:] == [
+        "  deposit             0/1 done; not started [0]",
+        "  reconstruction.left 0/1 done; waiting [0]",
+    ]

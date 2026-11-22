@@ -115,12 +115,14 @@ def _folder_lines(workflow, folder: Path, record: dict, why: str | None, ready, 
         # A run of an older raser, whose slices had other names.
         return [f"{folder}: out of date (recorded with the slices {sorted(held_in)})" + note]
     lines = [f"{folder}:" + (f" out of date ({why})" if why else "") + note, *waited_for_by(record)]
-    for piece_name, by_state in folder_states(workflow, folder, record, ready).items():
+    states = folder_states(workflow, folder, record, ready)
+    width = max(map(len, states), default=0) + 1  # the names in one column, whatever their length
+    for piece_name, by_state in states.items():
         count = sum(len(jobs) for jobs in by_state.values())
         done = len(by_state["done"])
         shown = f"{done}/{count} done" if not why else f"{done}/{count} done, out of date"
         rest = ", ".join(f"{state} {jobs}" for state, jobs in by_state.items() if state != "done" and jobs)
-        lines.append(f"  {piece_name:<12}{shown}" + (f"; {rest}" if rest else ""))
+        lines.append(f"  {piece_name:<{width}}{shown}" + (f"; {rest}" if rest else ""))
     return lines
 
 
