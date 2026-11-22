@@ -1,0 +1,10 @@
+{
+    "name": "MIP_telescope",
+    "kind": "toy_mip",
+    "description": "Straight toy MIP from the source through every slot of a column along the beam, slopes spread by 1 mrad, the mean energy loss in every piece.",
+    "direction_sigma_mrad": {
+        "x": 1.0,
+        "y": 1.0
+    },
+    "landau_sampling": false
+}

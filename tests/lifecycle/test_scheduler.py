@@ -133,6 +133,29 @@ def test_condor_test_mode_writes_and_submits_nothing(
     assert submitted == []
 
 
+def test_a_source_tree_records_its_commit_dirty_when_changed_and_its_version_where_git_has_none(
+    tmp_path, monkeypatch
+) -> None:
+    from raser.lifecycle import workflow
+
+    answers: dict = {}
+
+    def run(command, **options):
+        ok = answers.get(command[3]) is not None
+        return SimpleNamespace(returncode=0 if ok else 128, stdout=(answers.get(command[3]) or "") + "\n")
+
+    monkeypatch.setattr(workflow, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(workflow.raser, "__version__", "9.9")
+    monkeypatch.setattr(workflow.subprocess, "run", run)
+
+    answers.update({"rev-parse": "abc123", "status": ""})
+    assert workflow._commit() == "abc123"
+    answers["status"] = " M src/raser/x.py"
+    assert workflow._commit() == "abc123+dirty"
+    answers.update({"rev-parse": None, "status": None})  # unpacked from an archive: no repository
+    assert workflow._commit() == "raser 9.9"
+
+
 def test_an_installed_raser_records_its_version_and_runs_its_workers_in_the_folder_of_the_command(
     tmp_path, monkeypatch
 ) -> None:

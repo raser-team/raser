@@ -19,7 +19,7 @@ raser analysis examples/HPK-Si-PiN/signal
 
 ### 单点统计与分布图
 
-每个扫描点汇总它用到的全部作业。程序先算全部事例的电荷收集效率（事例数不少于 `2` 时画出 `efficiency.png`、`efficiency.pdf`）。再对单电极重建结果取出选中事例的各定时量与最早沉积时刻 `truth`，写入 `events.h5`，画出 `amplitude.png`、`amplitude.pdf`。最后对 `ToA`、`CoG` 与各 `CFD*` 通道计算 `time - truth` 的核心宽度，画出 `time_difference` 与 `resolution_of_fraction`，各有 `.png`、`.pdf`。
+每个扫描点汇总测的是同一件事的全部已完成作业，不论种子、每个作业的事例数和 `plots`，规则见[片与重跑](../lifecycle/slices.md)。程序先算全部事例的电荷收集效率（事例数不少于 `2` 时画出 `efficiency.png`、`efficiency.pdf`）。再对单电极重建结果取出选中事例的各定时量与最早沉积时刻 `truth`，写入 `events.h5`，画出 `amplitude.png`、`amplitude.pdf`。最后对 `ToA`、`CoG` 与各 `CFD*` 通道计算 `time - truth` 的核心宽度，画出 `time_difference` 与 `resolution_of_fraction`，各有 `.png`、`.pdf`。
 
 样本不足时作业照常完成：效率不足 `2` 个事例、全点 `0` 事例，或任一时间通道有效样本不足 `20` 个，原因写进 `result.json` 对应的 `error` 字段，相应的图跳过。某个作业在 `deposit` 里录得 `0` 个事例时，它的下游环节随之跳过，统计时也跳过它。
 

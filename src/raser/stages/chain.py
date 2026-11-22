@@ -210,6 +210,7 @@ def expand(devices=None, deposit=_deposits) -> tuple:
             "deposit",
             deposit,
             keys=DEPOSIT_KEYS,
+            counts=("events_per_job", "generated_per_job", "plots"),
             kinds=("source", "g4setup"),
             needs=(),
         )
@@ -236,6 +237,7 @@ def expand(devices=None, deposit=_deposits) -> tuple:
                     current,
                     partial(_currents, device=device if several else None, position=at) if at or several else _currents,
                     keys=("plots",),
+                    counts=("plots",),
                     needs=("deposit", name),
                 )
             )

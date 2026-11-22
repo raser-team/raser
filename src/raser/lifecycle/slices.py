@@ -37,6 +37,10 @@ class Slice:
     # field it found: `notes` reads it back. It is kept, not judged.
     run: Callable
     keys: tuple = ()  # the options that change what it writes
+    # Those of its keys that say how much is measured or drawn, not what:
+    # jobs that differ in them alone measured the same thing, and an
+    # analysis takes them together.
+    counts: tuple = ()
     kinds: tuple = ()  # the kinds of json file that change what it writes
     # A scanned option of it makes each point a measurement of its own, with
     # its own events: the point runs the slices before this one itself. False

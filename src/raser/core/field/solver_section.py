@@ -313,7 +313,7 @@ def main (kwargs):
                     return main({**kwargs, "_cells_either_side": more})
 
             # Stored as the weighting field of the bias, as Potential_<bias>V.pkl.
-            save_milestone.save_milestone(device=device, v=float(v_goal), path=folder_path,dimension=default_dimension,contact_name=contact,is_wf=is_wf,cells_either_side=cells_either_side or None,)
+            save_milestone.save_milestone(device=device, v=float(v_goal), path=folder_path,dimension=default_dimension,contact_name=contact,is_wf=is_wf,cells_either_side=cells_either_side or None,axes=mesh_axes(MyDetector),)
             if cells_either_side:
                 stored = {
                     "unit": "F/cm",

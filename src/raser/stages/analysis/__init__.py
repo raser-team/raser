@@ -5,7 +5,8 @@ from pathlib import Path
 
 from raser.lifecycle.workflow import Workflow
 from raser.lifecycle.workflow import execute
-from raser.lifecycle.workflow import finished_in
+from raser.lifecycle.workflow import batches
+from raser.lifecycle.workflow import jobs_of_points
 from raser.supports.paths import project_root_context
 
 from .point import write_point
@@ -18,13 +19,14 @@ def collect(options):
     folder of its name inside the analysis folder, and of several of them
     side by side in the analysis folder itself."""
     root, folder = Path(options["experiment"]), Path(options["_run_path"])
-    points = finished_in(root)
+    points = jobs_of_points(root)
     failed = []
     done, results = [], []
     for name, point_options, jobs in points:
         if not jobs:
             failed.append(f"  {root / name}: no finished job")
             continue
+        print(f"{root}: {name}: {batches(jobs)}")
         error = write_point(jobs, folder / name)
         # too few events for a width or an efficiency is a result of the point;
         # a fit that fails with enough events raises

@@ -405,7 +405,14 @@ def _write_points(workflow, kwargs, root, scan, asked, todo) -> None:
                 place = nodes.node_dir(root, stage_of(piece), node)
                 if (place / "node.json").is_file():
                     nodes.link_view(root, record["view"], piece, place, job=index)
-        rows[record["view"]] = {"values": {key: record["options"].get(key) for key in scan}, "nodes": table}
+        measures = {
+            piece: measured_thing(workflow, inputs) for piece, (inputs, _) in job_nodes(workflow, record, 0).items()
+        }
+        rows[record["view"]] = {
+            "values": {key: record["options"].get(key) for key in scan},
+            "nodes": table,
+            "measures": measures,
+        }
     root.mkdir(parents=True, exist_ok=True)
     nodes.write_points(root, rows)
     # The views of points the experiment no longer has go: they hold links only.
@@ -623,6 +630,124 @@ def finished_in(root) -> list[tuple[str, dict, list[tuple[Path, int]]]]:
         raise ValueError(f"{root}: no command runs its workflow {config['workflow']!r}")
     kwargs = {"det_name": config.get("device"), "scan": []}
     return finished(WORKFLOWS[config["workflow"]], kwargs, Path(root))
+
+
+def measured_thing(workflow, inputs) -> str:
+    """The fingerprint of what a node measured, from its inputs: the same
+    for nodes that differ only in how much was measured or drawn
+    (Slice.counts), in their seed and in the nodes they read. The stamps of
+    the shared slices they read, as a field, are part of it."""
+    counts = {key for piece in workflow.slices for key in piece.counts}
+    names = {piece.name for piece in workflow.slices if not piece.shared}
+    return nodes.fingerprint(
+        {
+            "slice": inputs["slice"],
+            "settings": {key: value for key, value in inputs["settings"].items() if key not in counts},
+            "components": inputs["components"],
+            "shared": {key: value for key, value in inputs["upstream"].items() if key not in names},
+            "command_line": inputs.get("command_line"),
+        }
+    )
+
+
+def jobs_of_points(root) -> list[tuple[str, dict, list[tuple[Path, dict]]]]:
+    """The points of the experiment in `root` as its last command left them
+    in points.json, each with its name, the values of its scanned options and
+    the finished jobs that measured it. A job is (the experiment folder,
+    slice -> its node).
+
+    The jobs of a point are all those in the nodes of the experiment that
+    measured what the point measures (points.json: "measures"), whichever
+    run, seed or number of events they are of: running a point again with
+    another seed adds to it. A job is finished when every slice of it has
+    its node, or one of them ended it, as a job that recorded no event. The
+    events of the root of a job, its deposits, are counted once: of two
+    chains that read the same deposits, as one drawn and one not, the first
+    by the names of its nodes is taken."""
+    root = Path(root)
+    table = _read(root / "points.json")
+    if not table:
+        raise ValueError(f"{root}: no points.json; run the experiment first")
+    config = _read(root / "config.json")
+    workflow = WORKFLOWS[config["workflow"]]
+    own = [piece for piece in workflow.slices if not piece.shared]
+    names = [piece.name for piece in own]
+    written: dict = {name: {} for name in names}  # slice -> node -> its node.json
+    for name in names:
+        for path in sorted((root / "nodes" / stage_of(name)).glob("*/node.json")):
+            record = nodes.read(path.parent)
+            if record["inputs"].get("slice") == name:
+                written[name][record["node"]] = record
+    result = []
+    for point, row in table.items():
+        same = {
+            name: {
+                node: record
+                for node, record in written[name].items()
+                if measured_thing(workflow, record["inputs"]) == row["measures"][name]
+            }
+            for name in names
+        }
+        jobs: dict = {}  # the nodes of the slices that read no other -> the job
+        for chain in _chains(own, same):
+            roots = tuple(chain[piece.name] for piece in own if not _needs(own, piece) and piece.name in chain)
+            ended = any(same[name][node]["state"] == "ended" for name, node in chain.items())
+            if roots and (len(chain) == len(names) or ended):
+                jobs.setdefault(roots, chain)
+        result.append((point, row["values"], [(root, chain) for _, chain in sorted(jobs.items())]))
+    return result
+
+
+def _needs(own, piece) -> list[str]:
+    """The slices of `own` that `piece` reads itself."""
+    names = [other.name for other in own]
+    k = names.index(piece.name)
+    needs = piece.needs if piece.needs is not None else names[max(k - 1, 0) : k]
+    return [name for name in needs if name in names]
+
+
+def _chains(own, same) -> list[dict]:
+    """The jobs in the nodes `same` (slice -> node -> node.json): each a
+    slice -> node, from a node of a slice that no other slice reads up to
+    the nodes it reads. A slice whose node is not there is left out."""
+    read = {name for piece in own for name in _needs(own, piece)}
+    last = [piece for piece in own if piece.name not in read]
+    chains = []
+
+    def follow(piece, node, chain) -> None:
+        chain[piece.name] = node
+        for name in _needs(own, piece):
+            above = same[piece.name][node]["inputs"]["upstream"].get(name)
+            if above in same[name]:
+                follow(next(other for other in own if other.name == name), above, chain)
+
+    seen = set()
+    for piece in last:
+        for node in same[piece.name]:
+            chain: dict = {}
+            follow(piece, node, chain)
+            chains.append(chain)
+            seen.update(chain.items())
+    # A job that an early slice ended has no node of a last slice.
+    for piece in reversed(own):
+        for node in same[piece.name]:
+            if (piece.name, node) not in seen:
+                chain = {}
+                follow(piece, node, chain)
+                chains.append(chain)
+                seen.update(chain.items())
+    return chains
+
+
+def batches(jobs) -> str:
+    """The jobs of a point by the seed of their run, for the screen."""
+    count: dict = {}
+    for root, chain in jobs:
+        name, node = sorted(chain.items())[0]
+        seed = nodes.read(nodes.node_dir(root, stage_of(name), node))["job"]["master_seed"]
+        count[seed] = count.get(seed, 0) + 1
+    ordered = sorted(count.items(), key=lambda item: (item[0] is None, item[0] or 0))
+    return ", ".join(f"seed {seed}: {number} job{'s' * (number != 1)}" for seed, number in ordered)
 
 
 def _outdated(workflow, old, record) -> str | None:
@@ -1259,10 +1384,12 @@ def _write(path, content) -> None:
 
 
 def _commit() -> str:
-    """The commit of the code; +dirty when files differ from it or it is unknown.
-    Installed as a package, raser has no commit: the version of the package."""
+    """The commit of the code, +dirty when files differ from it. Where there
+    is no commit to read, in a package that is installed or in a source tree
+    that is not a git repository, the version of the package."""
+    version = f"raser {raser.__version__}"
     if REPO_ROOT is None:
-        return f"raser {raser.__version__}"
+        return version
 
     def git(*words):
         command = ["git", "-C", str(REPO_ROOT), *words]
@@ -1270,4 +1397,6 @@ def _commit() -> str:
         return result.stdout.strip() if result.returncode == 0 else None
 
     commit, changes = git("rev-parse", "HEAD"), git("status", "--short")
-    return (commit or "unknown") + ("" if commit and changes == "" else "+dirty")
+    if commit is None:
+        return version
+    return commit + ("" if changes == "" else "+dirty")

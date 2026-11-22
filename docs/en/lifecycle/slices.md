@@ -61,6 +61,18 @@ On each run, the program computes the parameter table `points.json` from `config
 
 `<experiment>/points/<point>/<stage>/` is a folder containing one symlink per job at that scan point, named by the job index and pointing to that job's node at that stage; `field` and `analysis` have only one node per point, so `points/<point>/field` and `points/<point>/analysis` are symlinks directly. Point names are derived from scan-axis values, such as `voltage_100`, serving as human-readable entry points. Every point is named by the values of all scan axes, including the point whose values equal those without the scan; an experiment that scans nothing has one point, named `default`. Once a scan begins, `points/default` is a symlink to the point whose values equal those without the scan, when the scan holds such a point. After changing settings or adding a scan axis, the point name may stay the same while the node it points to updates accordingly, so parameters and results always match.
 
+### Which jobs `analysis` counts
+
+`analysis` counts every finished job at a scan point that measured the same thing, whichever run or seed computed it. Running once more with another `--seed` adds statistics to the point. Settings fall into three kinds:
+
+| Kind | Examples | When they differ |
+| --- | --- | --- |
+| Physics settings | device, bias, source, setup, amplifier, thresholds | another measurement, not merged |
+| Statistics | seed, jobs per point, events per job | merged |
+| Drawing only | `plots` | merged |
+
+What a point measures is taken from the latest run. Two chains that read the same deposits (for example one drawn and one not) are the same events and count once. `raser ana` lists on screen, by seed, how many jobs it merged for each point, for example `seed 1: 2 jobs, seed 2: 4 jobs`.
+
 ### Code Version
 
 When the code version differs from the one recorded in a node, only a notice is printed and the result is still reused as usual.
@@ -164,7 +176,7 @@ Keys of `node.json`:
 
 What a stage records for itself goes under top-level keys of its own, such as `axes`, `read`, `solved` of `field`, merged with the keys above when written.
 
-`points.json` is an object keyed by point name, with two entries per point: `values` holds the "section.key" and value of each scan axis; `nodes` holds the node IDs of each stage, one node ID for `field` and `analysis`, and a list of node IDs ordered by job number for `deposit` through `reconstruction`.
+`points.json` is an object keyed by point name, with three entries per point: `measures` holds, per stage, the fingerprint of what is measured (see "Which jobs `analysis` counts" above), by which `analysis` finds the jobs of the point; `values` holds the "section.key" and value of each scan axis; `nodes` holds the node IDs of each stage, one node ID for `field` and `analysis`, and a list of node IDs ordered by job number for `deposit` through `reconstruction`.
 
 ```json
 {
