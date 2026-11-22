@@ -50,7 +50,7 @@ NotImplementedError: the <mode> mode of a field is not there yet: only field.mod
 
 | `field` 段打开的子任务 | 做什么 | 核对并记录的 `solved` 键 |
 | --- | --- | --- |
-| 三个子任务都未打开（整套求解） | 从 `0 V` 扫到目标偏压（含沿途 CV 曲线），再求解各读出电极权重场 | `"potential"`、`"undepleted"`、`"weighting"` |
+| 三个子任务都未打开（整套求解） | 从 `0 V` 扫到目标偏压（含沿途 CV 曲线），在目标偏压求单点电容，再求解各读出电极权重场 | `"potential"`、`"undepleted"`、`"capacitance"`、`"weighting"` |
 | IV 扫描 | 从 `0 V` 扫到目标偏压并绘制 IV 曲线 | `"potential"`、`"undepleted"` |
 | 单点电容 | 加载已保存的 `<V>V.devsim`，在单点求解小信号电容并写出 `<V>V.cv.json` | `"capacitance"` |
 | 权重场 | 读取同偏压的 `Conductive_<V>V.pkl`，求解各读出电极权重场（单晶胞条形电极另算条间互容） | `"weighting"` |
@@ -211,7 +211,7 @@ solving the field first: raser field HPK-Si-PiN --set field.voltage=200.0
      - `have["iv"] = _bias(kwargs) in solved.get("potential", [])`；
      - `have["cv"] = cv_at in solved.get("capacitance", [])`；
      - `have["wf"] = _bias(kwargs) in solved.get("weighting", [])`。
-   - 令 `left = [part for part in (named or ["iv", "wf"]) if not have[part]]`。若 `left` 为空，打印 `f"{kwargs['_run_path']}: already solved"` 并返回。
+   - 令 `left = [part for part in (named or ["iv", "cv", "wf"]) if not have[part]]`。若 `left` 为空，打印 `f"{kwargs['_run_path']}: already solved"` 并返回。
 6. **逐项求解并清空 DEVSIM 状态**：遍历 `done, part in enumerate(left)`：
    - 若 `done > 0`，调用 `_empty_devsim()`：从 `devsim.get_parameter_list()` 读取存在的 `"direct_solver"` 与 `"solver_callback"`，调用 `devsim.reset_devsim()`，再把这两个参数写回 DEVSIM。
    - 若 `part == "cv"`，调用 `_capacitance(kwargs)`：
@@ -281,7 +281,7 @@ solving the field first: raser field HPK-Si-PiN --set field.voltage=200.0
 `field` 段还有这几类设置，各自做的事如下：
 
 - **网格**：同一个器件可以有几套网格，用哪一套由 `field` 段的设置指定。
-- **子任务**：IV 扫描从 `0 V` 扫到目标偏压求解电势与电场并输出 IV 曲线；单点电容从已有 `<V>V.devsim` 重载该偏压做小信号电容求解，写出 `<V>V.cv.json`；权重场读取同偏压 `Conductive_<V>V.pkl` 求解各读出电极权重场（单晶胞周期性条形电极另算条间互容）。三个都不打开时做整套求解：含沿途 CV 的偏压扫描，再求权重场。
+- **子任务**：IV 扫描从 `0 V` 扫到目标偏压求解电势与电场并输出 IV 曲线；单点电容从已有 `<V>V.devsim` 重载该偏压做小信号电容求解，写出 `<V>V.cv.json`；权重场读取同偏压 `Conductive_<V>V.pkl` 求解各读出电极权重场（单晶胞周期性条形电极另算条间互容）。三个都不打开时做整套求解：含沿途 CV 的偏压扫描，在目标偏压求单点电容，再求权重场。
 - **噪声**：偏压扫描各曲线采样点额外求解并绘制器件噪声电流（HEMT `drift_diffusion_v1` 分支下丢弃）。
 - **UMFPACK**：求解前加载 `devsim.umfpack.umfshim`，切至 UMFPACK 线性求解器。
 - **TCAD 导入**：给出 Sentaurus TDR 文件，跳过 DEVSIM 偏压扫描，导入体区场并在其网格上求权重场；坐标翻转只配合 TCAD 导入，反转节点坐标列序，2D 绘图同步交换 `x` 与 `y` 轴。

@@ -149,3 +149,60 @@ def test_field_solver_uses_enabled_avalanche_and_includes_final_bias() -> None:
     assert _resolve_impact_model(enabled) == "vanOverstraeten"
     assert _voltage_milestones(350.0, 100.0) == [100.0, 200.0, 300.0, 350.0]
     assert _voltage_milestones(-250.0, 100.0) == [-100.0, -200.0, -250.0]
+
+
+def _fluence_ramp(target, works, limit=60):
+    """Run raise_fluence over a solve that `works(trial, reached)` decides.
+    Returns what was tried, the fluence reached before each try, how often restore ran, and the fluences reached."""
+    tried: list[float] = []
+    before: list[float] = []
+    restored: list[int] = []
+    state = {"reached": 0.0}
+
+    def solve(flux: float) -> bool:
+        tried.append(flux)
+        before.append(state["reached"])
+        assert len(tried) <= limit, "too many solves"
+        if works(flux, state["reached"]):
+            state["reached"] = flux
+            return True
+        return False
+
+    def restore() -> None:
+        restored.append(len(tried))
+
+    kwargs = dict(first_share=0.01, increase=2.0, decrease=0.5)
+    return tried, before, restored, solve, restore, kwargs
+
+
+def test_a_fluence_that_always_solves_is_raised_in_doubling_steps_and_ends_on_the_target() -> None:
+    target = 1e15
+    tried, _, _, solve, restore, kw = _fluence_ramp(target, lambda trial, reached: True)
+    done = loop_section.raise_fluence(target, kw["first_share"], kw["increase"], kw["decrease"], solve, restore)
+    expected = [0.01, 0.03, 0.07, 0.15, 0.31, 0.63, 1.0]
+    assert done == pytest.approx([x * target for x in expected], rel=1e-12, abs=0)
+    assert done[-1] == target
+
+
+def test_a_failed_fluence_step_is_undone_and_retried_at_half_the_step() -> None:
+    target = 1e15
+    tried, before, restored, solve, restore, kw = _fluence_ramp(
+        target, lambda trial, reached: trial - reached <= 0.05 * target
+    )
+    done = loop_section.raise_fluence(target, kw["first_share"], kw["increase"], kw["decrease"], solve, restore)
+    assert done[-1] == target
+    previous = before
+    failed = [i for i, t in enumerate(tried) if t - previous[i] > 0.05 * target]
+    assert len(restored) == len(failed) > 0
+    for i in failed:
+        assert tried[i + 1] - previous[i] == pytest.approx((tried[i] - previous[i]) / 2, rel=1e-12, abs=0)
+
+
+def test_a_fluence_that_never_solves_stops_with_the_fluence_it_reached() -> None:
+    target = 1e15
+    tried, _, _, solve, restore, kw = _fluence_ramp(target, lambda trial, reached: False, limit=40)
+    with pytest.raises(RuntimeError) as stopped:
+        loop_section.raise_fluence(target, kw["first_share"], kw["increase"], kw["decrease"], solve, restore)
+    assert "stopped at 0 cm^-2" in str(stopped.value)
+    assert "1e+15" in str(stopped.value)
+    assert 15 <= len(tried) <= 20
