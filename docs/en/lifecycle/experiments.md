@@ -213,3 +213,51 @@ The table below lists the shared run options and configuration sections users ca
 - **`<experiment_folder>/nodes/<stage>/<node_id>/` and `<device_project>/field/<node_id>/`**: Node directories named by input fingerprint (carrying a `.part` suffix while being written, renamed to their final names upon completion, each locked individually), storing the data files written by the stage (such as HDF5 files and stage plots; see [Simulation Chain and Stage Entry Points (`stages`)](../stages/README.md) and the pages under `docs/en/core/` for exact formats) together with a `node.json`. `node.json` records verbatim the four inputs determining the node fingerprint (setting values used by this stage, used portions of component files, upstream node IDs, the seeds of the measurement stages `deposit` and `current`, and the own seeds of `readout` and `digitizer`), and additionally records the code version, runtime environment, and run status.
 - **`<experiment_folder>/points/<point>/<stage>/<job>`**: Scan-point view symlinks where `<point>` is named from scan-axis values (such as `voltage_100`); `deposit` through `reconstruction` have one symlink per job pointing to `../../../nodes/<stage>/<node_id>`, while `points/<point>/field` points to `<device_project>/field/<node_id>` and `points/<point>/analysis` points to `../../nodes/analysis/<node_id>`.
 - **`<experiment_folder>/analysis/`**: Directory holding cross-point statistics and trend plots written by the `analysis` stage.
+
+### Format of `config.json`
+
+`config.json` is a JSON object. Its top-level keys fall into three groups:
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `workflow` | string | Command word of the experiment, such as `"signal"` |
+| `device` | string | Device name; absent for an application that takes no device |
+| `field`, `deposit`, `current`, `readout`, `digitizer`, `trigger`, `reconstruction`, `analysis` | object | One section per stage, holding all settings of that stage; an empty object for a stage the experiment does not have |
+| `scan` | object | Scan axes: "section.key" → list of values; an empty object when nothing is scanned |
+| `names` | object | Short names for long addresses: "section.key" or "section.slot.key" → short name; point names use the short name, `--set` and `--scan` accept both spellings |
+| `same_seeds` | boolean | Whether jobs of the same number share their seed across scan points |
+
+The `signal` example of `HPK-Si-PiN`:
+
+```json
+{
+  "workflow": "signal",
+  "device": "HPK-Si-PiN",
+  "field": {"voltage": 200.0, "irradiation_flux": null},
+  "deposit": {
+    "source": "decay/Sr90", "g4setup": "device_alone",
+    "events_per_job": 200, "generated_per_job": null, "generated_limit": 10000000,
+    "edep_min": null, "edep_max": null, "fano": true, "plots": 100
+  },
+  "current": {"plots": 100},
+  "readout": {"amplifier": "SantaCruz+Gali52+Termination50", "sheet_resistance": null},
+  "digitizer": {},
+  "trigger": {},
+  "reconstruction": {
+    "threshold": 10.0, "amplitude_threshold": 10.0,
+    "fractions": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9], "edge": null
+  },
+  "analysis": {},
+  "scan": {},
+  "names": {},
+  "same_seeds": false
+}
+```
+
+Rules for reading and writing:
+
+1. **One way to give a setting**: `--set <section.key>=<value>` writes the value into its section, `--scan <section.key>=<value1>,<value2>` writes the list of values into `scan`. Both stay in `config.json`, and later commands without options use them. The settings of the chain have no command-line options of their own; switches that hold for one run only (`-g4_vis`, `--g4-vis-driver`) do not enter `config.json`.
+2. **Ending a scan**: giving `--set` for the same address removes that scan axis from `scan` and writes the new value into the section.
+3. **Each stage reads its own section**: a running stage receives the settings of its own section, so `deposit.plots` and `current.plots` are two settings.
+4. **A missing key is an error**: when a key a stage needs is not in its section, the command stops before starting any job and names the missing "section.key", for example `config.json: no deposit.events_per_job`. A key in a section that the stage does not know is an error as well.
+5. **`null` is a value**: keys whose table entry says "`null` takes …" (such as `field.voltage`, which takes the bias in the device file) may be written `null`; the key itself is still written.
