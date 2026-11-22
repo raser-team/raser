@@ -474,8 +474,7 @@ def _setup():
 
 def _file(kwargs, name):
     """The file `name` of this job, in the point that holds its slice."""
-    batch = kwargs["_slice_batch_paths"][name.split(".")[0]]
-    return os.path.join(batch, "%s_%s.h5" % (name, kwargs.get("job_index") or 0))
+    return os.path.join(kwargs["_node_paths"][name.split(".")[0]], "%s.h5" % name)
 
 
 SPEED_OF_LIGHT = 2.99792458e14  # um/s
@@ -625,7 +624,7 @@ def currents(kwargs):
     """The deposits of every layer collected by its pixels: currents.<layer>_<job>.h5,
     one file per layer. The mode full is collect_by_diffusion, fast is
     collect_under. The charge of the last layer of the last event and the
-    residuals of every layer are drawn in plots/job_<job>.
+    residuals of every layer are drawn in plots/ of the node of the currents.
 
     The hits, clusters and residuals are still made here, from the charges
     just collected, until the analysis reads the files.
@@ -647,11 +646,7 @@ def currents(kwargs):
     my_hit_charge = DiffusedCharge(
         my_d, read_deposits(_file(kwargs, "deposit")).events, paths, collect
     )
-    plots = os.path.join(
-        os.path.dirname(kwargs["_slice_batch_paths"]["current"]),
-        "plots",
-        "job_%s" % (kwargs.get("job_index") or 0),
-    )
+    plots = os.path.join(kwargs["_node_paths"]["current"], "plots")
     draw_charge(my_hit_charge, plots)
     Telescope(my_d, my_g4, my_hit_charge, plots)
 

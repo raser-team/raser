@@ -4,19 +4,24 @@ import json
 from pathlib import Path
 
 from raser.core.deposit.deposits import read_deposits
+from raser.lifecycle.nodes import node_dir
+from raser.lifecycle.slices import notes
 
 
 def slice_file(folder, index, name):
     """Path of the file of the slice `name` ("deposit", "current",
     "readout") of a job of the seed folder `folder`.
 
-    The file is in the seed folder of the same name in the point that holds
+    The file is in the node of the slice, which the mark of the slice names.
+    The mark is in the seed folder of the same name in the point that holds
     the slice; run.json of the seed folder names that point for each slice.
     """
     folder = Path(folder)
     record = json.loads((folder / "run.json").read_text())
     experiment = folder.parent.parent if record["point"] else folder.parent
-    return experiment / record["held_in"][name] / folder.name / "batch" / f"{name}_{index}.h5"
+    # A slice after one that ended the job has a mark and no node: its file is not there.
+    node = notes(experiment / record["held_in"][name] / folder.name, index, name).get("node", "none")
+    return node_dir(experiment, name.split(".")[0], node) / f"{name}.h5"
 
 
 def job_file(folder, index, name):

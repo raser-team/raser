@@ -59,7 +59,7 @@ On each run, the program computes the parameter table `points.json` from `config
 
 ### Views
 
-`<experiment>/points/<point>/<stage>/` is a folder containing one symlink per job at that scan point, named by the job index and pointing to that job's node at that stage; `field` and `analysis` have only one node per point, so `points/<point>/field` and `points/<point>/analysis` are symlinks directly. Point names are derived from scan-axis values, such as `voltage_100`, serving as human-readable entry points. After changing settings or adding a scan axis, the point name may stay the same while the node it points to updates accordingly, so parameters and results always match.
+`<experiment>/points/<point>/<stage>/` is a folder containing one symlink per job at that scan point, named by the job index and pointing to that job's node at that stage; `field` and `analysis` have only one node per point, so `points/<point>/field` and `points/<point>/analysis` are symlinks directly. Point names are derived from scan-axis values, such as `voltage_100`, serving as human-readable entry points. Every point is named by the values of all scan axes, including the point whose values equal those without the scan; an experiment that scans nothing has one point, named `default`. Once a scan begins, `points/default` is a symlink to the point whose values equal those without the scan, when the scan holds such a point. After changing settings or adding a scan axis, the point name may stay the same while the node it points to updates accordingly, so parameters and results always match.
 
 ### Code Version
 
@@ -159,7 +159,7 @@ Keys of `node.json`:
 | `job` | object | no | Job number `index` and master seed `master_seed` |
 | `code` | string | no | Code version, with `+dirty` when the working tree has uncommitted changes |
 | `environment` | object | no | Runtime environment |
-| `state` | string | no | `running` (being written in `.part`), `done`, `ended` (upstream left nothing to compute, the node holds no data file), `failed` |
+| `state` | string | no | `running` (being written in `.part`), `done`, `ended` (this stage left nothing for the stages after it to compute, such as a `deposit` that recorded no event; the later stages of this job have no node) |
 | `notes` | object | no | What the stage left after running |
 
 What a stage records for itself goes under top-level keys of its own, such as `axes`, `read`, `solved` of `field`, merged with the keys above when written.

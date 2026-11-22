@@ -25,7 +25,7 @@ from pathlib import Path
 
 DIGITS = 12  # hex digits of the fingerprint that name a node
 MEASURING = ("field", "deposit", "current")  # a scan of these measures anew
-STATES = ("running", "done", "ended", "failed")
+STATES = ("running", "done", "ended")
 
 
 class Running(SystemExit):

@@ -1,3 +1,4 @@
+import hashlib
 import json
 
 import numpy as np
@@ -17,6 +18,18 @@ from raser.core.deposit.deposits import write_deposits
 E = 1.602176634e-19
 
 
+def _slice(folder, index, name):
+    """The file of the slice `name` of a job of the seed folder `folder`: in a
+    node of its own, which the mark of the slice names."""
+    node = hashlib.sha1(f"{folder}/{index}/{name}".encode()).hexdigest()[:12]
+    mark = folder / "batch" / f"{name}_{index}.done"
+    mark.parent.mkdir(parents=True, exist_ok=True)
+    mark.write_text(json.dumps({"node": node}))
+    path = folder.parent / "nodes" / name / node / f"{name}.h5"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def _alone(folder):
     """The seed folder of an experiment without points: it holds its slices."""
     folder.mkdir(parents=True, exist_ok=True)
@@ -28,18 +41,16 @@ def _job(folder, index, efficiencies):
     """A job whose events have 1000 pairs each and these efficiencies, and
     a reconstruction table of the same events."""
     _alone(folder)
-    batch = folder / "batch"
-    batch.mkdir(parents=True, exist_ok=True)
     for number, efficiency in enumerate(efficiencies):
         charge = np.array([-1000 * E * efficiency])
         append_currents(
-            batch / f"current_{index}.h5",
+            _slice(folder, index, "current"),
             ["top"],
             1.0e-11,
             EventCurrents(number, 0.0, np.zeros((1, 2)), charge, 1000.0),
         )
     table = EventTable(["top"], 3.0e-3, 5.0e-3, (0.5,), ["falling"], {"event": np.arange(len(efficiencies))})
-    write_event_table(batch / f"reconstruction_{index}.h5", table)
+    write_event_table(_slice(folder, index, "reconstruction"), table)
 
 
 def point_efficiency(jobs):
@@ -48,9 +59,10 @@ def point_efficiency(jobs):
 
 def _empty_job(folder, index, events):
     _alone(folder)
-    batch = folder / "batch"
-    batch.mkdir(parents=True, exist_ok=True)
-    write_deposits(str(batch / f"deposit_{index}.h5"), Deposits(50, None, None, events))
+    write_deposits(str(_slice(folder, index, "deposit")), Deposits(50, None, None, events))
+    if not events:  # the marks of the slices after the deposits, which left no file
+        for name in ("current", "readout", "reconstruction"):
+            _slice(folder, index, name)
 
 
 def test_point_takes_the_events_of_all_its_jobs(tmp_path) -> None:
@@ -73,6 +85,7 @@ def test_point_takes_the_events_of_all_its_jobs(tmp_path) -> None:
 def test_job_with_events_but_no_reconstruction_file_is_an_error(tmp_path) -> None:
     folder = tmp_path / "seed_1"
     _job(folder, 0, [0.8, 1.0])
+    _slice(folder, 1, "reconstruction")  # its mark, without the file
     event = EventDeposits(4, ["Device"], [0.0], [0.0], [1.0], [0.0], [0.1], [1000.0])
     _empty_job(folder, 1, [event])
 
