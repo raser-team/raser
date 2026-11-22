@@ -105,6 +105,7 @@ type = "layers"
 layers = [
   "raser.core.analysis",
   "raser.core.reconstruction",
+  "raser.core.trigger",
   "raser.core.digitizer",
   "raser.core.readout",
   "raser.core.current",

@@ -1,5 +1,6 @@
-"""raser status <experiment folder>: how far the jobs of every point are, from
-the marks, logs and locks the runs left. It reads; it writes nothing."""
+"""raser status [path]: how far the jobs of every point are, from the marks,
+logs and locks the runs left, for an experiment folder or for every
+experiment of a project. It reads; it writes nothing."""
 
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ from raser.lifecycle.workflow import read_config
 from raser.lifecycle.workflow import stage_of
 from raser.lifecycle.workflow import waited_for_by
 from raser.supports.paths import project_root_context
+from raser.supports.paths import work_root
 
 STATES = ("done", "running", "submitted", "uncertain", "failed", "waiting", "not started")
 
@@ -113,12 +115,14 @@ def _folder_lines(workflow, folder: Path, record: dict, why: str | None, ready, 
         # A run of an older raser, whose slices had other names.
         return [f"{folder}: out of date (recorded with the slices {sorted(held_in)})" + note]
     lines = [f"{folder}:" + (f" out of date ({why})" if why else "") + note, *waited_for_by(record)]
-    for piece_name, by_state in folder_states(workflow, folder, record, ready).items():
+    states = folder_states(workflow, folder, record, ready)
+    width = max(map(len, states), default=0) + 1  # the names in one column, whatever their length
+    for piece_name, by_state in states.items():
         count = sum(len(jobs) for jobs in by_state.values())
         done = len(by_state["done"])
         shown = f"{done}/{count} done" if not why else f"{done}/{count} done, out of date"
         rest = ", ".join(f"{state} {jobs}" for state, jobs in by_state.items() if state != "done" and jobs)
-        lines.append(f"  {piece_name:<12}{shown}" + (f"; {rest}" if rest else ""))
+        lines.append(f"  {piece_name:<{width}}{shown}" + (f"; {rest}" if rest else ""))
     return lines
 
 
@@ -164,19 +168,45 @@ def _lines(workflow, root: Path, kwargs) -> list[str]:
     return lines
 
 
+def experiments(target) -> list[Path]:
+    """The experiment folders `target` names: itself when it holds a
+    config.json; else those of the project it is, a folder or the name of a
+    device under the work folder, each a folder with a config.json, one or
+    two folders down (work/<device>/signal, work/<device>/tct/<laser>)."""
+    folder = Path(target).expanduser()
+    if (folder / "config.json").is_file():
+        return [folder.resolve()]
+    for project in (folder, work_root() / target):
+        if project.is_dir():
+            found: set | list = {path.parent.resolve() for depth in ("*", "*/*") for path in project.glob(f"{depth}/config.json")}
+            # a folder with a config.json inside an experiment is not one of the project
+            found = sorted(folder for folder in found if folder.parent not in found)
+            if found:
+                return found
+    raise SystemExit(
+        f"{target}: neither an experiment folder (a folder with a config.json) nor a project that holds one; "
+        f"give one of them, e.g. work/<device>/signal, work/<device> or a device that was run under {work_root()}"
+    )
+
+
 def run(kwargs):
-    root = Path(kwargs["experiment"]).resolve()
-    config = json.loads((root / "config.json").read_text())
-    words = config["workflow"].split()
-    workflow = WORKFLOWS[config["workflow"]]
-    project = root.parents[len(words) - 1]
-    with project_root_context(project, kwargs["_components_of"].get(words[0], ())):
-        for line in _lines(workflow, root, {"det_name": config.get("device"), "scan": []}):
-            print(line)
+    for root in experiments(kwargs["experiment"]):
+        config = json.loads((root / "config.json").read_text())
+        words = config["workflow"].split()
+        workflow = WORKFLOWS[config["workflow"]]
+        project = root.parents[len(words) - 1]
+        with project_root_context(project, kwargs["_components_of"].get(words[0], ())):
+            for line in _lines(workflow, root, {"det_name": config.get("device"), "scan": []}):
+                print(line)
     return 0
 
 
 def register(subparsers):
-    parser = subparsers.add_parser("status", help="how far the jobs of an experiment are")
-    parser.add_argument("experiment", help="experiment folder, work/<device>/<command>")
+    parser = subparsers.add_parser("status", help="how far the jobs of an experiment, or of every experiment of a project, are")
+    parser.add_argument(
+        "experiment",
+        nargs="?",
+        default=".",
+        help="experiment folder, project folder or device (default: the folder the command is given in)",
+    )
     parser.set_defaults(_run=run)
