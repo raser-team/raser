@@ -37,6 +37,7 @@ RASER 画的每一张图，不论出自哪个环节、实验还是资产，也�
 | 装置的尺寸 | mm | `x [mm]` |
 | 电场 | kV/cm | `Electric field [kV/cm]` |
 | 电势、权重势 | V，权重势无量纲 | `Weighting potential` |
+| 权重场 | cm⁻¹ | `Weighting field [cm⁻¹]` |
 | 掺杂浓度 | cm⁻³，对数轴 | `Doping [cm⁻³]` |
 | 俘获率 | s⁻¹，对数轴 | `Trapping rate [s⁻¹]` |
 | 电容 | pF | `Capacitance [pF]` |
@@ -92,8 +93,9 @@ RASER 画的每一张图，不论出自哪个环节、实验还是资产，也�
 | field | `doping` | 掺杂浓度沿深度的剖面 | 每个节点一张 |
 | field | `iv` | 漏电流随反向偏压 | 每个节点一张 |
 | field | `cv` | 左：电容随反向偏压；右：$1/C^2$ 随反向偏压 | 每个节点一张 |
+| field | `noise` | 噪声电流随反向偏压 | 算噪声时每个节点一张 |
 | field | `electric_field_<V>V`、`potential_<V>V` | 电场、电势沿深度的剖面；二维、三维器件再加一条横向剖面和一张二维切面 | 每个偏压一张 |
-| field | `weighting_potential_<电极>` | 权重势沿深度的剖面，二维、三维同上 | 每个读出电极一张 |
+| field | `weighting_potential_<电极>_<V>V`、`weighting_field_<电极>_<V>V` | 权重势、权重场沿深度的剖面，二维、三维同上 | 每个读出电极、每档算了权重场的偏压一张 |
 | field | `trapping_rate_<V>V` | 电子和空穴的俘获率沿深度的剖面 | 有辐照时每个偏压一张 |
 | field | `device_circuit_<V>V` | 器件参数电路图：结电容、耦合电容、未耗尽层，标上数值 | 每个偏压一张 |
 | deposit | `geometry` | Geant4 装置几何和前若干个事例的径迹，白底 | 每个节点一张 |
@@ -142,7 +144,7 @@ figures.save_canvas(canvas, folder, "drift_path", 17)   # drift_path_17.png、.p
 | `save_canvas(canvas, folder, name, *suffixes)` | 存 `.png`、`.pdf`、`.root` 三份，返回 png 的路径 |
 | `file_name(name, *suffixes)` | 按上面的规则拼出文件名（不含扩展名）。后缀可以是数、小写词，或“数和单位”的二元组：`file_name("electric_field", (200.0, "V"))` 为 `electric_field_200V`，`file_name("current", 17, "electrode", 2)` 为 `current_17_electrode_2` |
 | `label(quantity, unit=None, root=False)` | 拼轴标题：`label("Depth", "um")` 为 `Depth [μm]`，不给单位时只有量名 |
-| `UNIT` | 单位到国际单位制的倍数，例如 `UNIT["ns"] == 1e-9`；画图时用国际单位制的数据除以它。键为单位表里的全部单位，用 ASCII 写：`ns`、`ps`、`uA`、`A`、`V`、`mV`、`um`、`mm`、`kV/cm`、`cm-3`、`s-1`、`pF`、`fC`、`keV` |
+| `UNIT` | 单位到国际单位制的倍数，例如 `UNIT["ns"] == 1e-9`；画图时用国际单位制的数据除以它。键为单位表里的全部单位，用 ASCII 写：`ns`、`ps`、`uA`、`A`、`V`、`mV`、`um`、`mm`、`kV/cm`、`cm-1`、`cm-3`、`s-1`、`pF`、`fC`、`keV` |
 | `ELECTRON`、`HOLE`、`GAIN_ELECTRON`、`GAIN_HOLE`、`TOTAL`、`DEPOSIT`、`HISTOGRAM` | 上面颜色表里的颜色 |
 | `series(count, ordered)` | 一张图里几条同类曲线的颜色：`ordered=True` 从 viridis 等距取，否则按 Okabe–Ito 依次取 |
 | `root_color(color)` | 把上面的颜色换成 ROOT 颜色号 |

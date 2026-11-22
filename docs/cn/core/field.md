@@ -298,7 +298,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 1. **取坐标轴**：`mesh_axes` 给出存盘坐标对应的器件轴：1D 为 `("z",)`；2D 为 `("x", "y")`（所选网格在横向 $x$-$y$ 平面）或 `("z", "x")`；3D 为 `("x", "y", "z")`（所选网格由 `sde` 生成）或 `("z", "x", "y")`。DEVSIM 内部长度单位为 cm。
 2. **建网格**（`DevsimMesh.mesh_define`）：求单晶胞拼接的权重场时（$s > 0$）调用 `createRowOfCells`；否则 1D 用所选一维网格的 `mesh_line`、`region`、`contact`；2D 用所选的 Gmsh 网格文件或内置二维网格（`mesh_line`、`region`、`contact`）；3D 一律读 Gmsh 网格文件。`dimension` 不是 1、2、3 时抛出 `ValueError`。
 3. **权重场的材料与掺杂**：求权重场时 `_regions` 把每个区域材料换成 `"gas"`（内置 2D 网格里的 `"air"` 区域保留；Gmsh 网格不保留），`setDoping` 把掺杂换成 `Acceptors = "0"`、`Donors = "1"`。
-4. **掺杂**：`Acceptors` 取 `doping.Acceptors`，有 `doping.Acceptors_ir` 时以 `+` 相接；`Donors` 同理；`NetDoping = Donors - Acceptors`。不求权重场的 1D 器件画 `Doping.png`。最后写出 `<det_name>.dat`（Tecplot）。
+4. **掺杂**：`Acceptors` 取 `doping.Acceptors`，有 `doping.Acceptors_ir` 时以 `+` 相接；`Donors` 同理；`NetDoping = Donors - Acceptors`。不求权重场的 1D 器件画 `plots/doping`。最后写出 `<det_name>.dat`（Tecplot）。
 5. **HEMT 界面**：`hemt_physics.transport_model == "drift_diffusion_v1"` 时 2D 网格还加所选二维网格的 `interface`，没有界面时抛出 `ValueError`。
 6. **单晶胞拼接**（`createRowOfCells`）：
    - 只支持非 `plugin` 的 2D 网格，否则抛出 `ValueError`；
@@ -348,7 +348,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 
 1. **节点量**：逐区域收集坐标与 `Potential`、`NetDoping`、`Electrons`、`Holes`、`TrappingRate_n`、`TrappingRate_p`；DEVSIM 场另算 `Conductive`（式 19）。
 2. **未耗尽体区**（DEVSIM 场，1D、2D、3D）：按式 (20a) 求 $W_{\text{und}}$ 与比电阻 $r$，写 `<V>V.undepleted.json`，比电容为 $10^{12}\varepsilon/W_{\text{und}}$（$\text{pF/cm}^2$），全耗尽时为 `null`；记入 `solved.undepleted`。
-3. **画图**：电势、电子与空穴俘获率、电场（DEVSIM 场取网格边中点的边电场；TCAD 1D/2D 取 `ElectricField_0`，3D 取三分量的模）。
+3. **画图**：电势、电子与空穴俘获率（无辐照时不画）、电场（DEVSIM 场取网格边中点的边电场；TCAD 1D/2D 取 `ElectricField_0`，3D 取三分量的模）。
 4. **写 pickle**：每个量一个文件；`NetDoping` 只在 $V = 0$ 或 TCAD 场时写。`is_flip` 为真时 2D 的两坐标互换。
 
 ### 读取：场节点里的资产
@@ -417,7 +417,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 - `simple.py`：解析 toy 场。
 - `tcad.py`：TDR 场导入与其权重场求解。
 - `tdr_reader.py`、`tdr_import.py`：读 TDR 并建 DEVSIM 器件（改写自 DEVSIM LLC 的 tdr-convert 0.1.7，Apache-2.0）。
-- `devsim_draw.py`：IV/CV/噪声曲线与 1D/2D/3D 场分布图；`draw_electrons`、`draw_holes`、`draw_field` 画一维电子、空穴浓度与电场，`save_field` 把电场随深度写成表。
+- `devsim_draw.py`：IV/CV/噪声曲线（`draw_iv(V, I, path)`、`draw_cv(V, C, path)`、`draw_noise(V, noise, path)`，同时写 `simIV`、`simCV`、`simnoise` 的 `.root`）与 1D/2D/3D 场分布图；1D 的剖面由 `draw_profile(x, curves, ylabel, path, name, *suffixes, log=False)` 画进 `<path>/plots`；`draw_electrons`、`draw_holes`、`draw_field` 画一维电子、空穴浓度与电场，`save_field` 把电场随深度写成表。
 - `hemt_solver_2d_transport_v1.py`：2D AlGaN/GaN HEMT 只含电子的直流转移特性求解分支，由 `solver_section.main` 转交，写 `HEMT_TRANSPORT_*` 文件。
 - `plot_hemt_transport_csv.py`：独立脚本，读 `work/AlGaN_GaN_HEMT_TRANSPORT_V1/field`（或环境变量 `RASER_HEMT_FIELD_DIR`）下最新的 `HEMT_TRANSPORT_final_profile.csv` 作图。
 
@@ -512,14 +512,17 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 
 ### 画出的图
 
+1D 器件的图存进场节点目录的 `plots/`，样式见[出图（`supports/figures`）](../supports/figures.md)；2D、3D 的图存在节点目录下。
+
 | 文件 | 内容 | 坐标单位 |
 | --- | --- | --- |
-| `<det_name>_iv.png`, `simIV<min>to<max>_picture.pdf/.root` | IV 曲线（对数纵轴） | V, A |
-| `<det_name>_cv.png`, `<det_name>_c^-2v.png`, `simCV<min>to<max>_picture.pdf/.root` | CV 与 $1/C^2$ 曲线 | V, pF, $\text{pF}^{-2}$ |
-| `<det_name>_noise.png`, `simnoise<min>to<max>_picture.pdf/.root` | 噪声曲线 | V, — |
-| `Doping.png` | 1D 施主、受主浓度 | cm, $\text{cm}^{-3}$ |
-| `<title><v>_1d.png` | 1D 场分布，`<title>` 为 `Potential`、`Electric Field`、`Electron Trapping Rate`、`Hole Trapping Rate`；权重场目录下为 `Weighting Potential`、`Weighting Field` | $\mu\text{m}$；V、V/cm、$\text{s}^{-1}$、无、$\text{cm}^{-1}$ |
-| `<title><v>_2d.pdf/.root`, `<title><v>_1d.pdf/.root` | 2D 等值图与中线剖面，标题同上 | $\mu\text{m}$ |
+| `plots/iv.png/.pdf` | IV 曲线：反向偏压（取绝对值）对漏电流（取绝对值），对数纵轴；比整条曲线的中位数低 6 个数量级以上的离群点（例如 pA 量级曲线上 0 V 的那一点）图上不画，`simIV` 文件里照旧保留；整条曲线都很小时照原样画；轴 `Reverse bias [V]`、`Leakage current [A]` | V, A |
+| `plots/cv.png/.pdf` | 左：电容随反向偏压，轴 `Capacitance [pF]`；右：$1/C^2$ 随反向偏压，轴 `1/C² [pF⁻²]`；横轴 `Reverse bias [V]` | V, pF, $\text{pF}^{-2}$ |
+| `plots/noise.png/.pdf` | 噪声电流随反向偏压，对数纵轴 `Noise current [A]` | V, A |
+| `plots/doping.png/.pdf` | 1D 施主、受主浓度沿深度，对数纵轴；轴 `Depth [μm]`、`Doping [cm⁻³]` | μm, $\text{cm}^{-3}$ |
+| `plots/potential_<V>V`, `plots/electric_field_<V>V`, `plots/trapping_rate_<V>V`（均有 `.png/.pdf`） | 1D 每档偏压的电势 `Potential [V]`、电场 `Electric field [kV/cm]`、电子（蓝）与空穴（红）俘获率同画一张，对数纵轴 `Trapping rate [s⁻¹]`；两者全为零（无辐照）时不画俘获率；`<V>` 写成最短形式（`200.0` 写作 `200`） | μm；V、kV/cm、$\text{s}^{-1}$ |
+| `plots/weighting_potential_<contact>_<V>V`, `plots/weighting_field_<contact>_<V>V`（均有 `.png/.pdf`） | 1D 每个读出电极、每档算了权重场的偏压的权重势 `Weighting potential`、权重场 `Weighting field [cm⁻¹]`；与其他图同在 `plots/`，不在 `weightingfield/<contact>/` 下 | μm；无、$\text{cm}^{-1}$ |
+| `<title><v>_2d.pdf/.root`, `<title><v>_1d.pdf/.root` | 2D 等值图与中线剖面，`<title>` 为 `Potential`、`Electric Field`、`Electron Trapping Rate`、`Hole Trapping Rate`、`Weighting Potential`、`Weighting Field` | $\mu\text{m}$ |
 | `<title>_<v>_3d_1d.pdf/.root`, `_XY`, `_YZ`, `_XZ` | 3D 中心线剖面与三个中截面，`<title>` 为 `Potential Distribution `、`Electric Field`、`Electron Trapping Rate `、`Hole Trapping Rate `（末尾有空格）或 `Weighting Potential`、`Weighting Field` | $\mu\text{m}$ |
 | `HEMT_TRANSPORT_IdVg.png/.pdf` | HEMT 转移特性 | V, mA/mm |
 
