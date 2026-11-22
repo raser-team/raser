@@ -23,7 +23,7 @@ def _taken(
     )
     device = SimpleNamespace(
         device="d", voltage=200.0, read_out_contact=read_out_contact, irradiation_flux=0.0,
-        bound={}, device_dict=device_dict,
+        bound={}, device_dict=device_dict, p_x=50.0, p_y=50.0,
     )  # fmt: skip
 
     assert current.solved(device, {}) == "field"
