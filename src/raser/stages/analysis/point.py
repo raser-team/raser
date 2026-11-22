@@ -20,7 +20,7 @@ def write_point(jobs, folder):
     """Write the results of a point into `folder`: result.json, events.h5 and
     the plots.
 
-    jobs : (seed folder, job index) pairs, as lifecycle hands them out.
+    jobs : (experiment folder, slice -> node) pairs, as lifecycle hands them out.
 
     result.json:
         reconstruction  threshold and amplitude_threshold [mV], fractions

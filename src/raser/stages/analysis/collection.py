@@ -16,8 +16,8 @@ def event_efficiencies(tables):
         events of its reconstruction table, no more and no fewer.
     """
     efficiencies = []
-    for _, folder, index, table in tables:
-        path = job_file(folder, index, "current")
+    for _, experiment, nodes, table in tables:
+        path = job_file(experiment, nodes, "current")
         events = read_currents(path).events
         numbers, rows = sorted(event.event for event in events), sorted(int(number) for number in table.columns["event"])
         if numbers != rows:

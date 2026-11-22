@@ -323,3 +323,18 @@ def test_the_settings_of_a_field_command_are_its_linear_solver_and_the_content_o
     second = field.WORKFLOW.settings({"umf": False, "input": str(tdr)})
 
     assert len({json.dumps(settings) for settings in (plain, umf, first, second)}) == 4
+
+
+def test_jobs_drifted_in_another_solve_of_the_field_are_not_among_the_jobs_of_the_point(
+    experiment: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(workflow.WORKFLOWS, "signal", experiment["workflow"])
+    execute(experiment["workflow"], _kwargs())
+    experiment["state"]["stamp"] = "second solve"
+    execute(experiment["workflow"], _kwargs(seed=2))
+    assert [len(jobs) for _, _, jobs in workflow.jobs_of_points(experiment["root"])] == [1]
+
+    execute(experiment["workflow"], _kwargs(seed=3))
+    ((_, _, jobs),) = workflow.jobs_of_points(experiment["root"])
+    assert workflow.batches(jobs) == "seed 2: 1 job, seed 3: 1 job"
+

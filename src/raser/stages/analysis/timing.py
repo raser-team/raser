@@ -13,17 +13,17 @@ from .files import slice_file
 
 def point_tables(jobs):
     """The reconstruction tables of the finished jobs of a point that
-    recorded events, as (place of the job in `jobs`, seed folder, job index,
+    recorded events, as (place of the job in `jobs`, experiment folder, its nodes,
     table). The tables of a point were made with the same thresholds,
     fractions and edge.
 
-    jobs : (seed folder, job index) pairs, as lifecycle hands them out.
+    jobs : (experiment folder, slice -> node) pairs, as lifecycle hands them out.
     """
     tables = []
-    for place, (folder, index) in enumerate(jobs):
-        path = job_file(folder, index, "reconstruction")
+    for place, (experiment, nodes) in enumerate(jobs):
+        path = job_file(experiment, nodes, "reconstruction")
         if path is not None:
-            tables.append((place, folder, index, read_event_table(path)))
+            tables.append((place, experiment, nodes, read_event_table(path)))
     settings = {table_setting(table) for *_, table in tables}
     if len(settings) > 1:
         raise ValueError(f"the jobs of the point were reconstructed with different settings: {sorted(settings)}")
@@ -66,8 +66,8 @@ def event_times(tables):
             )
     names = ["job", "event", "ToA", "ToT", "amplitude", "baseline", "noise", "truth", "CoG"]
     columns = {name: [] for name in names}
-    for place, folder, index, table in tables:
-        deposits = slice_file(folder, index, "deposit")
+    for place, experiment, nodes, table in tables:
+        deposits = slice_file(experiment, nodes, "deposit")
         earliest = {event.event: min(event.t) for event in read_deposits(str(deposits)).events}
         rows = table.columns
         chosen = rows["selected"]
