@@ -292,3 +292,31 @@ def test_picture_of_absorbed_light_stops_where_99_percent_of_the_pairs_are_made(
     laser = _laser("LA01R_top_Si", alpha=1e6)
 
     assert laser._drawn_path() == pytest.approx(-math.log(1 - 0.99 * (1 - math.exp(-50))) / 1e6 * 1e6, rel=2e-2)
+
+
+def _mean_place(laser) -> np.ndarray:
+    places = np.array(laser.track_position)[:, :3]
+    return np.average(places, axis=0, weights=laser.ionized_pairs)
+
+
+def test_beam_crosses_the_detector_where_the_focus_is_set_across_it() -> None:
+    # 50 um cube. From the top the beam runs along z through (fx, fy) of the
+    # size; from the edge it runs along x through (fy, fz) of the size
+    top = _mean_place(_laser("LA01IR_top_Si", fx_rel=0.3, fy_rel=0.6))
+    edge = _mean_place(_laser("LA01IR_edge_Si", fy_rel=0.3, fz_rel=0.6))
+
+    assert top[:2] == pytest.approx([15.0, 30.0], abs=1e-6)
+    assert edge[1:] == pytest.approx([15.0, 30.0], abs=1e-6)
+
+
+def test_two_photon_pairs_sit_at_the_depth_of_the_focus_from_every_face() -> None:
+    # the focus at 0.3 of the 50 um: z = 15 um from the top and from the
+    # bottom alike (fz_rel is a place in the detector, not a path), x = 15 um
+    # from the edge. With a Rayleigh length of 1 um half of the pairs lie on
+    # either side of the focus, whatever the faces cut off of the tails
+    def middle(axis: int, **changes) -> float:
+        return float(np.median(np.array(_tpa(l_Rayleigh=1.0, **changes).track_position)[:, axis]))
+
+    assert middle(2, direction="top", fz_rel=0.3) == pytest.approx(15.0, abs=0.1)
+    assert middle(2, direction="bottom", fz_rel=0.3) == pytest.approx(15.0, abs=0.1)
+    assert middle(0, direction="edge", fx_rel=0.3) == pytest.approx(15.0, abs=0.1)
