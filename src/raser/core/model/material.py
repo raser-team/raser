@@ -26,6 +26,9 @@ from .impact_ionization import hatakeyama
 # 3rd ed. (2007), appendix G; 4H-SiC: 9.76, along the c axis; diamond: 5.7.
 RELATIVE_PERMITTIVITY = {"Si": 11.9, "SiC": 9.76, "Diamond": 5.7}
 
+# The impact ionization models each material can select.
+AVALANCHE_MODELS = {"Si": ("vanOverstraeten", "Okuto"), "SiC": ("Hatakeyama",), "Diamond": ()}
+
 class Material:
 
     def __init__(self,mat_name,mobility_model=None,avalanche_model=None):
@@ -248,8 +251,8 @@ class Material:
     def cal_coefficient(self, electric_field, charges, temperature):
         """ Define Avalanche Model """
 
-        if self.avalanche_model not in ('vanOverstraeten', 'Okuto', 'Hatakeyama'):
-            raise ValueError("Unsupported avalanche model: {}".format(self.avalanche_model))
+        if self.avalanche_model not in AVALANCHE_MODELS[self.mat_name]:
+            raise ValueError("Avalanche model {} is not defined for {}".format(self.avalanche_model, self.mat_name))
 
         coefficient = 0.
 
