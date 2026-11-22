@@ -165,6 +165,13 @@ The digitizer stage writes this module's output to `nodes/digitizer/<node_id>/di
 
 Codes are converted back to voltage via Eq. (5); the time of the $k$-th sample on an electrode is that electrode's `t0` $+ k\cdot$`sampling_period`.
 
+### Plot Output
+
+See [Figures](../supports/figures.md) for style, file names, and locations.
+
+- `samples_<event>`: one for each of the first `plots` events that store waveforms. Each electrode going through `readout` has one line (the band-limited analog waveform, drawn at the bin centres of `readout`) and points of the same colour (the voltages converted back from codes by Eq. (5), drawn at their sampling times); the horizontal axis is time ($\text{ns}$), the vertical axis voltage ($\text{mV}$), and the legend gives the electrode names. Noise-only channels have no analog waveform and are not drawn here.
+- `codes`: one per node when `plots` is greater than `0`. A histogram of the codes of all samples in the node, one bin per code ($0$ to $2^N - 1$), including the codes of noise-only channels; the horizontal axis is the code, and the count axis is titled `Events` as the figure rules say: logarithmic when the bin counts differ widely, otherwise linear with integer ticks only. An event contributes the $K$ samples of each electrode it stores, so a bin counts samples. Clipped samples pile up at code $0$ or code $2^N - 1$.
+
 ## References
 
 - [1] Keysight Technologies, “Infiniium MXR-Series Oscilloscopes (A-Series)”, Data Sheet 7120-1115.EN, https://www.keysight.com/us/en/assets/7120-1115/data-sheets/Infiniium-MXR-Series.pdf
