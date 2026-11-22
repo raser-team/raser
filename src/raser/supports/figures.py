@@ -17,6 +17,10 @@ HEIGHT_INCHES = 4.0
 DPI = 200
 CANVAS_WIDTH = 1200
 CANVAS_HEIGHT = 800
+# the 12 pt titles and 10 pt labels of the matplotlib figures at DPI, in the
+# pixels in which font 43 of ROOT counts
+TITLE_PIXELS = round(12 * DPI / 72)
+LABEL_PIXELS = round(10 * DPI / 72)
 
 STYLE = {
     "savefig.dpi": DPI,
@@ -85,6 +89,7 @@ def new(rows: int = 1, columns: int = 1):
         rows,
         columns,
         figsize=(WIDTH_INCHES * columns, HEIGHT_INCHES * rows),
+        layout="constrained",
     )
 
 
@@ -96,11 +101,11 @@ def canvas(columns: int = 1, rows: int = 1) -> ROOT.TCanvas:
     style.SetTextFont(43)
     style.SetLegendFont(43)
     style.SetLegendBorderSize(0)
-    style.SetLegendTextSize(20)
+    style.SetLegendTextSize(LABEL_PIXELS)
     style.SetLabelFont(43, "XYZ")
     style.SetTitleFont(43, "XYZ")
-    style.SetTitleSize(24, "XYZ")
-    style.SetLabelSize(20, "XYZ")
+    style.SetTitleSize(TITLE_PIXELS, "XYZ")
+    style.SetLabelSize(LABEL_PIXELS, "XYZ")
     style.SetPadTickX(1)
     style.SetPadTickY(1)
     style.SetPalette(ROOT.kViridis)
