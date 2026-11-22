@@ -51,6 +51,30 @@ $$\sigma_{68} = \frac{q_{0.84}(X_{\text{in}}) - q_{0.16}(X_{\text{in}})}{2} \tag
 
 单轮截断高斯最大似然拟合由 `resolution.py` 中的 `truncated_gaussian(values, low, high)` 调用 `scipy.optimize.minimize` 的 `"L-BFGS-B"` 算法求解；多轮缩窗迭代由 `core_width(values, window=None)` 执行，缺省 `window=None` 时取式 (2) 为初窗，每轮拟合后将窗口收缩为 $[\mu - 2\sigma,\, \mu + 2\sigma]$，最多迭代 `ROUNDS = 6` 轮。双侧截断正态分布的最大似然参数估计见文献 [3]，无分箱似然拟合与曲率协方差估计见文献 [4]，有界限内存拟牛顿算法 L-BFGS-B 见文献 [5]。
 
+### 直线径迹与残差
+
+几块器件沿束流排成望远镜时（见 [束流望远镜](../bench/telescope.md)），各槽位的团簇位置（[事件重建](reconstruction.md) 的 `cluster_x`、`cluster_y`）按槽位的摆放换到全局坐标（[能量沉积与电离](deposit.md#多块器件的放置) 的式 (17)，取器件坐标 $z = l_z/2$ 的中面）：
+
+$$\begin{pmatrix} X \\ Y \end{pmatrix} = \begin{pmatrix} P_x \\ P_y \end{pmatrix} + \begin{pmatrix} \cos\phi & -\sin\phi \\ \sin\phi & \cos\phi \end{pmatrix}\begin{pmatrix} \bar{x}_c - l_x/2 \\ \bar{y}_c - l_y/2 \end{pmatrix}, \qquad Z = P_z + \frac{l_z}{2} \tag{12}$$
+
+对每个槽位都恰有一个团簇的事例，用参考层集合 $\mathcal{R}$ 的 $(Z_j, X_j)$ 与 $(Z_j, Y_j)$ 各做一次不加权的最小二乘直线拟合，再求各槽位的残差和参考径迹的卡方：
+
+$$k_x = \frac{\sum_{j \in \mathcal{R}}(Z_j - \bar{Z})(X_j - \bar{X})}{\sum_{j \in \mathcal{R}}(Z_j - \bar{Z})^2}, \qquad b_x = \bar{X} - k_x \bar{Z} \tag{13}$$
+
+$$r_{x,s} = k_x Z_s + b_x - X_s, \qquad r_{y,s} = k_y Z_s + b_y - Y_s, \qquad \chi^2 = \sum_{j \in \mathcal{R}}\left(\frac{r_{x,j}^2}{q_{x,j}^2/12} + \frac{r_{y,j}^2}{q_{y,j}^2/12}\right) \tag{14}$$
+
+其中：
+
+- $(\bar{x}_c, \bar{y}_c)$：团簇在槽位器件坐标中的位置，$\mu\text{m}$；
+- $\mathbf{P}$、$\phi$：槽位的 `position`（$\mu\text{m}$）与 `rotation_z`（度）；$l_x, l_y, l_z$：该槽位器件的尺寸，$\mu\text{m}$；
+- $(X, Y, Z)$：团簇的全局坐标，$\mu\text{m}$；$\bar{X}, \bar{Z}$：参考层上 $X_j$、$Z_j$ 的算术平均；$k_y$、$b_y$ 把式 (13) 的 $X$ 换成 $Y$；
+- $k_x, k_y$：径迹斜率，无量纲；$b_x, b_y$：径迹截距，$\mu\text{m}$；
+- $r_{x,s}, r_{y,s}$：槽位 $s$（参考层或被测器件）上径迹位置减团簇位置的残差，$\mu\text{m}$；
+- $q_{x,j}, q_{y,j}$：参考层 $j$ 的像素间距在全局 $x$、$y$ 方向的取值，$\mu\text{m}$：$\phi$ 为 $0$ 或 $180$ 时是 $(p_x, p_y)$，为 $90$ 或 $270$ 时是 $(p_y, p_x)$；
+- $\chi^2$：参考层残差按像素均匀分布方差归一化的和，无量纲。
+
+被测器件 $x$、$y$ 方向残差分布的宽度用上一节的截断高斯拟合求，得到残差标准差 $\sigma_{\text{Tol}}$。由 `tracking.py` 实现。束流望远镜的径迹拟合与残差见文献 [9]。
+
 ### 波形统计量与位置校准
 
 面向单事例重建类 `InputWaveform`（定义与特征提取算法见 [reconstruction.md](reconstruction.md)）产出的多事例特征集合，`core/analysis` 对分箱直方图分别采用高斯分布拟合定时量与空间重心残差、采用朗道分布拟合脉冲电荷与幅度及过阈持续时间，并计算真实入射位置相对电极间距的单元内偏移量与重建重心单元内偏移量的二维 $\eta$ 位置校准关系：
@@ -144,6 +168,18 @@ $$\delta x_{\text{orig},i} = \frac{x_{\text{orig},i}}{p_x} - \operatorname{round
    - **更新窗口**：令 `low, high = new_low, new_high`，进入下一轮。
 4. **返回与下游异常分流**：循环结束后返回 `fit`。在 [../stages/analysis.md](../stages/analysis.md) 的 `time_widths` 与 `write_point` 中，对每个时间通道先剔除 `NaN` 样本再调用 `core_width`：若抛出 `TooFewValues`，`write_point` 捕获异常并将原因记入 `result.json` 的 `timing.error`，跳过绘制时间分布图；若样本已满 `20` 个但 `truncated_gaussian` 抛出 `ArithmeticError` 或 `ValueError`，或样本的 MAD 为 `0` 使 `core_width` 自己抛出 `ValueError: the window [...] is empty`，异常向上抛出并中止作业。MAD 为 `0` 即该通道一半以上的 `time - truth` 取同一个值，报错中的窗口上下界就是这个值；此时 `events.h5` 与 `amplitude.png` 已经写出，可从 `events.h5` 中该通道与 `truth` 之差查看这些相同的值，再在 Python 中以 `core_width(values, window=(low, high))` 手给首轮窗口拟合。
 
+### 径迹拟合与被测器件残差宽度（`tracking.py`）
+
+`track_events(hits, placements, roles)` 把一个作业各槽位的重建结果拼成径迹。三个参数都是按槽位名取值的字典，槽位顺序取 `placements` 的顺序；函数只用传入的数据。`hits[槽位]` 是 `SlotHits(event, clusters, cluster_x, cluster_y)`，取自该槽位事件表的同名列。`placements[槽位]` 是 `Placement(position, rotation_z, l_x, l_y, l_z, p_x, p_y)`。`roles[槽位]` 是 `"reference"` 或 `"dut"`。
+
+1. **输入检查**：三个字典的槽位名不相同时抛 `ValueError`（`the slots of hits, placements and roles differ`）；参考层少于 `2` 个，或参考层的 $Z$ 全相同时抛 `ValueError`（`a track needs reference layers at two or more z`）；`rotation_z` 不是 `0`、`90`、`180`、`270` 时抛 `ValueError`。
+2. **事例对齐**：全部槽位事例号的并集升序排列，作为结果的行；某槽位没有记录的事例，该槽位团簇数记 `0`。
+3. **选中**：每个槽位都恰有 `1` 个团簇的事例记 `selected = True`。
+4. **坐标变换与拟合**：团簇数为 `1` 的槽位按式 (12) 求 $(X, Y)$，否则为 `NaN`。选中的事例按式 (13) 求 $k_x, b_x, k_y, b_y$，按式 (14) 求全部槽位的残差与 $\chi^2$；未选中的事例这些量为 `NaN`。
+5. 返回 `TrackEvents`：`slots`、`roles`、`z`（各槽位的 $Z$）与各列 `event`、`selected`、`x`、`y`（`(events, slots)`）、`kx`、`bx`、`ky`、`by`、`chi2`（`(events,)`）、`residual_x`、`residual_y`（`(events, slots)`）。
+
+`residual_widths(tracks)` 读一个扫描点各作业的 `TrackEvents`。各作业的 `slots`、`roles` 不相同时抛 `ValueError`。对每个角色为 `"dut"` 的槽位，把各作业选中事例的 `residual_x`、`residual_y` 分别接成一列，各调用一次 `core_width`，返回 `{槽位: {"x": 结果, "y": 结果}}`，结果是 `core_width` 的返回字典，单位 $\mu\text{m}$，其中 `"sigma"` 就是该方向的 $\sigma_{\text{Tol}}$。`core_width` 抛 `TooFewValues` 时，该方向的结果换成 `{"events": 样本数, "error": 报错文字}`。
+
 ### 波形统计累积与 ROOT 直方图拟合
 
 `WaveformStatistics`（`waveform_stats.py`）按以下步骤处理 `InputWaveform.data` 单事例字典并生成 ROOT 统计图：
@@ -176,6 +212,7 @@ $$\delta x_{\text{orig},i} = \frac{x_{\text{orig},i}}{p_x} - \operatorname{round
 
 - `collection.py`：定义元电荷常数 `ELEMENTARY_CHARGE`，实现逐事例电荷收集效率计算函数 `collection_efficiency`。
 - `resolution.py`：定义常数 `ROUNDS`、`MINIMUM_EVENTS` 与样本不足异常类 `TooFewValues`，实现单窗口无分箱截断高斯最大似然拟合函数 `truncated_gaussian` 与多轮缩窗迭代求核心宽度函数 `core_width`。
+- `tracking.py`：实现望远镜的实验级统计。`track_events` 把各槽位的团簇换到全局坐标、拟合直线径迹并求残差；`residual_widths` 求各被测器件残差的核心宽度；`draw_track`、`draw_residual` 画图。
 - `waveform_stats.py`：实现基于 PyROOT 的分箱高斯拟合函数 `fit_data_normal`、分箱朗道拟合函数 `fit_data_landau` 以及面向单事例重建字典的统计绘图类 `WaveformStatistics`。
 
 ### 核心数据结构
@@ -216,7 +253,9 @@ $$\delta x_{\text{orig},i} = \frac{x_{\text{orig},i}}{p_x} - \operatorname{round
 | `reconstruction.h5`（[reconstruction.md](reconstruction.md)） | 数据集 `CFD` | `(events, electrodes, fractions)`, `float64` | $\text{s}$ | 提取选中事例在第 `0` 号电极上各恒比分数 `part` 对应的 `CFD<round(100*part)>` 时刻 |
 | `deposit.h5`（[deposit.md](deposit.md)） | 数据集 `event`, `count`, `t` | `(recorded_events,)`, `int64` / `(sum(count),)`, `float64` | 无, 步, $\text{s}$ | 取每个事例所有沉积步的最小 `t` 作为真实参考时刻 `truth`（$\text{s}$），将 `time - truth` 传入 `core_width` |
 
-局限：`analysis` 现在只统计单电极的结果，多电极、多位置的统计（例如 telescope 的残差、cflm 各焊盘的汇总）还没做。
+局限：`analysis` 对单槽位实验现在只统计单电极的结果，多电极的统计（例如 cflm 各焊盘的汇总）还没做。
+
+多槽位的望远镜读同一扫描点各作业 `reconstruction` 节点里每个槽位的 `reconstruction.<槽位>.h5`，取 `event`、`clusters`、`cluster_x`、`cluster_y` 四列交给 `track_events`；种子和各层的击中时刻由 `reconstruction` 给出，这里只读。这时 `events.h5` 每个选中事例一行，数据集为 `job`、`event`、`kx`、`ky`（无量纲）、`bx`、`by`（$\mu\text{m}$）、`chi2`（无量纲），以及每个槽位的 `x.<槽位>`、`y.<槽位>`、`residual_x.<槽位>`、`residual_y.<槽位>`（$\mu\text{m}$）；`result.json` 的 `residual.<槽位>.x`、`residual.<槽位>.y` 是 `residual_widths` 对各被测器件给出的结果。
 
 #### 输出文件 `events.h5`
 
@@ -267,6 +306,8 @@ $$\delta x_{\text{orig},i} = \frac{x_{\text{orig},i}}{p_x} - \operatorname{round
 | `<tag>_cluster_size_ToT.pdf`, `.C`；`..._amplitude.pdf`, `.C`；`..._charge.pdf`, `.C` | `WaveformStatistics.cluster_size_fill` 在 `[0, 11)` 区间绘制 `11` 箱团簇大小整型直方图 `TH1I` | 横轴 `<model>`（电极数，个），纵轴 `Events`（个） |
 | `<tag>_gravity_center_ToT_error.pdf`, `.C`；`..._amplitude_error.pdf`, `.C`；`..._charge_error.pdf`, `.C` | `WaveformStatistics.gravity_center_error_fit` 在非空数据下围绕中位点 `mid ± 1` 绘制 `100` 箱一维位置残差直方图与 `'gaus'` 拟合曲线 | 横轴 `<model>`（电极间距倍数，无量纲），纵轴 `Events`（个） |
 | `<tag>_ita_calibration_ToT.pdf`, `.C`；`..._amplitude.pdf`, `.C`；`..._charge.pdf`, `.C` | `WaveformStatistics.ita_calibration` 绘制 `20 × 20` 箱二维 $\eta$ 位置校准图 `TH2F`（`"COLZ"`） | 横轴 `Original x`（`[-0.5, 0.5]`，电极间距倍数），纵轴 `Reconstructed x`（`[0.5, -0.5]`，电极间距倍数） |
+| `track_<事例号>` | `tracking.py` 的 `draw_track` 对前 `analysis.plots` 个选中事例各画一张：左 $X$-$Z$、右 $Y$-$Z$，参考层实心点、被测器件空心点与式 (13) 的直线 | 横轴 `z [mm]`，纵轴 `x [μm]`、`y [μm]` |
+| `residual_<槽位>` | `tracking.py` 的 `draw_residual` 对每块被测器件画一张：左 `residual_x`、右 `residual_y`，`mean ± 8 * sigma` 内 `64` 箱的直方图、末轮窗口阴影与截断高斯曲线，图例标 $\sigma_{\text{Tol}}$ | 横轴 `Residual x [μm]`、`Residual y [μm]`，纵轴 `Events` |
 | `efficiency.png` | `stages/analysis` 在记录事例数 $\ge 2$ 时绘制全部记录事例的电荷收集效率 `60` 箱直方图与均值竖虚线 | 横轴 `charge collection efficiency`（无量纲），纵轴 `events`（个） |
 | `amplitude.png` | `stages/analysis` 在记录事例数 $\ge 1$ 时绘制选中事例脉冲幅度 `60` 箱直方图与 `amplitude_threshold` 竖虚线 | 横轴 `amplitude above the baseline [mV]`，纵轴 `events`（个） |
 | `time_difference.png` | `stages/analysis` 在时间通道拟合成功时以 `3 × 4` 子图绘制 `ToA`、`CoG` 及前 `10` 个 `CFD*` 通道在 `mean ± 8 * sigma` 内的 `64` 箱时间差直方图、末轮窗口阴影与截断高斯曲线 | 横轴 `<channel> - truth [ps]`，纵轴事例数（个） |
@@ -283,3 +324,4 @@ $$\delta x_{\text{orig},i} = \frac{x_{\text{orig},i}}{p_x} - \operatorname{round
 - [6] L. D. Landau, “On the energy loss of fast particles by ionisation”, in *Collected Papers of L. D. Landau*, Elsevier (1965) 417, doi:10.1016/B978-0-08-010586-4.50061-4
 - [7] E. Belau, R. Klanner, G. Lutz, E. Neugebauer, H. J. Seebrunner, A. Wylie, T. Böhringer, L. Hubbeling, P. Weilhammer, J. Kemmer, U. Kötz, M. Riebesell, “Charge collection in silicon strip detectors”, Nucl. Instrum. Methods Phys. Res. 214 (1983) 253, doi:10.1016/0167-5087(83)90591-4
 - [8] R. Brun, F. Rademakers, “ROOT — An object oriented data analysis framework”, Nucl. Instrum. Methods Phys. Res. A 389 (1997) 81, doi:10.1016/S0168-9002(97)00048-X
+- [9] H. Jansen et al., “Performance of the EUDET-type beam telescopes”, EPJ Tech. Instrum. 3 (2016) 7, doi:10.1140/epjti/s40485-016-0033-2

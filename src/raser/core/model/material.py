@@ -26,6 +26,9 @@ from .impact_ionization import hatakeyama
 # 3rd ed. (2007), appendix G; 4H-SiC: 9.76, along the c axis; diamond: 5.7.
 RELATIVE_PERMITTIVITY = {"Si": 11.9, "SiC": 9.76, "Diamond": 5.7}
 
+# The impact ionization models each material can select.
+AVALANCHE_MODELS = {"Si": ("vanOverstraeten", "Okuto"), "SiC": ("Hatakeyama",), "Diamond": ()}
+
 class Material:
 
     def __init__(self,mat_name,mobility_model=None,avalanche_model=None):
@@ -56,7 +59,7 @@ class Material:
             # no avalanche model: an undoped MIM device has no gain
             self.permittivity=RELATIVE_PERMITTIVITY["Diamond"]
             self.avalanche_model = None
-            self.mobility_model = 'Reggiani_diamond'
+            self.mobility_model = 'Pernegger'
 
     def cal_mobility(self, temperature, input_doping, charge, electric_field):
         """ Define Mobility Model """
@@ -104,32 +107,18 @@ class Material:
 
         # Diamond mobility
         if(self.mat_name == 'Diamond'):
-            if self.mobility_model == "Reggiani_diamond":
-                Neff = abs(Neff)
+            if self.mobility_model == "Pernegger":
+                # H. Pernegger et al., J. Appl. Phys. 97 (2005) 073704,
+                # doi:10.1063/1.1863417, Eq. (7): a 470 um single-crystal CVD
+                # diamond at room temperature, Am-241 alpha, 0.2-1.5 V/um.
                 if(charge>0):
-                    mu_L_p = 1200 * math.pow(t, -2.5)
-                    mu_min_p = 50 / t
-
-                    C_ref_p = 1.0e17
-                    mu_LI_p = mu_min_p + mu_L_p/(1.0 + math.pow(Neff / C_ref_p, 0.5))
-
-                    beta_p = 1.5 * math.pow(t, 0.2)
-                    v_sat_p = 1.0e7 * math.pow(t, -0.5)
-                    mu_LIF_p = mu_LI_p / (math.pow(1.0 + math.pow(mu_LI_p * E / v_sat_p, beta_p), 1.0 / beta_p))
-
-                    mu = mu_LIF_p
+                    mu_0 = 2064.0 # cm2/(V s)
+                    v_sat = 1.41e7 # cm/s
                 else:
-                    mu_L_n = 1800 * math.pow(t, -2.5)
-                    mu_min_n = 100 / t
+                    mu_0 = 1714.0
+                    v_sat = 0.96e7
 
-                    C_ref_n = 2.0e17
-                    mu_LI_n = mu_min_n + mu_L_n/(1.0 + math.pow(Neff / C_ref_n, 0.5))
-
-                    beta_n = 1.0 * math.pow(t, 0.3)
-                    v_sat_n = 2.7e7 * math.pow(t, -0.5)
-                    mu_LIF_n = mu_LI_n / (math.pow(1.0 + math.pow(mu_LI_n * E / v_sat_n, beta_n), 1.0 / beta_n))
-
-                    mu = mu_LIF_n
+                mu = mu_0 / (1.0 + mu_0 * E / v_sat)
 
         # Si mobility
         if(self.mat_name == 'Si'):
@@ -262,8 +251,8 @@ class Material:
     def cal_coefficient(self, electric_field, charges, temperature):
         """ Define Avalanche Model """
 
-        if self.avalanche_model not in ('vanOverstraeten', 'Okuto', 'Hatakeyama'):
-            raise ValueError("Unsupported avalanche model: {}".format(self.avalanche_model))
+        if self.avalanche_model not in AVALANCHE_MODELS[self.mat_name]:
+            raise ValueError("Avalanche model {} is not defined for {}".format(self.avalanche_model, self.mat_name))
 
         coefficient = 0.
 

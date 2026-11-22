@@ -241,6 +241,7 @@ $$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 
 - `job.py`：负责单作业从感应电流文件到读出波形文件的批处理调度。`_solve` 与 `_solve_part` 执行单事例全电路或条形行局部自适应扩展求解，`noise_spectra` 按 `circuit.alike` 复用对称通道噪声谱，`write_waveforms` 完成逐事例求解、通道筛选、独立随机流噪声叠加与写出。
 - `waveforms.py`：定义 `EventWaveforms`、`Waveforms` 数据类及 `_check_layout`、`append_waveforms`、`read_waveforms`、`read_circuit_values`，负责 `readout.h5` 的稀疏追加写入与读取。
 - `schematic.py`：提供 `read_hints`、`arrange`、`layout`、`value_text` 与 `draw`，将 `.cir` 子电路文件绘制为原理图图像。
+- `draw.py`：提供 `draw_waveform`，使用 `raser.supports.figures` 绘制单事例的输入感应电流与放大器输出电压波形图并保存为 `.png` 与 `.pdf`。
 
 ### 核心数据结构
 
@@ -336,10 +337,13 @@ Cremat CR-110-R2.2 电荷灵敏前放，空载增益 `1.4 V/pC`，衰减时间 `
 
 ### 绘图输出
 
-`schematic.py` 中的 `draw(path, figure_path)` 将单个 `.cir` 子电路文件渲染为原理图文件：
+`write_waveforms` 有两个必给参数 `plots`（`int`，每个作业最多绘制的有电流事例数，单位为个）和 `plot_path`（`str | Path`，图片输出文件夹路径，无单位；由[电子学读出环节](../stages/readout.md)传入 `readout.plots` 与该节点内的 `plots/` 目录）。当 `plots <= 0` 时不画单事例波形图，也不使用 `plot_path`；当 `plots > 0` 时，程序为每个作业中前 `plots` 个存在非零感应电流且存有通道波形的事例各画一张 `waveform_<事例号>`（`<事例号>` 为 `event.event`，无单位）：由 `core/readout/draw.py` 中的 `draw_waveform` 绘制，并经 `raser.supports.figures` 在 `plot_path` 下同时存为 `.png`（200 dpi）和 `.pdf` 两份文件。单事例波形图包含上下两幅、共用时间轴 `Time [ns]`，横坐标取各时间箱中心时刻 `t0 + (m + 0.5) dt`（其中 `t0` 为该事例首个时间箱左边界时刻 [$\text{s}$]，`dt` 为时间箱宽度 [$\text{s}$]，`m` 为时间箱下标，从 `0` 至 `n_bin - 1`，`n_bin` 为时间箱数 [箱]，换算为 $\text{ns}$）：上幅为输入的电极感应电流 `Current [μA]`（由 $\text{A}$ 换算为 $\mu\text{A}$），下幅为放大器输出电压 `Amplitude [mV]`（含按 `noise_seed` 叠加的时域噪声，由 $\text{V}$ 换算为 $\text{mV}$）。该事例存了波形的每个通道各画一条曲线；有多个保存通道时，各通道按 Okabe–Ito 色板依次取色，并在图例中写明通道名称。
+
+此外，`schematic.py` 中的 `draw(path, figure_path)` 将单个 `.cir` 子电路文件渲染为原理图文件：
 
 | 文件名 | 内容 | 单位 |
 | --- | --- | --- |
+| `waveform_<事例号>.png`, `.pdf` | 上下两幅共用时间轴的单事例波形图：上幅为该事例各保存通道对应电极的输入感应电流，下幅为含噪声的放大器输出电压；多通道按 Okabe–Ito 依次取色并在图例标注通道名 | `Time [ns]`, `Current [μA]`, `Amplitude [mV]` |
 | `draw` 传入的 `figure_path`（文档图像为 `afe-schematic-<组件名>.png`） | 子电路原理图：包含标题 `<文件名词干>`、端口圆圈（`in`、`out`）、各元件符号、元件名与格式化数值标签（`value_text`，无噪电阻标注 `no noise`）、接地符号及直角连接导线（隐藏坐标轴，`dpi=160`） | 内部排布坐标为无量纲网格步（输入端口 `in` 位于 `(0.0, 0.0)`），图像尺寸为 `(0.75 * width + 1, 0.75 * height + 1)` $\text{in}$ |
 
 ## 参考文献

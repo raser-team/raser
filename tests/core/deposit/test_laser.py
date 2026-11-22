@@ -216,3 +216,144 @@ def test_two_photon_presets_make_a_signal_and_absorb_little(name: str) -> None:
     laser = LaserInjection(SimpleNamespace(l_x=50.0, l_y=50.0, l_z=50.0, material="Si"), preset)
     photons = preset["pulse_energy"] * 1.55e-6 / H_C
     assert 100 < sum(laser.ionized_pairs) < 0.1 * photons
+
+
+def test_sic_absorption_matches_the_measured_coefficients_at_room_temperature() -> None:
+    # Sridhara et al. 1998, Table I: 290, 230, 210, 180 /cm at 351.1, 354.0,
+    # 355.0, 356.4 nm and room temperature
+    for nm, per_cm in ((351.1, 290.0), (354.0, 230.0), (355.0, 210.0), (356.4, 180.0)):
+        assert absorption_coefficient("SiC", nm * 1e-3, 300.0) == pytest.approx(100.0 * per_cm, rel=0.15)
+
+
+def test_sic_absorption_follows_the_measured_edge_at_75_K() -> None:
+    # Grivickas et al. 2007, Fig. 4: sqrt(α[/cm] ħω[eV]) = 1.7, 2.6, 7.5 at
+    # 3.32, 3.34, 3.38 eV and 75 K
+    for photon, root in ((3.32, 1.7), (3.34, 2.6), (3.38, 7.5)):
+        alpha = absorption_coefficient("SiC", 1.23984198 / photon, 75.0)
+        assert math.sqrt(alpha / 100.0 * photon) == pytest.approx(root, rel=0.10)
+
+
+def test_sic_does_not_absorb_band_to_band_below_the_lowest_phonon_threshold() -> None:
+    # at 300 K the gap is 3.2326 eV; with the 106.2 meV phonon absorbed the
+    # threshold is 3.126 eV (397 nm)
+    assert absorption_coefficient("SiC", 0.401, 300.0) == 0.0
+    assert absorption_coefficient("SiC", 0.395, 300.0) > 0.0
+
+
+def test_warmer_sic_absorbs_more_at_the_edge() -> None:
+    # the gap narrows with the temperature (Grivickas et al. 2007, Eq. (5))
+    assert absorption_coefficient("SiC", 0.375, 350.0) > 1.5 * absorption_coefficient("SiC", 0.375, 300.0)
+
+
+def test_sic_absorption_needs_the_temperature_and_stops_at_its_fitted_range() -> None:
+    # the model of Grivickas et al. 2007 is fitted up to 3.8 eV (326 nm)
+    with pytest.raises(ValueError, match="temperature"):
+        absorption_coefficient("SiC", 0.375)
+    with pytest.raises(ValueError, match="give alpha"):
+        absorption_coefficient("SiC", 0.320, 300.0)
+
+
+def test_sic_laser_takes_the_absorption_of_its_device_temperature() -> None:
+    # Grivickas et al. 2007, Table I and Eq. (5): 9.05 /cm at 375 nm and 300 K
+    with open(component_path("laser", "PIL037_top_SiC.json")) as file:
+        laser = json.load(file)
+    detector = SimpleNamespace(l_x=50.0, l_y=50.0, l_z=50.0, material="SiC", temperature=300.0)
+    alpha = LaserInjection(detector, laser).alpha
+
+    assert alpha == absorption_coefficient("SiC", 0.375, 300.0)
+    assert 900.0 < alpha < 910.0
+
+
+def test_pair_density_over_the_cross_section_is_the_pairs_made_per_length() -> None:
+    # α N_γ exp(-α s) pairs per metre of path, N_γ = E λ / (h c)
+    laser = _laser("LA01R_top_Si", alpha=1e6)
+    s = 0.5
+    w = math.sqrt(laser._w_squared(s))
+    r = np.linspace(0, 6 * w, 4000)
+    ring = laser.pair_density(s, r) * 2 * np.pi * r  # pairs per um of path and of radius
+    per_um = float(np.sum((ring[1:] + ring[:-1]) / 2 * np.diff(r)))
+    photons = laser.pulse_energy * 660e-9 / H_C
+
+    assert per_um == pytest.approx(1e6 * photons * math.exp(-1e6 * s * 1e-6) * 1e-6, rel=1e-3)
+
+
+def test_pair_density_of_two_photons_falls_to_a_quarter_one_rayleigh_length_from_the_focus() -> None:
+    # the pairs per length go as 1/w² and the area as w²: w² doubles one
+    # Rayleigh length from the focus and is five times as large at two
+    laser = _tpa()
+    focus = laser._beam_frame()[1]
+    at_focus = laser.pair_density(focus, 0.0)
+
+    assert laser.pair_density(focus + laser.l_Rayleigh, 0.0) == pytest.approx(at_focus / 4, rel=1e-6)
+    assert laser.pair_density(focus + 2 * laser.l_Rayleigh, 0.0) == pytest.approx(at_focus / 25, rel=1e-6)
+
+
+def test_picture_of_absorbed_light_stops_where_99_percent_of_the_pairs_are_made() -> None:
+    # absorption length 1 um in 50 um: 1 - exp(-s / 1 um) = 0.99 (1 - exp(-50))
+    laser = _laser("LA01R_top_Si", alpha=1e6)
+
+    assert laser._drawn_path() == pytest.approx(-math.log(1 - 0.99 * (1 - math.exp(-50))) / 1e6 * 1e6, rel=2e-2)
+
+
+def _mean_place(laser) -> np.ndarray:
+    places = np.array(laser.track_position)[:, :3]
+    return np.average(places, axis=0, weights=laser.ionized_pairs)
+
+
+def test_beam_crosses_the_detector_where_the_focus_is_set_across_it() -> None:
+    # 50 um cube. From the top the beam runs along z through (fx, fy) of the
+    # size; from the edge it runs along x through (fy, fz) of the size
+    top = _mean_place(_laser("LA01IR_top_Si", fx_rel=0.3, fy_rel=0.6))
+    edge = _mean_place(_laser("LA01IR_edge_Si", fy_rel=0.3, fz_rel=0.6))
+
+    assert top[:2] == pytest.approx([15.0, 30.0], abs=1e-6)
+    assert edge[1:] == pytest.approx([15.0, 30.0], abs=1e-6)
+
+
+def test_two_photon_pairs_sit_at_the_depth_of_the_focus_from_every_face() -> None:
+    # the focus at 0.3 of the 50 um: z = 15 um from the top and from the
+    # bottom alike (fz_rel is a place in the detector, not a path), x = 15 um
+    # from the edge. With a Rayleigh length of 1 um half of the pairs lie on
+    # either side of the focus, whatever the faces cut off of the tails
+    def middle(axis: int, **changes) -> float:
+        return float(np.median(np.array(_tpa(l_Rayleigh=1.0, **changes).track_position)[:, axis]))
+
+    assert middle(2, direction="top", fz_rel=0.3) == pytest.approx(15.0, abs=0.1)
+    assert middle(2, direction="bottom", fz_rel=0.3) == pytest.approx(15.0, abs=0.1)
+    assert middle(0, direction="edge", fx_rel=0.3) == pytest.approx(15.0, abs=0.1)
+
+
+def test_picture_box_follows_the_beam_from_the_face_it_enters() -> None:
+    top = _laser("LA01R_top_Si", alpha=1e6)
+    bottom = _laser("LA01R_bottom_Si", alpha=1e6)
+
+    for laser, z_range in ((top, (0.0, 4.605)), (bottom, (50.0 - 4.605, 50.0))):
+        low, high = laser._drawn_box()
+        w_max = math.sqrt(laser._w_squared(np.linspace(0, laser._drawn_path(), 400)).max())
+
+        assert (low[2], high[2]) == pytest.approx(z_range, rel=2e-2)
+        assert low[0] == pytest.approx(25.0 - 2 * w_max, rel=1e-6)
+        assert high[0] == pytest.approx(25.0 + 2 * w_max, rel=1e-6)
+        assert low[1] == pytest.approx(25.0 - 2 * w_max, rel=1e-6)
+        assert high[1] == pytest.approx(25.0 + 2 * w_max, rel=1e-6)
+
+
+def test_picture_box_stays_inside_the_detector() -> None:
+    low, high = _laser("LA01IR_top_Si", fx_rel=0.0)._drawn_box()
+
+    assert low[0] == 0.0
+    assert high[0] > 0.0
+    assert np.all(low >= 0.0)
+    assert np.all(high <= 50.0)
+
+
+def test_picture_box_runs_along_x_for_light_from_the_edge() -> None:
+    # from the edge the beam runs along x through (fy, fz) of the size; with
+    # an absorption length of 1 um the picture ends at 4.605 um
+    laser = _laser("LA01IR_edge_Si", alpha=1e6, fy_rel=0.4, fz_rel=0.6)
+    low, high = laser._drawn_box()
+    w_max = math.sqrt(laser._w_squared(np.linspace(0, laser._drawn_path(), 400)).max())
+
+    assert (low[0], high[0]) == pytest.approx((0.0, 4.605), rel=2e-2)
+    assert (low[1], high[1]) == pytest.approx((20.0 - 2 * w_max, 20.0 + 2 * w_max), rel=1e-6)
+    assert (low[2], high[2]) == pytest.approx((30.0 - 2 * w_max, 30.0 + 2 * w_max), rel=1e-6)

@@ -44,7 +44,7 @@ $$U_{\text{SRH}} = \frac{np - n_i^2}{\tau_p\,(n + n_1) + \tau_n\,(p + p_1)}, \qq
 
 where $n_i$ is the intrinsic carrier concentration ($\text{cm}^{-3}$, given by `BAND_STRUCTURE` in [model.md](model.md) at temperature $T$), and $\tau_n$, $\tau_p$ are the lifetimes ($\text{s}$).
 
-Code correspondence: `physics_drift_diffusion.CreateSiliconDriftDiffusion` sets up in order `CreatePE` (Eq. 1), `CreateBernoulli` and `CreateElectronCurrent`/`CreateHoleCurrent` (Eqs. 4, 5), `CreateSRH` (Eqs. 3, 6), and `CreateECE`/`CreateHCE` (Eq. 2). `create_parameter.create_parameter` writes constants for DEVSIM region materials `Silicon`, `SiliconCarbide`, `Diamond`, and `gas`. Mobility models are registered by name and selected by name in the device file, with each material having a default model (see [model.md](model.md)); in the DEVSIM solve, each material currently defaults to a constant mobility independent of electric field and doping, taken from region parameters `mu_n`, `mu_p` (Si `1450`/`500`, SiC `1100`/`114`, Diamond `110`/`1100`, in $\text{cm}^2/(\text{V}\cdot\text{s})$). Lifetimes are taken from `SRH_LIFETIME` (Si `7e-3`/`7e-3` s, SiC `2.5e-6`/`0.5e-6` s, Diamond `5.6e-7`/`2.4e-7` s); the electron lifetime of SiC is taken from [20], and the hole lifetime `0.5e-6` s is confirmed by our group's time-resolved photoluminescence measurements [21].
+Code correspondence: `physics_drift_diffusion.CreateSiliconDriftDiffusion` sets up in order `CreatePE` (Eq. 1), `CreateBernoulli` and `CreateElectronCurrent`/`CreateHoleCurrent` (Eqs. 4, 5), `CreateSRH` (Eqs. 3, 6), and `CreateECE`/`CreateHCE` (Eq. 2). `create_parameter.create_parameter` writes constants for DEVSIM region materials `Silicon`, `SiliconCarbide`, `Diamond`, and `gas`. Mobility models are registered by name and selected by name in the device file, with each material having a default model (see [model.md](model.md)); in the DEVSIM solve, each material currently defaults to a constant mobility independent of electric field and doping, taken from region parameters `mu_n`, `mu_p` (Si `1450`/`500`, SiC `1100`/`114`, Diamond `1714`/`2064`, in $\text{cm}^2/(\text{V}\cdot\text{s})$). Lifetimes are taken from `SRH_LIFETIME` (Si `7e-3`/`7e-3` s, SiC `2.5e-6`/`0.5e-6` s, Diamond `5.6e-7`/`2.4e-7` s); the electron lifetime of SiC is taken from [20], and the hole lifetime `0.5e-6` s is confirmed by our group's time-resolved photoluminescence measurements [21].
 
 All electrodes are treated as ohmic contacts (`set_contact_type` is `None` at every call site): at electrode nodes, $n = n_0$, $p = n_i^2/n_0$ (for $N_{\text{net}} > 0$) or $p = p_0$, $n = n_i^2/p_0$ (for $N_{\text{net}} \le 0$), and the potential is $\psi = V_{\text{bias}} + V_T \ln(n_0/n_i)$ or $\psi = V_{\text{bias}} - V_T \ln(p_0/n_i)$, where $n_0 = 10^{-10} + \tfrac12\bigl|N_{\text{net}} + \sqrt{N_{\text{net}}^2 + 4n_i^2}\bigr|$, and $p_0$ has the same expression with $N_{\text{net}}$ negated. The equations and contact conditions are adapted from DEVSIM examples [3].
 
@@ -135,7 +135,7 @@ $$\nabla\cdot\bigl(\varepsilon_0\,[1 + 10^{10}\,c_0 c_1]\,\nabla\phi_w\bigr) = 0
 where:
 
 - $\phi_w$: dimensionless weighting potential;
-- $c_0$, $c_1$: conductive flags (`Conductive`, `1.0` or `0.0`) at the two endpoint nodes of a mesh edge, read from `Conductive_<V>V.pkl` at that bias voltage, with the criterion in Eq. (19); edges whose endpoints are both conductive have their permittivity multiplied by `CONDUCTOR_PERMITTIVITY` $= 10^{10}$, leaving residual weighting potential variations inside conductors on the order of $10^{-10}$; conductive regions touching no electrode float;
+- $c_0$, $c_1$: conductive flags (`Conductive`, `1.0` or `0.0`) at the two endpoint nodes of a mesh edge, read from `Conductive_<V>V.pkl` at that bias voltage, with the criterion in Eq. (19); edges whose endpoints are both conductive have their permittivity multiplied by `CONDUCTOR_PERMITTIVITY` $= 10^{10}$, leaving residual weighting potential variations inside conductors on the order of $10^{-10}$; conductive regions touching no electrode float, and one touching two electrodes is an error (see step 4 of "Weighting Field Solving");
 - all dielectric regions use the vacuum permittivity $\varepsilon_0$: `DevsimMesh._regions` replaces every region's material with `"gas"` (`n_i = 1e-9`) and replaces doping with `Acceptors = "0"`, `Donors = "1"`, so the weighting potential does not depend on the material.
 
 Thus, "changing material by resistivity" is implemented in code as follows: low-resistivity or undepleted nodes are merged into the electrodes as conductors, and the rest (including depleted semiconductor) are treated as a dielectric with permittivity $\varepsilon_0$. This step is implemented by `weighting.take_conductors_into_electrodes`.
@@ -254,7 +254,7 @@ The quantities in the table below are written into the code. The "Key" column st
 | `eps_0` | `8.8541878128e-14` | F/cm | Same as above, and `Permittivity` of each material | None |
 | `T0` | `300.0` | K | Same as above, region parameter | None |
 | `vel_mean` | `1e7` | cm/s | Thermal velocity $v_{\text{th}}$ for defect capture | None |
-| `mu_n`, `mu_p` | Si `1450`/`500`; SiC `1100`/`114`; Diamond `110`/`1100` | $\text{cm}^2/(\text{V}\cdot\text{s})$ | Constant mobility | None (`parameter` can override any region parameter) |
+| `mu_n`, `mu_p` | Si `1450`/`500`; SiC `1100`/`114`; Diamond `1714`/`2064` | $\text{cm}^2/(\text{V}\cdot\text{s})$ | Constant mobility | None (`parameter` can override any region parameter) |
 | `taun`, `taup` | Si `7e-3`/`7e-3`; SiC `2.5e-6`/`0.5e-6`; Diamond `5.6e-7`/`2.4e-7` | s | `SRH_LIFETIME` | None |
 | `n1`, `p1` | $n_i$ | $\text{cm}^{-3}$ | SRH traps placed at the intrinsic level | None |
 | `n_i` (`gas`) | `1e-9` | $\text{cm}^{-3}$ | Dielectric for weighting field | None |
@@ -298,7 +298,7 @@ Meshes belong to `field`: the device file has no `mesh` section, since geometry 
 1. **Coordinate axes**: `mesh_axes` maps saved coordinates to device axes: `("z",)` for 1D; `("x", "y")` (when the selected mesh lies in the transverse $x$-$y$ plane) or `("z", "x")` for 2D; `("x", "y", "z")` (when the selected mesh is generated by `sde`) or `("z", "x", "y")` for 3D. DEVSIM internal length units are cm.
 2. **Mesh construction** (`DevsimMesh.mesh_define`): when solving a single-cell stitched weighting field ($s > 0$), calls `createRowOfCells`; otherwise, 1D uses `mesh_line`, `region`, and `contact` from the selected 1D mesh; 2D uses the selected Gmsh mesh file or built-in 2D mesh (`mesh_line`, `region`, `contact`); 3D always reads the Gmsh mesh file. Raises `ValueError` if `dimension` is not 1, 2, or 3.
 3. **Materials and doping for weighting fields**: when solving a weighting field, `_regions` replaces every region's material with `"gas"` (the `"air"` region in a built-in 2D mesh is preserved; Gmsh meshes do not keep it), and `setDoping` replaces doping with `Acceptors = "0"`, `Donors = "1"`.
-4. **Doping**: `Acceptors` is taken from `doping.Acceptors` and joined with `+` to `doping.Acceptors_ir` if present; `Donors` works identically; `NetDoping = Donors - Acceptors`. For 1D devices not solving a weighting field, `Doping.png` is plotted. Finally `<det_name>.dat` (Tecplot) is written.
+4. **Doping**: `Acceptors` is taken from `doping.Acceptors` and joined with `+` to `doping.Acceptors_ir` if present; `Donors` works identically; `NetDoping = Donors - Acceptors`. For 1D devices not solving a weighting field, `plots/doping` is plotted. Finally `<det_name>.dat` (Tecplot) is written.
 5. **HEMT interface**: when `hemt_physics.transport_model == "drift_diffusion_v1"`, the 2D mesh also adds `interface` from the selected 2D mesh; raises `ValueError` if no interface is defined.
 6. **Single-cell stitching** (`createRowOfCells`):
    - Supports only non-`plugin` 2D meshes; otherwise raises `ValueError`;
@@ -338,7 +338,7 @@ When solving for the electric field, `solver_section.main` executes in the follo
 1. **Prerequisite**: raises `FileNotFoundError` if `Conductive_<V_g>V.pkl` is missing, instructing to solve the field at that bias first.
 2. **Electrodes**: readout electrodes are taken from `name` in `read_out_contact` (or from `name` in `ac_contact` of the selected 2D mesh if non-empty); one voltage source is attached to each electrode.
 3. **Row cell count**: when `read_out_contact` has only one entry and `read_ele_num > 1`, $s$ is set by Eq. (17).
-4. **Per electrode**: solves only the Poisson equation (material `"gas"`); `take_conductors_into_electrodes` reads `Conductive_<V_g>V.pkl` and matches every region node to its nearest point in the file (for a stitched row, lateral coordinates are first taken modulo the cell width), raising `ValueError` for any node farther than $10^{-9}$ times the mesh span; then rewrites `PotentialEdgeFlux` and `contactcharge_edge` according to Eq. (16); sets the readout electrode to $1\ \text{V}$ and solves.
+4. **Per electrode**: solves only the Poisson equation (material `"gas"`); `take_conductors_into_electrodes` reads `Conductive_<V_g>V.pkl` and matches every region node to its nearest point in the file (for a stitched row, lateral coordinates are first taken modulo the cell width), raising `ValueError` for any node farther than $10^{-9}$ times the mesh span; then joins the conductive nodes into pieces along the mesh edges whose two ends are both conductive, raising `ValueError` when a piece holds contact nodes of two electrodes, naming the two electrodes, the bias $V_g$, the number of nodes of the piece and its coordinate range: such a piece makes the two electrodes one conductor and inflates the capacitances of Eq. (18) by about `CONDUCTOR_PERMITTIVITY`; finally rewrites `PotentialEdgeFlux` and `contactcharge_edge` according to Eq. (16), sets the readout electrode to $1\ \text{V}$ and solves.
 5. **Row-end check** ($s > 0$): takes the maximum $r$ of $|\phi_w|$ within one unit cell at each end, computes mutual capacitances by Eq. (18), and counts `neighbours_coupled` as the number $c$ of consecutive neighbors starting from `neighbour1` satisfying $C_{\text{neighbour}k} \ge$ `crosstalk_tolerance` $\times\sum_j C_j$. If $r >$ `weighting_tolerance` or $c = s$: sets $s' = \lceil 1.5\,s\rceil$; raises `ValueError` if $s' > 2s_0$ (the weighting potential does not decay along the row, typically caused by a conductive region touching the readout electrode); otherwise clears DEVSIM (preserving `direct_solver` and `solver_callback`) and re-solves from scratch with $s'$.
 6. **Saving**: saves the weighting potential to `weightingfield/<contact>/Potential_<V_g>V.pkl`; when $s > 0$, also writes `Capacitance_<V_g>V.json`; records $V_g$ in `solved.weighting`; writes `weightingfield/weightingfield.dat`.
 
@@ -348,7 +348,7 @@ When solving for the electric field, `solver_section.main` executes in the follo
 
 1. **Nodal quantities**: collects coordinates per region together with `Potential`, `NetDoping`, `Electrons`, `Holes`, `TrappingRate_n`, and `TrappingRate_p`; for DEVSIM fields, also computes `Conductive` (Eq. 19).
 2. **Undepleted bulk** (DEVSIM fields, 1D, 2D, and 3D): computes $W_{\text{und}}$ and specific resistance $r$ using Eq. (20a), writes `<V>V.undepleted.json` with specific capacitance $10^{12}\varepsilon/W_{\text{und}}$ ($\text{pF/cm}^2$), or `null` at full depletion, and records the bias in `solved.undepleted`.
-3. **Plotting**: plots potential, electron and hole trapping rates, and electric field (edge electric field at mesh edge midpoints for DEVSIM fields; `ElectricField_0` for TCAD 1D/2D and the 3-component norm for TCAD 3D).
+3. **Plotting**: plots potential, electron and hole trapping rates (not drawn without irradiation), and electric field (edge electric field at mesh edge midpoints for DEVSIM fields; `ElectricField_0` for TCAD 1D/2D and the 3-component norm for TCAD 3D).
 4. **Writing pickles**: one file per quantity; `NetDoping` is written only at $V = 0$ or for TCAD fields. When `is_flip` is true, the two 2D coordinates are swapped.
 
 ### Reading: Assets in a Field Node
@@ -417,7 +417,7 @@ On constructing `DevsimField(device_name, voltage, read_out_contact, bounds, res
 - `simple.py`: analytic toy fields.
 - `tcad.py`: TDR field import and weighting field solving.
 - `tdr_reader.py`, `tdr_import.py`: TDR reading and DEVSIM device creation (adapted from DEVSIM LLC's tdr-convert 0.1.7, Apache-2.0).
-- `devsim_draw.py`: IV/CV/noise curves and 1D/2D/3D field plots; `draw_electrons`, `draw_holes`, `draw_field` plot 1D electron/hole concentrations and electric field, and `save_field` writes electric field versus depth as a table.
+- `devsim_draw.py`: IV/CV/noise curves (`draw_iv(V, I, path)`, `draw_cv(V, C, path)`, `draw_noise(V, noise, path)`, which also write the `.root` files `simIV`, `simCV`, `simnoise`) and 1D/2D/3D field plots; 1D profiles are drawn into `<path>/plots` by `draw_profile(x, curves, ylabel, path, name, *suffixes, log=False)`; `draw_electrons`, `draw_holes`, `draw_field` plot 1D electron/hole concentrations and electric field, and `save_field` writes electric field versus depth as a table.
 - `hemt_solver_2d_transport_v1.py`: electron-only 2D AlGaN/GaN HEMT DC transfer-characteristic branch, dispatched from `solver_section.main`, writing `HEMT_TRANSPORT_*` files.
 - `plot_hemt_transport_csv.py`: standalone script plotting the latest `HEMT_TRANSPORT_final_profile.csv` under `work/AlGaN_GaN_HEMT_TRANSPORT_V1/field` (or environment variable `RASER_HEMT_FIELD_DIR`).
 
@@ -512,14 +512,17 @@ Files are written to the field node directory `work/<device>/field/<node_id>/`. 
 
 ### Generated Plots
 
+Figures of 1D devices are stored in `plots/` of the field node directory, with the style of [Figures (`supports/figures`)](../supports/figures.md); 2D and 3D figures are stored in the node directory.
+
 | File | Content | Axis Units |
 | --- | --- | --- |
-| `<det_name>_iv.png`, `simIV<min>to<max>_picture.pdf/.root` | IV curve (log vertical axis) | V, A |
-| `<det_name>_cv.png`, `<det_name>_c^-2v.png`, `simCV<min>to<max>_picture.pdf/.root` | CV and $1/C^2$ curves | V, pF, $\text{pF}^{-2}$ |
-| `<det_name>_noise.png`, `simnoise<min>to<max>_picture.pdf/.root` | Noise curve | V, — |
-| `Doping.png` | 1D donor and acceptor concentrations | cm, $\text{cm}^{-3}$ |
-| `<title><v>_1d.png` | 1D field profile; `<title>` is `Potential`, `Electric Field`, `Electron Trapping Rate`, `Hole Trapping Rate`, or under the weighting field directory `Weighting Potential`, `Weighting Field` | $\mu\text{m}$; V, V/cm, $\text{s}^{-1}$, None, $\text{cm}^{-1}$ |
-| `<title><v>_2d.pdf/.root`, `<title><v>_1d.pdf/.root` | 2D contour plot and centerline profile, same titles as above | $\mu\text{m}$ |
+| `plots/iv.png/.pdf` | IV curve: absolute reverse bias versus absolute leakage current, log vertical axis; outlying points more than 6 orders of magnitude below the median of the whole curve (for example the point at 0 V on a curve of pA) are not drawn, while the `simIV` file keeps them; a curve that is small as a whole is drawn as it is; axes `Reverse bias [V]`, `Leakage current [A]` | V, A |
+| `plots/cv.png/.pdf` | Left: capacitance versus reverse bias, axis `Capacitance [pF]`; right: $1/C^2$ versus reverse bias, axis `1/C² [pF⁻²]`; horizontal axis `Reverse bias [V]` | V, pF, $\text{pF}^{-2}$ |
+| `plots/noise.png/.pdf` | Noise current versus reverse bias, log vertical axis `Noise current [A]` | V, A |
+| `plots/doping.png/.pdf` | 1D donor and acceptor concentrations along depth, log vertical axis; axes `Depth [μm]`, `Doping [cm⁻³]` | μm, $\text{cm}^{-3}$ |
+| `plots/potential_<V>V`, `plots/electric_field_<V>V`, `plots/trapping_rate_<V>V` (each with `.png/.pdf`) | 1D, per bias: potential `Potential [V]`, electric field `Electric field [kV/cm]`, and electron (blue) and hole (red) trapping rates on one figure with log vertical axis `Trapping rate [s⁻¹]`; the trapping rate is not drawn when both are zero (no irradiation); `<V>` is written in its shortest form (`200.0` as `200`) | μm; V, kV/cm, $\text{s}^{-1}$ |
+| `plots/weighting_potential_<contact>_<V>V`, `plots/weighting_field_<contact>_<V>V` (each with `.png/.pdf`) | 1D, per readout electrode and per bias with a weighting field solved: weighting potential `Weighting potential` and weighting field `Weighting field [cm⁻¹]`; stored in `plots/` with the other figures, not under `weightingfield/<contact>/` | μm; None, $\text{cm}^{-1}$ |
+| `<title><v>_2d.pdf/.root`, `<title><v>_1d.pdf/.root` | 2D contour plot and centerline profile; `<title>` is `Potential`, `Electric Field`, `Electron Trapping Rate`, `Hole Trapping Rate`, `Weighting Potential`, or `Weighting Field` | $\mu\text{m}$ |
 | `<title>_<v>_3d_1d.pdf/.root`, `_XY`, `_YZ`, `_XZ` | 3D centerline profile and three mid-plane slices; `<title>` is `Potential Distribution `, `Electric Field`, `Electron Trapping Rate `, `Hole Trapping Rate ` (with trailing space) or `Weighting Potential`, `Weighting Field` | $\mu\text{m}$ |
 | `HEMT_TRANSPORT_IdVg.png/.pdf` | HEMT transfer characteristic | V, mA/mm |
 

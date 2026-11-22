@@ -8,13 +8,19 @@ from pathlib import Path
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+# The folder raser, raser_bench and raser_app are installed in, side by side.
+PACKAGES_ROOT = PACKAGE_ROOT.parent
 
 
 def source_tree(package_root=PACKAGE_ROOT):
     """The source tree raser runs from, <tree>/src/raser beside <tree>/pyproject.toml,
     as from a checkout or after pip install -e; None when it is installed as a package."""
     tree = package_root.parents[1]
-    return tree if package_root.parent.name == "src" and (tree / "pyproject.toml").is_file() else None
+    return (
+        tree
+        if package_root.parent.name == "src" and (tree / "pyproject.toml").is_file()
+        else None
+    )
 
 
 REPO_ROOT = source_tree()
@@ -127,12 +133,12 @@ def component_roots(
 
 
 def app_component_root(app_name: str):
-    """The components of an app; `app_name` is its folder in the package, "bench/cce"."""
-    return PACKAGE_ROOT / app_name / "components"
+    """The components of an app; `app_name` is its folder beside raser, "raser_bench/signal"."""
+    return PACKAGES_ROOT / app_name / "components"
 
 
 def app_file_path(app_name: str, filename: str):
-    path = PACKAGE_ROOT / app_name / filename
+    path = PACKAGES_ROOT / app_name / filename
     if path.exists():
         return path
     raise FileNotFoundError(f"Cannot find RASER app file: {path}")
@@ -185,14 +191,16 @@ def component_file_path(
 def module_work_name(current_file_path: str | os.PathLike):
     path = Path(current_file_path).resolve()
     try:
-        relative = path.relative_to(PACKAGE_ROOT)
+        relative = path.relative_to(PACKAGES_ROOT)
     except ValueError:
         return path.stem
 
     parts = relative.parts
-    if len(parts) >= 2 and parts[0] in {"apps", "bench", "core"}:
+    if len(parts) >= 2 and parts[0] in {"raser_app", "raser_bench"}:
         return parts[1]
-    if parts and parts[0] == "cli":
+    if len(parts) >= 3 and parts[:2] == ("raser", "core"):
+        return parts[2]
+    if parts[:2] == ("raser", "cli"):
         return "cli"
     return path.stem
 

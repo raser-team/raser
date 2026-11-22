@@ -34,7 +34,7 @@ where:
 - $\lambda$: laser wavelength, $\mu\text{m}$ (obtained by multiplying `wavelength` [$\text{nm}$] from the component file by $10^{-3}$);
 - $l_R$: Rayleigh length `l_Rayleigh` inside the medium, $\mu\text{m}$ (computed from Eq. (2) when not explicitly given in the component file);
 - $s_{\text{focus}}$: distance from the entrance surface to the focus along the beam propagation direction, $\mu\text{m}$;
-- $\alpha$: linear (single-photon) absorption coefficient `alpha`, $\text{m}^{-1}$ (when omitted from the component file, obtained by log interpolation of `raser/components/deposit/absorption/<material>.txt` multiplied by $100$);
+- $\alpha$: linear (single-photon) absorption coefficient `alpha`, $\text{m}^{-1}$ (when omitted from the component file: for silicon, obtained by log interpolation of `raser/components/deposit/absorption/Si.txt` multiplied by $100$; for silicon carbide, calculated from the 4H-SiC indirect absorption model at the device temperature, see [`core/deposit`](../core/deposit.md) Eqs. (7a) and (7b));
 - $\beta_2$: two-photon absorption coefficient `beta_2`, $\text{m/W}$;
 - $E_{\text{pulse}}$: single laser pulse energy `pulse_energy`, $\text{J}$; $E_{\text{ph}}$ is the single-photon energy, $\text{J}$ ($h = 6.626\times 10^{-34}\ \text{J}\cdot\text{s}$, $c = 2.998\times 10^{8}\ \text{m/s}$);
 - $\text{FWHM}_t$: laser temporal pulse full width at half maximum `temporal_FWHM`, $\text{s}$;
@@ -73,7 +73,8 @@ The built-in constants in `tct` are listed below:
 | Photon energy constants $h$, $c$ | `6.626e-34`, `2.998e8` | $\text{J}\cdot\text{s}$, $\text{m/s}$ | `src/raser/core/deposit/laser.py`, Planck constant and speed of light used to compute single-photon energy $E_{\text{ph}} = h c / \lambda$ |
 | Optical-path integration subdivision factor | `50` | steps | `src/raser/core/deposit/laser.py`, integration sampling multiplier applied to the optical path length divided by the smallest characteristic scale $\min(L, l_R, 10^6/\alpha)$ |
 | `rings`, `sectors` | `4`, `8` | rings, sectors | `src/raser/core/deposit/laser.py`, numbers of equal-fraction concentric rings and angular sectors partitioning the laser cross section (`32` groups per slab) |
-| Carrier distribution histogram bins | `50 × 50 × 50` (3D), `50 × 50` (2D) | bins | `src/raser/core/deposit/laser.py`, histogram binning of `draw_nocarrier3D` and `draw_nocarrier2D` |
+| Carrier distribution histogram bins | `50 × 50 × 50` (3D) | bins | `src/raser/core/deposit/laser.py`, bins on which `draw_nocarrier3D` evaluates the volume density |
+| Carrier density map grid and transverse range | `200 × 200`, `2` times the maximum spot radius on each side of the optical axis | points, dimensionless | `src/raser/core/deposit/laser.py`, grid point counts and transverse plotting range for volume density calculation in `draw_nocarrier2D` |
 | Per-bin pulse convolution sampling multiplier | `20` | points | `src/raser/core/current/cal_current.py`, `pulse_in_bins` requires midpoint-rule spacing inside each bin not to exceed $\text{FWHM}_t / 20$ |
 | `t_bin`, `delta_t` | 1D: `5e-12`, `2e-12`; 2D/3D: `50e-12`, `20e-12` | $\text{s}$ | `src/raser/core/current/cal_current.py`, induced-current time-bin width and single drift step |
 | `diffusion` | `False` | None | `src/raser/core/current/cal_current.py`, `write_laser_currents` hardcodes carrier thermal diffusion off |
@@ -147,7 +148,7 @@ The configuration keys users can set in `tct` are listed below (see [Energy Depo
 | `readout.amplifier` | `"SantaCruz+Gali52+Termination50"` | None | Front-end amplifier and termination load component chain joined by `+` |
 | `deposit.laser.<laser_key>` | omitted (uses value from laser component file) | Key-dependent | Overrides `direction`, `tech`, `wavelength` ($\text{nm}$), `refractionIndex`, `alpha` ($\text{m}^{-1}$), `beta_2` ($\text{m/W}$), `temporal_FWHM` ($\text{s}$), `pulse_energy` ($\text{J}$), `spacial_FWHM` ($\mu\text{m}$), `l_Rayleigh` ($\mu\text{m}$), `central_time` ($\text{s}$), `pairs_per_group` (pairs), or `groups` (groups) in the laser component |
 
-All other parameters (`4` concentric rings $\times$ `8` sectors for laser cross-section partitioning, `50`-fold optical-path integration subdivision, `20`-fold per-bin midpoint sampling for pulse convolution, carrier drift time-window and time-step profiles `t_bin`/`delta_t`, thermal diffusion disabled `diffusion = False`, and `50`-bin histograms for 3D/2D initial carrier distributions) are hardcoded in the source code.
+All other parameters (`4` concentric rings $\times$ `8` sectors for laser cross-section partitioning, `50`-fold optical-path integration subdivision, `20`-fold per-bin midpoint sampling for pulse convolution, carrier drift time-window and time-step profiles `t_bin`/`delta_t`, thermal diffusion disabled `diffusion = False`, `50`-bin histogram for the 3D initial carrier distribution, and `200 × 200` grid for the 2D density map) are hardcoded in the source code.
 
 ## Outputs
 
@@ -170,14 +171,14 @@ Each laser position is a scan point, and stage outputs are stored under `<projec
 
 | Path | Writer Stage / Function | Content | Coordinate and Physical Quantity Units |
 | --- | --- | --- | --- |
-| `nodes/deposit/<node>/nocarrier_<fx_rel>_<fy_rel>_<fz_rel>.pdf` | [`deposit`](../stages/deposit.md) (`LaserInjection.draw_nocarrier3D`) | 3D logarithmic distribution histogram (`TH3D`, `50 × 50 × 50` bins; relative coordinates in filename rounded to `5` decimal places) of initial carrier groups generated inside the device by the laser pulse | Axes `Depth [um]`, `Width [um]`, `Thick [um]`; bin weight in electron-hole pairs |
-| `nodes/deposit/<node>/nocarrier2D_<fx_rel>_<fy_rel>_<fz_rel>.pdf` | [`deposit`](../stages/deposit.md) (`LaserInjection.draw_nocarrier2D`) | 2D logarithmic distribution plot (`TH2D`, `50 × 50` bins, `COLZ` color scale) of initial carrier groups generated in the device $x$-$z$ plane by the laser pulse | Horizontal axis `x axis [um]`, vertical axis `z axis [um]`, color scale `Carriers` (pairs) |
-| `nodes/current/<node>/No_<k>electrode_basic_infor.pdf`, `.root` | [`current`](../stages/current.md) (`draw_currents`) | Induced-current waveforms (`electron`, `hole`, `total`, plus `electron gain`, `hole gain` when avalanche is enabled) on the $k$-th nonzero-current electrode (starting from `1`) after convolution with the laser temporal pulse | Horizontal axis `Time [s]`, vertical axis `Current [A]` |
+| `nodes/deposit/<node>/plots/pair_density_3d.png`, `.pdf`, `.root` | [`deposit`](../stages/deposit.md) (`LaserInjection.draw_nocarrier3D`) | 3D volume density (`TH3D`, `50 × 50 × 50` bins, evaluated at the bin centres from the absorption formulas, bins under `10%` of the highest value left empty) of initial electron-hole pairs generated inside the device by the laser pulse | Axes `x [μm]`, `y [μm]`, `z [μm]`; bin content in pairs per $\mu\text{m}^3$ |
+| `nodes/deposit/<node>/plots/pair_density.png`, `.pdf`, `.root` | [`deposit`](../stages/deposit.md) (`LaserInjection.draw_nocarrier2D`) | Volume density of initial electron-hole pairs on the $y = \text{fy\_rel}\cdot l_y$ $x$-$z$ plane (passing through the optical axis), evaluated on a `200 × 200` grid from the absorption formulas (`TH2D`, `COLZ` color scale) | Horizontal axis `x [μm]`, vertical axis `z [μm]`, color scale `Pair density [μm⁻³]` |
+| `nodes/current/<node>/plots/current_0.png`, `.pdf`, `.root` (`current_0_electrode_<k>` with several readout electrodes) | [`current`](../stages/current.md) (`draw_currents`) | Induced-current waveforms (`electrons`, `holes`, `total`, plus `gain electrons`, `gain holes` when avalanche is enabled) on the $k$-th nonzero-current electrode (starting from `1`) after convolution with the laser temporal pulse | Horizontal axis `Time [ns]`, vertical axis `Current [μA]` |
 | `analysis/points.png` | [`analysis`](../stages/analysis.md) | Curves of collected charge and signal versus focal position across a focal-position scan | Horizontal axis relative focal position (dimensionless), vertical axis labeled with the unit of the corresponding physical quantity |
 
 ![NJU-PiN laser-injected 2D carrier distribution](../images/tct-carriers-2d-NJU-PiN.png)
 
-Logarithmic 2D distribution of initial carrier groups in the $x$-$z$ plane output by `draw_nocarrier2D` for `NJU-PiN` illuminated by the top UV laser `PIL037_top_SiC`.
+Volume density of initial electron-hole pairs on the $x$-$z$ plane passing through the optical axis, output by `draw_nocarrier2D` for `NJU-PiN` illuminated by the top UV laser `PIL037_top_SiC`.
 
 ![NJU-PiN TCT induced current waveform](../images/tct-current-NJU-PiN.png)
 

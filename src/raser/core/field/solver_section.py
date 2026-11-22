@@ -288,7 +288,7 @@ def main (kwargs):
             
             loop.initial_solver(contact=contact,set_contact_type=None,impact_model=impact_model,irradiation_model=irradiation_model,irradiation_flux=irradiation_flux,)
             take_conductors_into_electrodes(
-                device, region, conductive_file,
+                device, region, conductive_file, bias=v_goal,
                 cell_width=float(MyDetector.p_x) * 1e-4 if cells_either_side else None,
             )
             loop.loop_solver(circuit_contact=contact,v_trial=v_trial,area_factor=paras["area_factor"],)
@@ -409,11 +409,11 @@ def main (kwargs):
     if is_wf != True:
         save_milestone.save_record(path, read=MyDetector.read)
 
-        draw_iv(device, V=loop.get_voltage_values(), I=loop.get_current_values(),path=path)
+        draw_iv(V=loop.get_voltage_values(), I=loop.get_current_values(),path=path)
         if is_cv == True:
-            draw_cv(device, V=loop.get_voltage_values(), C=loop.get_cap_values(),path=path)
+            draw_cv(V=loop.get_voltage_values(), C=loop.get_cap_values(),path=path)
         if is_noise == True:
-            draw_noise(device, V=loop.get_voltage_values(), noise=loop.get_noise_values(),path=path,)
+            draw_noise(V=loop.get_voltage_values(), noise=loop.get_noise_values(),path=path,)
     T2 =time.time()
     print("=========RASER info===========\nSimulation finish ,total used time: {}s !^w^!\n================".format(T2-T1))
 
