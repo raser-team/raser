@@ -177,6 +177,8 @@ def test_waveforms_of_a_cable_are_longer_by_its_delay_and_come_later_by_it(tmp_p
             None,
             given,
             pulse_edge=["falling"],
+            pre_window_s=0.0,
+            post_window_s=0.0,
         )
     bare = read_waveforms(tmp_path / "bare.h5").events[0]
     delayed = read_waveforms(tmp_path / "cable.h5").events[0]
@@ -210,6 +212,8 @@ def test_noise_of_a_cable_is_that_of_the_circuit_times_its_loss(tmp_path):
             seed,
             cable,
             pulse_edge=["falling"],
+            pre_window_s=0.0,
+            post_window_s=0.0,
         )
     quiet = read_waveforms(tmp_path / "quiet.h5").events[0].voltage[0]
     noisy = read_waveforms(tmp_path / "noisy.h5").events[0].voltage[0]

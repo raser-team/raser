@@ -101,6 +101,9 @@ def write_waveforms(
     circuit_values=None,
     pulse_edge=None,
     part_of=None,
+    *,
+    pre_window_s,
+    post_window_s,
 ):
     """Solve the chain for every event of the currents file and write the
     output voltages to the waveforms file, event by event.
@@ -121,10 +124,16 @@ def write_waveforms(
         behind the outputs, with a length for each output of the circuit. The
         window of each event is lengthened by the greatest delay of the
         outputs stored, its currents zero there, so that the pulse the
-        longest cable delays is whole in it; the file counts those bins, and
-        t0 stays. Each output stored has the losses of its cable applied
+        longest cable delays is whole in it; the file counts those bins. Each output stored has the losses of its cable applied
         (cable.through_cable) and its noise spectrum is that of the circuit
         times the modulus of the transfer factor of its cable.
+    pre_window_s, post_window_s : the lengths [s] of the stretches added
+        before and after the window of the currents of each event, their
+        currents zero: n_pre = ceil(pre_window_s / dt) bins in front, which
+        t0 of the file moves back by, and n_post = ceil(post_window_s / dt)
+        bins behind. The cable's lengthening comes after them. The circuit
+        is solved and the noise drawn over the whole of it, and the file
+        counts all its bins.
     circuit_values : None, or the values the circuit is made of and where each
         is from, as device_circuit gives them: they are written to the file.
     pulse_edge : None, or the way the pulse of each output goes, as
@@ -154,6 +163,8 @@ def write_waveforms(
         if unknown:
             raise ValueError(f"The cable has no length for the outputs {unknown}")
     place = {name: k for k, name in enumerate(outputs)}
+    before = math.ceil(round(pre_window_s / currents.dt, 9))
+    after = math.ceil(round(post_window_s / currents.dt, 9))
 
     def extra_bins(names):
         """Bins that the greatest delay of the outputs takes."""
@@ -172,7 +183,10 @@ def write_waveforms(
         # the window is solved as long as the greatest delay of any output
         # asks, and cut to that of the outputs stored
         longer = dataclasses.replace(
-            event, current=np.pad(event.current, ((0, 0), (0, extra_bins(outputs))))
+            event,
+            current=np.pad(
+                event.current, ((0, 0), (before, after + extra_bins(outputs)))
+            ),
         )
         if not hit:
             solved = {}
@@ -187,7 +201,7 @@ def write_waveforms(
             for name in outputs
             if name in solved and largest > 0 and swing[name] >= PART_EDGE * largest
         ]
-        count = bins + extra_bins(names)
+        count = before + bins + after + extra_bins(names)
         voltage = np.array([solved[name][:count] for name in names]).reshape(
             len(names), count
         )
@@ -222,7 +236,9 @@ def write_waveforms(
             waveforms_path,
             outputs,
             currents.dt,
-            EventWaveforms(event.event, event.t0, voltage, names),
+            EventWaveforms(
+                event.event, event.t0 - before * currents.dt, voltage, names
+            ),
             circuit_values,
             pulse_edge,
         )
