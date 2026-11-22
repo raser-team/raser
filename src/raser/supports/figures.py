@@ -5,12 +5,15 @@ from __future__ import annotations
 import itertools
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import matplotlib
 import matplotlib.colors
 import matplotlib.pyplot as plt
 import numpy as np
-import ROOT
+
+if TYPE_CHECKING:
+    import ROOT
 
 WIDTH_INCHES = 6.0
 HEIGHT_INCHES = 4.0
@@ -95,6 +98,10 @@ def new(rows: int = 1, columns: int = 1):
 
 def canvas(columns: int = 1, rows: int = 1) -> ROOT.TCanvas:
     """Set gStyle and return a ROOT canvas of 1200 x 800 pixels per pad."""
+    # ROOT is loaded only to draw with it: a command that only prints its
+    # help or draws with matplotlib does not start it
+    import ROOT
+
     style = ROOT.gStyle
     style.SetOptStat(0)
     style.SetOptTitle(0)
@@ -183,6 +190,10 @@ def series(count: int, ordered: bool) -> list[str]:
 
 def root_color(color: str) -> int:
     """Return the ROOT colour index of a matplotlib colour."""
+    # ROOT is loaded only to draw with it: a command that only prints its
+    # help or draws with matplotlib does not start it
+    import ROOT
+
     return ROOT.TColor.GetColor(matplotlib.colors.to_hex(color))
 
 
