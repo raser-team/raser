@@ -59,7 +59,7 @@ When upstream `deposit` records `0` valid events in a job, `readout` skips that 
 
 `raser readout --draw <object>` draws objects belonging to this stage: front-end circuit schematics and impulse responses. Front-end circuit schematics and impulse responses depend solely on the circuit and its parameters; they are assets stored under `work/<circuit>/` and referenced by `readout` across experiments.
 
-A device with a resistive layer (its file has `resistive_layer`) has one more object, `network`: `raser readout --draw network [path]` solves only the device circuit and the amplifier chain of `readout.amplifier`, and reads no result of `deposit` or `current`. The impulse falls on a point of the device, given by its geometric coordinates $(x, y)$ in $\mu\text{m}$, in the coordinates of `current` ($0 \le x \le l_x$, $0 \le y \le l_y$); a device with strips takes $x$ alone. A charge of $1\ \text{fC}$ is injected at this point as a rectangular current pulse in the first time bin, shared linearly among the nodes of the neighbouring cells by its distances to their centres; the bins are $10\ \text{ps}$ wide and there are $2000$ of them; the sheet resistance is `readout.sheet_resistance`, or that of the device file when it is not given. With `--at <x>,<y>` the impulse falls on that point, and `network_waveforms.png` shows the output waveform of every read-out electrode (strip or pad); without it the point is scanned along $x$ in steps of one cell width on the middle line of the device ($y = l_y/2$), `network_waveforms.png` shows the waveforms for the point in the middle of the scan, and `network_sharing.png` is drawn as well: the waveform amplitude and the waveform integral of every read-out electrode against the $x$ of the impulse. In both cases `network_schematic.png` is drawn: the circuit of the network of the device, with the values of its elements.
+A device with a resistive layer (its file has `resistive_layer`) has one more object, `network`: `raser readout --draw network [path]` solves only the device circuit and the amplifier chain of `readout.amplifier`, and reads no result of `deposit` or `current`. The impulse falls on a point of the device, given by its geometric coordinates $(x, y)$ in $\mu\text{m}$, in the coordinates of `current` ($0 \le x \le l_x$, $0 \le y \le l_y$); a device with strips takes $x$ alone. A charge of $1\ \text{fC}$ is injected at this point as a rectangular current pulse in the first time bin, shared linearly among the netlist nodes of the neighbouring RC nodes by its distances to their centres; the bins are $10\ \text{ps}$ wide and there are $2000$ of them; the sheet resistance is `readout.sheet_resistance`, or that of the device file when it is not given. With `--at <x>,<y>` the impulse falls on that point, and `network_waveforms.png` shows the output waveform of every read-out electrode (strip or pad); without it the point is scanned along $x$ in steps of one RC node width on the middle line of the device ($y = l_y/2$), `network_waveforms.png` shows the waveforms for the point in the middle of the scan, and `network_sharing.png` is drawn as well: the waveform amplitude and the waveform integral of every read-out electrode against the $x$ of the impulse. In both cases `network_schematic.png` is drawn: the circuit of the network of the device, with the values of its elements.
 
 ## Rules
 
@@ -100,7 +100,7 @@ Follow the message to run `raser field <det_name>` first, then rerun.
 3. **Assemble the device equivalent circuit**:
    - **Device file contains `resistive_layer` (resistive-layer device)**:
      1. Select `build = device_grid` (2D resistive mesh) if `my_d.is_pixel` is true, else `build = device_row` (1D resistive row).
-     2. `circuit, values = build(my_d, electrodes, sheet_ohm=sheet_ohm)`: sheet resistance is selected in order from non-`None` `sheet_ohm` (source recorded as `"chosen"`) → `resistive_layer["sheet_resistance"]` (`"device file"`) → derivation from Al-implanted layer parameters (`"implanted layer"`); unit-cell capacitance is selected in order from `capacitance_pF` (`"device file"`) → parallel-plate estimate (`"parallel plate"`).
+     2. `circuit, values = build(my_d, electrodes, sheet_ohm=sheet_ohm)`: sheet resistance is selected in order from non-`None` `sheet_ohm` (source recorded as `"chosen"`) → `resistive_layer["sheet_resistance"]` (`"device file"`) → derivation from Al-implanted layer parameters (`"implanted layer"`); RC node capacitance is selected in order from `capacitance_pF` (`"device file"`) → parallel-plate estimate (`"parallel plate"`).
    - **`sheet_ohm` supplied for a device without a resistive layer**: raises
 
      ```text
@@ -161,7 +161,51 @@ Follow the message to run `raser field <det_name>` first, then rerun.
 4. **Amplifier chain and pulse edge directions**:
    - `chain = named_chain(str(kwargs["amplifier"]))` splits `amplifier` on `"+"` and loads each `readout/<part>.cir` sequentially from component directories (see [Front-End Readout Circuit Components (`components/readout`)](../components/readout.md) for subcircuit syntax and built-in components). If missing, raises `FileNotFoundError: Cannot find RASER component readout/<part>.cir:`; check the spelling of the subcircuit name or confirm the file is placed under `readout/`.
    - `pulse_edges(my_d, chain, list(circuit.outputs))` returns the pulse edge directions matching `circuit.outputs` one-to-one.
-5. **Solve and write (`write_waveforms`)**: Removes any existing waveform file at the same path, then solves transient voltages event by event, superposes time-domain thermal noise according to the seed, drops channels whose maximum absolute swing is `< 1e-3 * largest`, and writes the result.
+5. **Readout cable, length validation, and loss conversion**:
+   - When `readout.cable` is `null`, no cable is connected; otherwise read `readout/<cable_name>.json` from component directories by the slot name (see [Front-End Readout Circuit Components (`components/readout`)](../components/readout.md) for JSON keys), take characteristic impedance $Z_0$ ($\Omega$), velocity factor $\text{VF}$, and attenuations at two frequencies, and compute propagation speed $v$ ($\text{m/s}$) and loss coefficients $a_s$ and $a_d$ per Eqs. (13)–(15) in [Electronics Readout (`core/readout`)](../core/readout.md).
+   - Validate `readout.cable.length_m` (mapping from channel name to cable length in $\text{m}$):
+     - Every output channel in `circuit.outputs` must be provided; if a channel is missing, raise:
+
+       ```text
+       ValueError: readout.cable.length_m.<channel> is missing: give a cable length in m for each output of <det_name> (<outputs>)
+       ```
+
+     - If any channel name is not in the circuit's outputs, raise:
+
+       ```text
+       ValueError: readout.cable.length_m has unknown channels <unknown>; the outputs of <det_name> are <outputs>
+       ```
+
+     - If any channel's value is not a finite non-negative number (e.g., negative, `NaN`, `Inf`, or non-numeric), raise:
+
+       ```text
+       ValueError: readout.cable.length_m.<channel> must be a finite non-negative number in m, not <value>
+       ```
+
+   - Convert each output channel's length to pure delay $\tau_r = \ell_r / v$ ($\text{s}$) and frequency-domain complex transfer factor $H_r(f)$.
+6. **Read the two window keys and compute the settling time $T_{\text{settle}}$**:
+   - Read `readout.pre_window_ns` (pre-window length $T_{\text{pre}}$, $\text{ns}$) and `readout.max_post_window_ns` (upper bound $T_{\max}$ of the post-window length, $\text{ns}$); neither key has a default. A missing key raises:
+
+     ```text
+     ValueError: readout.pre_window_ns is missing: give the length of the baseline before the signal in ns
+     ValueError: readout.max_post_window_ns is missing: give the longest settling segment after the signal in ns
+     ```
+
+   - A value that is not a number in the required range (negative, `NaN`, `Inf`, non-numeric, and for `max_post_window_ns` also `0`) raises:
+
+     ```text
+     ValueError: readout.pre_window_ns must be a finite non-negative number in ns, not <value>
+     ValueError: readout.max_post_window_ns must be a positive finite number in ns, not <value>
+     ```
+
+   - $T_{\text{settle}}$ is computed once per job for the amplifier chain of that job: on the planar probe circuit `planar_circuit` whose capacitance is the junction capacitance `values["junction_capacitance"]["farad"]` from step 3 (`values["rc_node_capacitance"]["farad"]` for resistive-layer devices), $1\ \text{fC}$ of charge is injected in the first time bin and the solve steps by `dt`; the solve window starts at $20\ \text{ns}$ and doubles while the output has not settled, until it settles or the window length reaches $T_{\max}$. The last time at which the output deviates from its rest level by more than $10^{-3}$ of the largest deviation is $T_{\text{settle}}$, and the post-window length is the smaller of it and $T_{\max}$; the definition is in Eqs. (19)–(21) of [Electronics Readout (`core/readout`)](../core/readout.md). When the chain gives no response to $1\ \text{fC}$, the existing `ValueError` of `chain_sign` applies (see "Pulse Polarity Determination and Waveform File Writing" in [Electronics Readout (`core/readout`)](../core/readout.md)).
+   - When $T_{\text{settle}} > T_{\max}$ and the post-window is cut, one INFO line is printed that states how long $T_{\text{settle}}$ is at least and which post-window length is used, so the cut is never silent:
+
+     ```text
+     INFO: readout: the amplifier chain settles in at least <T_settle> ns; the post-window is <T_post> ns (readout.max_post_window_ns)
+     ```
+
+7. **Solve and write (`write_waveforms`)**: Removes any existing waveform file at the same path, then solves transient voltages event by event (adding $n_{\text{pre}}$ zero-current time bins before the `current` window and $n_{\text{post}}$ after it, so that the written `t0` is the `t0` of `current` minus $n_{\text{pre}}$ `dt` and `count` is the total bin count; when a cable is connected, inserts lossless `T` elements before the final load in the netlist, adds $n_{\text{extra}}$ more time bins at the very end according to $\tau_{\max}$, multiplies $H_r(f)$ in the frequency domain, and weights the noise spectral density by $|H_r(f)|$), superposes time-domain thermal noise according to the seed, drops channels whose maximum absolute swing is `< 1e-3 * largest`, and writes the result.
 
 ## Software Implementation
 
@@ -194,7 +238,7 @@ Follow the message to run `raser field <det_name>` first, then rerun.
 | `"bias_resistance"` | Standard devices: `{"ohm": float} \| None` | $\Omega$ | Per-electrode bias resistance (`null` if unconfigured) |
 | `"coupling_capacitance"` | Standard devices: `{"farad": float} \| None` | $\text{F}$ | Per-electrode AC coupling capacitance (`null` if unconfigured) |
 | `"undepleted_layer"` | Standard devices: `{"ohm": float, "farad": float, "from": str} \| None` | $\Omega$, $\text{F}$ | Undepleted-layer parallel resistance, capacitance, and source (`null` when fully depleted) |
-| `"cell_capacitance"` | Resistive-layer devices: `{"farad": float, "from": str}` | $\text{F}$ | Capacitance from a single resistive-layer mesh cell to the backside, and its source |
+| `"rc_node_capacitance"` | Resistive-layer devices: `{"farad": float, "from": str}` | $\text{F}$ | Capacitance from a single resistive-layer RC node to the backside, and its source |
 | `"sheet_resistance"` | Resistive-layer devices: `{"ohm": float, "from": str}` | $\Omega$ | Resistive-layer sheet resistance and source (`"chosen"`, `"device file"`, or `"implanted layer"`) |
 | `"coupling_per_area_f_m2"` | Resistive-layer devices: `float \| None` | $\text{F/m}^2$ | Coupling capacitance per unit area of the dielectric layer beneath readout strips or pads (`null` for direct contact) |
 
@@ -209,10 +253,14 @@ Only the keys listed below are configurable in this stage; the relative swing th
 | `[path]` | Current folder | None | Experiment folder |
 | `readout.amplifier` | `"SantaCruz+Gali52+Termination50"` | None | Chain of `readout/<name>.cir` subcircuits joined with `"+"`, where leading entries are two-port amplifier stages and the final entry is a one-port load |
 | `readout.sheet_resistance` | `null` (uses the resistive-layer sheet resistance from the device file) | $\Omega$ | Overrides sheet resistance of a resistive-layer device; passing it for a standard device raises `ValueError` |
+| `readout.cable` | `null` (no cable connected) | None | Readout cable component slot: a cable component name (such as `"Belden8259"`) or an object containing `name` and `length_m`; setting `null` explicitly disables the cable |
+| `readout.cable.length_m` | Required when `readout.cable` is not `null` (e.g. `{"top": 1.5}`, or `{"strip1": 2.0, "strip2": 2.0, ...}` for strip devices) | $\text{m}$ | Mapping from channel name to cable length; when `readout.cable` is not `null`, every output channel of the circuit must be given, unknown channel names are rejected, and each value must be a finite non-negative number |
+| `readout.pre_window_ns` | `15` | $\text{ns}$ | Length of the pre-window (baseline segment), a non-negative finite number, required, no default; a segment of zero current this long is added before the `current` window, downstream steps use it to estimate the baseline, and noise is synthesized over it as well |
+| `readout.max_post_window_ns` | `1000` | $\text{ns}$ | Upper bound of the post-window length, a positive finite number, required, no default; the post-window is the smaller of the settling time of the amplifier chain and this bound, and since the decay of a charge-sensitive amplifier is of the order of a hundred microseconds, this bound is needed |
 | `field.voltage` | `200.0` (uses the bias from the device file when set to `null`) | $\text{V}$ | Belongs to the `field` section: bias voltage used to locate the field and determine collected charge polarity |
 | `field.irradiation_flux` | `null` (uses the irradiation fluence from the device file, or `0` if the device file has no irradiation block) | $\text{cm}^{-2}$ | Belongs to the `field` section: irradiation fluence used during field lookup |
-| Device file keys `read_out_contact`, `read_ele_num`, `electrodes`, `l_y`, `p_x`, `p_y`, `x_ele_num`, `y_ele_num` | See the `components/device` page | $\mu\text{m}$ / count | Define readout electrode names, layout (`"pad"`, `"strip"`, `"pixel"`), strip length, and mesh cell dimensions |
-| Device file key `capacitance_pF` | None (optional) | $\text{pF}$ | Directly specified single-electrode depleted junction capacitance (or resistive-layer cell capacitance), taking precedence over field capacitance and parallel-plate estimates |
+| Device file keys `read_out_contact`, `read_ele_num`, `electrodes`, `l_y`, `p_x`, `p_y`, `x_ele_num`, `y_ele_num` | See the `components/device` page | $\mu\text{m}$ / count | Define readout electrode names, layout (`"pad"`, `"strip"`, `"pixel"`), strip length, and RC node dimensions |
+| Device file key `capacitance_pF` | None (optional) | $\text{pF}$ | Directly specified single-electrode depleted junction capacitance (or resistive-layer RC node capacitance), taking precedence over field capacitance and parallel-plate estimates |
 | Device file key `bias_resistance_ohm` | Omitted (optional) | $\Omega$ | Per-electrode bias resistance of a standard device; required whenever `coupling_capacitance_pF` is provided |
 | Device file key `coupling_capacitance_pF` | Omitted (optional) | $\text{pF}$ | Per-electrode AC coupling capacitance of a standard device |
 | Device file keys `undepleted_resistance_ohm`, `undepleted_capacitance_pF` | Omitted (optional) | $\Omega$, $\text{pF}$ | Parallel resistance and capacitance of the undepleted layer in a standard device; must be given as a pair, otherwise read from the field |

@@ -28,7 +28,7 @@ SiC AC-LGAD 器件中的雪崩倍增由 [`core/current`](../core/current.md) 的
 
 - [`field`](../stages/field.md)：复用 SiC AC-LGAD 像素器件在工作偏压下的电场、增益层分布与权重场节点；找不到场时在作业开始前补算，存进 `work/<器件>/field/<节点号>/`。
 - [`deposit`](../stages/deposit.md)：用 Geant4 模拟氢硼聚变源发出的 $\alpha$ 粒子在靶室几何与 SiC AC-LGAD 像素器件表层的能量沉积与电离对生成。
-- [`current`](../stages/current.md)：模拟电子和空穴在 SiC 倍增场中的漂移与 `"Hatakeyama"` 雪崩倍增，计算各晶胞的感应电流。
+- [`current`](../stages/current.md)：模拟电子和空穴在 SiC 倍增场中的漂移与 `"Hatakeyama"` 雪崩倍增，计算各 RC 格点的感应电流。
 - [`readout`](../stages/readout.md)：将感应电流送入 AC-LGAD 的二维阻性层与交流耦合电容网格（`device_grid`）及前端放大器链，求解各像素通道的输出电压波形。
 - [`digitizer`](../stages/digitizer.md) 与 [`trigger`](../stages/trigger.md)：对各像素通道波形做数字化采样量化与过阈触发判选。
 - [`reconstruction`](../stages/reconstruction.md)：读 `digitizer.h5` 里被 `trigger` 记录的事例，把量化码换回电压（$\text{V}$），从像素波形中提取每个击中的到达时刻（`ToA`、`CFD`）、幅度与像素团簇位置。

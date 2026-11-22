@@ -4,7 +4,7 @@
     "electrodes" : "pixel",
     "material" : "SiC",
 
-    "comment" : "4H-SiC AC-LGAD of LBNL, NCSU and BNL: T. Yang et al., arXiv:2610.27535, with the layers of T. Yang et al., IEEE Electron Device Lett. 46 (2025) 845, doi:10.1109/LED.2025.3548509. From the two papers: P++ 0.3 um (1e20 cm^-3 in the letter, 1e19 in the preprint; the letter is taken), N+ gain layer 0.5 um of nominally 4e17 cm^-3 (a second device has 5e17), N- drift layer 75 um of about 2e14 cm^-3, a buffer of 1 um, an active area of 1.0 x 1.0 mm^2, four pads of 100 x 100 um^2 at a pitch of 500 um over 300 nm of oxide, a DC ring on the P++ layer around them, 200 to 500 V. Not in the papers, assumed here: the buffer of 1e18 cm^-3, the substrate of 1e19 cm^-3 of which 10 um are in the mesh, the ring one cell wide at the edge of the active area, the relative permittivity 3.9 of the oxide. The sheet resistance of the P++ layer is not measured: 630 Ohm is 1 / (q p mu t) for 1e20 cm^-3 of aluminium over 0.3 um at 300 K, with the free holes and the hole mobility of core/model. The gain layer is given 3.6e17 cm^-3 of active donors, the nominal 4e17 with 90 % of them active: with the Hatakeyama coefficients the nominal layer breaks down near 330 V, and 3.6e17 gives the pairs of the bulk a gain of 6.7 at 500 V, where the letter measures 7 to 8. The 90 % is an assumption; the papers give no measured active concentration. The layer under the pads is cut into cells of 50 um.",
+    "comment" : "4H-SiC AC-LGAD of LBNL, NCSU and BNL: T. Yang et al., arXiv:2610.27535, with the layers of T. Yang et al., IEEE Electron Device Lett. 46 (2025) 845, doi:10.1109/LED.2025.3548509. From the two papers: P++ 0.3 um (1e20 cm^-3 in the letter, 1e19 in the preprint; the letter is taken), N+ gain layer 0.5 um of nominally 4e17 cm^-3 (a second device has 5e17), N- drift layer 75 um of about 2e14 cm^-3, a buffer of 1 um, an active area of 1.0 x 1.0 mm^2, four pads of 100 x 100 um^2 at a pitch of 500 um over 300 nm of oxide, a DC ring on the P++ layer around them, 200 to 500 V. Not in the papers, assumed here: the buffer of 1e18 cm^-3, the substrate of 1e19 cm^-3 of which 10 um are in the mesh, the ring one RC node wide at the edge of the active area, the relative permittivity 3.9 of the oxide. The sheet resistance of the P++ layer is not measured: 630 Ohm is 1 / (q p mu t) for 1e20 cm^-3 of aluminium over 0.3 um at 300 K, with the free holes and the hole mobility of core/model. The gain layer is given 3.6e17 cm^-3 of active donors, the nominal 4e17 with 90 % of them active: with the Hatakeyama coefficients the nominal layer breaks down near 330 V, and 3.6e17 gives the pairs of the bulk a gain of 6.7 at 500 V, where the letter measures 7 to 8. The 90 % is an assumption; the papers give no measured active concentration. The layer under the pads is cut into RC nodes 50 um apart.",
 
     "l_x" : 1000,
     "l_y" : 1000,
@@ -34,10 +34,11 @@
 
     "area_factor" : 0.01,
     "default_dimension" : 1,
-    "read_out_contact" : [{"x_span":0, "y_span":0, "name":"cell"}],
+    "read_out_contact" : [{"x_span":0, "y_span":0, "name":"node"}],
 
     "resistive_layer" : {
         "sheet_resistance" : 630.0,
+        "contact" : "top",
         "pads" : {
             "pad1" : [4, 5, 4, 5],
             "pad2" : [14, 15, 4, 5],

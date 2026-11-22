@@ -47,6 +47,8 @@ SOLVER = {
         "increase_factor": 2.0,
         "decrease_factor": 0.5,
     },
+    # Raising the fluence in the initial solution; "initial" is the first step as a fraction of the target fluence.
+    "flux_step": {"initial": 0.01, "increase_factor": 2.0, "decrease_factor": 0.5},
     "saved_voltage_interval": 100.0,
     "curve_voltage_interval": 10.0,  # between two points of the IV and CV curves
     "ac": {"real": 1.0, "imaginary": 0.0, "frequency": 1000.0},
@@ -83,6 +85,7 @@ def _legacy_solver_parameters(configuration, *, weightfield):
     solver = configuration["solver"]
     initial = solver["initial"]
     voltage_step = solver["voltage_step"]
+    flux_step = solver["flux_step"]
     ac = solver["ac"]
     return {
         "absolute_error_Initial": float(initial["absolute_error"]),
@@ -99,6 +102,9 @@ def _legacy_solver_parameters(configuration, *, weightfield):
         "increase_factor": float(voltage_step["increase_factor"]),
         "decrease_factor": float(voltage_step["decrease_factor"]),
         "voltage_step": float(voltage_step["initial"]),
+        "flux_step_initial": float(flux_step["initial"]),
+        "flux_step_increase": float(flux_step["increase_factor"]),
+        "flux_step_decrease": float(flux_step["decrease_factor"]),
         "acreal": float(ac["real"]),
         "acimag": float(ac["imaginary"]),
         "frequency": float(ac["frequency"]),
@@ -167,6 +173,22 @@ def _empty_devsim():
         devsim.set_parameter(name=name, value=value)
 
 
+def weighting_contacts(device_dict):
+    """The mesh contacts the weighting potential is solved for.
+
+    A device with a resistive layer has one: the contact of the layer, a plane
+    electrode to the carriers. Any other device has its readout contacts.
+    """
+    if "resistive_layer" not in device_dict:
+        return [contact["name"] for contact in device_dict["read_out_contact"]]
+    if "contact" not in device_dict["resistive_layer"]:
+        raise ValueError(
+            f"The device {device_dict.get('det_name')} has a resistive layer but not the key "
+            "resistive_layer.contact, the name of the mesh contact the layer lies on"
+        )
+    return [device_dict["resistive_layer"]["contact"]]
+
+
 def main (kwargs):
     simname = kwargs['target']
     is_cv = kwargs['cv']
@@ -199,7 +221,12 @@ def main (kwargs):
     cells_either_side = 0
     weighting_tolerance = float(configuration["solver"]["weighting_tolerance"])
     crosstalk_tolerance = float(configuration["solver"]["crosstalk_tolerance"])
-    if is_wf and len(listed) == 1 and MyDetector.read_ele_num > 1:
+    if (
+        is_wf
+        and len(listed) == 1
+        and MyDetector.read_ele_num > 1
+        and "resistive_layer" not in MyDetector.device_dict
+    ):
         cells_either_side = kwargs.get("_cells_either_side") or cells_to_fall_off(
             MyDetector.l_z, MyDetector.p_x, weighting_tolerance
         )
@@ -239,8 +266,7 @@ def main (kwargs):
                         value=0.0, acreal=paras['acreal'], acimag=paras['acimag'],)
         else:
             print("===============RASER info===================\nNot AC detector\n===========info=============")
-            for read_out_electrode in MyDetector.device_dict["read_out_contact"]:
-                readout_contacts.append(read_out_electrode["name"])
+            readout_contacts = weighting_contacts(MyDetector.device_dict)
             for i,c in enumerate(readout_contacts):
                 devsim.circuit_element(name="V{}".format(i+1), n1=physics_drift_diffusion.GetContactBiasName(c), n2=0,
                         value=0.0, acreal=paras['acreal'], acimag=paras['acimag'],)

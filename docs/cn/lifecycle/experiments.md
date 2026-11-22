@@ -213,3 +213,53 @@ warning: <锁文件路径> cannot be locked here (Operation not supported): noth
 - **`<实验文件夹>/nodes/<环节>/<节点号>/` 与 `<器件 project>/field/<节点号>/`**：按输入指纹命名的节点目录（写到一半时带 `.part` 后缀，写完后改为正式名字，每个节点单独加锁），存放该环节写出的数据文件（如 HDF5 文件与本环节图像，具体格式见 [仿真链与环节入口（`stages`）](../stages/README.md) 与 `docs/cn/core/` 各页）以及一份 `node.json`。`node.json` 原样记录决定节点指纹的四项输入（本环节用到的设置值、组件文件中用到的部分、上游各节点号、测量环节 `deposit` 与 `current` 的种子，以及 `readout`、`digitizer` 自己的种子），并另记代码版本、运行环境和运行状态。
 - **`<实验文件夹>/points/<点名>/<环节>/<作业号>`**：扫描点视图软链接，`<点名>` 按扫描轴取值命名（如 `voltage_100`）；`deposit` 到 `reconstruction` 每个作业一个，指向 `../../../nodes/<环节>/<节点号>`；`points/<点名>/field` 指向 `<器件 project>/field/<节点号>`，`points/<点名>/analysis` 指向 `../../nodes/analysis/<节点号>`。
 - **`<实验文件夹>/analysis/`**：`analysis` 环节输出的跨扫描点统计与趋势图目录。
+
+### `config.json` 的格式
+
+`config.json` 随 project 而来：`raser new --from <示例> <路径>` 把示例里每个实验的 `config.json` 一起复制过来，在示例上就地运行时用的就是示例自带的那一份。每一段有哪些键、各是什么意思，见[仿真链与环节入口（`stages`）](../stages/README.md#设置)的设置表和各环节的页面。
+
+`config.json` 是一个 JSON 对象。顶层的键分三组：
+
+| 键 | 类型 | 含义 |
+| --- | --- | --- |
+| `workflow` | 字符串 | 实验的命令词，例如 `"signal"` |
+| `device` | 字符串 | 器件名；不带器件的应用没有这一项 |
+| `field`、`deposit`、`current`、`readout`、`digitizer`、`trigger`、`reconstruction`、`analysis` | 对象 | 八个环节各一段，写这个环节的全部设置；实验里没有的环节写空对象 |
+| `names` | 对象 | 给长地址起的短名：“段.键”或“段.槽位.键” → 短名，例如 `{"readout.amplifier": "amp"}`；点名里用短名（`amp_SantaCruz`），`--set`、`--scan` 里两种写法都认 |
+| `same_seeds` | 布尔 | 各扫描点的同号作业是否共用种子 |
+
+`HPK-Si-PiN` 的 `signal` 示例：
+
+```json
+{
+  "workflow": "signal",
+  "device": "HPK-Si-PiN",
+  "field": {"voltage": 200.0, "irradiation_flux": null},
+  "deposit": {
+    "source": "decay/Sr90", "g4setup": "device_alone",
+    "events_per_job": 200, "generated_per_job": null, "generated_limit": 10000000,
+    "edep_min": null, "edep_max": null, "fano": true, "plots": 100
+  },
+  "current": {"plots": 100},
+  "readout": {"amplifier": "SantaCruz+Gali52+Termination50", "sheet_resistance": null},
+  "digitizer": {},
+  "trigger": {},
+  "reconstruction": {
+    "threshold": 10.0, "amplitude_threshold": 10.0,
+    "fractions": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9], "edge": null
+  },
+  "analysis": {},
+  "names": {},
+  "same_seeds": false
+}
+```
+
+读写规则：
+
+1. **一个设置只有一种给法**：`--set <段.键>=<值>` 把值写进对应的段，`--scan <段.键>=<值1>,<值2>` 把取值列表写进同一个位置。两者都留在 `config.json` 里，之后不带选项的命令照样用它们。链上的设置没有各自单独的命令行选项；只管当次运行的开关（`-g4_vis`、`--g4-vis-driver`）不进 `config.json`。
+2. **两类设置**：`field`、`deposit`、`current`、`readout` 四段的设置定的是测什么，叫物理参数；`digitizer`、`trigger`、`reconstruction`、`analysis` 四段的设置定的是测到的事例怎么分析，叫分析参数。物理参数多给一个值就是多一组实验：它在段里写成列表就是扫描，每个取值一个点，例如 `"field": {"voltage": [100, 200]}`，点名按取值起（`voltage_100`、`voltage_200`）。分析参数不扫描：它的列表就是这个参数自己的值，例如 `reconstruction.fractions`；对它给 `--scan` 会报错。想换一个分析参数，用 `--set` 改掉、带上同一个 `--seed` 再跑一次，已经测到的事例照常复用，只重做分析这几环；不给 `--seed` 时每次运行都是一次新的测量。物理参数用 `--set` 给一个列表同样报错，并提示改用 `--scan`。
+3. **取消扫描与改回设置**：对扫描着的地址给 `--set`，段里的列表换成这一个值，扫描结束。不做扫描的实验只有一个点，叫 `default`；有扫描时没有 `default` 这个点。扫描结束或换了扫描的取值后，`points/` 下不再属于这次实验的点的视图会去掉，节点留着。`--set` 给的值一直留在段里，没有“撤销”这个操作；要改回去，再给一次 `--set` 写上原来的值，或直接编辑 `config.json`。
+4. **组件里的键**：段里选组件的键叫槽位，例如 `deposit.source`、`deposit.g4setup`；器件是 `field.device`。组件文件内部的一个键写成“段.槽位.键”，例如 `--set deposit.source.par_radius=1000` 改的是放射源文件里的 `par_radius`（源圆盘半径，$\mu\text{m}$）。它在 `config.json` 里写进槽位的对象，和组件名并列：`"source": {"name": "decay/Sr90", "par_radius": 1000}`；扫描它时写成列表，点名取地址的末两段（`source.par_radius_1000`）。给槽位换一个组件（`--set deposit.source=decay/Am241`）时，原来写在对象里的键一并去掉。地址既不是设置、也不在某个槽位下面时，命令报错并列出全部设置和槽位。组件里本身是列表的键不能这样覆盖：要改它，把组件文件复制到 project 里改。
+5. **每个环节读自己的段**：环节运行时拿到的是自己那一段的设置，所以 `deposit.plots` 和 `current.plots` 是两个设置。
+6. **缺键与多余的键**：段里没写的键等于 `null`；环节要用它的值而它是 `null` 时报错，指出缺的“段.键”，例如 `ValueError: examples/HPK-Si-PiN/signal/config.json has no deposit.generated_limit`；用不到的键缺了不报错。段里有环节不认识的键会报错，例如 `config.json: no current.plot; the settings of current are plots`；顶层出现上表以外的键也报错。程序写 `config.json` 时把每个键都写出来。
+7. **`null` 是一个取值**：表里写明“`null` 时取……”的键（如 `field.voltage` 取器件文件里的偏压）写 `null` 就按表里说的取值。

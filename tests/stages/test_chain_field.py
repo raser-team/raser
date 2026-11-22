@@ -14,10 +14,10 @@ from raser.core.field.solved import DEFAULT_MODE
 from raser.lifecycle import jobs
 from raser.lifecycle import workflow
 from raser.lifecycle.slices import Shared
-from raser.lifecycle.workflow import Workflow
 from raser.lifecycle.workflow import execute
 from raser.stages import chain
 from raser.stages import field
+from raser_bench.signal import WORKFLOW
 
 
 @pytest.fixture
@@ -54,13 +54,13 @@ def experiment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any
         replace(piece, run=lambda options, name=piece.name: note(options, name), shared=shared if piece.shared else None)
         for piece in chain.SLICES
     )
-    toy = Workflow(name="signal", keys=chain.KEYS, in_file=chain.IN_FILE, slices=pieces)
+    toy = replace(WORKFLOW, slices=pieces, analysis=None)
     return {"workflow": toy, "ran": ran, "started": started, "state": state, "root": tmp_path / "dev" / "signal", "seeds": seeds}
 
 
 def _kwargs(**given: Any) -> dict[str, Any]:
     kwargs: dict[str, Any] = {"det_name": "dev", "jobs": None, "batch": False, "mem": 1, "seed": 1}
-    kwargs.update(dry_run=False, scan=[], same_seeds=False, _entry_command_prefix=("signal",))
+    kwargs.update(dry_run=False, set=[], scan=[], same_seeds=False, _entry_command_prefix=("signal",))
     return {**kwargs, **given}
 
 
@@ -104,25 +104,29 @@ def test_a_field_made_by_the_command_is_recorded_as_made_and_the_next_command_ru
     assert experiment["ran"] == []
 
 
-def test_a_scanned_threshold_reconstructs_the_same_waveforms_in_every_point(experiment: dict[str, Any]) -> None:
-    execute(experiment["workflow"], _kwargs(scan=["threshold=30,60"]))
+def test_a_threshold_is_not_scanned_and_another_one_reconstructs_the_same_waveforms(experiment: dict[str, Any]) -> None:
+    with pytest.raises(ValueError, match="reconstruction.threshold is not scanned"):
+        execute(experiment["workflow"], _kwargs(scan=["reconstruction.threshold=30,60"]))
+    assert experiment["ran"] == []
 
-    held_in = _held_in(experiment["root"], "threshold_60")
-    assert held_in == {**dict.fromkeys(("deposit", "field", "current", "readout"), ""), "reconstruction": "threshold_60"}
-    assert experiment["ran"].count("readout") == 1 and experiment["ran"].count("reconstruction") == 2
+    execute(experiment["workflow"], _kwargs(set=["reconstruction.threshold=30"]))
+    experiment["ran"].clear()
+    execute(experiment["workflow"], _kwargs(set=["reconstruction.threshold=60"]))
+
+    assert experiment["ran"] == ["reconstruction"]  # the events are those that were measured
 
 
 def test_another_sheet_resistance_runs_the_readout_and_what_follows_it_alone(experiment: dict[str, Any]) -> None:
     execute(experiment["workflow"], _kwargs())
     experiment["ran"].clear()
 
-    execute(experiment["workflow"], _kwargs(sheet_resistance=1.0e5))
+    execute(experiment["workflow"], _kwargs(set=["readout.sheet_resistance=1.0e5"]))
 
     assert experiment["ran"] == ["readout", "reconstruction"]
 
 
 def test_a_scanned_bias_gives_every_point_its_own_deposits(experiment: dict[str, Any]) -> None:
-    execute(experiment["workflow"], _kwargs(scan=["voltage=100,300"]))
+    execute(experiment["workflow"], _kwargs(scan=["field.voltage=100,300"]))
 
     for point in ("voltage_100", "voltage_300"):
         assert _held_in(experiment["root"], point) == dict.fromkeys(("deposit", "field", "current", "readout", "reconstruction"), point)
@@ -135,7 +139,7 @@ def test_a_scanned_bias_gives_every_point_its_own_deposits(experiment: dict[str,
 def test_with_same_seeds_the_points_of_a_bias_scan_share_one_run_of_the_deposits(
     experiment: dict[str, Any],
 ) -> None:
-    execute(experiment["workflow"], _kwargs(scan=["voltage=100,300"], same_seeds=True))
+    execute(experiment["workflow"], _kwargs(scan=["field.voltage=100,300"], same_seeds=True))
 
     for point in ("voltage_100", "voltage_300"):
         held_in = _held_in(experiment["root"], point)
@@ -153,7 +157,7 @@ def test_another_bias_runs_the_field_and_what_follows_it_but_not_the_deposits(
     execute(experiment["workflow"], _kwargs())
     experiment["ran"].clear()
 
-    execute(experiment["workflow"], _kwargs(voltage=100.0))
+    execute(experiment["workflow"], _kwargs(set=["field.voltage=100.0"]))
 
     assert experiment["ran"] == ["field", "current", "readout", "reconstruction"]
 
@@ -163,7 +167,7 @@ def test_a_field_not_ready_is_started_once_for_the_points_that_share_it_and_thei
 ) -> None:
     monkeypatch.setattr(jobs, "run_indexed_jobs", lambda *args, **kwargs: pytest.fail("submitted"))
     experiment["state"]["ready"] = False
-    scan = ["voltage=100,300", "amplifier=a,b"]
+    scan = ["field.voltage=100,300", "readout.amplifier=a,b"]
 
     with pytest.raises(SystemExit, match="wait for field, shared with other experiments"):
         execute(experiment["workflow"], _kwargs(batch=True, jobs=1, scan=scan))
@@ -194,7 +198,7 @@ def test_the_field_is_ready_only_as_raser_field_would_leave_it(
     device = device_json("HPK-Si-PiN")
     device["bias"]["voltage"] = 200.0
     folder = _solved_field(tmp_path, device)
-    options = {"voltage": 200.0, "irradiation": None}
+    options = {"voltage": 200.0, "irradiation_flux": None}
 
     assert field.ready(options, {"device": device}) == folder
 
@@ -206,7 +210,7 @@ def test_the_field_is_ready_only_as_raser_field_would_leave_it(
     lower = json.loads(json.dumps(device))
     lower["bias"]["voltage"] = 100.0
     assert field.ready(options, {"device": lower}) is None  # not solved at this bias
-    assert field.ready({**options, "irradiation": 1e14}, {"device": device}) is None  # another flux
+    assert field.ready({**options, "irradiation_flux": 1e14}, {"device": device}) is None  # another flux
 
 
 def test_of_the_fields_at_a_flux_the_one_of_this_device_is_taken(
@@ -219,7 +223,7 @@ def test_of_the_fields_at_a_flux_the_one_of_this_device_is_taken(
     doped["doping"]["Acceptors"] = "1e13"
     plain = _solved_field(tmp_path, device)
     other = _solved_field(tmp_path, doped, "doping.Acceptors_1e13")
-    options = {"voltage": 200.0, "irradiation": None}
+    options = {"voltage": 200.0, "irradiation_flux": None}
 
     assert field.ready(options, {"device": device}) == plain
     assert field.ready(options, {"device": doped}) == other
@@ -232,7 +236,7 @@ def test_the_stamp_of_a_field_changes_with_a_solve_of_it_and_not_with_one_more_b
     device = device_json("HPK-Si-PiN")
     device["bias"]["voltage"] = 200.0
     folder = _solved_field(tmp_path, device)
-    options = {"voltage": 200.0, "irradiation": None}
+    options = {"voltage": 200.0, "irradiation_flux": None}
     first = field.stamp(options, {"device": device})
     record = json.loads((folder / "run.json").read_text())
 
@@ -254,7 +258,7 @@ def test_a_change_of_the_device_that_the_field_does_not_read_takes_the_field_the
     folder = _solved_field(tmp_path, device)
 
     longer = {**device, "l_y": 2 * device["l_y"]}  # not read by this field
-    assert field.ready({"voltage": 200.0, "irradiation": None, "device.l_y": longer["l_y"]}, {"device": longer}) == folder
+    assert field.ready({"voltage": 200.0, "irradiation_flux": None, "device.l_y": longer["l_y"]}, {"device": longer}) == folder
 
 
 def test_the_field_is_solved_for_the_device_as_the_point_changed_it(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -267,7 +271,7 @@ def test_the_field_is_solved_for_the_device_as_the_point_changed_it(monkeypatch:
     device = device_json("HPK-Si-PiN")
     device["bias"]["voltage"] = 300.0
     device["temperature"] = 280.0
-    options = {"voltage": 300.0, "irradiation": None, "device.temperature": 280.0, "device.bias.voltage": 300.0}
+    options = {"voltage": 300.0, "irradiation_flux": None, "device.temperature": 280.0, "device.bias.voltage": 300.0}
 
     field.start({"batch": False, "mem": 1}, options, {"device": device})
 
@@ -308,7 +312,7 @@ def test_a_field_started_for_an_experiment_hands_its_job_the_command_that_waits(
     device = device_json("HPK-Si-PiN")
     waiting = {"command": ["-b", "signal", "HPK-Si-PiN"], "cwd": "/work", "seed_folder": "seed_1"}
 
-    field.start({"batch": True, "mem": 1, "_waiting": waiting}, {"voltage": None, "irradiation": None}, {"device": device})
+    field.start({"batch": True, "mem": 1, "_waiting": waiting}, {"voltage": None, "irradiation_flux": None}, {"device": device})
 
     assert handed == [waiting]
 
@@ -332,9 +336,10 @@ def test_jobs_drifted_in_another_solve_of_the_field_are_not_among_the_jobs_of_th
     execute(experiment["workflow"], _kwargs())
     experiment["state"]["stamp"] = "second solve"
     execute(experiment["workflow"], _kwargs(seed=2))
-    assert [len(jobs) for _, _, jobs in workflow.jobs_of_points(experiment["root"])] == [1]
+    assert [len(jobs) for _, _, jobs, _ in workflow.jobs_of_points(experiment["root"])] == [1]
 
     execute(experiment["workflow"], _kwargs(seed=3))
-    ((_, _, jobs),) = workflow.jobs_of_points(experiment["root"])
+    ((_, _, jobs, others),) = workflow.jobs_of_points(experiment["root"])
     assert workflow.batches(jobs) == "seed 2: 1 job, seed 3: 1 job"
+    assert workflow.set_apart(others) == ["1 job measured something else and is not counted: other files or another field"]
 

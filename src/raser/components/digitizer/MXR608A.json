@@ -1,0 +1,17 @@
+{
+    "channels": 8,
+    "bits": 10,
+    "max_sampling_rate_GSps": 16,
+    "response": "brickwall",
+    "bandwidth_GHz": 6,
+    "aperture_jitter_ps": 0.15,
+    "sampling_rate_GSps": 16,
+    "full_scale_V": 0.04,
+    "offset_V": -0.01,
+    "trigger": {
+        "mode": "edge",
+        "source": "CH1",
+        "level_V": -0.002,
+        "slope": "falling"
+    }
+}

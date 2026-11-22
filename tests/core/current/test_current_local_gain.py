@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from raser.core.current import cal_current
 from raser.core.current.cal_current import CalCurrent
 from raser.core.model.material import Material
 
@@ -96,7 +97,10 @@ def test_a_gain_that_needs_more_slices_than_places_left_stops_with_an_error() ->
         )
 
 
-def test_a_gain_that_needs_exactly_the_allowed_clusters_is_made_whole() -> None:
+def test_a_gain_that_needs_exactly_the_allowed_clusters_is_made_whole(monkeypatch) -> None:
+    # steps of 20 ps carry the electron through the 1 um layer in one step:
+    # one emission of four slices
+    monkeypatch.setitem(cal_current.delta_t, 2, 20e-12)
     current = CalCurrent(
         _device(gain_max_carriers=4, local_gain_emit_slices=4), _ThinLayer(),
         [100.0], [[50.0, 50.0, 50.0, 0.0]], diffusion=False,
