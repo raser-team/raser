@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from raser.core.current.cal_current import write_induced_currents
 from raser.core.current.draw import draw_currents
@@ -67,3 +68,33 @@ def test_a_job_warns_of_the_carriers_that_found_no_field_with_where(tmp_path, ca
     assert len(warnings) == 1
     # the electrons diffuse a little on their way down to 10 um
     assert re.search(r"^1 clusters \(100 carriers\) .* event 4 at x, y, z = [\d.]+, [\d.]+, 9\.\d+ um", warnings[0])
+
+
+def test_electrode_edges_and_centers_are_centred_in_the_length() -> None:
+    from raser.core.current.draw import electrode_centers, electrode_edges
+
+    assert electrode_edges(58, 3, 20) == [-1, 19, 39, 59]
+    assert electrode_centers(58, 3, 20) == [9, 29, 49]
+
+
+def test_pixel_cells_split_the_electrode_number_with_y_running_fastest() -> None:
+    from raser.core.current.draw import pixel_cells
+
+    cells = pixel_cells([1, 2, 3, 4, 5, 6], 2, 3)
+
+    assert cells == [(0, 0, 1), (0, 1, 2), (0, 2, 3), (1, 0, 4), (1, 1, 5), (1, 2, 6)]
+
+
+@pytest.mark.root
+def test_pixel_map_puts_each_charge_at_its_x_and_y_position() -> None:
+    from raser.core.current.draw import pixel_histogram
+
+    fc = 1e-15
+    charge = [(i + 1) * fc for i in range(6)]
+    histogram = pixel_histogram(charge, 40, 90, 2, 3, 20, 30)
+
+    for ix in range(2):
+        for jy in range(3):
+            assert histogram.GetBinContent(ix + 1, jy + 1) == pytest.approx(ix * 3 + jy + 1, rel=1e-9)
+    # electrode 5 sits at x = 30, y = 45 (ix = 1, jy = 1)
+    assert histogram.GetBinContent(histogram.FindBin(30, 45)) == pytest.approx(5, rel=1e-9)

@@ -327,7 +327,7 @@ Written event by event via `append_currents`, storing only electrodes whose curr
 | --- | --- | --- |
 | `drift_path_<event>.png`, `.pdf`, `.root` | Top panel: 3D device bounding box with deposition points (grey), hole (red), electron (blue), gain hole (orange), and gain electron (light blue) paths; bottom panel: $x$-$z$ plane projection | spatial axes $\mu\text{m}$ |
 | `current_<event>.png`, `.pdf`, `.root` (`current_<event>_electrode_<k>` with several readout electrodes) | Drawn only for the $k$-th electrode (`1`-based) having non-zero current components, showing `electrons`, `holes`, `total` (plus `gain electrons` and `gain holes` when avalanche is enabled) | `Time [ns]`, `Current [μA]`; the time axis covers only where the signal is (see [Figures](../supports/figures.md)) |
-| `charge_per_electrode_<event>.png`, `.pdf`, `.root` | Line graph of collected charge per strip (`TGraph`) when `is_strip` is true; 2D pixel distribution (`TH2D`) when `is_pixel` is true; values are the net charge of each electrode, with the vertical axis (color axis for 2D pixel plots) titled `Charge [fC]` | $\text{fC}$ |
+| `charge_per_electrode_<event>.png`, `.pdf`, `.root` | Line graph of collected charge per strip (`TGraph`) when `is_strip` is true; 2D pixel distribution (`TH2D`) when `is_pixel` is true; values are the net charge of each electrode, with the vertical axis (color axis for 2D pixel plots) titled `Charge [fC]`; the strip plot's horizontal axis is `x [μm]` of the strip centres, the pixel plot's axes are `x [μm]` and `y [μm]`, with the cells placed at the electrodes' actual positions | $\text{fC}$, $\mu\text{m}$ |
 
 ## References
 
