@@ -38,6 +38,7 @@
 
     "resistive_layer" : {
         "sheet_resistance" : 630.0,
+        "contact" : "top",
         "pads" : {
             "pad1" : [4, 5, 4, 5],
             "pad2" : [14, 15, 4, 5],
