@@ -127,7 +127,7 @@ FileNotFoundError: no field of <det_name> ready for this run: solve it with `ras
 
           这个文件随 DEVSIM 解的权重场写出；在 `field` 段打开权重场求解（用 `--set field.<键>=<值>` 改场的设置），由 DEVSIM 解权重场。
         - `row is None` 时：该偏压解过电容，就从 `<float(voltage)>V.cv.json` 取 `specific_capacitance_pF * area_factor * 1e-12`（$\text{F}$）作 `solved_f`；否则 `solved_f = None`。
-        - `solved_undepleted(Path(folder), my_d.voltage)` 读 `<float(voltage)>V.undepleted.json`。该偏压没存未耗尽层时抛出
+        - `solved_undepleted(Path(folder), my_d.voltage, undepleted_area_cm2(my_d))` 读 `<float(voltage)>V.undepleted.json`。该偏压没存未耗尽层时抛出
 
           ```text
           FileNotFoundError: the field in <folder> has no undepleted bulk at <voltage> V (solved at: <solved>): solve it with `raser field <det_name> --set field.voltage=<voltage>`
