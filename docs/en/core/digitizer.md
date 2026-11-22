@@ -70,6 +70,21 @@ where:
 
 A noise-only channel uses the same synthesis method as `readout` (Eqs. (5)–(9) of [Electronics Readout](readout.md#frequency-domain-thermal-noise-from-a-given-spectrum-and-time-domain-synthesis)) to directly draw $K$ sampled voltages with spectrum $S_d$ and step $T_s$, and then quantizes them by Eq. (4); aperture jitter does not alter the statistics of stationary noise and is omitted here. Whether a channel takes the noise-only path is decided upstream before `current`; see "Interface" for the decision function.
 
+### Comparison of Noise-Only Channels with the Complete Path
+
+The same set of noise-only channels is taken through the complete path (noise synthesized on the `readout` time step, then band-limited, sampled, and quantized) and through the noise-only path, with `MXR608A` (brick wall at $6\ \text{GHz}$, $16\ \text{GS/s}$, aperture jitter $0.15\ \text{ps}$), a record of $40\ \text{ns}$, and synthetic noise spectra of about $1\ \text{mV}$ rms ($1/f$ plus white noise, rolling off above $2\ \text{GHz}$ or $6\ \text{GHz}$). With 5000 channels per spectrum:
+
+| `readout` time step | Spectrum | Ratio of sample variances (complete / noise-only) | Time per channel: complete | Time per channel: noise-only |
+| --- | --- | --- | --- | --- |
+| $50\ \text{ps}$ | roll-off above $2\ \text{GHz}$ | $0.9997$ | $23\ \text{ms}$ | $7.8\ \text{ms}$ |
+| $50\ \text{ps}$ | roll-off above $6\ \text{GHz}$ | $1.0016$ | $23\ \text{ms}$ | $7.7\ \text{ms}$ |
+| $10\ \text{ps}$ | roll-off above $2\ \text{GHz}$ | $0.9986$ | $607\ \text{ms}$ | $7.5\ \text{ms}$ |
+| $10\ \text{ps}$ | roll-off above $6\ \text{GHz}$ | $1.0003$ | $398\ \text{ms}$ | $7.5\ \text{ms}$ |
+
+The fraction of channels whose largest amplitude exceeds 3 times the rms, for three independent seeds of 2000 channels each ($50\ \text{ps}$): with the roll-off above $6\ \text{GHz}$, $0.461$, $0.461$, $0.479$ on the complete path and $0.455$, $0.472$, $0.469$ on the noise-only path (each $\pm 0.011$); with the roll-off above $2\ \text{GHz}$, $0.408$, $0.401$, $0.417$ on the complete path and $0.410$, $0.425$, $0.405$ on the noise-only path. The autocovariance between neighbouring samples agrees over the first 8 lags. The times exclude the drift of `current` and the transient solution of `readout`.
+
+Limitation: the brick wall of the complete path acts on a record of finite length, so the variance of the first and the last sample of a record is higher than in the middle ($16\%$ higher for the spectrum rolling off above $6\ \text{GHz}$, not visible for the one rolling off above $2\ \text{GHz}$); the noise-only path has no such end effect.
+
 ## Algorithm
 
 Each event is processed in the following order:
