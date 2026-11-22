@@ -183,7 +183,7 @@ flowchart LR
 
 ## 库里有哪些组件
 
-`components/device/` 包含以下 23 个探测器组件：
+`components/device/` 包含以下 24 个探测器组件：
 
 | 组件名 | 说明 | 出处 | 适用的器件或实验 |
 | --- | --- | --- | --- |
@@ -202,6 +202,7 @@ flowchart LR
 | `iLGAD` | Si `ilgad_planar` 器件（$10000 \times 10000 \times 285\ \mu\text{m}$，1D） | 未注明 | |
 | `ITk-md8` | Si `planar` 器件（$8000 \times 8000 \times 50\ \mu\text{m}$，1D，配 `"Schwandt"` 辐照模型） | ATLAS ITk MD8 硅平面二极管（组件型号 `ITk-md8`） | |
 | `ITk-Si-strip` | Si `strip` 器件（$96791 \times 48000 \times 305\ \mu\text{m}$，$1282$ 条，间距 $75.5\ \mu\text{m}$，配 `"XingChen"` 辐照模型） | ATLAS ITk 硅微条探测器（组件型号 `ITk-Si-strip`） | |
+| `LBNL-SiC-AC-LGAD` | SiC `lgad_pixel` 器件（$1000 \times 1000 \times 75.8\ \mu\text{m}$，1D 场；阻性层切成 $20 \times 20$ 个 $50\ \mu\text{m}$ 晶胞，4 个 $100\ \mu\text{m}$ 电极经 $0.3\ \mu\text{m}$ 氧化层交流耦合，间距 $500\ \mu\text{m}$，外圈接地） | T. Yang et al., `arXiv:2610.27535`；层结构见 IEEE Electron Device Lett. 46 (2025) 845, doi:10.1109/LED.2025.3548509；阻性层方阻 $630\ \Omega$ 为按掺杂估算，未有实测 | |
 | `NJU-PiN` | SiC `planar` 器件（$5000 \times 5000 \times 100\ \mu\text{m}$，1D/2D） | 南京大学（NJU）4H-SiC PiN（组件型号 `NJU-PiN`） | [`signal`](../bench/signal.md)、[`tct`](../bench/tct.md) 碳化硅示例器件 |
 | `NJU-PiN-bmos` | SiC `planar` 器件（$5000 \times 5000 \times 100\ \mu\text{m}$，1D/2D） | 南京大学（NJU）4H-SiC PiN（组件型号 `NJU-PiN-bmos`） | [`bmos`](../apps/bmos.md) |
 | `pixel_ayyouby` | Si `lgadpixel` 器件，3×3 阵列 Ayyoub 风格 DJ-LGAD 像素（间距 $20 \times 20\ \mu\text{m}$） | `comment`：Ayyoub 风格 3×3 DJ-LGAD 像素模型 | |
