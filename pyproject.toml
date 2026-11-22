@@ -53,7 +53,6 @@ raser = "raser.cli.raser:main"
 # own registers its experiments in the same group.
 [project.entry-points."raser.experiments"]
 signal = "raser_bench.signal"
-cce = "raser_bench.cce"
 timeres = "raser_bench.timeres"
 tct = "raser_bench.tct"
 telescope = "raser_bench.telescope"
@@ -150,7 +149,6 @@ forbidden_modules = ["raser.lifecycle", "raser.cli"]
 name = "No experiment imports another"
 type = "independence"
 modules = [
-  "raser_bench.cce",
   "raser_bench.signal",
   "raser_bench.tct",
   "raser_bench.telescope",

@@ -41,16 +41,16 @@ def test_a_stage_command_on_an_experiment_folder_runs_that_experiment_and_record
 ) -> None:
     submitted: list[tuple[str, ...]] = []
     monkeypatch.setattr(jobs, "run_indexed_jobs", lambda prefix, tail, *a, **k: submitted.append((*prefix, *tail[:3])))
-    experiment = work_root / "HPK-Si-PiN" / "cce"
+    experiment = work_root / "HPK-Si-PiN" / "signal"
 
     assert main(["rdo", "HPK-Si-PiN", "--seed", "1", "-s", "2"]) == 0  # makes work/HPK-Si-PiN/signal
-    assert main(["cce", "HPK-Si-PiN", "--seed", "1", "-s", "2"]) == 0
+    assert main(["signal", "HPK-Si-PiN", "--seed", "1", "-s", "2"]) == 0
     submitted.clear()
     capsys.readouterr()
     assert main(["cur", str(experiment), "--seed", "2", "-s", "2"]) == 0
 
     assert _slices(capsys.readouterr().out) == ["deposit", "field", "current"]
-    assert submitted == [("cce", "HPK-Si-PiN", "--job-slices", "deposit,field,current")]
+    assert submitted == [("signal", "HPK-Si-PiN", "--job-slices", "deposit,field,current")]
     signal = json.loads((work_root / "HPK-Si-PiN" / "signal" / "config.json").read_text())
     assert signal["workflow"] == "signal"
 

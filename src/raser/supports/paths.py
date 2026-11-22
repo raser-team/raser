@@ -133,7 +133,7 @@ def component_roots(
 
 
 def app_component_root(app_name: str):
-    """The components of an app; `app_name` is its folder beside raser, "raser_bench/cce"."""
+    """The components of an app; `app_name` is its folder beside raser, "raser_bench/signal"."""
     return PACKAGES_ROOT / app_name / "components"
 
 
