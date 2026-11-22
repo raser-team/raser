@@ -59,6 +59,8 @@ When upstream `deposit` records `0` valid events in a job, `readout` skips that 
 
 `raser readout --draw <object>` draws objects belonging to this stage: front-end circuit schematics and impulse responses. Front-end circuit schematics and impulse responses depend solely on the circuit and its parameters; they are assets stored under `work/<circuit>/` and referenced by `readout` across experiments.
 
+A device with a resistive layer (its file has `resistive_layer`) has one more object, `network`: `raser readout --draw network [path]` solves only the device circuit and the amplifier chain of `readout.amplifier`, and reads no result of `deposit` or `current`. The impulse falls on a point of the device, given by its geometric coordinates $(x, y)$ in $\mu\text{m}$, in the coordinates of `current` ($0 \le x \le l_x$, $0 \le y \le l_y$); a device with strips takes $x$ alone. A charge of $1\ \text{fC}$ is injected at this point as a rectangular current pulse in the first time bin, shared linearly among the nodes of the neighbouring cells by its distances to their centres; the bins are $10\ \text{ps}$ wide and there are $2000$ of them; the sheet resistance is `readout.sheet_resistance`, or that of the device file when it is not given. With `--at <x>,<y>` the impulse falls on that point, and `network_waveforms.png` shows the output waveform of every read-out electrode (strip or pad); without it the point is scanned along $x$ in steps of one cell width on the middle line of the device ($y = l_y/2$), and `network_sharing.png` is drawn as well: the waveform amplitude and the waveform integral of every read-out electrode against the $x$ of the impulse.
+
 ## Rules
 
 ### Built-in Constants
@@ -237,3 +239,4 @@ Only the keys listed below are configurable in this stage; the relative swing th
 
 - **Write: `nodes/readout/<node_id>/node.json`**. Records this node's inputs along with the code version, runtime environment, and run status.
 - **Write: `points.json` and `points/<point>/readout/<job>`**. The parameter table records the `readout` node ID used by each point; the view symlink points to that node.
+- **Write: `<device project>/network/<node>/`** (only with `--draw network`). `network.h5`, `node.json`, and under `plots/` `network_waveforms.png` and, for a scan, `network_sharing.png`; `network.h5` has the attributes `dt` ($\text{s}$), `charge` ($\text{C}$), `electrodes` and `device_circuit`, the dataset `point` of shape `(points, 2)` in $\mu\text{m}$, the $(x, y)$ of each impulse, and the dataset `voltage` of shape `(points, outputs, bins)` in $\text{V}$, the output voltage of each read-out electrode at the bin centres for the impulse on each point.
