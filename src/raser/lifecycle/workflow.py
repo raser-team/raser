@@ -738,8 +738,9 @@ def jobs_of_points(root) -> list[tuple[str, dict, list[tuple[Path, dict]], list[
     """The points of the experiment in `root` as its last command left them
     in points.json, each with its name, the values of its scanned options,
     the finished jobs that measured it and, for the screen, the finished
-    jobs that measured something else: (how many, the settings they have
-    otherwise). A job is (the experiment folder, slice -> its node).
+    jobs that measured something no point of the experiment measures now:
+    (how many, the settings they have otherwise). A job is (the experiment
+    folder, slice -> its node).
 
     The jobs of a point are all those in the nodes of the experiment that
     measured what the point measures (points.json: "measures"), whichever
@@ -780,19 +781,23 @@ def jobs_of_points(root) -> list[tuple[str, dict, list[tuple[Path, dict]], list[
         return {key: value for key, value in given.items() if key not in counts}
 
     everything = [chain for chain in _chains(own, written) if roots(chain) and finished(chain)]
+
+    def measures(chain, row) -> bool:
+        return all(
+            measured_thing(workflow, written[name][node]["inputs"]) == row["measures"][name]
+            for name, node in chain.items()
+        )
+
+    # A job of another point of the experiment is counted there: it is not
+    # set apart here. Set apart are the jobs that no point of now measures.
+    of_no_point = [chain for chain in everything if not any(measures(chain, row) for row in table.values())]
     result = []
     for point, row in table.items():
         mine: dict = {}  # the deposits of a job -> the job: two chains on the same deposits are one
-        elsewhere = []
         for chain in everything:
-            same = all(
-                measured_thing(workflow, written[name][node]["inputs"]) == row["measures"][name]
-                for name, node in chain.items()
-            )
-            if same:
+            if measures(chain, row):
                 mine.setdefault(roots(chain), chain)
-            else:
-                elsewhere.append(chain)
+        elsewhere = of_no_point
         here = settings(next(iter(mine.values()))) if mine else {}
         apart: dict = {}  # what they are set to otherwise -> their deposits
         for chain in elsewhere:

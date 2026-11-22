@@ -26,6 +26,7 @@ def _setup(column):
 def test_fronts_of_the_time_resolution_setup_add_up_along_the_beam() -> None:
     path = app_file_path("raser_bench/timeres", "components/g4setup/time_resolution.py")
     spec = importlib.util.spec_from_file_location("time_resolution_setup", path)
+    assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     devices = {"ref": _device(1300, 1300, 50), "dut": _device(1300, 1300, 50)}

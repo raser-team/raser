@@ -1285,9 +1285,9 @@ def test_points_that_read_the_same_deposits_through_other_electronics_each_have_
     points = workflow_module.jobs_of_points(tmp_path / "toy")
 
     assert [(name, len(jobs), others) for name, _, jobs, others in points] == [
-        ("amplifier_fast", 1, [(1, {"amplifier": "standard"})]),
-        ("amplifier_standard", 1, [(1, {"amplifier": "fast"})]),
-    ]
+        ("amplifier_fast", 1, []),
+        ("amplifier_standard", 1, []),
+    ]  # the job of the other point is counted there: it is not set apart here
     (_, fast), (_, standard) = points[0][2][0], points[1][2][0]
     assert fast["deposits"] == standard["deposits"] and fast["waveforms"] != standard["waveforms"]
 

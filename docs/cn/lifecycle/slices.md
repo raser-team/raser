@@ -71,7 +71,7 @@
 | 统计量 | 种子、每个点的作业数、每个作业的事例数 | 合并统计 |
 | 只管画图 | `plots` | 合并统计 |
 
-点测的是什么，以最近一次运行为准。读同一份沉积的两条链（例如一条画了图、一条没画）是同一批事例，只算一次。一个点的结果写在它的 `analysis` 节点里；节点号由它统计的那些作业决定，换一组设置得到另一个节点，原来的结果留着，设置改回去时 `points/<点名>/analysis` 指回原来的节点。`raser ana` 在屏幕上写出每个点统计的事例数和各次运行的作业数，例如 `default: 200 events of seed 1: 2 jobs, seed 2: 4 jobs`；没给 `--seed` 的运行按启动时间列出；因设置不同没算进来的作业另起一行，写明个数和不同的设置，例如 `default: 2 jobs measured something else and are not counted: source=decay/Am241`。
+点测的是什么，以最近一次运行为准。读同一份沉积的两条链（例如一条画了图、一条没画）是同一批事例，只算一次。一个点的结果写在它的 `analysis` 节点里；节点号由它统计的那些作业决定，换一组设置得到另一个节点，原来的结果留着，设置改回去时 `points/<点名>/analysis` 指回原来的节点。`raser ana` 在屏幕上写出每个点统计的事例数和各次运行的作业数，例如 `default: 200 events of seed 1: 2 jobs, seed 2: 4 jobs`；没给 `--seed` 的运行按启动时间列出；因设置不同没算进来的作业另起一行，写明个数和不同的设置，例如 `default: 2 jobs measured something else and are not counted: source=decay/Am241`；属于这次扫描另一个点的作业算在那个点里，不在这一行里。
 
 ### 代码版本
 

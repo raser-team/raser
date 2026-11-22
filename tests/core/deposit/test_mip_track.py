@@ -152,7 +152,7 @@ def _column(**slots):
         name: SimpleNamespace(l_x=100.0, l_y=100.0, l_z=50.0, material="Si")
         for name in slots
     }
-    column = ["source"]
+    column: list = ["source"]
     for name, options in slots.items():
         column += [{"gap": 100}, {"slot": name, **options}]
     return devices, parse_along_beam({"objects": {}, "along_beam": column}, devices)

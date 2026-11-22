@@ -54,7 +54,7 @@ raser digi --set digitizer.device.full_scale_V=0.08
 
 ## 软件实现
 
-- `src/raser/stages/digitizer.py`：本环节的模块，读入 `readout` 节点的波形、`digitizer` 段和组件，按上面的流程调用 `core/digitizer` 的采样与量化，写出数字波形文件和图。
+- `src/raser/stages/digitizer.py`：本环节的模块，读入 `readout` 节点的波形、`digitizer` 段和组件，按上面的流程调用 `core/digitizer` 的采样与量化，写出数字波形文件和图。函数 `digitized(kwargs, position=None)`：设备名取 `device`，画图的事例数取 `plots`，种子取 `seed`，组件内容由 lifecycle 交来（已并入 `--set digitizer.device.<键>=…` 的覆盖）；缺其中任何一样时报错并写明缺的是哪个。多位置实验里一个位置一片；上游在这个位置没留下 `readout.<位置>.h5` 时，本片不写文件，记 0 个事例。纯噪声道的列表暂不接：现在每个事例都没有纯噪声道。
 - `src/raser/core/digitizer/`：带宽、采样与量化的计算，见[数字化器（`core/digitizer`）](../core/digitizer.md)。
 
 ## 接口
