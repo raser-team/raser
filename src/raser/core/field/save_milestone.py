@@ -135,6 +135,8 @@ def milestone_save_1D(device, v, path, is_tcad):
         if ( devsim.get_material(device=device, region=region) == "Aluminum" or devsim.get_material(device=device, region=region) == "air"
         ):
             continue
+        if is_tcad and Doping not in devsim.get_node_model_list(device=device, region=region):
+            continue  # a region of an imported field without carriers, such as an oxide
         x.extend(devsim.get_node_model_values(device=device, region=region, name="x"))
         Potential.extend(devsim.get_node_model_values(device=device, region=region, name=U)) # get the potential dat
         NetDoping.extend(devsim.get_node_model_values(device=device, region=region, name=Doping))
@@ -321,12 +323,12 @@ def milestone_save_2D(device, v, path, is_tcad, is_flip=False, axes=None):
     Conductive = []
     volumes = []
 
-    # TODO: TCAD imports can contain dielectric/metal regions that do not carry
-    # semiconductor node models; filter by available node models before saving.
     for region in devsim.get_region_list(device=device):
         if ( devsim.get_material(device=device, region=region) == "Aluminum" or devsim.get_material(device=device, region=region) == "air"
         ):
             continue
+        if is_tcad and Doping not in devsim.get_node_model_list(device=device, region=region):
+            continue  # a region of an imported field without carriers, such as an oxide
         elements.append(_region_elements(device, region, len(x), 2))
         x.extend(devsim.get_node_model_values(device=device, region=region, name="x"))
         y.extend(devsim.get_node_model_values(device=device, region=region, name="y"))
@@ -519,6 +521,8 @@ def milestone_save_3D(device, v, path, is_tcad, axes=None):
         if ( devsim.get_material(device=device, region=region) == "Aluminum" or devsim.get_material(device=device, region=region) == "air"
         ): 
             continue  
+        if is_tcad and Doping not in devsim.get_node_model_list(device=device, region=region):
+            continue  # a region of an imported field without carriers, such as an oxide
         elements.append(_region_elements(device, region, len(x), 3))
         x.extend(devsim.get_node_model_values(device=device, region=region, name="x"))
         y.extend(devsim.get_node_model_values(device=device, region=region, name="y"))
