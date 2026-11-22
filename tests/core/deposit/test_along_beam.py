@@ -9,11 +9,9 @@ from raser.core.deposit.along_beam import slot_names
 from raser.supports.paths import app_file_path
 
 OBJECTS = {
-    "elemental": {
-        "A": {"side_x": 100, "side_y": 100, "side_z": 5},
-        "B": {"side_x": 100, "side_y": 100, "side_z": 40},
-    },
-    "binary_compounds": {"C": {"side_x": 100, "side_y": 100, "side_z": 11}},
+    "A": {"shape": "box", "size": [100, 100, 5], "material": "G4_Al"},
+    "B": {"shape": "box", "size": [100, 100, 40], "material": "G4_Al"},
+    "C": {"shape": "box", "size": [100, 100, 11], "material": "G4_Al"},
 }
 
 
@@ -22,7 +20,7 @@ def _device(l_x=60.0, l_y=40.0, l_z=30.0):
 
 
 def _setup(column):
-    return {"object": OBJECTS, "along_beam": column}
+    return {"objects": OBJECTS, "along_beam": column}
 
 
 def test_fronts_of_the_time_resolution_setup_add_up_along_the_beam() -> None:
@@ -162,7 +160,7 @@ def test_rotation_about_z_turns_the_device_about_the_middle_of_its_face() -> Non
     [
         ([{"gap": 5}, {"slot": "s"}], "first item of along_beam must be 'source'"),
         (["source", {"gap": -1}, {"slot": "s"}], "gap must be non-negative"),
-        (["source", "Z", {"slot": "s"}], "object 'Z' is not in object"),
+        (["source", "Z", {"slot": "s"}], "object 'Z' is not in objects"),
         (["source", "A", "A", {"slot": "s"}], "duplicate 'A' in along_beam"),
         (["source", {"slot": "s"}, {"slot": "s"}], "duplicate 's' in along_beam"),
         (["source", {"slot": "s", "facing": "left"}], "slot 's' has facing 'left'"),
@@ -193,3 +191,66 @@ def test_items_side_by_side_may_touch_but_not_overlap() -> None:
 def test_the_slots_are_named_in_the_order_of_the_column() -> None:
     column = ["source", {"slot": "second"}, "A", {"slot": "first"}]
     assert slot_names(_setup(column)) == ["second", "first"]
+
+
+def test_a_tube_takes_its_length_along_z_and_its_diameter_across() -> None:
+    objects = {
+        **OBJECTS,
+        "pipe": {
+            "shape": "tube",
+            "inner_radius": 10,
+            "outer_radius": 30,
+            "length": 200,
+            "material": "G4_Al",
+        },
+    }
+    devices = {"s": _device()}
+    layout = parse_along_beam(
+        {"objects": objects, "along_beam": ["source", "A", "pipe", {"slot": "s"}]}, devices
+    )
+
+    pipe = layout.objects[1]
+    # A takes size[2] = 5 and the pipe its length, 200
+    assert pipe.z == 5
+    assert layout.slots[0].z == 205
+    assert pipe.thickness == 200
+    # the width is twice the outer radius, not the inner one nor the radius
+    assert pipe.side == (60, 60)
+
+
+_BOX = {"shape": "box", "size": [100, 80, 10], "material": "G4_Al"}
+_TUBE = {"shape": "tube", "outer_radius": 30, "length": 200, "material": "G4_Al"}
+
+
+@pytest.mark.parametrize(
+    ("objects", "materials", "message"),
+    [
+        ({"x": {**_BOX, "shape": "sphere"}}, {}, "object 'x' has unknown shape 'sphere'"),
+        ({"x": {"shape": "box", "material": "G4_Al"}}, {}, "object 'x' is missing required key 'size'"),
+        ({"x": {"shape": "tube", "length": 5, "material": "G4_Al"}}, {}, "missing required key 'outer_radius'"),
+        ({"x": {"shape": "tube", "outer_radius": 5, "material": "G4_Al"}}, {}, "missing required key 'length'"),
+        ({"x": {"shape": "box", "size": [1, 1, 1]}}, {}, "missing required key 'material'"),
+        ({"x": {**_BOX, "size": [100, 0, 10]}}, {}, "dimensions of object 'x' must be positive"),
+        ({"x": {**_TUBE, "length": -1}}, {}, "dimensions of object 'x' must be positive"),
+        ({"x": {**_BOX, "hole": 0}}, {}, "dimensions of object 'x' must be positive"),
+        ({"x": {**_BOX, "hole": 40}}, {}, r"hole radius \(40 um\) of object 'x' must be less than half"),
+        ({"x": {**_BOX, "hole": 39}}, {}, None),
+        ({"x": {**_TUBE, "inner_radius": 30}}, {}, r"inner_radius \(30 um\) of object 'x' must be less than outer_radius \(30 um\)"),
+        ({"x": {**_TUBE, "inner_radius": 29}}, {}, None),
+        ({"x": {**_BOX, "material": "SiO2"}}, {}, "unknown material 'SiO2' for object 'x'"),
+        ({"x": {**_BOX, "material": "SiO2"}}, {"SiO2": {"density": 2.2, "elements": {"Si": 1, "O": 2}}}, None),
+        ({}, {"X": {"density": 0, "elements": {"Si": 1}}}, "density of material 'X' must be positive"),
+        ({}, {"X": {"density": 1, "elements": {"Si": 0}}}, "element share of 'Si' in material 'X' must be positive"),
+    ],
+)
+def test_objects_and_materials_that_cannot_be_built_are_refused(objects, materials, message) -> None:
+    setup = {
+        "objects": objects,
+        "materials": materials,
+        "along_beam": ["source", {"slot": "s"}],
+    }
+    if message is None:
+        parse_along_beam(setup, {"s": _device()})
+        return
+    with pytest.raises(ValueError, match=message):
+        parse_along_beam(setup, {"s": _device()})

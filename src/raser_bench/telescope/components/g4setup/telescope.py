@@ -14,7 +14,8 @@ G4SETUP = {
     "geant4_model": "device",
     "world": "G4_Galactic",
     "maxstep": 2,
-    "object": {},
+    "materials": {},
+    "objects": {},
     "along_beam": [
         "source",
         {"gap": GAP_TO_FIRST},

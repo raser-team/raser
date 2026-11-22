@@ -53,7 +53,7 @@ def _setup(column):
         "geant4_model": "device",
         "world": "G4_Galactic",
         "maxstep": 2,
-        "object": {},
+        "objects": {},
         "source": {"angle": 0},
         "along_beam": column,
     }

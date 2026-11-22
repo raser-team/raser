@@ -23,18 +23,11 @@ def gdml_world_half_side(my_d, configuration):
     """Half the side [um] of the cube of the Geant4 world, centred where
     the device's face z = 0 has its middle.
 
-    It is WORLD_HALF_SIDE, unless the device, an object of the
-    configuration or a point the source starts from (par_in, of every
-    particle, widened by par_radius) reaches farther along x, y or z: then
+    It is WORLD_HALF_SIDE, unless the device or a point the source starts
+    from (par_in, of every particle, widened by par_radius) reaches farther along x, y or z: then
     it is twice that reach, so that the world holds them with room around.
     """
     reach = max(my_d.l_x / 2, my_d.l_y / 2, my_d.l_z)
-    for objects in (configuration.get("object") or {}).values():
-        for one in objects.values():
-            reach = max(
-                reach,
-                *(abs(one["position_" + axis]) + one["side_" + axis] / 2 for axis in "xyz"),
-            )
     radius = configuration.get("par_radius", 0)
     for one in (configuration, *configuration.get("particles", ())):
         if "par_in" in one:
@@ -187,6 +180,8 @@ class GDMLDetectorConstruction(GeneralDetectorConstruction):
         # Geant4 keeps only a pointer to each G4VisAttributes; they live as
         # long as the geometry does.
         self.visuals = []
+        self.materials = {}
+        self.diamond_built = False
         self.checkOverlaps = False
         self.g4_dic = g4_dic
         self.gdml_cfg = g4_dic.get('gdml', {})
@@ -218,48 +213,19 @@ class GDMLDetectorConstruction(GeneralDetectorConstruction):
             self.logical['Device'].SetUserLimits(self.fStepLimit)
 
     def _build_raser_detector_and_objects(self, my_d, g4_dic, detector_material):
-        if detector_material == 'Si':
-            detector = {
-                'name': 'Device',
-                'material': 'G4_Si',
-                'side_x': my_d.l_x,
-                'side_y': my_d.l_y,
-                'side_z': my_d.l_z,
-                'colour': [1, 0, 0],
-                'position_x': 0,
-                'position_y': 0,
-                'position_z': my_d.l_z / 2.0,
-            }
-            self.create_elemental(detector)
-
-        if detector_material == 'SiC':
-            detector = {
-                'name': 'Device',
-                'material_1': 'Si',
-                'material_2': 'C',
-                'compound_name': 'SiC',
-                'density': 3.2,
-                'natoms_1': 50,
-                'natoms_2': 50,
-                'side_x': my_d.l_x,
-                'side_y': my_d.l_y,
-                'side_z': my_d.l_z,
-                'colour': [1, 0, 0],
-                'position_x': 0,
-                'position_y': 0,
-                'position_z': my_d.l_z / 2.0,
-                'tub': {},
-            }
-            self.create_binary_compounds(detector)
-
-        if g4_dic['object']:
-            for object_type in g4_dic['object']:
-                if object_type == 'elemental':
-                    for every_object in g4_dic['object'][object_type]:
-                        self.create_elemental(g4_dic['object'][object_type][every_object])
-                if object_type == 'binary_compounds':
-                    for every_object in g4_dic['object'][object_type]:
-                        self.create_binary_compounds(g4_dic['object'][object_type][every_object])
+        # the device is the box l_x x l_y x l_z with its face z = 0 at the origin
+        self.create_box(
+            'Device',
+            self.device_material(detector_material),
+            (my_d.l_x, my_d.l_y, my_d.l_z),
+            (0, 0, my_d.l_z / 2.0),
+            [1, 0, 0],
+        )
+        if g4_dic.get('objects'):
+            raise ValueError(
+                "the objects of a g4setup of geant4_model 'gdml_import' have no place: "
+                "the GDML file holds the surroundings"
+            )
 
     def _make_vis_attr(self, rgba, wireframe=False, solid=False):
         if rgba is None or len(rgba) != 4:

@@ -23,7 +23,8 @@ G4_KINDS = ("beam", "decay_source")
 # in front of its front face and aimed at the middle of it.
 DEVICE_ALONE: dict[str, Any] = {
     "geant4_model": "device",
-    "object": {},
+    "materials": {},
+    "objects": {},
     "world": "G4_Galactic",
     "maxstep": 2,
     "g4_vis": False,
