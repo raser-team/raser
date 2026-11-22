@@ -15,6 +15,7 @@ from raser.core.device.build_device import Detector
 from raser.core.deposit.deposits import Deposits
 from raser.core.deposit.deposits import EventDeposits
 from raser.core.deposit.ionization import PAIR_ENERGY_EV
+from raser.supports import figures
 from raser.supports.paths import optional_component_path
 
 
@@ -328,8 +329,7 @@ class LaserInjection:
         return low, high
 
     def draw_nocarrier3D(self,path):
-        ROOT.gStyle.SetOptStat(0)
-        c1 = ROOT.TCanvas("c1","canvas2",200,10,1000,1000)
+        c1 = figures.canvas()
         low, high = self._drawn_box()
         h = ROOT.TH3D("h","",\
             50, low[0], high[0],\
@@ -356,31 +356,18 @@ class LaserInjection:
                 for k in range(50):
                     h.SetBinContent(i + 1, j + 1, k + 1, float(grid[i, j, k]))
         h.Draw()
-        h.GetXaxis().SetTitle("Depth [\mum]")#[μm]
-        h.GetXaxis().SetTitleSize(0.08)
-        h.GetXaxis().SetLabelSize(0.08)
-        h.GetXaxis().SetNdivisions(5)
-        h.GetYaxis().SetTitle("Width [\mum]")
-        h.GetYaxis().SetTitleSize(0.08)
-        h.GetYaxis().SetLabelSize(0.08)
-        h.GetYaxis().SetNdivisions(5)
-        h.GetZaxis().SetTitle("Thick [\mum]")
-        h.GetZaxis().SetTitleSize(0.08)
-        h.GetZaxis().SetLabelSize(0.08)
-        h.GetZaxis().SetNdivisions(5)
-        h.GetXaxis().SetTitleOffset(1.8)
+        h.GetXaxis().SetTitle(figures.label("x", "um", root=True))
+        h.GetYaxis().SetTitle(figures.label("y", "um", root=True))
+        h.GetZaxis().SetTitle(figures.label("z", "um", root=True))
+        h.GetXaxis().SetTitleOffset(1.6)
         h.GetYaxis().SetTitleOffset(2.2)
-        h.GetZaxis().SetTitleOffset(1.4)
-        c1.SetLeftMargin(0.15)
-        c1.Update()
-        c1.SaveAs(path+"/nocarrier_"\
-            +str(round(self.fx_rel,5))+"_"\
-            +str(round(self.fy_rel,5))+"_"\
-            +str(round(self.fz_rel,5))+".pdf")  
+        h.GetZaxis().SetTitleOffset(1.6)
+        c1.SetLeftMargin(0.12)
+        c1.SetBottomMargin(0.12)
+        figures.save_canvas(c1, path, "pair_density_3d")
 
     def draw_nocarrier2D(self, path):
-        ROOT.gStyle.SetOptStat(0)
-        c1 = ROOT.TCanvas("c1","canvas2",200,10,1400,1000)
+        c1 = figures.canvas()
         # the x-z plane through the axis at y = fy_abs: the coordinate along the
         # path s and the distance r from the axis follow from x and z
         low, high = self._drawn_box()
@@ -402,25 +389,11 @@ class LaserInjection:
             for j in range(200):
                 h.SetBinContent(i + 1, j + 1, float(grid[i, j]))
         h.Draw("COLZ")
-        h.GetXaxis().SetTitle("x axis [\mum]")#[μm]
-        h.GetXaxis().SetTitleSize(0.08)
-        h.GetXaxis().SetLabelSize(0.08)
-        h.GetYaxis().SetTitle("z axis [\mum]")
-        h.GetYaxis().SetTitleSize(0.08)
-        h.GetYaxis().SetLabelSize(0.08)
-        h.GetYaxis().SetTitleOffset(0.9)
-        h.GetZaxis().SetTitle("Pairs [\mum^{-3}]")
-        h.GetZaxis().SetTitleSize(0.08)
-        h.GetZaxis().SetLabelSize(0.08)
-        h.GetZaxis().SetTitleOffset(1.2)
-        h.GetXaxis().SetNdivisions(5)
-        h.GetYaxis().SetNdivisions(5)
-        h.GetZaxis().SetNdivisions(5)
-        c1.SetRightMargin(0.25)
-        c1.SetLeftMargin(0.2)
-        c1.SetBottomMargin(0.2)
-        c1.Update()
-        c1.SaveAs(path+"/nocarrier2D_"\
-            +str(round(self.fx_rel,5))+"_"\
-            +str(round(self.fy_rel,5))+"_"\
-            +str(round(self.fz_rel,5))+".pdf")  
+        h.GetXaxis().SetTitle(figures.label("x", "um", root=True))
+        h.GetYaxis().SetTitle(figures.label("z", "um", root=True))
+        h.GetZaxis().SetTitle("Pair density [#mum^{-3}]")
+        h.GetZaxis().SetTitleOffset(1.4)
+        c1.SetLeftMargin(0.12)
+        c1.SetRightMargin(0.2)
+        c1.SetBottomMargin(0.14)
+        figures.save_canvas(c1, path, "pair_density")
