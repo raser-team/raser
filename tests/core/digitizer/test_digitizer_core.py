@@ -84,7 +84,7 @@ def test_digitizer_file_round_trip_stores_per_electrode_t0_and_noise_flags(tmp_p
     append_digitized(
         path,
         ["a", "b"],
-        DigitizerFileSettings.from_settings(config, "test"),
+        DigitizerFileSettings.from_settings(config, "test", 1.0e-9),
         EventDigitized(
             7,
             codes,
@@ -112,3 +112,44 @@ def test_quantized_codes_round_trip_to_midpoints():
     assert clipped.tolist() == [0]
     decoded = to_volts(codes, config.bits, config.lsb_V, config.offset_V)
     assert np.abs(volts - decoded).max() <= config.lsb_V / 2
+
+
+def _digitized_file(path, pre_window):
+    config = settings("none")
+    codes, clipped = quantize(np.array([[0.1, -0.1]]), config)
+    append_digitized(
+        path,
+        ["a"],
+        DigitizerFileSettings.from_settings(config, "test", pre_window),
+        EventDigitized(1, codes, clipped, np.array([0.0]), ["a"], np.array([False])),
+        ["falling"],
+    )
+
+
+def test_digitizer_file_returns_the_pre_window_it_was_given(tmp_path):
+    path = tmp_path / "digitizer.h5"
+    _digitized_file(path, 15.0e-9)
+
+    assert read_digitized(path).pre_window == 15.0e-9
+
+
+def test_digitizer_file_refuses_an_event_of_another_pre_window(tmp_path):
+    path = tmp_path / "digitizer.h5"
+    _digitized_file(path, 15.0e-9)
+
+    with pytest.raises(ValueError, match="different from the requested settings"):
+        _digitized_file(path, 20.0e-9)
+
+
+def test_digitizer_file_without_pre_window_is_not_read(tmp_path):
+    path = tmp_path / "digitizer.h5"
+    _digitized_file(path, 15.0e-9)
+    with h5py.File(path, "a") as file:
+        del file.attrs["pre_window"]
+
+    with pytest.raises(ValueError) as error:
+        read_digitized(path)
+    assert str(error.value) == (
+        f"{path} has no pre_window: the digitizer of this version did not write "
+        "it; run the digitizer again"
+    )

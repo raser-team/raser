@@ -38,7 +38,9 @@ def write_digitized(
     if isinstance(seed, bool) or not isinstance(seed, int):
         raise ValueError("seed must be an integer")
     readout = read_waveforms(readout_path)
-    attributes = DigitizerFileSettings.from_settings(settings, device_name)
+    attributes = DigitizerFileSettings.from_settings(
+        settings, device_name, readout.pre_window
+    )
     create_digitized(digitizer_path, readout.electrodes, attributes, readout.pulse_edge)
     made_plots = 0
     all_codes = []

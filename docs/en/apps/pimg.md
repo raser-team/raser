@@ -72,7 +72,7 @@ The user-configurable keys are listed below. "Value in Example" lists the values
 | `readout.amplifier` | `"SantaCruz+Gali52+Termination50"` | None | Front-end amplifier and termination load component chain |
 | `reconstruction.threshold`, `reconstruction.amplitude_threshold` | `10.0`, `10.0` | $\text{mV}$ | Pixel threshold-crossing level and cluster-seed channel amplitude threshold (events recorded by `trigger` in which a seed is found are marked as `selected`) |
 
-All other underlying physical and numerical parameters (material mean ionization energy and Fano factor, 2D/3D induced-current time-bin width `50e-12 s` and drift time step `20e-12 s`, clustering neighborhood distance tolerance `1e-7 um^2`, and `200` reconstruction baseline sample points) are hardcoded in the source code.
+All other underlying physical and numerical parameters (material mean ionization energy and Fano factor, 2D/3D induced-current time-bin width `50e-12 s` and drift time step `20e-12 s`, clustering neighborhood distance tolerance `1e-7 um^2`) are hardcoded in the source code.
 
 ## Outputs
 

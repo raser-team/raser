@@ -45,7 +45,7 @@ def _write(path, values, t0=None, electrodes=None, file_electrodes=None):
     append_digitized(
         path,
         all_names,
-        DigitizerFileSettings.from_settings(config, "test"),
+        DigitizerFileSettings.from_settings(config, "test", 1.0e-9),
         EventDigitized(
             1, codes, clipped, starts, names, np.zeros(len(names), dtype=bool)
         ),
@@ -257,7 +257,7 @@ def _write_events(path, traces):
         append_digitized(
             path,
             ["a"],
-            DigitizerFileSettings.from_settings(config, "test"),
+            DigitizerFileSettings.from_settings(config, "test", 1.0e-9),
             EventDigitized(
                 number, codes, clipped, np.zeros(1), ["a"], np.zeros(1, dtype=bool)
             ),
@@ -463,6 +463,7 @@ def test_channel_nine_of_eight_channel_devices_is_on_the_second_device_and_trigg
         readout,
         electrodes,
         dt,
+        10 * dt,
         EventWaveforms(1, 0.0, voltage, electrodes),
         pulse_edge=["falling"] * 9,
     )
@@ -550,6 +551,7 @@ def _make_empty_readout(path, electrodes, dt):
     with h5py.File(path, "w") as file:
         file.attrs.create("electrodes", electrodes, dtype=h5py.string_dtype())
         file.attrs["dt"] = dt
+        file.attrs["pre_window"] = 10 * dt
         file.attrs.create(
             "pulse_edge", ["falling"] * len(electrodes), dtype=h5py.string_dtype()
         )

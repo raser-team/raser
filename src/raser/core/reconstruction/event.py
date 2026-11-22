@@ -4,7 +4,6 @@ import numpy as np
 
 CFD = 0.5 # partition
 CFD_LABEL = "CFD50"
-BASELINE_POINTS = 200 # samples before the pulse
 #TODO: get threshold and CFD from electronics setting
 
 class InputWaveform:
@@ -124,11 +123,11 @@ class InputWaveform:
 
         self.data["original_x"] = self.original_x
 
-def net_pulse(samples, baseline_points=BASELINE_POINTS):
+def net_pulse(samples, baseline_points):
     """The samples without their baseline.
 
     The baseline is the mean of the first `baseline_points` samples, which
-    lie before the pulse, and the noise their standard deviation about it.
+    lie in the part before the pulse (`pre_window`), and the noise their standard deviation about it.
 
     Returns (net, baseline, noise); net = samples - baseline.
     """

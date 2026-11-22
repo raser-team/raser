@@ -73,6 +73,7 @@ def _job(folder, index, scale, count, seed, amplitude_threshold=5, jitter=3.0e-1
             _slice(folder, index, "readout"),
             ["top"],
             DT,
+            BEFORE * DT,
             EventWaveforms(number, starts[number] - BEFORE * DT, np.array([samples])),
             pulse_edge=["falling"],
         )

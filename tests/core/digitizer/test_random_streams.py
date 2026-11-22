@@ -42,6 +42,7 @@ def _digitize(tmp_path, stored, noise_places):
         readout,
         ELECTRODES,
         DT,
+        10 * DT,
         EventWaveforms(3, 0.0, np.array([waveform[n] for n in stored]), stored),
         pulse_edge=["falling"] * len(ELECTRODES),
     )
@@ -106,6 +107,7 @@ def test_the_clock_phase_is_drawn_anew_for_every_event_and_seed(tmp_path):
             readout,
             ELECTRODES,
             DT,
+            10 * DT,
             EventWaveforms(number, 0.0, waveform, ["e0"]),
             pulse_edge=["falling"] * len(ELECTRODES),
         )

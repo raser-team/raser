@@ -23,10 +23,18 @@ def _job(folder, scales, count, seed):
     names = [f"strip_{k}" for k in range(len(scales[0]))]
     starts = np.random.default_rng(seed).normal(0.0, 1.0e-9, count)
     for number in range(count):
-        samples = [np.concatenate([np.zeros(BEFORE), scale * TRIANGLE]) for scale in scales[number % len(scales)]]
-        append_waveforms(node / "readout.h5", names, DT,
-                         EventWaveforms(number, starts[number] - BEFORE * DT, np.array(samples)),
-                         pulse_edge=["falling" if scale > 0 else "rising" for scale in scales[0]])
+        samples = [
+            np.concatenate([np.zeros(BEFORE), scale * TRIANGLE])
+            for scale in scales[number % len(scales)]
+        ]
+        append_waveforms(
+            node / "readout.h5",
+            names,
+            DT,
+            BEFORE * DT,
+            EventWaveforms(number, starts[number] - BEFORE * DT, np.array(samples)),
+            pulse_edge=["falling" if scale > 0 else "rising" for scale in scales[0]],
+        )
     return starts
 
 
@@ -105,8 +113,21 @@ def test_position_reads_and_writes_the_files_of_its_own_slices(tmp_path) -> None
     node.mkdir()
     names = {name: str(node) for name in ("readout.left", "reconstruction.left", "readout.right", "reconstruction.right")}
     samples = np.concatenate([np.zeros(BEFORE), TRIANGLE])
-    append_waveforms(node / "readout.left.h5", ["top"], DT, EventWaveforms(7, 0.0, np.array([samples])), pulse_edge=["falling"])
-    kwargs = {"_node_paths": names, "threshold": 3, "amplitude_threshold": 5, "fractions": FRACTIONS, "edge": "falling"}
+    append_waveforms(
+        node / "readout.left.h5",
+        ["top"],
+        DT,
+        BEFORE * DT,
+        EventWaveforms(7, 0.0, np.array([samples])),
+        pulse_edge=["falling"],
+    )
+    kwargs = {
+        "_node_paths": names,
+        "threshold": 3,
+        "amplitude_threshold": 5,
+        "fractions": FRACTIONS,
+        "edge": "falling",
+    }
 
     assert reconstruction.run(kwargs, "left") is None
     assert reconstruction.run(kwargs, "right") == {"events": 0}  # no currents, no readout there
@@ -143,9 +164,24 @@ def test_area_is_of_the_lobe_that_holds_the_peak(tmp_path) -> None:
     node = tmp_path / "node"
     node.mkdir()
     rng = np.random.default_rng(10)
-    samples = np.concatenate([rng.normal(0.0, 1.0e-4, BEFORE), [0.0, -120.0e-3, 120.0e-3, 0.0], rng.normal(0.0, 1.0e-4, 50)])
-    samples[BEFORE] = samples[BEFORE + 3] = 1.0e-3  # above the baseline on the far sides
-    append_waveforms(node / "readout.h5", ["top"], DT, EventWaveforms(0, 0.0, np.array([samples])), pulse_edge=["falling"])
+    samples = np.concatenate(
+        [
+            rng.normal(0.0, 1.0e-4, BEFORE),
+            [0.0, -120.0e-3, 120.0e-3, 0.0],
+            rng.normal(0.0, 1.0e-4, 50),
+        ]
+    )
+    samples[BEFORE] = samples[BEFORE + 3] = (
+        1.0e-3  # above the baseline on the far sides
+    )
+    append_waveforms(
+        node / "readout.h5",
+        ["top"],
+        DT,
+        BEFORE * DT,
+        EventWaveforms(0, 0.0, np.array([samples])),
+        pulse_edge=["falling"],
+    )
 
     rows = _run(tmp_path, 50, 100).columns
 
@@ -178,8 +214,17 @@ def test_centre_of_gravity_of_a_lopsided_pulse_is_not_its_peak(tmp_path) -> None
     node = tmp_path / "node"
     node.mkdir()
     # 4, 10, 6, 4 mV above the 3 mV threshold in bins 1 ... 4 after the 200 before
-    samples = np.concatenate([np.zeros(BEFORE), -1.0e-3 * np.array([0.0, 4, 10, 6, 4, 2, 0, 0])])
-    append_waveforms(node / "readout.h5", ["top"], DT, EventWaveforms(0, 0.0, np.array([samples])), pulse_edge=["falling"])
+    samples = np.concatenate(
+        [np.zeros(BEFORE), -1.0e-3 * np.array([0.0, 4, 10, 6, 4, 2, 0, 0])]
+    )
+    append_waveforms(
+        node / "readout.h5",
+        ["top"],
+        DT,
+        BEFORE * DT,
+        EventWaveforms(0, 0.0, np.array([samples])),
+        pulse_edge=["falling"],
+    )
 
     rows = _run(tmp_path, 3, 5).columns
 
@@ -220,7 +265,14 @@ def test_event_holds_only_the_strips_it_has_a_signal_on(tmp_path) -> None:
         EventWaveforms(1, 0.0, np.zeros((0, len(samples))), []),  # no current, no waveform
     ]
     for event in events:
-        append_waveforms(node / "readout.h5", names, DT, event, pulse_edge=["falling"] * 3)
+        append_waveforms(
+            node / "readout.h5",
+            names,
+            DT,
+            BEFORE * DT,
+            event,
+            pulse_edge=["falling"] * 3,
+        )
 
     rows = _run(tmp_path, 3, 4, None).columns
 

@@ -17,6 +17,7 @@ raser signal HPK-Si-PiN --scan field.voltage=100,200 -s 2 --set deposit.events_p
 When `HPK-Si-PiN` is not present under `work/`, the command runs in place under `examples/HPK-Si-PiN/`, and the experiment folder is `examples/HPK-Si-PiN/signal`. `HPK-Si-PiN` is a standard single-electrode planar device whose device file directly specifies `capacitance_pF = 3.44162280284` (`3.44162280284e-12 F`), with a bias of `200 V` in the device file. At the `voltage_200` point using the example amplifier chain `SantaCruz+Gali52+Termination50`, inside the node pointed to by `points/voltage_200/readout/0`, job `0`'s `readout.h5` attributes (`attrs`) are:
 
 - `dt = 5e-12` (in `s`)
+- `pre_window = 1.5e-08` (in `s`)
 - `electrodes = ['top']`
 - `pulse_edge = ['falling']`
 - `device_circuit = '{"junction_capacitance": {"farad": 3.44162280284e-12, "from": "device file"}, "between_electrodes": null, "bias_resistance": null, "coupling_capacitance": null, "undepleted_layer": null}'`
@@ -255,7 +256,7 @@ Only the keys listed below are configurable in this stage; the relative swing th
 | `readout.sheet_resistance` | `null` (uses the resistive-layer sheet resistance from the device file) | $\Omega$ | Overrides sheet resistance of a resistive-layer device; passing it for a standard device raises `ValueError` |
 | `readout.cable` | `null` (no cable connected) | None | Readout cable component slot: a cable component name (such as `"Belden8259"`) or an object containing `name` and `length_m`; setting `null` explicitly disables the cable |
 | `readout.cable.length_m` | Required when `readout.cable` is not `null` (e.g. `{"top": 1.5}`, or `{"strip1": 2.0, "strip2": 2.0, ...}` for strip devices) | $\text{m}$ | Mapping from channel name to cable length; when `readout.cable` is not `null`, every output channel of the circuit must be given, unknown channel names are rejected, and each value must be a finite non-negative number |
-| `readout.pre_window_ns` | `15` | $\text{ns}$ | Length of the pre-window (baseline segment), a non-negative finite number, required, no default; a segment of zero current this long is added before the `current` window, downstream steps use it to estimate the baseline, and noise is synthesized over it as well |
+| `readout.pre_window_ns` | `15` | $\text{ns}$ | Length of the pre-window (baseline segment), a non-negative finite number, required, no default; a segment of zero current this long is added before the `current` window, downstream steps use it to estimate the baseline, and noise is synthesized over it as well; the example takes `15`: the noise integral correlation time of the SantaCruz+Gali52 chain is about 0.13 ns, so a 15 ns pre-window holds about 115 independent noise samples and the error of the baseline mean is about 1/11 of the noise; the pre-window length is passed to reconstruction in the attribute `pre_window` of `readout.h5`, and reconstruction estimates the baseline only from samples inside the pre-window |
 | `readout.max_post_window_ns` | `1000` | $\text{ns}$ | Upper bound of the post-window length, a positive finite number, required, no default; the post-window is the smaller of the settling time of the amplifier chain and this bound, and since the decay of a charge-sensitive amplifier is of the order of a hundred microseconds, this bound is needed |
 | `field.voltage` | `200.0` (uses the bias from the device file when set to `null`) | $\text{V}$ | Belongs to the `field` section: bias voltage used to locate the field and determine collected charge polarity |
 | `field.irradiation_flux` | `null` (uses the irradiation fluence from the device file, or `0` if the device file has no irradiation block) | $\text{cm}^{-2}$ | Belongs to the `field` section: irradiation fluence used during field lookup |
@@ -277,6 +278,7 @@ Only the keys listed below are configurable in this stage; the relative swing th
   | Attribute (`attrs`) | `dt` | scalar, `float64` | $\text{s}$ | Sampling time-bin width |
   | Attribute (`attrs`) | `electrodes` | `(outputs,)`, variable-length string array | None | All possible output readout channel names of the circuit |
   | Attribute (`attrs`) | `pulse_edge` | `(outputs,)`, variable-length string array | None | Pulse edge direction matching `electrodes` one-to-one: `"rising"` or `"falling"` |
+  | Attribute (`attrs`) | `pre_window` | scalar, `float64` | $\text{s}$ | Pre-window length, the configuration key `readout.pre_window_ns` converted to seconds |
   | Attribute (`attrs`) | `device_circuit` | scalar, JSON string | $\text{F}$, $\Omega$, $\text{F/m}^2$ | Device equivalent-circuit parameter values and sources (structure in the `values` table above) |
   | Dataset (`datasets`) | `event` | `(events,)`, `int64` | None | Geant4 event ID of each recorded event |
   | Dataset (`datasets`) | `t0` | `(events,)`, `float64` | $\text{s}$ | Left edge time of the first time bin of each event |

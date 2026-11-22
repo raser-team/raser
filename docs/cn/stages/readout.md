@@ -17,6 +17,7 @@ raser signal HPK-Si-PiN --scan field.voltage=100,200 -s 2 --set deposit.events_p
 `work/` 下没有 `HPK-Si-PiN` 时，命令在 `examples/HPK-Si-PiN/` 下就地运行，实验文件夹是 `examples/HPK-Si-PiN/signal`。`HPK-Si-PiN` 是常规单电极平面器件，器件文件直接给出 `capacitance_pF = 3.44162280284`（`3.44162280284e-12 F`），器件文件里的偏压为 `200 V`。`voltage_200` 点用示例里的放大器链 `SantaCruz+Gali52+Termination50`，`points/voltage_200/readout/0` 指向的节点里，作业 `0` 的 `readout.h5` 属性（`attrs`）为：
 
 - `dt = 5e-12`（单位 `s`）
+- `pre_window = 1.5e-08`（单位 `s`）
 - `electrodes = ['top']`
 - `pulse_edge = ['falling']`
 - `device_circuit = '{"junction_capacitance": {"farad": 3.44162280284e-12, "from": "device file"}, "between_electrodes": null, "bias_resistance": null, "coupling_capacitance": null, "undepleted_layer": null}'`
@@ -255,7 +256,7 @@ FileNotFoundError: no field of <det_name> ready for this run: solve it with `ras
 | `readout.sheet_resistance` | `null`（取器件文件里阻性层的方块电阻） | $\Omega$ | 覆盖阻性层器件的方阻；对常规器件给出会抛出 `ValueError` |
 | `readout.cable` | `null`（不接线缆） | 无 | 读出线缆组件槽位：填线缆组件名（如 `"Belden8259"`）或含 `name` 与 `length_m` 的对象；显式写 `null` 时不接线缆 |
 | `readout.cable.length_m` | 接 `readout.cable` 时必选（如 `{"top": 1.5}`，条形器件 `{"strip1": 2.0, "strip2": 2.0, ...}`） | $\text{m}$ | “通道名 $\to$ 线长”对象；`readout.cable` 不为 `null` 时必须覆盖电路全部输出通道，不能含电路里没有的通道名，值须为非负有限数 |
-| `readout.pre_window_ns` | `15` | $\text{ns}$ | 前段（基线段）的长度，非负有限数，必填，没有默认值；在 `current` 的窗前补这么长的零电流段，下游用它估基线，噪声在这一段同样合成 |
+| `readout.pre_window_ns` | `15` | $\text{ns}$ | 前段（基线段）的长度，非负有限数，必填，没有默认值；在 `current` 的窗前补这么长的零电流段，下游用它估基线，噪声在这一段同样合成；示例取 `15`：SantaCruz+Gali52 链的噪声积分相关时间约 0.13 ns，15 ns 的前段约含 115 个独立噪声样本，基线均值的误差约为噪声的 1/11；前段长度随 `readout.h5` 的属性 `pre_window` 传给重建，重建只用前段里的采样估基线 |
 | `readout.max_post_window_ns` | `1000` | $\text{ns}$ | 后段长度的上限，正的有限数，必填，没有默认值；后段取放大器链回落时间与它中较小的一个，电荷灵敏放大器的衰减在百微秒量级，所以需要这个上限 |
 | `field.voltage` | `200.0`（写 `null` 时取器件文件里的偏压） | $\text{V}$ | 属于 `field` 段：偏压，用来找场并判定收集电荷的极性 |
 | `field.irradiation_flux` | `null`（取器件文件里的辐照注量，器件文件没有辐照块时为 `0`） | $\text{cm}^{-2}$ | 属于 `field` 段：找场时用的辐照注量 |
@@ -277,6 +278,7 @@ FileNotFoundError: no field of <det_name> ready for this run: solve it with `ras
   | 属性（`attrs`） | `dt` | 标量，`float64` | $\text{s}$ | 采样时间箱宽度 |
   | 属性（`attrs`） | `electrodes` | `(outputs,)`，变长字符串数组 | 无 | 电路全部可能输出的读出通道名 |
   | 属性（`attrs`） | `pulse_edge` | `(outputs,)`，变长字符串数组 | 无 | 与 `electrodes` 一一对应的脉冲方向，`"rising"` 或 `"falling"` |
+  | 属性（`attrs`） | `pre_window` | 标量，`float64` | $\text{s}$ | 前段长度，即配置键 `readout.pre_window_ns` 换算成秒 |
   | 属性（`attrs`） | `device_circuit` | 标量，JSON 字符串 | $\text{F}$, $\Omega$, $\text{F/m}^2$ | 器件等效电路各参数值及来源（结构见上文 `values` 表） |
   | 数据集（`datasets`） | `event` | `(events,)`，`int64` | 无 | 记录事例的 Geant4 编号 |
   | 数据集（`datasets`） | `t0` | `(events,)`，`float64` | $\text{s}$ | 每个事例首个时间箱的左边界时刻 |

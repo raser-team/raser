@@ -20,13 +20,15 @@ $$v_i = s_{\text{edge}}\,(V_i - B) \tag{3}$$
 - $t_0$：该电极第一个采样点的时刻（`digitizer.h5` 的 `t0`，已含时钟相位），$\text{s}$；
 - $\Delta t$：采样间隔（`digitizer.h5` 的 `sampling_period`），$\text{s}$；
 - $V_i$：第 $i$ 个采样点由码换回的电压（`samples`），$V_i = (c_i - 2^{N_{\text{bit}}-1} + 0.5)\cdot$`lsb_V`$ + $`offset_V`，$\text{V}$，其中 $c_i$ 为码，$N_{\text{bit}}$ 为属性 `bits`；
-- $N_{\text{base}}$：脉冲前基线采样点数（无量纲），代码取固定常数 `BASELINE_POINTS = 200`；
+- $N_{\text{base}} = \lfloor T_{\text{pre}} / \Delta t \rfloor$：脉冲前基线采样点数，$T_{\text{pre}}$ 为 `digitizer.h5` 的属性 `pre_window`（$\text{s}$）。第 $i$ 点的时刻是读出波形的起点加时钟相位 $\varphi \in [0, \Delta t)$ 再加 $i\Delta t$，所以前 $N_{\text{base}}$ 个点都落在前段里，不吃进脉冲；
 - $B$：脉冲前基线均值（`baseline`），$\text{V}$；
 - $\sigma_{\text{noise}}$：脉冲前基线噪声总体标准差（`noise`），$\text{V}$；
 - $s_{\text{edge}}$：触发边沿极性系数（无量纲），由 `EDGE_SIGN` 给出，上升沿 `"rising"` 取 $+1.0$，下降沿 `"falling"` 取 $-1.0$；
 - $v_i$：扣除基线并翻转为正向后的净电压采样值（`net`），$\text{V}$。
 
-基线扣除与噪声计算对应 `event.py` 中的 `net_pulse(samples, baseline_points=BASELINE_POINTS)`，默认 `baseline_points = 200`。采样时刻计算与极性翻转在 `event_table.py` 的 `event_table` 中执行；各电极边沿方向由 `chosen_edges` 确定，`reconstruction.edge` 为 `null` 时沿用输入波形文件为各电极记下的 `pulse_edge`（读出链按器件与电子学派生）。所选边沿与某电极脉冲的实际方向相反时，该电极的脉冲留在基线以下：`amplitude` 是基线以上最大的采样，只有噪声或过冲的量级，通常低于 `threshold`，于是 `above = False`，定时与面积列为 `NaN`；过冲达到 `threshold` 时，定时量按过冲算出。`InputWaveform` 则假定输入 `voltage` 已为扣除基线后的正向脉冲。半导体探测器脉冲基线恢复与噪声表征见文献 [1]。
+基线扣除与噪声计算对应 `event.py` 中的 `net_pulse(samples, baseline_points)`，`baseline_points` 必填，由 `event_table` 按上式算出。采样时刻计算与极性翻转在 `event_table.py` 的 `event_table` 中执行；各电极边沿方向由 `chosen_edges` 确定，`reconstruction.edge` 为 `null` 时沿用输入波形文件为各电极记下的 `pulse_edge`（读出链按器件与电子学派生）。所选边沿与某电极脉冲的实际方向相反时，该电极的脉冲留在基线以下：`amplitude` 是基线以上最大的采样，只有噪声或过冲的量级，通常低于 `threshold`，于是 `above = False`，定时与面积列为 `NaN`；过冲达到 `threshold` 时，定时量按过冲算出。`InputWaveform` 则假定输入 `voltage` 已为扣除基线后的正向脉冲。半导体探测器脉冲基线恢复与噪声表征见文献 [1]。
+
+局限：数字化器取 `"brickwall"` 响应时，在整条记录上做频域截断，这是非因果的，脉冲前沿的振铃会漏进前段末尾，正负交替；它对基线均值影响小，会抬高基线噪声的估计。
 
 ### 峰值幅度与固定阈值过零定时（ToA 与 ToT）
 
@@ -135,7 +137,6 @@ $$(x_p, y_p) = \bigl((i_x + 0.5)\,p_x,\ (i_y + 0.5)\,p_y\bigr), \qquad (\bar{x}_
 
 | 常数或硬编码名 | 取值（按情形分列） | 单位 | 定义位置与含义 |
 | --- | --- | --- | --- |
-| `BASELINE_POINTS` | `200` | 采样点（个） | `event.py`：`net_pulse` 计算基线均值 `baseline` 与标准差 `noise` 所取的开头采样点数 |
 | `EDGE_SIGN` | `"rising"`: `1.0`；`"falling"`: `-1.0` | 无量纲 | `event_table.py`：将扣除基线后的净波形 `net` 翻转为正向脉冲的极性乘子 |
 | `CFD` | `0.5` | 无量纲 | `event.py`：`InputWaveform` 构造函数的默认恒比定时分数 |
 | `CFD_LABEL` | `"CFD50"` | 无 | `event.py`：`InputWaveform.data` 中存放恒比定时结果的字典键名 |
@@ -155,16 +156,17 @@ $$(x_p, y_p) = \bigl((i_x + 0.5)\,p_x,\ (i_y + 0.5)\,p_y\bigr), \qquad (\bar{x}_
 2. **校验电极边沿列表（`event_table`）**：检查传入的 `edges` 是否满足 `len(edges) == len(waveforms.electrodes)` 且每个元素均属于 `EDGE_SIGN`。若不满足，抛出 `ValueError("edges <edges>: one of rising or falling for each of <waveforms.electrodes>")`。校验通过后，生成各电极极性符号列表 `polarity = [EDGE_SIGN[edge] for edge in edges]` 与电极名索引字典 `place = {name: k for k, name in enumerate(waveforms.electrodes)}`。
 3. **校验恒比分数范围（`event_table`）**：筛选 `wrong = [part for part in fractions if not 0 < part < 1]`。若 `wrong` 非空（含 $\le 0$、$\ge 1$ 或 `NaN` 的值），抛出 `ValueError("fractions <wrong>: a constant fraction lies between 0 and 1")`。
 4. **校验非空事例列表（`event_table`）**：若 `not waveforms.events`（输入的 `Waveforms` 对象中没有任何事例），抛出 `ValueError("the readout holds no event")`。
+5. **算基线采样点数（`event_table`）**：$N_{\text{base}} = \lfloor T_{\text{pre}}/\Delta t\,(1+10^{-12}) \rfloor$，$T_{\text{pre}}$ 为 `waveforms.pre_window`，$\Delta t$ 为 `waveforms.dt`；乘 $(1+10^{-12})$ 是为避免 `15e-9/62.5e-12` 这类恰为整数的商在浮点里落成 `239.999…`。$N_{\text{base}} < 2$ 时抛出 `ValueError("the baseline before the pulse holds <N_base> samples of <Ts> s in pre_window <T> s: lengthen readout.pre_window_ns")`，其中 `<Ts>` 是采样间隔、`<T>` 是 `pre_window`，数值都按 Python 的 `:g` 格式。
 
 ### 单电极基线扣除、边沿搜索与插值特征提取
 
 `event_table` 遍历 `waveforms.events` 中的每个事例 `record`（设总电极数为 $W = \text{len}(\text{waveforms.electrodes})$，当前事例采样点数为 $N = \text{record.voltage.shape}[1]$），按以下顺序处理各电极波形：
 
 1. **计算采样时刻并预填未追踪电极**：对每个已保存电极按式 (1) 计算长度 $N$ 的采样时刻数组 `times = t0 + np.arange(N) * waveforms.dt`，`t0` 取该电极在 `digitizer.h5` 里的 `t0`，`waveforms.dt` 为 `sampling_period`。为全部 $W$ 个电极初始化未追踪缺省字典 `untraced`：`traced = False`、`above = False`，其余数值列（`baseline`、`noise`、`amplitude`、`ToA`、`ToT`、`CoG`、`area`）以及 `len(fractions)` 个 `CFD` 值均填 `NaN`。不在 `record.electrodes` 中的电极（读出环节未保存波形的通道）保持该缺省状态。
-2. **扣除前 200 点基线并算噪声（`net_pulse(samples, baseline_points=200)`）**：对 `zip(record.electrodes, record.voltage)` 中的每个已保存电极 `name`（对应全局列下标 $k = \text{place}[\text{name}]$）及其采样数组 `samples`：
+2. **扣除前段内 $N_{\text{base}}$ 点基线并算噪声（`net_pulse(samples, baseline_points)`，`baseline_points` 取 $N_{\text{base}}$）**：对 `zip(record.electrodes, record.voltage)` 中的每个已保存电极 `name`（对应全局列下标 $k = \text{place}[\text{name}]$）及其采样数组 `samples`：
    - 将 `samples` 转换为 `float64` 数组；
-   - 若 $\text{len}(\text{samples}) \le \text{baseline\_points}$（即 $N \le 200$），抛出 `ValueError("<len(samples)> samples, not more than the <baseline_points> of the baseline")`；
-   - 取前 $200$ 个点计算均值 `baseline = samples[:200].mean()` 与总体标准差 `noise = samples[:200].std()`（`ddof=0`），得到 `net = samples - baseline`。
+   - 若 $\text{len}(\text{samples}) \le \text{baseline\_points}$（即 $N \le N_{\text{base}}$），抛出 `ValueError("<len(samples)> samples, not more than the <baseline_points> of the baseline")`；
+   - 取前 $N_{\text{base}}$ 个点计算均值 `baseline = samples[:baseline_points].mean()` 与总体标准差 `noise = samples[:baseline_points].std()`（`ddof=0`），得到 `net = samples - baseline`。
 3. **翻转脉冲极性并定位峰值（`get_amplitude`）**：将净波形乘以该电极的边沿符号 $\text{net}^{+} = \text{polarity}[k] \cdot \text{net}$ 传入 `electrode_row`。调用 `get_amplitude` 求 `peak = int(np.argmax(net+))` 与 `amplitude = net+[peak]`。
 4. **过阈判定与未过阈拒绝（`electrode_row`）**：
    - 若 `amplitude < threshold`，拒绝提取该电极的定时与面积特征：返回 `above = False`、实测 `amplitude`，并将 `ToA`、`ToT`、`CoG`、`area` 及全部 `len(fractions)` 个 `CFD` 置为 `NaN`（外层合并 `traced = True`、`baseline` 与 `noise`）。
@@ -241,7 +243,7 @@ $$(x_p, y_p) = \bigl((i_x + 0.5)\,p_x,\ (i_y + 0.5)\,p_y\bigr), \qquad (\bar{x}_
 
 ### 模块与函数分工
 
-- `event.py`：实现单电极脉冲基线扣除、阈值过零线性插值、恒比定时、时间重心计算以及单事例独立重建类。`net_pulse` 计算并扣除脉冲前 200 点基线、给出基线噪声；`get_amplitude`、`crossing`、`get_ToA`、`get_ToT`、`get_CFD50`、`get_CoG` 与 `get_charge` 提取单条正向波形的特征量；`InputWaveform` 配合 `get_conjoined_time`、`get_total_amp`、`get_gravity_center_and_cluster_size` 与 `remove_none` 汇总单事例多条形通道特征。
+- `event.py`：实现单电极脉冲基线扣除、阈值过零线性插值、恒比定时、时间重心计算以及单事例独立重建类。`net_pulse` 计算并扣除脉冲前 $N_{\text{base}}$ 点基线、给出基线噪声；`get_amplitude`、`crossing`、`get_ToA`、`get_ToT`、`get_CFD50`、`get_CoG` 与 `get_charge` 提取单条正向波形的特征量；`InputWaveform` 配合 `get_conjoined_time`、`get_total_amp`、`get_gravity_center_and_cluster_size` 与 `remove_none` 汇总单事例多条形通道特征。
 - `pixel_clusters.py`：实现像素器件的二维成簇。`pixel_clusters` 按八邻域成簇；`fired_from_table`、`fired_from_deposits` 给出过阈像素；`pixel_cluster_columns` 给出事件表的五列；`table_from_deposits` 由沉积文件直接给出事件表；`draw_hitmap` 画击中图。
 - `event_table.py`：实现作业级多事例特征提取、跨电极成簇与 `reconstruction.h5` 文件读写。`lobe_area` 计算包含峰值的正向主瓣积分面积；`electrode_row` 汇总单电极的过阈判定与全部特征列；`cluster` 执行跨电极一维成簇并计算幅度加权中心；`chosen_edges` 解析并校验各电极触发边沿；`event_table` 将整个作业的 `Waveforms` 重建为 `EventTable`；`write_event_table` 与 `read_event_table` 负责 HDF5 事件表文件的一次性写出与读取。
 - `draw.py`：提供 `draw_features`，调用 `raser.supports.figures` 在数字波形的上升沿一段上标出基线、幅度、阈值线上的 `ToA` 与 `reconstruction.fractions` 各比例的 `CFD` 时刻，并存为 `.png` 与 `.pdf`。
@@ -270,7 +272,7 @@ $$(x_p, y_p) = \bigl((i_x + 0.5)\,p_x,\ (i_y + 0.5)\,p_y\bigr), \qquad (\bar{x}_
 
 ## 接口
 
-使用者能设的只有下表列出的 4 个设置，写在 `config.json` 的 `reconstruction` 段，用 `--set`、`--scan` 改；其余参数（基线采样点数 `BASELINE_POINTS = 200`、边沿极性系数 `EDGE_SIGN` 及 `InputWaveform` 内部阈值）都写死在代码里。命令与用法见 [../stages/reconstruction.md](../stages/reconstruction.md)。
+使用者能设的只有下表列出的 4 个设置，写在 `config.json` 的 `reconstruction` 段，用 `--set`、`--scan` 改；其余参数（边沿极性系数 `EDGE_SIGN` 及 `InputWaveform` 内部阈值）都写死在代码里。命令与用法见 [../stages/reconstruction.md](../stages/reconstruction.md)。
 
 ### 重建配置键与函数参数
 
@@ -285,7 +287,7 @@ $$(x_p, y_p) = \bigl((i_x + 0.5)\,p_x,\ (i_y + 0.5)\,p_y\bigr), \qquad (\bar{x}_
 
 ### 输入文件属性与数据集
 
-`event_table` 接收 `trigger` 记录事例的数字波形：读 `trigger` 节点 `trigger.h5` 的数据集 `event`（`(recorded,)`，`int64`，被记录事例的事例号），再从 `digitizer` 节点的 `digitizer.h5`（多位置实验为 `digitizer.<位置>.h5`，格式见[数字化器](digitizer.md#输出digitizerh5)）取出这些事例，按式 (1) 的时刻和码换回的电压还原为 `Waveforms(electrodes, dt, events, pulse_edge)` 对象，`dt` 取 `sampling_period`；事件表每一行对应其中一个事例。`digitizer.h5` 的属性与数据集如下：
+`event_table` 接收 `trigger` 记录事例的数字波形：读 `trigger` 节点 `trigger.h5` 的数据集 `event`（`(recorded,)`，`int64`，被记录事例的事例号），再从 `digitizer` 节点的 `digitizer.h5`（多位置实验为 `digitizer.<位置>.h5`，格式见[数字化器](digitizer.md#输出digitizerh5)）取出这些事例，按式 (1) 的时刻和码换回的电压还原为 `Waveforms(electrodes, dt, events, pulse_edge, pre_window)` 对象，`dt` 取 `sampling_period`，`pre_window` 取同名属性；事件表每一行对应其中一个事例。`digitizer.h5` 的属性与数据集如下：
 
 **输入文件属性（Attributes）**
 
@@ -296,6 +298,7 @@ $$(x_p, y_p) = \bigl((i_x + 0.5)\,p_x,\ (i_y + 0.5)\,p_y\bigr), \qquad (\bar{x}_
 | `lsb_V` | `float64` | $\text{V}$ | 每档电压，码换回电压用 |
 | `offset_V` | `float64` | $\text{V}$ | 量程中心，码换回电压用 |
 | `bits` | 整数 | 位 | ADC 位数 $N_{\text{bit}}$ |
+| `pre_window` | `float64` | $\text{s}$ | 前段长度，照抄 `readout` 文件；决定基线采样点数 $N_{\text{base}}$ |
 | `pulse_edge` | 字符串数组 | 无 | 读出链派生的各电极脉冲边沿方向（`"rising"` 或 `"falling"`），供 `chosen_edges` 作为默认边沿与比对基准 |
 | `device` | 字符串 | 无 | 所用的数字化器组件名 |
 
@@ -338,8 +341,8 @@ $$(x_p, y_p) = \bigl((i_x + 0.5)\,p_x,\ (i_y + 0.5)\,p_y\bigr), \qquad (\bar{x}_
 | `cluster_pixels` | `(events,)`, `int64` | 个 | 像素器件才有：团簇的像素数；团簇数不是 `1` 时为 `0` |
 | `cluster_seed` | `(events,)`, `int64` | 无 | 像素器件才有：团簇里幅度最大的像素的电极下标，这一层的击中时刻取该电极的 `ToA`、`CFD` 等列；团簇数不是 `1` 时为 `-1` |
 | `traced` | `(events, len(electrodes))`, `bool` | 无 | 输入 `digitizer.h5` 在该事例中是否存有该电极波形；为 `False` 时该电极所有数值列为 `NaN`、`above` 为 `False` |
-| `baseline` | `(events, len(electrodes))`, `float64` | $\text{V}$ | 原始波形开头 `200` 个采样点的算术平均值 |
-| `noise` | `(events, len(electrodes))`, `float64` | $\text{V}$ | 原始波形开头 `200` 个采样点的总体标准差 |
+| `baseline` | `(events, len(electrodes))`, `float64` | $\text{V}$ | 原始波形开头 $N_{\text{base}}$ 个采样点的算术平均值 |
+| `noise` | `(events, len(electrodes))`, `float64` | $\text{V}$ | 原始波形开头 $N_{\text{base}}$ 个采样点的总体标准差 |
 | `amplitude` | `(events, len(electrodes))`, `float64` | $\text{V}$ | 扣除基线并按 `edge` 翻正后的最大采样值 |
 | `above` | `(events, len(electrodes))`, `bool` | 无 | 脉冲是否达到 `threshold`（无波形或 `amplitude < threshold` 时为 `False`；为 `False` 时 `ToA`、`ToT`、`CoG`、`area`、`CFD` 均为 `NaN`） |
 | `ToA` | `(events, len(electrodes))`, `float64` | $\text{s}$ | 上升沿越过 `threshold` 的线性插值时刻（未找到过零点或 `above` 为假时为 `NaN`） |

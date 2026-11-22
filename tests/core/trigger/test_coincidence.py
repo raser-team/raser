@@ -192,7 +192,7 @@ def _write_events(path, electrodes, events):
         append_digitized(
             path,
             electrodes,
-            DigitizerFileSettings.from_settings(config, "test"),
+            DigitizerFileSettings.from_settings(config, "test", 1.0e-9),
             EventDigitized(
                 number,
                 codes,

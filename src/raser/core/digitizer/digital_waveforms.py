@@ -39,9 +39,10 @@ class DigitizerFileSettings:
     bits: int
     channels: int
     device: str
+    pre_window: float  # [s], as the readout file
 
     @classmethod
-    def from_settings(cls, settings, device):
+    def from_settings(cls, settings, device, pre_window):
         return cls(
             float(settings.period_s),
             float(settings.lsb_V),
@@ -49,11 +50,12 @@ class DigitizerFileSettings:
             int(settings.bits),
             int(settings.channels),
             str(device),
+            float(pre_window),
         )
 
     @classmethod
-    def from_digitizer_settings(cls, settings, device):
-        return cls.from_settings(settings, device)
+    def from_digitizer_settings(cls, settings, device, pre_window):
+        return cls.from_settings(settings, device, pre_window)
 
     @classmethod
     def from_waveforms(cls, waveforms):
@@ -64,6 +66,7 @@ class DigitizerFileSettings:
             int(waveforms.bits),
             int(waveforms.channels),
             str(waveforms.device),
+            float(waveforms.pre_window),
         )
 
 
@@ -78,6 +81,7 @@ class DigitizedWaveforms:
     device: str
     channels: int
     events: list[EventDigitized]
+    pre_window: float  # [s]
 
     @property
     def file_settings(self):
@@ -120,6 +124,7 @@ def create_digitized(path, electrodes, attributes: DigitizerFileSettings, pulse_
         file.attrs.create("pulse_edge", pulse_edge, dtype=h5py.string_dtype())
         file.attrs["device"] = attributes.device
         file.attrs["channels"] = attributes.channels
+        file.attrs["pre_window"] = attributes.pre_window
         for name, kind in (
             ("event", "int64"),
             ("count", "int64"),
@@ -185,6 +190,8 @@ def append_digitized(
             or int(file.attrs["bits"]) != attributes.bits
             or int(file.attrs["channels"]) != attributes.channels
             or str(file.attrs["device"]) != attributes.device
+            or "pre_window" not in file.attrs
+            or float(file.attrs["pre_window"]) != attributes.pre_window
             or file.attrs["pulse_edge"].tolist() != pulse_edge
         ):
             raise ValueError(
@@ -228,6 +235,12 @@ def read_digitized(path):
         missing = [name for name in required_attrs if name not in file.attrs]
         if missing:
             raise ValueError(f"{path} is missing digitizer attribute {missing[0]!r}")
+        if "pre_window" not in file.attrs:
+            raise ValueError(
+                f"{path} has no pre_window: the digitizer of this version did "
+                "not write it; run the digitizer again"
+            )
+        pre_window = float(file.attrs["pre_window"])
         period = float(file.attrs["sampling_period"])
         lsb = float(file.attrs["lsb_V"])
         offset = float(file.attrs["offset_V"])
@@ -268,4 +281,5 @@ def read_digitized(path):
         str(device),
         channels,
         events,
+        pre_window,
     )

@@ -39,6 +39,7 @@ def _append(path, electrodes, number, volts):
         path,
         electrodes,
         DT,
+        10 * DT,
         EventWaveforms(number, 0.0, np.asarray(volts, dtype=float)),
         pulse_edge=["falling"] * len(electrodes),
     )
@@ -130,6 +131,7 @@ def make_empty_readout(path, electrodes):
     with h5py.File(path, "w") as file:
         file.attrs.create("electrodes", electrodes, dtype=h5py.string_dtype())
         file.attrs["dt"] = DT
+        file.attrs["pre_window"] = 10 * DT
         file.attrs.create(
             "pulse_edge", ["falling"] * len(electrodes), dtype=h5py.string_dtype()
         )

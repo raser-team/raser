@@ -31,8 +31,8 @@ When `HPK-Si-PiN` is not present under `work/`, the command runs in place under 
 | `cluster_center` | `(recorded,)` | `float64` | electrode index (0-based) | Amplitude-weighted center position of the cluster (`NaN` when there is no cluster) |
 | `traced` | `(recorded, 1)` | `bool` | None | Whether this event has a stored waveform for this electrode |
 | `above` | `(recorded, 1)` | `bool` | None | Whether the waveform peak reaches `threshold` |
-| `baseline` | `(recorded, 1)` | `float64` | $\text{V}$ | Baseline mean over the first `200` waveform samples |
-| `noise` | `(recorded, 1)` | `float64` | $\text{V}$ | Baseline population standard deviation over the first `200` waveform samples |
+| `baseline` | `(recorded, 1)` | `float64` | $\text{V}$ | Baseline mean over the $N_{\text{base}}$ samples in the pre-window ([definition](../core/reconstruction.md#baseline-subtraction-and-polarity-inversion)) |
+| `noise` | `(recorded, 1)` | `float64` | $\text{V}$ | Baseline population standard deviation over the $N_{\text{base}}$ samples in the pre-window ([definition](../core/reconstruction.md#baseline-subtraction-and-polarity-inversion)) |
 | `amplitude` | `(recorded, 1)` | `float64` | $\text{V}$ | Maximum pulse amplitude above baseline |
 | `ToA` | `(recorded, 1)` | `float64` | $\text{s}$ | Time of arrival over threshold |
 | `ToT` | `(recorded, 1)` | `float64` | $\text{s}$ | Time over threshold |
@@ -73,7 +73,6 @@ The constants below are hardcoded in module source code:
 | Constant name | Value | Unit | Definition location and meaning |
 | --- | --- | --- | --- |
 | `MILLIVOLT` | `1.0e-3` | $\text{V/mV}$ (commented as `V` in code) | `src/raser/stages/reconstruction.py`: multiplier converting `threshold` and `amplitude_threshold` from $\text{mV}$ to $\text{V}$ |
-| `BASELINE_POINTS` | `200` | samples | `src/raser/core/reconstruction/event.py`: number of samples at the start of each waveform used to compute baseline mean and noise standard deviation |
 | `EDGE_SIGN` | `{"rising": 1.0, "falling": -1.0}` | None | `src/raser/core/reconstruction/event_table.py`: polarity multiplier flipping the net waveform into a positive pulse according to the chosen edge |
 
 ### Parsing and Launching Stage Commands (`stage_commands.run`)
@@ -108,7 +107,7 @@ The constants below are hardcoded in module source code:
    - Pass `threshold * MILLIVOLT` and `amplitude_threshold * MILLIVOLT` (in $\text{V}$).
    - If any element of `fractions` lies outside the open interval $(0, 1)$, raise `ValueError: fractions <invalid_list>: a constant fraction lies between 0 and 1`.
    - If the input contains no events, raise `ValueError: the readout holds no event`; inspect the job's `trigger` and upstream outputs and recompute upstream stages if needed.
-   - Call `net_pulse(samples)` on every stored electrode waveform of every event. If the number of samples is `<= 200` (`BASELINE_POINTS`), raise `ValueError: <count> samples, not more than the 200 of the baseline`; check whether the simulation time window or sampling interval `sampling_period` is too short. When the sample count exceeds `200`, subtract the mean of the first `200` samples as `baseline` ($\text{V}$), compute the population standard deviation of the first `200` samples as `noise` ($\text{V}$), multiply by `EDGE_SIGN[edge]` to flip positive, and compute single-electrode features and cross-electrode clusters via `electrode_row` and `cluster`, assembling an `EventTable`.
+   - Call `net_pulse(samples, baseline_points)` on every stored electrode waveform of every event, with `baseline_points` equal to $N_{\text{base}}$. If the number of samples is `<= N_base`, raise `ValueError: <count> samples, not more than the <baseline_points> of the baseline`; check whether the simulation time window or sampling interval `sampling_period` is too short. When the sample count exceeds $N_{\text{base}}$, subtract the mean of the first $N_{\text{base}}$ samples as `baseline` ($\text{V}$), compute the population standard deviation of the first $N_{\text{base}}$ samples as `noise` ($\text{V}$), multiply by `EDGE_SIGN[edge]` to flip positive, and compute single-electrode features and cross-electrode clusters via `electrode_row` and `cluster`, assembling an `EventTable`.
 6. **Write output (`write_event_table(path, table)`)**: Write the `EventTable` to `reconstruction.h5` in one pass.
 
 ## Software Implementation
@@ -137,7 +136,7 @@ The constants below are hardcoded in module source code:
 
 ### Options and Configuration Keys
 
-Only the keys listed below are configurable in this stage; the baseline sample count `200`, millivolt-to-volt conversion factor `1.0e-3` $\text{V/mV}$, and edge polarity multipliers are hardcoded. Settings are stored in the `reconstruction` section of `config.json`, and `--set` and `--scan` use `"section.key"` addresses, such as `--set reconstruction.threshold=15`. The "Value in example" column shows what `examples/HPK-Si-PiN/signal/config.json` sets; if `config.json` is missing a required key, an error is raised naming the missing `"section.key"`.
+Only the keys listed below are configurable in this stage; millivolt-to-volt conversion factor `1.0e-3` $\text{V/mV}$, and edge polarity multipliers are hardcoded. Settings are stored in the `reconstruction` section of `config.json`, and `--set` and `--scan` use `"section.key"` addresses, such as `--set reconstruction.threshold=15`. The "Value in example" column shows what `examples/HPK-Si-PiN/signal/config.json` sets; if `config.json` is missing a required key, an error is raised naming the missing `"section.key"`.
 
 | Section.key | Value in example | Unit | Meaning |
 | --- | --- | --- | --- |

@@ -9,6 +9,9 @@ from raser.core.reconstruction.event import get_CoG
 from raser.core.reconstruction.event import get_ToA
 from raser.core.reconstruction.event import get_ToT
 from raser.core.reconstruction.event import net_pulse
+from raser.core.reconstruction import event_table as event_table_module
+from raser.core.reconstruction.event_table import event_table
+from raser.core.readout.waveforms import EventWaveforms, Waveforms
 
 # a triangle: 2 per bin up to 10 in bin 6, then down again
 TRIANGLE = np.array([0.0, 0, 2, 4, 6, 8, 10, 8, 6, 4, 2, 0, 0])
@@ -96,7 +99,7 @@ def test_net_pulse_is_the_samples_about_the_mean_of_the_first_ones() -> None:
     before = 5.0 + np.tile([1.0, -1.0], 100)
     samples = np.concatenate([before, [5.0, -5.0, -15.0, -5.0, 5.0]])
 
-    net, baseline, noise = net_pulse(samples)
+    net, baseline, noise = net_pulse(samples, 200)
 
     assert (baseline, noise) == pytest.approx((5.0, 1.0))
     assert net[200:] == pytest.approx(np.array([0.0, -10.0, -20.0, -10.0, 0.0]))
@@ -104,4 +107,55 @@ def test_net_pulse_is_the_samples_about_the_mean_of_the_first_ones() -> None:
 
 def test_waveform_without_samples_after_the_baseline_is_an_error() -> None:
     with pytest.raises(ValueError, match="200 samples, not more than the 200"):
-        net_pulse(np.zeros(200))
+        net_pulse(np.zeros(200), 200)
+
+
+def _table(samples, dt, pre_window):
+    waveforms = Waveforms(
+        ["a"],
+        dt,
+        [EventWaveforms(0, 0.0, np.array([samples]), ["a"])],
+        ["rising"],
+        pre_window,
+    )
+    return event_table(waveforms, 0.5, 0.5, (0.5,), ["rising"])
+
+
+def test_baseline_is_taken_from_the_part_before_the_pulse_only() -> None:
+    # 50 bins of 1 ns at 0.25, then a pulse a thousand times larger
+    samples = np.concatenate([np.full(50, 0.25), 1000.0 * TRIANGLE])
+
+    table = _table(samples, 1.0e-9, 50.0e-9)
+
+    assert table.columns["baseline"][0, 0] == 0.25
+    assert table.columns["noise"][0, 0] == 0.0
+
+
+@pytest.mark.parametrize(
+    "pre_window, bins", [(15.0e-9, 240), (240 * 62.5e-12 - 31.25e-12, 239)]
+)
+def test_baseline_holds_the_whole_bins_of_the_part_before_the_pulse(
+    monkeypatch, pre_window, bins
+) -> None:
+    taken = []
+
+    def counted(samples, baseline_points):
+        taken.append(baseline_points)
+        return net_pulse(samples, baseline_points)
+
+    monkeypatch.setattr(event_table_module, "net_pulse", counted)
+
+    _table(np.zeros(300), 62.5e-12, pre_window)
+
+    # 15 ns is exactly 240 bins of 62.5 ps; half a bin less is 239 whole ones
+    assert taken == [bins]
+
+
+def test_part_before_the_pulse_of_one_bin_is_an_error() -> None:
+    with pytest.raises(ValueError) as error:
+        _table(np.zeros(20), 1.0e-9, 1.5e-9)
+
+    assert str(error.value) == (
+        "the baseline before the pulse holds 1 samples of 1e-09 s in "
+        "pre_window 1.5e-09 s: lengthen readout.pre_window_ns"
+    )

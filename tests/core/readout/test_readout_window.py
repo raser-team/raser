@@ -116,3 +116,12 @@ def test_window_is_lengthened_before_and_after_the_currents(tmp_path):
         plain.voltage[0, -1] * math.exp(-DT_S / TAU_S), rel=0.05
     )
     assert np.all(np.diff(tail) < 0)
+
+
+def test_the_file_keeps_the_length_of_the_part_before_the_currents(tmp_path):
+    _write(tmp_path, 1.05e-9, 0.0)
+
+    # 1.05 ns is 11 bins of 100 ps
+    assert read_waveforms(tmp_path / "waveforms.h5").pre_window == pytest.approx(
+        11 * DT_S, rel=1e-12
+    )

@@ -125,7 +125,7 @@ This module uses the keys of the component other than the trigger conditions: `c
 
 ### Input
 
-`readout.h5` of the `readout` node (`readout.<position>.h5` in the same node for multi-position experiments), written by the [electronics readout stage (`stages/readout`)](../stages/readout.md): this module uses attributes `electrodes`, `dt` ($\text{s}$), and `pulse_edge`, and datasets `event`, `t0` ($\text{s}$), `count`, `stored`, `index`, and `voltage` ($\text{V}$).
+`readout.h5` of the `readout` node (`readout.<position>.h5` in the same node for multi-position experiments), written by the [electronics readout stage (`stages/readout`)](../stages/readout.md): this module uses attributes `electrodes`, `dt` ($\text{s}$), `pulse_edge`, and `pre_window` ($\text{s}$), and datasets `event`, `t0` ($\text{s}$), `count`, `stored`, `index`, and `voltage` ($\text{V}$).
 
 Noise-only channels additionally require:
 
@@ -147,6 +147,7 @@ The digitizer stage writes this module's output to `nodes/digitizer/<node_id>/di
 | `offset_V` | `float64` | $\text{V}$ | Center of the range $V_{\text{off}}$ |
 | `bits` | integer | bits | ADC bit depth $N$ |
 | `channels` | integer | count | Number of channels per unit |
+| `pre_window` | `float64` | $\text{s}$ | Pre-window length, copied verbatim from the `readout` file |
 | `pulse_edge` | variable-length string array | none | Pulse direction corresponding one-to-one with `electrodes`, copied verbatim from the `readout` file |
 | `device` | string | none | Name of the digitizer component used |
 

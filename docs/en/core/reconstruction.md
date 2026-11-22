@@ -20,13 +20,15 @@ where:
 - $t_0$: time of the first sample for that electrode (`t0` in `digitizer.h5`, already including clock phase), $\text{s}$;
 - $\Delta t$: sampling period (`sampling_period` in `digitizer.h5`), $\text{s}$;
 - $V_i$: voltage converted back from the code at the $i$-th sample (`samples`), $V_i = (c_i - 2^{N_{\text{bit}}-1} + 0.5)\cdot$`lsb_V`$ + $`offset_V`, $\text{V}$, where $c_i$ is the code and $N_{\text{bit}}$ is the attribute `bits`;
-- $N_{\text{base}}$: number of pre-pulse baseline samples (dimensionless), fixed in code to the constant `BASELINE_POINTS = 200`;
+- $N_{\text{base}} = \lfloor T_{\text{pre}} / \Delta t \rfloor$: number of pre-pulse baseline samples, where $T_{\text{pre}}$ is the attribute `pre_window` of `digitizer.h5` ($\text{s}$). The time of sample $i$ is the start of the readout waveform plus the clock phase $\varphi \in [0, \Delta t)$ plus $i\Delta t$, so the first $N_{\text{base}}$ samples all fall inside the pre-window and do not reach into the pulse;
 - $B$: pre-pulse baseline mean (`baseline`), $\text{V}$;
 - $\sigma_{\text{noise}}$: pre-pulse baseline noise population standard deviation (`noise`), $\text{V}$;
 - $s_{\text{edge}}$: trigger-edge polarity factor (dimensionless), given by `EDGE_SIGN`: $+1.0$ for `"rising"` and $-1.0$ for `"falling"`;
 - $v_i$: net voltage sample after baseline subtraction and inversion to positive polarity (`net`), $\text{V}$.
 
-Baseline subtraction and noise estimation correspond to `net_pulse(samples, baseline_points=BASELINE_POINTS)` in `event.py`, with default `baseline_points = 200`. Sample-time computation and polarity inversion are executed in `event_table` of `event_table.py`; the edge direction of each electrode is determined by `chosen_edges`, which retains the `pulse_edge` recorded for each electrode in the input waveform file (derived by the readout chain from the device and electronics) when `reconstruction.edge` is `null`. When the chosen edge is opposite to the actual direction of an electrode's pulse, that electrode's pulse remains below baseline: `amplitude` is the largest sample above baseline—only of the order of noise or overshoot—and is normally below `threshold`, so `above = False` and the timing and area columns are `NaN`; if an overshoot reaches `threshold`, timing quantities are computed from the overshoot. `InputWaveform` assumes its input `voltage` is already a baseline-subtracted positive pulse. For baseline restoration and noise characterization of semiconductor detector pulses, see Ref. [1].
+Baseline subtraction and noise estimation correspond to `net_pulse(samples, baseline_points)` in `event.py`, where `baseline_points` is required and is computed by `event_table` from the expression above. Sample-time computation and polarity inversion are executed in `event_table` of `event_table.py`; the edge direction of each electrode is determined by `chosen_edges`, which retains the `pulse_edge` recorded for each electrode in the input waveform file (derived by the readout chain from the device and electronics) when `reconstruction.edge` is `null`. When the chosen edge is opposite to the actual direction of an electrode's pulse, that electrode's pulse remains below baseline: `amplitude` is the largest sample above baseline—only of the order of noise or overshoot—and is normally below `threshold`, so `above = False` and the timing and area columns are `NaN`; if an overshoot reaches `threshold`, timing quantities are computed from the overshoot. `InputWaveform` assumes its input `voltage` is already a baseline-subtracted positive pulse. For baseline restoration and noise characterization of semiconductor detector pulses, see Ref. [1].
+
+Limitation: when the digitizer takes the `"brickwall"` response, the frequency-domain truncation over the whole record is non-causal, so ringing from the pulse leading edge leaks into the end of the pre-window, with alternating sign; it has a small effect on the baseline mean but raises the estimate of the baseline noise.
 
 ### Peak Amplitude and Fixed-Threshold Crossing Timing (ToA and ToT)
 
@@ -135,7 +137,6 @@ The table below lists all built-in constants and hard-coded values in `event.py`
 
 | Constant or Hard-Coded Name | Value (by Case) | Unit | Definition Location and Meaning |
 | --- | --- | --- | --- |
-| `BASELINE_POINTS` | `200` | samples (count) | `event.py`: number of leading samples used by `net_pulse` to compute the baseline mean `baseline` and standard deviation `noise` |
 | `EDGE_SIGN` | `"rising"`: `1.0`; `"falling"`: `-1.0` | dimensionless | `event_table.py`: polarity multiplier that flips the baseline-subtracted waveform `net` into a positive pulse |
 | `CFD` | `0.5` | dimensionless | `event.py`: default constant-fraction timing fraction in the `InputWaveform` constructor |
 | `CFD_LABEL` | `"CFD50"` | none | `event.py`: dictionary key name storing the constant-fraction timing result in `InputWaveform.data` |
@@ -155,16 +156,17 @@ Before building the event table, the program determines each electrode's pulse e
 2. **Validate the electrode edge list (`event_table`)**: Check that `edges` satisfies `len(edges) == len(waveforms.electrodes)` and that every entry belongs to `EDGE_SIGN`. Otherwise raise `ValueError("edges <edges>: one of rising or falling for each of <waveforms.electrodes>")`. After validation, build the per-electrode polarity sign list `polarity = [EDGE_SIGN[edge] for edge in edges]` and electrode-name index map `place = {name: k for k, name in enumerate(waveforms.electrodes)}`.
 3. **Validate constant-fraction range (`event_table`)**: Collect `wrong = [part for part in fractions if not 0 < part < 1]`. If `wrong` is non-empty (values $\le 0$, $\ge 1$, or `NaN`), raise `ValueError("fractions <wrong>: a constant fraction lies between 0 and 1")`.
 4. **Validate non-empty event list (`event_table`)**: If `not waveforms.events` (the input `Waveforms` object holds no events), raise `ValueError("the readout holds no event")`.
+5. **Compute the number of baseline samples (`event_table`)**: $N_{\text{base}} = \lfloor T_{\text{pre}}/\Delta t\,(1+10^{-12}) \rfloor$, where $T_{\text{pre}}$ is `waveforms.pre_window` and $\Delta t$ is `waveforms.dt`; the factor $(1+10^{-12})$ prevents quotients that are exactly integers, such as `15e-9/62.5e-12`, from landing at `239.999…` in floating point. If $N_{\text{base}} < 2$, raise `ValueError("the baseline before the pulse holds <N_base> samples of <Ts> s in pre_window <T> s: lengthen readout.pre_window_ns")`, where `<Ts>` is the sampling period and `<T>` is `pre_window`, both in Python's `:g` format.
 
 ### Single-Electrode Baseline Subtraction, Edge Search, and Interpolated Feature Extraction
 
 `event_table` iterates over each event `record` in `waveforms.events` (with total electrode count $W = \text{len}(\text{waveforms.electrodes})$ and sample count $N = \text{record.voltage.shape}[1]$ for the current event), processing electrode waveforms in the following order:
 
 1. **Compute sample times and prefill untraced electrodes**: For each stored electrode, compute the length-$N$ sample-time array `times = t0 + np.arange(N) * waveforms.dt` by Eq. (1), where `t0` is that electrode's `t0` in `digitizer.h5` and `waveforms.dt` is `sampling_period`. Initialize all $W$ electrodes with the untraced default dictionary `untraced`: `traced = False`, `above = False`, and `NaN` for all numeric columns (`baseline`, `noise`, `amplitude`, `ToA`, `ToT`, `CoG`, `area`) and all `len(fractions)` `CFD` values. Electrodes absent from `record.electrodes` (channels whose waveforms were not saved by the readout stage) keep this default state.
-2. **Subtract the leading 200-sample baseline and compute noise (`net_pulse(samples, baseline_points=200)`)**: For each stored electrode `name` (at global column index $k = \text{place}[\text{name}]$) and sample array `samples` in `zip(record.electrodes, record.voltage)`:
+2. **Subtract the baseline of $N_{\text{base}}$ samples in the pre-window and compute noise (`net_pulse(samples, baseline_points)`, with `baseline_points` set to $N_{\text{base}}$)**: For each stored electrode `name` (at global column index $k = \text{place}[\text{name}]$) and sample array `samples` in `zip(record.electrodes, record.voltage)`:
    - Convert `samples` to a `float64` array;
-   - If $\text{len}(\text{samples}) \le \text{baseline\_points}$ (i.e., $N \le 200$), raise `ValueError("<len(samples)> samples, not more than the <baseline_points> of the baseline")`;
-   - Compute the mean `baseline = samples[:200].mean()` and population standard deviation `noise = samples[:200].std()` (`ddof=0`) over the first $200$ points, obtaining `net = samples - baseline`.
+   - If $\text{len}(\text{samples}) \le \text{baseline\_points}$ (i.e., $N \le N_{\text{base}}$), raise `ValueError("<len(samples)> samples, not more than the <baseline_points> of the baseline")`;
+   - Compute the mean `baseline = samples[:baseline_points].mean()` and population standard deviation `noise = samples[:baseline_points].std()` (`ddof=0`) over the first $N_{\text{base}}$ points, obtaining `net = samples - baseline`.
 3. **Invert pulse polarity and locate the peak (`get_amplitude`)**: Multiply the net waveform by the electrode's edge sign, $\text{net}^{+} = \text{polarity}[k] \cdot \text{net}$, and pass it to `electrode_row`. Call `get_amplitude` to find `peak = int(np.argmax(net+))` and `amplitude = net+[peak]`.
 4. **Threshold check and below-threshold rejection (`electrode_row`)**:
    - If `amplitude < threshold`, reject timing and area extraction for this electrode: return `above = False`, the measured `amplitude`, and `NaN` for `ToA`, `ToT`, `CoG`, `area`, and all `len(fractions)` `CFD` entries (the caller merges `traced = True`, `baseline`, and `noise`).
@@ -241,7 +243,7 @@ When the device's `electrodes` is `"pixel"`, the event table carries five more c
 
 ### Module and Function Responsibilities
 
-- `event.py`: implements single-electrode baseline subtraction, linearly interpolated threshold crossings, constant-fraction timing, center-of-gravity time calculation, and the standalone single-event reconstruction class. `net_pulse` computes and subtracts the leading 200-sample baseline and returns baseline noise; `get_amplitude`, `crossing`, `get_ToA`, `get_ToT`, `get_CFD50`, `get_CoG`, and `get_charge` extract features from a single positive waveform; `InputWaveform`, together with `get_conjoined_time`, `get_total_amp`, `get_gravity_center_and_cluster_size`, and `remove_none`, aggregates single-event features across multiple strip channels.
+- `event.py`: implements single-electrode baseline subtraction, linearly interpolated threshold crossings, constant-fraction timing, center-of-gravity time calculation, and the standalone single-event reconstruction class. `net_pulse` computes and subtracts the baseline of the leading $N_{\text{base}}$ samples and returns baseline noise; `get_amplitude`, `crossing`, `get_ToA`, `get_ToT`, `get_CFD50`, `get_CoG`, and `get_charge` extract features from a single positive waveform; `InputWaveform`, together with `get_conjoined_time`, `get_total_amp`, `get_gravity_center_and_cluster_size`, and `remove_none`, aggregates single-event features across multiple strip channels.
 - `pixel_clusters.py`: implements 2D clustering for pixel devices. `pixel_clusters` clusters using eight-neighbor connectivity; `fired_from_table` and `fired_from_deposits` give the pixels above threshold; `pixel_cluster_columns` gives the five event-table columns; `table_from_deposits` gives an event table directly from the deposit file; `draw_hitmap` draws the hit map.
 - `event_table.py`: implements job-level multi-event feature extraction, multi-electrode clustering, and `reconstruction.h5` file I/O. `lobe_area` computes the positive main-lobe integral area containing the peak; `electrode_row` assembles the threshold check and all feature columns for one electrode; `cluster` performs 1D multi-electrode clustering and computes the amplitude-weighted center; `chosen_edges` resolves and validates per-electrode trigger edges; `event_table` reconstructs an entire job's `Waveforms` into an `EventTable`; `write_event_table` and `read_event_table` perform one-shot writing and reading of the HDF5 event table file.
 - `draw.py`: provides `draw_features`, calling `raser.supports.figures` to mark the baseline, amplitude, `ToA` on the threshold line, and `CFD` times for each fraction in `reconstruction.fractions` on the rising-edge segment of the digital waveform, saving them as `.png` and `.pdf`.
@@ -270,7 +272,7 @@ When the device's `electrodes` is `"pixel"`, the event table carries five more c
 
 ## Interface
 
-Users can configure only the 4 settings listed in the table below, written in the `reconstruction` section of `config.json` and modified via `--set` or `--scan`; all other parameters (baseline sample count `BASELINE_POINTS = 200`, edge polarity factors `EDGE_SIGN`, and internal `InputWaveform` thresholds) are hard-coded. For commands and usage, see [../stages/reconstruction.md](../stages/reconstruction.md).
+Users can configure only the 4 settings listed in the table below, written in the `reconstruction` section of `config.json` and modified via `--set` or `--scan`; all other parameters (edge polarity factors `EDGE_SIGN`, and internal `InputWaveform` thresholds) are hard-coded. For commands and usage, see [../stages/reconstruction.md](../stages/reconstruction.md).
 
 ### Reconstruction Configuration Keys and Function Arguments
 
@@ -285,7 +287,7 @@ Users can configure only the 4 settings listed in the table below, written in th
 
 ### Input File Attributes and Datasets
 
-`event_table` receives the digital waveforms of events recorded by `trigger`: it reads the `event` dataset (`(recorded,)`, `int64`, IDs of recorded events) from `trigger.h5` of the `trigger` node, fetches those events from `digitizer.h5` of the `digitizer` node (`digitizer.<position>.h5` for multi-position experiments; see [digitizer](digitizer.md#output-digitizerh5) for the format), and reconstructs them into a `Waveforms(electrodes, dt, events, pulse_edge)` object using the sample times of Eq. (1) and voltages converted back from the codes, with `dt` taken from `sampling_period`; each row of the event table corresponds to one of those events. The attributes and datasets of `digitizer.h5` are:
+`event_table` receives the digital waveforms of events recorded by `trigger`: it reads the `event` dataset (`(recorded,)`, `int64`, IDs of recorded events) from `trigger.h5` of the `trigger` node, fetches those events from `digitizer.h5` of the `digitizer` node (`digitizer.<position>.h5` for multi-position experiments; see [digitizer](digitizer.md#output-digitizerh5) for the format), and reconstructs them into a `Waveforms(electrodes, dt, events, pulse_edge, pre_window)` object using the sample times of Eq. (1) and voltages converted back from the codes, with `dt` taken from `sampling_period` and `pre_window` from the attribute of the same name; each row of the event table corresponds to one of those events. The attributes and datasets of `digitizer.h5` are:
 
 **Input File Attributes**
 
@@ -296,6 +298,7 @@ Users can configure only the 4 settings listed in the table below, written in th
 | `lsb_V` | `float64` | $\text{V}$ | Voltage per code step, used to convert codes back to voltage |
 | `offset_V` | `float64` | $\text{V}$ | Center of the range, used to convert codes back to voltage |
 | `bits` | integer | bits | ADC bit depth $N_{\text{bit}}$ |
+| `pre_window` | `float64` | $\text{s}$ | Pre-window length, copied verbatim from the `readout` file; determines the number of baseline samples $N_{\text{base}}$ |
 | `pulse_edge` | string array | none | Per-electrode pulse-edge direction (`"rising"` or `"falling"`) derived by the readout chain, used by `chosen_edges` as the default edge and comparison baseline |
 | `device` | string | none | Name of the digitizer component used |
 
@@ -338,8 +341,8 @@ The file is written to `nodes/reconstruction/<node>/reconstruction.h5` (`reconst
 | `cluster_pixels` | `(events,)`, `int64` | count | Pixel devices only: number of pixels in the cluster; `0` when the number of clusters is not `1` |
 | `cluster_seed` | `(events,)`, `int64` | none | Pixel devices only: electrode index of the pixel with the largest amplitude in the cluster; the hit time of this layer is taken from that electrode's `ToA`, `CFD`, and other columns; `-1` when the number of clusters is not `1` |
 | `traced` | `(events, len(electrodes))`, `bool` | none | Whether the input `digitizer.h5` stores a waveform for that electrode in the event; when `False`, all numeric columns of that electrode are `NaN` and `above` is `False` |
-| `baseline` | `(events, len(electrodes))`, `float64` | $\text{V}$ | Arithmetic mean of the leading `200` samples of the raw waveform |
-| `noise` | `(events, len(electrodes))`, `float64` | $\text{V}$ | Population standard deviation of the leading `200` samples of the raw waveform |
+| `baseline` | `(events, len(electrodes))`, `float64` | $\text{V}$ | Arithmetic mean of the leading $N_{\text{base}}$ samples of the raw waveform |
+| `noise` | `(events, len(electrodes))`, `float64` | $\text{V}$ | Population standard deviation of the leading $N_{\text{base}}$ samples of the raw waveform |
 | `amplitude` | `(events, len(electrodes))`, `float64` | $\text{V}$ | Maximum sample value after baseline subtraction and polarity inversion according to `edge` |
 | `above` | `(events, len(electrodes))`, `bool` | none | Whether the pulse reaches `threshold` (`False` when no waveform is stored or `amplitude < threshold`; when `False`, `ToA`, `ToT`, `CoG`, `area`, and `CFD` are all `NaN`) |
 | `ToA` | `(events, len(electrodes))`, `float64` | $\text{s}$ | Linearly interpolated leading-edge crossing time at `threshold` (`NaN` if no crossing is found or `above` is false) |

@@ -88,6 +88,7 @@ def test_an_electrode_gives_the_same_codes_whatever_else_the_event_stores(tmp_pa
             readout,
             ["a", "b", "c"],
             50e-12,
+            500e-12,
             EventWaveforms(
                 3, 0.0, np.array([waveform[name] for name in stored]), stored
             ),
@@ -104,6 +105,7 @@ def test_an_electrode_gives_the_same_codes_whatever_else_the_event_stores(tmp_pa
             tmp_path / "plots",
             lambda event: [],
         )
+        assert read_digitized(out).pre_window == 500e-12  # the readout file's
         event = read_digitized(out).events[0]
         results[len(stored)] = dict(zip(event.electrodes, event.code, strict=True))
     np.testing.assert_array_equal(results[3]["c"], results[1]["c"])
@@ -118,6 +120,7 @@ def _write_readout(tmp_path):
             readout,
             ["a", "b"],
             50e-12,
+            500e-12,
             EventWaveforms(
                 number,
                 0.0,

@@ -51,6 +51,7 @@ where its crossing is not found.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import h5py
@@ -185,6 +186,15 @@ def event_table(waveforms, threshold, amplitude_threshold, fractions, edges):
         raise ValueError(f"fractions {wrong}: a constant fraction lies between 0 and 1")
     if not waveforms.events:
         raise ValueError("the readout holds no event")
+    # the factor keeps a quotient that is an integer, such as 15e-9 / 62.5e-12,
+    # from falling to 239.999... in floating point
+    n_base = math.floor(waveforms.pre_window / waveforms.dt * (1 + 1e-12))
+    if n_base < 2:
+        raise ValueError(
+            f"the baseline before the pulse holds {n_base} samples of "
+            f"{waveforms.dt:g} s in pre_window {waveforms.pre_window:g} s: "
+            "lengthen readout.pre_window_ns"
+        )
     width = len(waveforms.electrodes)
     nothing = float("nan")
     columns: dict[str, list] = {name: [] for name in (*EVENT_COLUMNS, *ELECTRODE_COLUMNS, "CFD")}
@@ -196,7 +206,7 @@ def event_table(waveforms, threshold, amplitude_threshold, fractions, edges):
         constant = [[nothing] * len(fractions) for _ in range(width)]
         for name, samples in zip(record.electrodes, record.voltage):
             k = place[name]
-            net, baseline, noise = net_pulse(samples)
+            net, baseline, noise = net_pulse(samples, n_base)
             row, constant[k] = electrode_row(times, waveforms.dt, polarity[k] * net, threshold, fractions)
             rows[k] = {**row, "traced": True, "baseline": baseline, "noise": noise}
         size, center = cluster([row["amplitude"] for row in rows], threshold, amplitude_threshold)

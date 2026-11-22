@@ -31,8 +31,8 @@ raser signal HPK-Si-PiN --scan field.voltage=100,200 -s 2 --set deposit.events_p
 | `cluster_center` | `(recorded,)` | `float64` | 电极下标（从 `0` 起） | 团簇的幅度加权中心位置（无团簇时为 `NaN`） |
 | `traced` | `(recorded, 1)` | `bool` | 无 | 该事例是否存有该电极的波形 |
 | `above` | `(recorded, 1)` | `bool` | 无 | 波形峰值是否达到 `threshold` |
-| `baseline` | `(recorded, 1)` | `float64` | $\text{V}$ | 波形前 `200` 点基线均值 |
-| `noise` | `(recorded, 1)` | `float64` | $\text{V}$ | 波形前 `200` 点基线总体标准差 |
+| `baseline` | `(recorded, 1)` | `float64` | $\text{V}$ | 波形前段内 $N_{\text{base}}$ 个点的基线均值（[定义](../core/reconstruction.md#基线扣除与极性翻转)） |
+| `noise` | `(recorded, 1)` | `float64` | $\text{V}$ | 波形前段内 $N_{\text{base}}$ 个点的基线总体标准差（[定义](../core/reconstruction.md#基线扣除与极性翻转)） |
 | `amplitude` | `(recorded, 1)` | `float64` | $\text{V}$ | 基线以上最大脉冲幅度 |
 | `ToA` | `(recorded, 1)` | `float64` | $\text{s}$ | 过阈到达时间 |
 | `ToT` | `(recorded, 1)` | `float64` | $\text{s}$ | 过阈持续时间 |
@@ -73,7 +73,6 @@ raser reco examples/HPK-Si-PiN/signal --set reconstruction.threshold=15 --set re
 | 常数名 | 值 | 单位 | 定义位置与含义 |
 | --- | --- | --- | --- |
 | `MILLIVOLT` | `1.0e-3` | $\text{V/mV}$（代码注释标为 `V`） | `src/raser/stages/reconstruction.py`：把 `threshold` 与 `amplitude_threshold` 从 $\text{mV}$ 换算为 $\text{V}$ 的乘子 |
-| `BASELINE_POINTS` | `200` | 采样点 | `src/raser/core/reconstruction/event.py`：每条波形开头用于求基线均值与噪声标准差的采样点数 |
 | `EDGE_SIGN` | `{"rising": 1.0, "falling": -1.0}` | 无 | `src/raser/core/reconstruction/event_table.py`：把净波形按所选方向翻成正向脉冲的极性乘子 |
 
 ### 环节命令的解析与启动（`stage_commands.run`）
@@ -108,7 +107,7 @@ raser reco examples/HPK-Si-PiN/signal --set reconstruction.threshold=15 --set re
    - 传入 `threshold * MILLIVOLT` 与 `amplitude_threshold * MILLIVOLT`（单位 $\text{V}$）。
    - `fractions` 里有不在 $(0, 1)$ 开区间内的元素时抛出 `ValueError: fractions <非法列表>: a constant fraction lies between 0 and 1`。
    - 输入没有事例时抛出 `ValueError: the readout holds no event`；检查对应作业的 `trigger` 及上游输出，必要时重算上游。
-   - 对每个事例每个存了波形的电极调用 `net_pulse(samples)`。采样点数 `<= 200`（`BASELINE_POINTS`）时抛出 `ValueError: <点数> samples, not more than the 200 of the baseline`，检查模拟时间窗长度与采样间隔 `sampling_period` 是否太短。点数大于 `200` 时扣除前 `200` 点均值 `baseline`（$\text{V}$）、求前 `200` 点总体标准差 `noise`（$\text{V}$），乘以 `EDGE_SIGN[edge]` 翻正后由 `electrode_row` 与 `cluster` 算出单电极特征和跨电极团簇，组成 `EventTable`。
+   - 对每个事例每个存了波形的电极调用 `net_pulse(samples, baseline_points)`，`baseline_points` 为 $N_{\text{base}}$。采样点数 `<= N_base` 时抛出 `ValueError: <点数> samples, not more than the <baseline_points> of the baseline`，检查模拟时间窗长度与采样间隔 `sampling_period` 是否太短。点数大于 $N_{\text{base}}$ 时扣除前 $N_{\text{base}}$ 点均值 `baseline`（$\text{V}$）、求前 $N_{\text{base}}$ 点总体标准差 `noise`（$\text{V}$），乘以 `EDGE_SIGN[edge]` 翻正后由 `electrode_row` 与 `cluster` 算出单电极特征和跨电极团簇，组成 `EventTable`。
 6. **写出（`write_event_table(path, table)`）**：把 `EventTable` 一次写进 `reconstruction.h5`。
 
 ## 软件实现
@@ -137,7 +136,7 @@ raser reco examples/HPK-Si-PiN/signal --set reconstruction.threshold=15 --set re
 
 ### 选项与配置键
 
-本环节能设的只有下表这些；基线采样点数 `200`、毫伏到伏的换算因子 `1.0e-3` $\text{V/mV}$、方向极性乘子都写死在代码里。设置写在 `config.json` 的 `reconstruction` 段，`--set`、`--scan` 用“段.键”作地址，如 `--set reconstruction.threshold=15`。“示例里的值”是 `examples/HPK-Si-PiN/signal/config.json` 写的值；`config.json` 缺了要用的键时报错，指出缺的“段.键”。
+本环节能设的只有下表这些；毫伏到伏的换算因子 `1.0e-3` $\text{V/mV}$、方向极性乘子都写死在代码里。设置写在 `config.json` 的 `reconstruction` 段，`--set`、`--scan` 用“段.键”作地址，如 `--set reconstruction.threshold=15`。“示例里的值”是 `examples/HPK-Si-PiN/signal/config.json` 写的值；`config.json` 缺了要用的键时报错，指出缺的“段.键”。
 
 | 段.键 | 示例里的值 | 单位 | 含义 |
 | --- | --- | --- | --- |

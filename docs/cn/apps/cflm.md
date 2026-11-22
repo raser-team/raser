@@ -55,7 +55,7 @@ $$x = \frac{l_x}{2} - Y + (i + 0.5)\,l_x, \qquad y = \frac{l_y}{2} + Z - \bigl(1
 1. **模拟束团丢失电子并写出 24 块焊盘沉积（`deposit` 节点，`deposits.deposits`）**：构造单焊盘 `Detector`，读取 `src/raser_app/cflm/cflm_p1.json`，调用 `cflm_p1.simulate_bunches(g4_dic, seed, my_d)` 运行 Geant4 `FTFP_BERT` 物理列表与 `G4StepLimiterPhysics`。在 `bunch_deposits` 中遍历每个束团和全部 `24` 块焊盘，跳过 `energy <= 0` 的占位步（无沉积焊盘在 `simulate_bunches` 中填 `[[0, 0, 0]]` 和 `[0]`），对其余有效步用式 (2) 的 `pad_frame` 转为焊盘局部坐标 $(x, y, z)$，将 `detector` 记为 `<side>_<i>_<j>`、时刻 `t` 记为 `0.0` $\text{s}$，调用 `ionized_pairs(event, my_d.material)`（默认 `fano=True`）抽样电子-空穴对数 `pairs`，写入 `deposit` 节点的 `deposit.h5`。若所有束团在 24 块焊盘中均无有效沉积（`not found.events`），抛出 `Ended` 提前结束作业。
 2. **复用或补算单焊盘共享场（`field` 节点）**：复用单焊盘器件在 `work/<det_name>/field/<节点号>/` 下的电场、权重场与等效电路参数，由全部 `24` 块焊盘共用；找不到场时，所需的场在作业开始前补算，存进器件 project 的 `field/`。
 3. **24 路载流子漂移（`current` 节点）**：在作业的 `current` 节点内遍历 `24` 个焊盘位置 `<pos>`（`I_-3_0` 至 `II_2_1`），先检查 `deposit.h5` 中是否存在 `detector == <pos>` 的沉积步；若该焊盘在本作业无沉积，不写对应的 `.h5` 文件；若有沉积，调用 `write_induced_currents(..., detector=position)` 仅漂移属于该焊盘的沉积步，写出 `current.<pos>.h5`（当 `current.plots > 0` 时在 `nodes/current/<节点号>/plots/<pos>/` 下绘图）。
-4. **24 路电子学读出、数字化、触发与事件重建（`readout`、`digitizer`、`trigger`、`reconstruction` 节点）**：各环节每个作业 `1` 个节点；对每个有上游 `.h5` 文件的位置 `<pos>`，依次在各自节点内执行：`readout` 调用 `ngspice` 求解前端放大器链输出电压波形并叠加频域热噪声，写出 `readout.<pos>.h5`；`digitizer` 按模拟带宽、采样率与量化位数把波形量化为码，写出 `digitizer.<pos>.h5`（格式见[`stages/digitizer`](../stages/digitizer.md)）；`trigger` 按触发条件判选被记录的事例，写出含事例号数据集 `event`（`int64`）的 `trigger.<pos>.h5`；`reconstruction` 读 `digitizer.<pos>.h5` 里被 `trigger.<pos>.h5` 记录的事例，按 `lsb_V`、`offset_V` 把量化码换回电压（$\text{V}$，采样时刻为 `t0 + k·sampling_period`），扣除前 `200` 点基线提取幅度与定时特征，将找到团簇种子的事例记为 `selected`，写出 `reconstruction.<pos>.h5`。无上游文件的焊盘不写对应 `.h5` 文件。
+4. **24 路电子学读出、数字化、触发与事件重建（`readout`、`digitizer`、`trigger`、`reconstruction` 节点）**：各环节每个作业 `1` 个节点；对每个有上游 `.h5` 文件的位置 `<pos>`，依次在各自节点内执行：`readout` 调用 `ngspice` 求解前端放大器链输出电压波形并叠加频域热噪声，写出 `readout.<pos>.h5`；`digitizer` 按模拟带宽、采样率与量化位数把波形量化为码，写出 `digitizer.<pos>.h5`（格式见[`stages/digitizer`](../stages/digitizer.md)）；`trigger` 按触发条件判选被记录的事例，写出含事例号数据集 `event`（`int64`）的 `trigger.<pos>.h5`；`reconstruction` 读 `digitizer.<pos>.h5` 里被 `trigger.<pos>.h5` 记录的事例，按 `lsb_V`、`offset_V` 把量化码换回电压（$\text{V}$，采样时刻为 `t0 + k·sampling_period`），扣除前段内的基线提取幅度与定时特征，将找到团簇种子的事例记为 `selected`，写出 `reconstruction.<pos>.h5`。无上游文件的焊盘不写对应 `.h5` 文件。
 5. **统计（`analysis` 节点）**：每个扫描点 `1` 个 `analysis` 节点。局限：`analysis` 现在只统计单电极的结果，多电极、多位置的统计（例如 telescope 的残差、cflm 各焊盘的汇总）还没做。
 
 此外，`src/raser_app/cflm/` 下还包含一组独立于 `raser cflm` 仿真链的次级粒子分布辅助脚本：
@@ -146,7 +146,7 @@ raser cflm --scan field.voltage=-300,-500
 | `BeamOn`, `NumofGun`（`cflm_p1.json`） | `1`, `3` | 束团, 粒子 | 每作业模拟的束团数与每束团同时发射的丢失电子数 |
 | `par_type`, `par_energy`, `par_in`, `par_direct`, `maxStep`（`cflm_p1.json`） | `"e-"`, `[21.906, 25.9726, 24.7832]`, 3 组起点与方向, `2` | 无, $\text{GeV}$, $\text{mm}$, 无量纲, $\mu\text{m}$ | 丢失电子粒子类型、各粒子能量、起点坐标、动量方向与焊盘内最大步长 |
 
-其余参数（24 个焊盘位置命名 `I_-3_0` 至 `II_2_1` 及 6 行 2 列索引范围、世界立方体半边长 `2000 mm`、绕 $Z$ 轴旋转角 $3\pi/2\ \text{rad}$、沉积步固定时刻 `0.0 s`、电离对数 Fano 抽样开关 `fano = True`、漂移时间窗与时间步长档位、`ngspice` 噪声分析频率范围与 `27 °C` 温度、重建基线点数 `200`）全部写死在代码里。
+其余参数（24 个焊盘位置命名 `I_-3_0` 至 `II_2_1` 及 6 行 2 列索引范围、世界立方体半边长 `2000 mm`、绕 $Z$ 轴旋转角 $3\pi/2\ \text{rad}$、沉积步固定时刻 `0.0 s`、电离对数 Fano 抽样开关 `fano = True`、漂移时间窗与时间步长档位、`ngspice` 噪声分析频率范围与 `27 °C` 温度）全部写死在代码里。
 
 ## 输出
 

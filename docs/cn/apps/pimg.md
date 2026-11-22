@@ -72,7 +72,7 @@ raser pimg
 | `readout.amplifier` | `"SantaCruz+Gali52+Termination50"` | 无 | 前端放大器与终端负载组件链 |
 | `reconstruction.threshold`, `reconstruction.amplitude_threshold` | `10.0`, `10.0` | $\text{mV}$ | 像素过阈阈值与团簇种子通道幅度阈值（在被 `trigger` 记录的事例里找到种子的记为 `selected`） |
 
-其余底层物理与数值参数（材料平均电离能与 Fano 因子、2D/3D 感应电流时间箱宽 `50e-12 s` 与漂移时间步长 `20e-12 s`、聚类邻域距离容差 `1e-7 um^2` 与重建基线采样点数 `200`）写死在代码里。
+其余底层物理与数值参数（材料平均电离能与 Fano 因子、2D/3D 感应电流时间箱宽 `50e-12 s` 与漂移时间步长 `20e-12 s`、聚类邻域距离容差 `1e-7 um^2`）写死在代码里。
 
 ## 输出
 

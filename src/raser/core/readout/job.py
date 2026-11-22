@@ -236,6 +236,7 @@ def write_waveforms(
             waveforms_path,
             outputs,
             currents.dt,
+            before * currents.dt,
             EventWaveforms(
                 event.event, event.t0 - before * currents.dt, voltage, names
             ),

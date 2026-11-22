@@ -300,8 +300,8 @@ $$R_{\text{core}} = R(\mathcal{C}) \tag{17}$$
 | `ToA` | `(selected,)`, `float64` | $\text{s}$ | 脉冲越过 `threshold` 的到达时刻（未找到时为 `NaN`） |
 | `ToT` | `(selected,)`, `float64` | $\text{s}$ | 脉冲在 `threshold` 以上的持续时间 |
 | `amplitude` | `(selected,)`, `float64` | $\text{V}$ | 基线以上的最大脉冲幅度 |
-| `baseline` | `(selected,)`, `float64` | $\text{V}$ | 波形开头 `200` 个采样点的算术平均值 |
-| `noise` | `(selected,)`, `float64` | $\text{V}$ | 波形开头 `200` 个采样点的总体标准差 |
+| `baseline` | `(selected,)`, `float64` | $\text{V}$ | 前段内 [$N_{\text{base}}$](../core/reconstruction.md#基线扣除与极性翻转) 个采样点的算术平均值 |
+| `noise` | `(selected,)`, `float64` | $\text{V}$ | 前段内 [$N_{\text{base}}$](../core/reconstruction.md#基线扣除与极性翻转) 个采样点的总体标准差 |
 | `truth` | `(selected,)`, `float64` | $\text{s}$ | 事例在 `deposit.h5` 中最早沉积步的时刻 |
 | `CoG` | `(selected,)`, `float64` | $\text{s}$ | 过阈区间内按采样值加权的时间重心 |
 | `CFD<percent>` | `(selected,)`, `float64` | $\text{s}$ | 恒比定时时刻，`<percent>` 为 `round(100 * part)`（未找到时为 `NaN`） |
