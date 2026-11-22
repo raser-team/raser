@@ -20,7 +20,9 @@ Keep changes small, explicit, and verifiable.
 ## 📐 Design before code
 
 - `docs/cn/` mirrors `src/raser/`: the page of `src/raser/<dir>/<name>` is
-  `docs/cn/<dir>/<name>.md`. Read that page before changing the code.
+  `docs/cn/<dir>/<name>.md`; the pages of `src/raser_bench/<name>` and
+  `src/raser_app/<name>` are `docs/cn/bench/<name>.md` and
+  `docs/cn/apps/<name>.md`. Read that page before changing the code.
 - A change to an interface, a file format, a default result, or a new concept
   is written into its page first; the page change is reviewed no later than
   the pull request that carries the code.
@@ -44,7 +46,7 @@ Keep changes small, explicit, and verifiable.
 - `src/raser/stages/` connects each stage to the lifecycle: options, the files
   a slice reads and writes, and the call into `core`.
 - `src/raser/lifecycle/` runs experiments: folders, records, scans, jobs.
-- `src/raser/bench/` and `src/raser/apps/` contain runnable experiments; they
+- `src/raser_bench/` and `src/raser_app/` contain runnable experiments; they
   may use stages, lifecycle, core, components and supports, and do not import
   each other.
 - `src/raser/components/` contains reusable device, source, laser, Geant4

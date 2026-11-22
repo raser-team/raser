@@ -29,7 +29,7 @@ raser deposit examples/HPK-Si-PiN/signal -s 2 --set deposit.events_per_job=200 -
 raser signal HPK-Si-PiN --scan field.voltage=100,200 -s 2 --set deposit.events_per_job=200 --seed 1
 ```
 
-`work/` 下没有 `HPK-Si-PiN` 时，命令在 `examples/HPK-Si-PiN/` 下就地运行。`deposit` 环节使用示例里的 `decay/Sr90` 放射源、`device_alone` 装置和 `fano = true`，为 `100 V`（视图 `points/voltage_100/deposit`）与 `200 V`（视图 `points/voltage_200/deposit`）两个扫描点收集有效事例并写入各自的 `deposit` 节点。以单个作业收集 `200` 个有效事例写出的 `deposit.h5` 为例，文件属性（`attrs`）为 `generated_events = 7359`（Geant4 总生成事例数，单位为事例）、`recorded_events = 200`（器件内非零沉积的有效记录事例数，单位为事例）、`generated_fraction = 0.017037086855465844`（`Sr90` 的 `15` 度发射半锥角对应立体角占比，无量纲；能量窗属性 `edep_min`、`edep_max` 只在设置 `deposit.edep_min`、`deposit.edep_max` 时写出），数据集（`datasets`）结构与示例形状如下：
+`work/` 下没有 `HPK-Si-PiN` 时，命令在 `examples/HPK-Si-PiN/` 下就地运行。`deposit` 环节使用示例里的 `decay/Sr90` 放射源、`device_alone` 装置和 `fano = true`，为 `100 V`（视图 `points/voltage_100/deposit`）与 `200 V`（视图 `points/voltage_200/deposit`）两个扫描点收集有效事例并写入各自的 `deposit` 节点。以单个作业收集 `200` 个有效事例写出的 `deposit.h5` 为例，文件属性（`attrs`）为 `generated_events = 7359`（Geant4 总生成事例数，单位为事例）、`recorded_events = 200`（器件内非零沉积的有效记录事例数，单位为事例）、`generated_fraction = 0.017037086855465844`（`Sr90` 的 `15` 度发射半锥角对应立体角占比，无量纲）、`require = "any"`（符合条件逻辑式，各槽位能量窗属性 `edep_min.<槽位>`、`edep_max.<槽位>` 与时间窗属性 `coincidence_window_ns` 只在设置对应值时写出），数据集（`datasets`）结构与示例形状如下：
 
 | 数据集名 | 示例形状 | 类型 | 单位 | 含义 |
 | --- | --- | --- | --- | --- |
@@ -46,7 +46,7 @@ raser signal HPK-Si-PiN --scan field.voltage=100,200 -s 2 --set deposit.events_p
 
 ### 按记录事例或生成事例运行与零事例提前结束
 
-单个作业在 `deposit.events_per_job` 与 `deposit.generated_per_job` 之间二选一。使用 `deposit.events_per_job` 时，粒子源持续生成事例，直到器件内总沉积能量非零且满足 `deposit.edep_min`/`deposit.edep_max` 能量窗的记录事例数达到目标值（最多生成 `deposit.generated_limit` 个源事例）；使用 `deposit.generated_per_job` 时，粒子源固定生成指定数目的源事例后停止，实际记录的有效事例数可少于该值甚至为 `0`。
+单个作业在 `deposit.events_per_job` 与 `deposit.generated_per_job` 之间二选一。使用 `deposit.events_per_job` 时，粒子源持续生成事例，直到满足记录条件（各槽位有源层内总沉积能量非零且落在各自能量窗内、通过 `deposit.require` 与 `deposit.coincidence_window_ns` 判选）的记录事例数达到目标值（最多生成 `deposit.generated_limit` 个源事例）；使用 `deposit.generated_per_job` 时，粒子源固定生成指定数目的源事例后停止，实际记录的有效事例数可少于该值甚至为 `0`。
 
 当单个作业录得的有效事例数为 `0`（例如用 `deposit.generated_per_job` 生成少量事例且无一击中器件或落入能量窗）时，`deposit` 环节仍会在节点内写出记录了 `generated_events` 的 `deposit.h5`，随后抛出 `Ended` 提前结束本作业。生命周期捕获该异常后记录该次提前结束状态，下游环节随之跳过对该作业的计算。
 
@@ -70,7 +70,7 @@ raser dep examples/HPK-Si-PiN/signal --set deposit.events_per_job=5 -g4_vis --g4
 
 | 常数名 | 值 | 单位 | 定义位置与含义 |
 | --- | --- | --- | --- |
-| `DEPOSIT_KEYS` | `("source", "g4setup", "events_per_job", "generated_per_job", "generated_limit", "edep_min", "edep_max", "fano", "plots")` | 无 | `stages/chain.py`，归属 `deposit` 环节计算节点指纹的设置键元组 |
+| `DEPOSIT_KEYS` | `("source", "g4setup", "events_per_job", "generated_per_job", "generated_limit", "edep_min", "edep_max", "require", "coincidence_window_ns", "fano", "plots")` | 无 | `stages/chain.py`，归属 `deposit` 环节计算节点指纹的设置键元组（另含按槽位覆盖的 `<槽位>.edep_min`、`<槽位>.edep_max`） |
 | `COMPONENTS` | `{"source": "deposit", "g4setup": "deposit"}` | 无 | `stages/chain.py`，标准仿真链中 `deposit` 环节加载的设置键到组件目录（`components/deposit/`）的映射 |
 | `READERS` | `{"g4setup": read_g4setup}` | 无 | `stages/chain.py`，非 JSON 组件类别的自定义读取器映射 |
 | `STAGES["deposit"]` | `("dep", "the energy deposited by the source", (chain.deposit_arguments,))` | 无 | `stages/stage_commands.py`，`raser deposit` 子命令的短别名、帮助说明与命令行选项挂载函数元组 |
@@ -139,8 +139,9 @@ raser dep examples/HPK-Si-PiN/signal --set deposit.events_per_job=5 -g4_vis --g4
    - 若 `drawn != 0`，在本环节节点输出目录 `nodes/deposit/<节点号>/` 下准备图像输出路径 `g4_geometry`，返回该路径与 `drawn`。
 5. **调用 `write_simulated_deposits` 模拟并落盘**：
    - 调用 `output(kwargs, "deposit")` 取得本环节节点目录 `nodes/deposit/<节点号>/` 下的 `deposit.h5` 输出路径。
-   - 调用 `recorded = write_simulated_deposits(output(kwargs, "deposit"), my_d, files["source"], files.get("g4setup"), None if events is None else int(events), kwargs["seed"], kwargs.get("edep_min"), kwargs.get("edep_max"), kwargs["fano"], None if generated is None else int(generated), GENERATED_LIMIT if limit is None else int(limit), *_picture(kwargs))`。
-   - `write_simulated_deposits` 按 `files["source"]["kind"]` 执行 Geant4 输运（`"beam"`、`"decay_source"`）或直线最小电离粒子计算（`"toy_mip"`），按 `edep_min`/`edep_max` 筛选有效事例并调用 `ionized_pairs` 转化为电子-空穴对，将结果写入 `deposit.h5`，返回记录事例数 `recorded`。
+   - 按各槽位构造 `windows`（每个槽位默认取 `(deposit.edep_min, deposit.edep_max)`，若给了 `deposit.<槽位>.edep_min` 或 `deposit.<槽位>.edep_max` 则覆盖对应一侧），读取 `require = kwargs["require"]` 与 `coincidence_window_ns = kwargs.get("coincidence_window_ns")`。
+   - 调用 `recorded = write_simulated_deposits(output(kwargs, "deposit"), devices, files["source"], files.get("g4setup"), None if events is None else int(events), kwargs["seed"], windows, require, coincidence_window_ns, kwargs["fano"], None if generated is None else int(generated), GENERATED_LIMIT if limit is None else int(limit), *_picture(kwargs))`（单器件时 `devices` 为 `{"Device": my_d}`）。
+   - `write_simulated_deposits` 按 `files["source"]["kind"]` 执行 Geant4 输运（`"beam"`、`"decay_source"`）或直线最小电离粒子计算（`"toy_mip"`），按 `windows`、`require` 与 `coincidence_window_ns` 筛选有效事例并调用 `ionized_pairs` 转化为电子-空穴对，将结果写入 `deposit.h5`，返回记录事例数 `recorded`。
 6. **判定记录事例数并完成节点落盘**：
    - 若 `not recorded`（即 `recorded == 0`），执行 `raise Ended`。生命周期捕获 `Ended` 后记录提前结束状态，并跳过本作业后续所有环节。
    - 若 `recorded > 0`，`deposits(kwargs)` 返回 `None`，生命周期将写完的 `.part` 节点改为正式节点目录 `nodes/deposit/<节点号>/`（内含 `node.json`），并更新 `points.json` 与视图软链接 `points/<点名>/deposit/<作业号>`。
@@ -158,7 +159,7 @@ raser dep examples/HPK-Si-PiN/signal --set deposit.events_per_job=5 -g4_vis --g4
 
 | 数据结构 | 字段名 | 类型或固定值 | 单位 | 含义 |
 | --- | --- | --- | --- | --- |
-| `files["g4setup"]`（`read_g4setup` 返回值） | `G4SETUP` 各键 | `dict` | `μm`、度、`g/cm^3` | 装置脚本导出的 `G4SETUP` 字典项（含 `maxstep`、`source`、`object` 等） |
+| `files["g4setup"]`（`read_g4setup` 返回值） | `G4SETUP` 各键 | `dict` | `μm`、度、`g/cm^3` | 装置脚本导出的 `G4SETUP` 字典项（含 `maxstep`、`along_beam`、`object` 等） |
 | `files["g4setup"]`（`read_g4setup` 返回值） | `"file"` | `str` | 无 | 传入的 `deposit.g4setup` 组件名称或 `.py` 文件路径 |
 | `files["g4setup"]`（`read_g4setup` 返回值） | `"sha256"` | `str` | 无 | 装置脚本文件字节流的 64 位十六进制 SHA-256 摘要 |
 | `kwargs`（`deposits` 入参字典） | `"det_name"` | `str` | 无 | 探测器名称，传给 `Detector(det_name, files["device"])` |
@@ -166,25 +167,29 @@ raser dep examples/HPK-Si-PiN/signal --set deposit.events_per_job=5 -g4_vis --g4
 | `kwargs`（`deposits` 入参字典） | `"seed"` | `int` | 无 | 生命周期为本环节派生的随机种子（$[1, 2^{31}-1]$） |
 | `kwargs`（`deposits` 入参字典） | `"job_index"` | `int \| None` | 无 | 当前作业号（从 `0` 起，缺省或 `None` 时 `_job` 取 `0`） |
 | `kwargs`（`deposits` 入参字典） | `"_run_path"` | `str` | 无 | 当前运行目录路径（`-g4_vis` 离屏模式下写出 `g4_geometry.png` 的目录） |
-| `kwargs`（`deposits` 入参字典） | `DEPOSIT_KEYS` 各键 | `str \| int \| float \| bool \| None` | 事例、`MeV` | `config.json` 中 `deposit` 段与命令行合并后的本环节设置值（见下节接口表） |
+| `kwargs`（`deposits` 入参字典） | `DEPOSIT_KEYS` 各键及 `<槽位>.edep_min`、`<槽位>.edep_max` | `str \| int \| float \| bool \| None` | 事例、`MeV`、`ns` | `config.json` 中 `deposit` 段与命令行合并后的本环节设置值（见下节接口表） |
 | `kwargs`（`deposits` 入参字典） | `"g4_vis"`, `"g4_vis_driver"` | `bool`, `str` | 无 | 当次运行的可视化开关与 Geant4 驱动名 |
 
 ## 接口
 
 ### 命令行选项与配置键
 
-使用者在本环节能设的只有下表列出的参数、命令行选项与 `config.json` 中 `deposit` 段的配置键（共用运行参数 `-s`、`--seed`、`--same-seeds`、`-b`、`-t`、`-mem`、`--dry-run`、`--scan`、`--set` 见 [命令行接口（`raser`）](../cli.md) 和 [实验、扫描点与种子](../lifecycle/experiments.md)）。`--set` 与 `--scan` 使用“段.键”作地址（如 `--set deposit.events_per_job=200`、`--scan deposit.source=decay/Sr90,bunch`）。表外参数（如环节名 `"deposit"`、常规运行离屏驱动 `TSG_OFFSCREEN`、节点路径与图像文件名 `g4_geometry.png`）都写死在代码里。除 `-g4_vis` 和 `--g4-vis-driver` 仅用于当次运行外，其余设置均来自 `config.json` 的 `deposit` 段并计入 `deposit` 节点的指纹与 `node.json`。改其中任何一个，包括 `deposit.plots`，`deposit` 及全部下游都算成新节点。表里配置键的“示例里的值”是 `examples/HPK-Si-PiN/signal/config.json` 写的值，括号里是别的示例写的不同值；`config.json` 缺了要用的键时报错，指出缺的“段.键”。命令行选项一行写的是不给这个选项时的取值。
+使用者在本环节能设的只有下表列出的参数、命令行选项与 `config.json` 中 `deposit` 段的配置键（共用运行参数 `-s`、`--seed`、`--same-seeds`、`-b`、`-t`、`-mem`、`--dry-run`、`--scan`、`--set` 见 [命令行接口（`raser`）](../cli.md) 和 [实验、扫描点与种子](../lifecycle/experiments.md)）。`--set` 与 `--scan` 使用“段.键”作地址（如 `--set deposit.events_per_job=200`、`--scan deposit.source=decay/Sr90,bunch`）。表外参数（如环节名 `"deposit"`、常规运行离屏驱动 `TSG_OFFSCREEN`、节点路径与图像文件名 `g4_geometry.png`）都写死在代码里。除 `-g4_vis` 和 `--g4-vis-driver` 仅用于当次运行外，其余设置均来自 `config.json` 的 `deposit` 段并计入 `deposit` 节点的指纹与 `node.json`。改其中任何一个，包括 `deposit.plots`，`deposit` 及全部下游都算成新节点。表里配置键的“示例里的值”是 `examples/HPK-Si-PiN/signal/config.json` 写的值，括号里是别的示例写的不同值；这些键（含 `deposit.require`、`deposit.coincidence_window_ns`、`deposit.edep_min`、`deposit.edep_max`）都要在 `config.json` 里写出，缺键报错并指出缺的“段.键”（按槽位覆盖的 `deposit.<槽位>.edep_min`、`deposit.<槽位>.edep_max` 未写时沿用不带槽位的值）。命令行选项一行写的是不给这个选项时的取值。
 
 | 段.键或命令行选项 | 示例里的值 | 单位 | 含义 |
 | --- | --- | --- | --- |
 | `[路径]`（仅 `raser deposit` / `dep` 位置参数） | 当前文件夹 | 无 | 含 `config.json` 的实验文件夹路径（不给路径时为当前文件夹） |
 | `deposit.source` | `"decay/Sr90"`（`bmos` 示例为 `"bunch"`） | 无 | 粒子源或束流组件名称（在组件目录 `deposit/` 下查找 `<名称>.json`，见[能量沉积组件（`components/deposit`）](../components/deposit.md)）或 JSON 文件路径，支持 `"beam"`、`"decay_source"` 和 `"toy_mip"` |
-| `deposit.g4setup` | `"device_alone"`（`timeres` 示例为 `"time_resolution"`） | 无 | Geant4 装置脚本名称（在组件目录 `deposit/` 下查找 `<名称>.py`，见[能量沉积组件（`components/deposit`）](../components/deposit.md)）或 `.py` 文件路径，决定器件周围物体、最大步长 `maxstep`（`μm`）以及源的位置与瞄准方向 |
+| `deposit.g4setup` | `"device_alone"`（`timeres` 示例为 `"time_resolution"`） | 无 | Geant4 装置脚本名称（在组件目录 `deposit/` 下查找 `<名称>.py`，见[能量沉积组件（`components/deposit`）](../components/deposit.md)）或 `.py` 文件路径，决定沿束流排布的源、槽位与周围物体（`along_beam`）、最大步长 `maxstep`（`μm`）以及源的入射倾角 |
 | `deposit.events_per_job` | `200`（`timeres` 示例为 `10000`，`telescope` 示例为 `1000`） | 事例 | 每个作业需记录的有效沉积事例数（不小于 `1` 的整数）；粒子源持续生成事例直到器件内录满该数目（受 `deposit.generated_limit` 约束），与 `deposit.generated_per_job` 互斥 |
 | `deposit.generated_per_job` | `null`（不用） | 事例 | 每个作业由粒子源生成的总事例数（不小于 `1` 的整数），用于替代 `deposit.events_per_job`；粒子源固定生成该数目后停止，器件内实际记录的有效事例数可少于该值甚至为 `0` |
 | `deposit.generated_limit` | `10000000` | 事例 | 使用 `deposit.events_per_job` 时，为凑够目标记录事例数允许单个作业最多生成的源事例数上限（不小于 `1` 的整数） |
-| `deposit.edep_min` | `null`（不设下限） | `MeV` | 单个事例被记录所需的器件内最小总沉积能量，只记录器件内总沉积能量不低于该值的事例 |
-| `deposit.edep_max` | `null`（不设上限） | `MeV` | 单个事例被记录所需的器件内最大总沉积能量，只记录器件内总沉积能量不高于该值的事例 |
+| `deposit.edep_min` | `null`（不设下限） | `MeV` | 不带槽位时对所有槽位生效的最小总沉积能量下限（`null` 表示不检查）；槽位有源层内总沉积须大于 `0` 且不低于该值才算命中 |
+| `deposit.edep_max` | `null`（不设上限） | `MeV` | 不带槽位时对所有槽位生效的最大总沉积能量上限（`null` 表示不检查）；槽位有源层内总沉积须不高于该值才算命中 |
+| `deposit.<槽位>.edep_min` | 不写（沿用 `deposit.edep_min`） | `MeV` | 给指定槽位单独设置的最小总沉积能量下限，覆盖不带槽位的 `deposit.edep_min`；`null` 表示该槽位不检查下限 |
+| `deposit.<槽位>.edep_max` | 不写（沿用 `deposit.edep_max`） | `MeV` | 给指定槽位单独设置的最大总沉积能量上限，覆盖不带槽位的 `deposit.edep_max`；`null` 表示该槽位不检查上限 |
+| `deposit.require` | `"any"`（`timeres` 示例为 `"all"`） | 无 | 记录事例的符合条件逻辑式，以槽位名为操作数，运算为 `AND`、`OR` 与括号，`"all"`、`"any"` 分别为全部槽位相与、相或的简写，见[能量沉积与电离（`core/deposit`）](../core/deposit.md#多器件的记录条件) |
+| `deposit.coincidence_window_ns` | `null`（不卡时间） | `ns` | 符合时间窗宽度（正数，`null` 表示不卡时间）；仅将命中时刻落在同一长度为该值的区间 $[t_0, t_0 + W]$ 内的槽位算作命中时 `deposit.require` 为真才记录，不得窄于 `trigger` 的符合窗加上漂移与成形时间 |
 | `deposit.fano` | `true` | 无 | 控制电离电子-空穴对数是否开启 Fano 涨落抽样，取 `true` 或 `false`（`false` 时直接取平均电离对数） |
 | `deposit.plots` | `100`（`timeres`、`bmos`、`cflm` 示例为 `0`） | 事例 | 每个作业画 `deposit` 自己的图：大于 `0` 时，Geant4 源在常规运行里离屏绘制几何和前 `N` 个记录事例的径迹（`g4_geometry.png`）；`0` 表示不画。`current` 的图由 `current.plots` 管，见[载流子输运与感应电流环节（`stages/current`）](current.md) |
 | `-g4_vis` | `False` | 无 | 仅用于当次运行的命令行布尔开关；开启后只做 Geant4 几何与径迹可视化，传入的事例数取 `deposit.events_per_job` 或 `deposit.generated_per_job` 的值并按生成事例运行，完成后退出作业 |
@@ -219,12 +224,15 @@ raser dep examples/HPK-Si-PiN/signal --set deposit.events_per_job=5 -g4_vis --g4
     ```text
     RuntimeError: <recorded> of the <events> events asked for were recorded when the limit of <generated> generated events was reached: <ratio> of the generated events are recorded. Ask for fewer events, or raise generated_limit
     ```
-    原因是记录率过低（如放射源立体角小、器件薄或能量窗过窄）；可减小 `deposit.events_per_job`、放宽 `deposit.edep_min`/`deposit.edep_max` 能量窗或调大 `deposit.generated_limit`。
+    原因是记录率过低（如放射源立体角小、器件薄、能量窗过窄或符合条件苛刻）；可减小 `deposit.events_per_job`、放宽 `deposit.edep_min`/`deposit.edep_max`（或各槽位能量窗）、放宽 `deposit.require` / `deposit.coincidence_window_ns` 或调大 `deposit.generated_limit`。
   - 取值小于 `1`：
     ```text
     ValueError: the generated_limit asked for are <number>: at least 1
     ```
     将 `deposit.generated_limit` 改为不小于 `1` 的正整数即可。
+- **`config.json` 缺少必填设置键或记录条件设置非法**：
+  - `config.json` 缺少 `deposit` 段中要用的键（如 `deposit.require`、`deposit.coincidence_window_ns`、`deposit.edep_min`、`deposit.edep_max` 等）时抛 `ValueError`，报错指出缺少的“段.键”（如 `<config_path> has no deposit.require`）。
+  - 某槽位能量窗下限大于上限、`deposit.require` 语法错误或出现非槽位名操作数、`deposit.coincidence_window_ns` 非正数时抛 `ValueError`，报错格式见 [能量沉积与电离（`core/deposit`）](../core/deposit.md#simulate_deposits-的分支)。
 - **`--g4-vis-driver` 驱动不受当前环境支持或缺少图形会话**：
   ```text
   RuntimeError: Geant4 refused the command '<text>' (status <status>)
@@ -236,7 +244,7 @@ raser dep examples/HPK-Si-PiN/signal --set deposit.events_per_job=5 -g4_vis --g4
 除 `-g4_vis` 离屏导图落在当前运行目录下外，`deposit` 环节的产出均存放在实验目录的节点文件夹 `nodes/deposit/<节点号>/` 内，并由视图软链接 `points/<点名>/deposit/<作业号>` 指向对应节点。每个节点单独加锁，写到一半的节点带 `.part` 后缀，写完才改成正式名字。
 
 - **`config.json` 的 `deposit` 段与组件定义 `files["device"]`、`files["source"]`、`files["g4setup"]`（输入，用到的部分记入 `nodes/deposit/<节点号>/node.json`）**：生命周期读取 `config.json` 中 `deposit` 段的设置值、器件 JSON、源 JSON 与 `read_g4setup` 返回的装置快照，取本环节用到的部分连同测量环节随机种子算出指纹（即 `<节点号>`）；`deposit` 环节从 `kwargs["_files"]` 读取器件、源与装置快照。其中 `files["g4setup"]` 同时记录脚本导出的 `G4SETUP` 与脚本文件的 `"sha256"` 摘要，修改脚本内容会改变节点指纹并生成新节点。
-- **`nodes/deposit/<节点号>/deposit.h5`（输出，写它的环节：`deposit`）**：由 `deposit` 环节在常规模式下调用 `write_simulated_deposits` 写出（录得 `0` 个事例时也写出），通过视图软链接 `points/<点名>/deposit/<作业号>` 供下游 [载流子输运与感应电流环节（`stages/current`）](current.md) 与 [统计分析环节（`stages/analysis`）](analysis.md) 读取。文件为 HDF5 格式：属性包含 `generated_events`（`int`，单位：事例）、`recorded_events`（`int`，单位：事例）、`generated_fraction`（`float`，无量纲）以及设置了能量窗时的 `edep_min`、`edep_max`（`float`，单位：`MeV`）；数据集包含形状为 `(recorded_events,)` 的 `event`（`int64`，无量纲）和 `count`（`int64`，单位：步），以及形状为 `(sum(count),)` 的 `detector`（变长 `str`，无量纲，单器件为 `"Device"`）、`x`/`y`/`z`（`float64`，单位：`μm`，标准 Geant4 为步中点局部坐标，`cflm` 为步起点局部坐标）、`t`（`float64`，单位：`s`）、`e`（`float64`，单位：`MeV`）、`pairs`（`float64`，单位：对），当所有记录事例均含步起点或产生时间展宽时另写出形状为 `(sum(count),)` 的可选数据集 `x_start`/`y_start`/`z_start`（`float64`，单位：`μm`）与 `t_fwhm`（`float64`，单位：`s`）。该文件的底层读写函数 `write_deposits` / `read_deposits` 规范见 [能量沉积与电离（`core/deposit`）](../core/deposit.md)。
+- **`nodes/deposit/<节点号>/deposit.h5`（输出，写它的环节：`deposit`）**：由 `deposit` 环节在常规模式下调用 `write_simulated_deposits` 写出（录得 `0` 个事例时也写出），文件里只有通过记录条件的事例（在某事例里没有命中的槽位，在该事例里没有沉积步），通过视图软链接 `points/<点名>/deposit/<作业号>` 供下游 [载流子输运与感应电流环节（`stages/current`）](current.md) 与 [统计分析环节（`stages/analysis`）](analysis.md) 读取。文件为 HDF5 格式：属性包含 `generated_events`（`int`，单位：事例）、`recorded_events`（`int`，单位：事例）、`generated_fraction`（`float`，无量纲）、`require`（`str`，无量纲）、设置了对应槽位能量窗时的 `edep_min.<槽位>`、`edep_max.<槽位>`（`float`，单位：`MeV`）以及设置了时间窗时的 `coincidence_window_ns`（`float`，单位：`ns`）；数据集包含形状为 `(recorded_events,)` 的 `event`（`int64`，无量纲）和 `count`（`int64`，单位：步），以及形状为 `(sum(count),)` 的 `detector`（变长 `str`，无量纲，单器件写 `"Device"`，多器件写槽位名）、`x`/`y`/`z`（`float64`，单位：`μm`，标准 Geant4 为步中点局部坐标，`cflm` 为步起点局部坐标）、`t`（`float64`，单位：`s`）、`e`（`float64`，单位：`MeV`）、`pairs`（`float64`，单位：对），当所有记录事例均含步起点或产生时间展宽时另写出形状为 `(sum(count),)` 的可选数据集 `x_start`/`y_start`/`z_start`（`float64`，单位：`μm`）与 `t_fwhm`（`float64`，单位：`s`）。该文件的底层读写函数 `write_deposits` / `read_deposits` 规范见 [能量沉积与电离（`core/deposit`）](../core/deposit.md)。
 - **`nodes/deposit/<节点号>/node.json`、`points.json` 与 `points/<点名>/deposit/<作业号>`（节点记录、参数表与视图软链接，写它的模块：生命周期框架）**：`node.json` 把生成该节点的输入（本环节用到的设置值、组件文件里用到的部分、上游节点号、随机种子，指纹由它们算出）原样记下，并另记代码版本、运行环境和运行状态。实验根目录下的 `points.json` 按行记录各扫描点的扫描轴取值以及 `deposit` 等各环节使用的节点号；`points/<点名>/deposit/<作业号>` 为指向 `../../../nodes/deposit/<节点号>` 的软链接。
 - **`nodes/deposit/<节点号>/g4_geometry.png`（输出图像，写它的环节：`deposit`）**：在常规 Geant4 运行期间（未开启 `-g4_vis`、`deposit.plots` 大于 `0` 且 `source["kind"]` 为 `"beam"` 或 `"decay_source"`）由 `deposit` 环节用离屏驱动 `TSG_OFFSCREEN` 写出，存放在该环节自己的节点输出里，内容为器件、周围装置和前 `deposit.plots` 个记录事例径迹的 PNG 视图。
 - **当前运行目录下的 `g4_geometry.png`（可视化输出图像，写它的环节：`deposit`）**：在开启 `-g4_vis` 且 `--g4-vis-driver` 为 `"TSG"`、`"TSG_FILE"` 或 `"TSG_OFFSCREEN"`（不区分大小写）时写出，位于 `kwargs["_run_path"]` 根目录下，内容为 Geant4 装置几何与指定数目生成事例径迹的离屏 PNG 视图。

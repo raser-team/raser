@@ -59,6 +59,8 @@ When upstream `deposit` records `0` valid events in a job, `readout` skips that 
 
 `raser readout --draw <object>` draws objects belonging to this stage: front-end circuit schematics and impulse responses. Front-end circuit schematics and impulse responses depend solely on the circuit and its parameters; they are assets stored under `work/<circuit>/` and referenced by `readout` across experiments.
 
+A device with a resistive layer (its file has `resistive_layer`) has one more object, `network`: `raser readout --draw network [path]` solves only the device circuit and the amplifier chain of `readout.amplifier`, and reads no result of `deposit` or `current`. The impulse falls on a point of the device, given by its geometric coordinates $(x, y)$ in $\mu\text{m}$, in the coordinates of `current` ($0 \le x \le l_x$, $0 \le y \le l_y$); a device with strips takes $x$ alone. A charge of $1\ \text{fC}$ is injected at this point as a rectangular current pulse in the first time bin, shared linearly among the nodes of the neighbouring cells by its distances to their centres; the bins are $10\ \text{ps}$ wide and there are $2000$ of them; the sheet resistance is `readout.sheet_resistance`, or that of the device file when it is not given. With `--at <x>,<y>` the impulse falls on that point, and `network_waveforms.png` shows the output waveform of every read-out electrode (strip or pad); without it the point is scanned along $x$ in steps of one cell width on the middle line of the device ($y = l_y/2$), and `network_sharing.png` is drawn as well: the waveform amplitude and the waveform integral of every read-out electrode against the $x$ of the impulse.
+
 ## Rules
 
 ### Built-in Constants
@@ -127,10 +129,10 @@ Follow the message to run `raser field <det_name>` first, then rerun.
 
           This file is written alongside DEVSIM weighting fields; enable weighting-field solving in the `field` section (modify field settings with `--set field.<key>=<value>`) to solve the weighting field with DEVSIM.
         - When `row is None`: if capacitance has been solved at that bias, read `specific_capacitance_pF * area_factor * 1e-12` ($\text{F}$) from `<float(voltage)>V.cv.json` as `solved_f`; otherwise `solved_f = None`.
-        - When `int(my_d.dimension) == 1`: `solved_undepleted(Path(folder), my_d.voltage)` reads `<float(voltage)>V.undepleted.json`. If the undepleted bulk is not stored for that bias, raises:
+        - `solved_undepleted(Path(folder), my_d.voltage, undepleted_area_cm2(my_d))` reads `<float(voltage)>V.undepleted.json`. If the undepleted bulk is not stored for that bias, raises:
 
           ```text
-          FileNotFoundError: the field in <folder> has no undepleted bulk at <voltage> V (solved at: <solved>): it is stored for a field in one dimension; solve it with `raser field <det_name> --set field.voltage=<voltage>`
+          FileNotFoundError: the field in <folder> has no undepleted bulk at <voltage> V (solved at: <solved>): solve it with `raser field <det_name> --set field.voltage=<voltage>`
           ```
 
      4. **Assemble circuit (`circuit, values = device_circuit(my_d, electrodes, solved_f, row=row, solved_undepleted=undepleted)`)**:
@@ -191,7 +193,7 @@ Follow the message to run `raser field <det_name>` first, then rerun.
 | `"between_electrodes"` | Standard devices: `{"farad": list[float], "from": "field"} \| None` | $\text{F}$ | One-sided coupling capacitances to the $1, \dots, N$-th nearest neighboring strips in a strip row (`null` for non-strip-row devices) |
 | `"bias_resistance"` | Standard devices: `{"ohm": float} \| None` | $\Omega$ | Per-electrode bias resistance (`null` if unconfigured) |
 | `"coupling_capacitance"` | Standard devices: `{"farad": float} \| None` | $\text{F}$ | Per-electrode AC coupling capacitance (`null` if unconfigured) |
-| `"undepleted_layer"` | Standard devices: `{"ohm": float, "farad": float, "from": str} \| None` | $\Omega$, $\text{F}$ | 1D undepleted-layer parallel resistance, capacitance, and source (`null` when fully depleted or multi-dimensional) |
+| `"undepleted_layer"` | Standard devices: `{"ohm": float, "farad": float, "from": str} \| None` | $\Omega$, $\text{F}$ | Undepleted-layer parallel resistance, capacitance, and source (`null` when fully depleted) |
 | `"cell_capacitance"` | Resistive-layer devices: `{"farad": float, "from": str}` | $\text{F}$ | Capacitance from a single resistive-layer mesh cell to the backside, and its source |
 | `"sheet_resistance"` | Resistive-layer devices: `{"ohm": float, "from": str}` | $\Omega$ | Resistive-layer sheet resistance and source (`"chosen"`, `"device file"`, or `"implanted layer"`) |
 | `"coupling_per_area_f_m2"` | Resistive-layer devices: `float \| None` | $\text{F/m}^2$ | Coupling capacitance per unit area of the dielectric layer beneath readout strips or pads (`null` for direct contact) |
@@ -213,12 +215,12 @@ Only the keys listed below are configurable in this stage; the relative swing th
 | Device file key `capacitance_pF` | None (optional) | $\text{pF}$ | Directly specified single-electrode depleted junction capacitance (or resistive-layer cell capacitance), taking precedence over field capacitance and parallel-plate estimates |
 | Device file key `bias_resistance_ohm` | Omitted (optional) | $\Omega$ | Per-electrode bias resistance of a standard device; required whenever `coupling_capacitance_pF` is provided |
 | Device file key `coupling_capacitance_pF` | Omitted (optional) | $\text{pF}$ | Per-electrode AC coupling capacitance of a standard device |
-| Device file keys `undepleted_resistance_ohm`, `undepleted_capacitance_pF` | Omitted (optional) | $\Omega$, $\text{pF}$ | Parallel resistance and capacitance of the undepleted layer in a standard device; must be given as a pair, otherwise read from the field for 1D devices |
+| Device file keys `undepleted_resistance_ohm`, `undepleted_capacitance_pF` | Omitted (optional) | $\Omega$, $\text{pF}$ | Parallel resistance and capacitance of the undepleted layer in a standard device; must be given as a pair, otherwise read from the field |
 | Device file key `resistive_layer` | None (optional) | $\Omega$, $\text{cm}^{-2}$, $\mu\text{m}$, $^\circ\text{C}$ | Resistive-layer configuration block containing sheet resistance `sheet_resistance` (or Al-implantation parameters `implanted`, `thickness`, `anneal`), readout `strips` or `pads`, grounded contacts `grounded`, and optional dielectric `coupling` (`thickness`, `permittivity`) |
 
 ### Files Read and Written
 
-- **Read: circuit files in the `<device_project>/field/<node_id>/` field node** (`<V>V.cv.json`, `<V>V.undepleted.json`, `weightingfield/<electrode>/Capacitance_<bias>V.json`). Standard devices read junction capacitance, 1D undepleted-layer RC parameters, and strip-row inter-strip capacitances from these files; see [Field Solving and Loading (`core/field`)](../core/field.md) for formats.
+- **Read: circuit files in the `<device_project>/field/<node_id>/` field node** (`<V>V.cv.json`, `<V>V.undepleted.json`, `weightingfield/<electrode>/Capacitance_<bias>V.json`). Standard devices read junction capacitance, undepleted-layer RC parameters, and strip-row inter-strip capacitances from these files; see [Field Solving and Loading (`core/field`)](../core/field.md) for formats.
 - **Read: `current.h5` in the `current` node** (one `current.<position>.h5` per position in multi-position experiments). Reads `electrodes`, `dt` ($\text{s}$), and per-event induced currents; see [Carrier Drift and Induced Current (`core/current`)](../core/current.md) for the format.
 - **Write: `nodes/readout/<node_id>/readout.h5`** (one file `readout.<position>.h5` per position in the same node in multi-position experiments). Written when upstream stages have recorded events and (in multi-position experiments) that position has a current file; any old file is removed first and events are appended one by one. See [Electronics Readout (`core/readout`)](../core/readout.md) for underlying I/O functions; HDF5 attributes and datasets are:
 
@@ -237,3 +239,4 @@ Only the keys listed below are configurable in this stage; the relative swing th
 
 - **Write: `nodes/readout/<node_id>/node.json`**. Records this node's inputs along with the code version, runtime environment, and run status.
 - **Write: `points.json` and `points/<point>/readout/<job>`**. The parameter table records the `readout` node ID used by each point; the view symlink points to that node.
+- **Write: `<device project>/network/<node>/`** (only with `--draw network`). `network.h5`, `node.json`, and under `plots/` `network_waveforms.png` and, for a scan, `network_sharing.png`; `network.h5` has the attributes `dt` ($\text{s}$), `charge` ($\text{C}$), `electrodes` and `device_circuit`, the dataset `point` of shape `(points, 2)` in $\mu\text{m}$, the $(x, y)$ of each impulse, and the dataset `voltage` of shape `(points, outputs, bins)` in $\text{V}$, the output voltage of each read-out electrode at the bin centres for the impulse on each point.

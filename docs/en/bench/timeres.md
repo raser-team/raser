@@ -31,19 +31,33 @@ Eq. (2) is implemented by [`stages/analysis`](../stages/analysis.md) calling `co
 
 ### `time_resolution` Setup Geometry
 
-By default, `timeres` loads the Geant4 setup `time_resolution` (`src/raser_bench/timeres/components/deposit/time_resolution.py`, see [energy deposition components (`components/deposit`)](../components/deposit.md)). The world material is vacuum `"G4_Galactic"` with default half-side `WORLD_HALF_SIDE = 25000` $\mu\text{m}$. The default $\beta$ source `decay/Sr90` disk is centered at $z = -17000\ \mu\text{m}$ ($17\ \text{mm}$ above the top surface of the DUT), with disk radius `par_radius = 2500` $\mu\text{m}$ and emission half-cone angle `par_cone = 15` $\text{degree}$, aiming at the origin `towards = [0, 0, 0]` $\mu\text{m}$ with incidence angle `angle = 0` $\text{degree}$.
+By default, `timeres` loads the Geant4 setup `time_resolution` (`src/raser_bench/timeres/components/deposit/time_resolution.py`, see [energy deposition components (`components/deposit`)](../components/deposit.md)). The world material is vacuum `"G4_Galactic"`, centered at the midpoint of the `along_beam` line with half-side at least `WORLD_HALF_SIDE = 25000` $\mu\text{m}$. The world coordinate origin $(0, 0, 0)$ is on the source with the $z$ axis pointing downstream along the beam; the default $\beta$ source `decay/Sr90` disk is centered at the origin, with disk radius `par_radius = 2500` $\mu\text{m}$ and emission half-cone angle `par_cone = 15` $\text{degree}$, emitting along $+z$ with incidence angle `angle = 0` $\text{degree}$.
 
-Along $+z$, the setup places in order an aluminum foil `Al`, the reference device, an upper PCB `pcb1` with a centered circular hole, the DUT, and a lower PCB `pcb2` with a centered circular hole. `Al`, `pcb1`, and `pcb2` keep the dimensions, materials, and positions defined in `time_resolution.py`. The reference device is built as a physical volume from its device file (default `HPK-Si-LGAD`: material `"Si"`, dimensions $1300 \times 1300 \times 50\ \mu\text{m}$) centered at $(0, 0, -10000)\ \mu\text{m}$; the DUT is built from its device file with its top surface centered at the origin $(0, 0, 0)\ \mu\text{m}$, occupying $x \in [-l_x/2, l_x/2]$, $y \in [-l_y/2, l_y/2]$, $z \in [0, l_z]\ \mu\text{m}$. Both devices use maximum step size `maxstep = 2` $\mu\text{m}$.
+The setup uses `along_beam` to arrange, starting from the source along $+z$, an aluminum foil `Al`, the reference device (slot `ref`), an upper PCB `pcb1` with a centered circular hole, the DUT (slot `dut`), and a lower PCB `pcb2` with a centered circular hole:
 
-Geant4 fully simulates energy deposition, multiple scattering, and secondary particle production as $\beta$ electrons traverse the aluminum foil, reference device, upper PCB, DUT, and lower PCB, recording energy deposition steps inside both the reference device and the DUT simultaneously. The dimensions and coordinates of every volume along $+z$ are listed below:
+```python
+"along_beam": [
+    "source",
+    {"gap": 1995}, "Al",
+    {"gap": 4978.5},
+    {"slot": "ref"}, "pcb1",
+    {"gap": 8183.5},
+    {"slot": "dut"}, "pcb2",
+]
+```
 
-| Volume | Type | Material and Density | Full Size `side_x × side_y × side_z` ($\mu\text{m}$) | Center `position_z` ($\mu\text{m}$) | $z$-Axis Span ($\mu\text{m}$) | Centered Hole `tub_radius`, `tub_depth` ($\mu\text{m}$) |
+Following the placement rules along the beam (see [`core/deposit`](../core/deposit.md#line-along-the-beam)), the device geometry is layered along depth, with layers outside the active layer (substrate, etc.) described in [Detector Components](../components/device.md). Both slots `ref` (reference device, default `HPK-Si-LGAD`, active layer dimensions $1300 \times 1300 \times 50\ \mu\text{m}$, total thickness of layers outside the active layer $t_{\text{ref}}$) and `dut` (DUT, given on the command line, active layer dimensions $l_x \times l_y \times l_z$, total thickness of layers outside the active layer $t$) use the default `"facing": "upstream"`, `"offset": [0, 0]`, and `"rotation_z": 0`, mounted flush against the side of their respective downstream PCBs `pcb1` and `pcb2` facing the source (with no `gap`): the active layer is on the side facing the source, layers outside the active layer sit flush against the board face, and the maximum step size inside each active layer is `maxstep = 2` $\mu\text{m}$; Geant4 builds all layers and records deposition steps only in the active layers.
+
+Geant4 fully simulates energy deposition, multiple scattering, and secondary particle production as $\beta$ electrons traverse the aluminum foil, reference device (including substrate), upper PCB, DUT (including substrate), and lower PCB, recording energy deposition steps inside the active layers of both the reference device and the DUT simultaneously. The dimensions, thicknesses, and gaps to the preceding item along $+z$ are listed below:
+
+| Item (in Order Along Beam) | Type | Material and Density | Gap to Preceding Item `gap` ($\mu\text{m}$) | Transverse Size `side_x × side_y` ($\mu\text{m}$) | Thickness `side_z` or $l_z + t$ ($\mu\text{m}$) | Centered Hole `tub_radius`, `tub_depth` ($\mu\text{m}$) |
 | --- | --- | --- | --- | --- | --- | --- |
-| `Al` | Surrounding volume (`elemental`) | `"G4_Al"` | $5000 \times 5000 \times 10$ | `-15000` | $[-15005,\, -14995]$ | None |
-| Reference device (default `HPK-Si-LGAD`) | Active device | From device file (default `"G4_Si"`) | From device file (default $1300 \times 1300 \times 50$) | `-10000` | $[-10000 - l_{z,\text{ref}}/2,\, -10000 + l_{z,\text{ref}}/2]$ (default $[-10025,\, -9975]$) | None |
-| `pcb1` | Surrounding volume (`binary_compounds`) | `"SiO2"` (Si/O atomic ratio `33.4:66.6`, `2.2 g/cm^3`) | $20000 \times 20000 \times 1500$ | `-8933.5` | $[-9683.5,\, -8183.5]$ | `500`, `1500` |
-| DUT (given on CLI) | Active device | From device file | $l_x \times l_y \times l_z$ | $l_z / 2$ | $[0,\, l_z]$ | None |
-| `pcb2` | Surrounding volume (`binary_compounds`) | `"SiO2"` (Si/O atomic ratio `33.4:66.6`, `2.2 g/cm^3`) | $20000 \times 20000 \times 1500$ | `1100` | $[350,\, 1850]$ | `500`, `1500` |
+| `"source"` (`decay/Sr90`) | Source | — | — | Disk radius `2500` | `0` | None |
+| `Al` | Surrounding volume (`elemental`) | `"G4_Al"` | `1995` | $5000 \times 5000$ | `10` | None |
+| Reference device (slot `ref`, default `HPK-Si-LGAD`) | Device (active layer and other layers) | From device file | `4978.5` | From device file ($l_{x,\text{ref}} \times l_{y,\text{ref}}$) | From device file (active layer $l_{z,\text{ref}}$ plus other layers $t_{\text{ref}}$) | None |
+| `pcb1` | Surrounding volume (`binary_compounds`) | `"SiO2"` (Si/O atomic ratio `33.4:66.6`, `2.2 g/cm^3`) | `0` (flush) | $20000 \times 20000$ | `1500` | `500`, `1500` |
+| DUT (slot `dut`, given on CLI) | Device (active layer and other layers) | From device file | `8183.5` | From device file ($l_x \times l_y$) | From device file (active layer $l_z$ plus other layers $t$) | None |
+| `pcb2` | Surrounding volume (`binary_compounds`) | `"SiO2"` (Si/O atomic ratio `33.4:66.6`, `2.2 g/cm^3`) | `0` (flush) | $20000 \times 20000$ | `1500` | `500`, `1500` |
 
 ### Three Devices
 
@@ -135,6 +149,8 @@ The experiment directory `<project>/timeres/config.json` stores settings section
 | `deposit.generated_limit` | `10000000` | events | Maximum number of generated source events allowed to reach `events_per_job` |
 | `deposit.edep_min` | `null` (no lower bound) | $\text{MeV}$ | Lower bound on deposited energy for recorded events |
 | `deposit.edep_max` | `null` (no upper bound) | $\text{MeV}$ | Upper bound on deposited energy for recorded events |
+| `deposit.require` | `"all"` | None | Coincidence condition for recording an event: recorded only when both the reference device and the DUT have deposition, see [`stages/deposit`](../stages/deposit.md) |
+| `deposit.coincidence_window_ns` | `null` (no timing cut) | $\text{ns}$ | Upper bound on the difference between the earliest deposition times of the two devices |
 | `deposit.fano` | `true` | None | Whether to enable Fano fluctuation sampling when converting deposited energy to ionized pairs |
 | `deposit.plots` | `0` | events | Number of leading recorded events per job for which Geant4 geometry and track plots are drawn |
 | `current.plots` | `0` | events | Number of leading recorded events per job for which carrier drift path and current plots are drawn |
@@ -144,7 +160,7 @@ The experiment directory `<project>/timeres/config.json` stores settings section
 | `reconstruction.fractions` | `[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]` | dimensionless | List of amplitude fractions for constant-fraction timing (`CFD`); each entry must lie in the open interval `(0, 1)` |
 | `reconstruction.edge` | `null` (each device inherits `pulse_edge` written by its own `readout`) | None | Pulse edge direction on which thresholds act, `"rising"` or `"falling"` |
 
-All other parameters (dimensions, materials, and positions of `Al`, `pcb1`, and `pcb2` in `time_resolution.py`, reference-device center coordinate `z = -10000 um`, default world half-side `25000 um`, maximum step size `2 um` inside both devices, material mean ionization energies and Fano factors, drift time-window and time-step profiles, `ngspice` noise-analysis frequency range and `27 °C` temperature, `200` reconstruction baseline points, initial truncated-Gaussian fit window `median ± 8 * MAD`, minimum sample count `20`, and maximum iteration rounds `6`) are fixed in the code and default setup script.
+All other parameters (dimensions, materials, and gaps of `Al`, `pcb1`, and `pcb2` in `time_resolution.py`, default world half-side `25000 um`, maximum step size `2 um` inside both devices, material mean ionization energies and Fano factors, drift time-window and time-step profiles, `ngspice` noise-analysis frequency range and `27 °C` temperature, `200` reconstruction baseline points, initial truncated-Gaussian fit window `median ± 8 * MAD`, minimum sample count `20`, and maximum iteration rounds `6`) are fixed in the code and default setup script.
 
 ## Outputs
 

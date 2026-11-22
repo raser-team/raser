@@ -6,7 +6,7 @@ import os
 
 def main():
 
-    input_path = 'src/raser/apps/cflm/input/'
+    input_path = 'src/raser_app/cflm/input/'
     '''
     df = pd.read_excel(os.path.join(input_path, 'lossposition_CEPC.xlsx'))
     df.to_csv(os.path.join(input_path, 'lossposition_CEPC.txt'), sep='\t', index=False)
@@ -111,5 +111,5 @@ def main():
     
     c1.Draw()
     c2.Draw()
-    c1.SaveAs('src/raser/apps/cflm/figs/primary_hit_position_XoY.pdf')
-    c2.SaveAs('src/raser/apps/cflm/figs/primary_hit_position_z.pdf')
+    c1.SaveAs('src/raser_app/cflm/figs/primary_hit_position_XoY.pdf')
+    c2.SaveAs('src/raser_app/cflm/figs/primary_hit_position_z.pdf')

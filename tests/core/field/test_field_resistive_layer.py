@@ -179,6 +179,7 @@ def test_strips_of_a_device_share_the_charge_through_the_layer_it_gives():
         },
         "sheet_resistance": {"ohm": 1000.0, "from": "device file"},
         "coupling_per_area_f_m2": None,
+        "undepleted_layer": None,
     }
     # each cell with the capacitance of the device under it
     assert "Clayer_c8 layer_c8 0 1.23e-14" in circuit.lines

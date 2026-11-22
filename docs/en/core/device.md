@@ -163,7 +163,7 @@ Users can configure the device JSON keys listed in the tables below; vacuum perm
 | `depletion_depth` | `l_z` | $\mu\text{m}$ | Depletion depth used by `Detector.capacitance` when estimating junction capacitance via the parallel-plate formula (must be $> 0$) |
 | `bias_resistance_ohm` | None (downstream default `None`) | $\Omega$ | Bias resistance of a single readout electrode (mapped verbatim as an attribute when given, read by [field.md](field.md)) |
 | `coupling_capacitance_pF` | None (downstream default `None`) | $\text{pF}$ | AC coupling capacitance of a single readout electrode; requires `bias_resistance_ohm` when given (mapped verbatim as an attribute) |
-| `undepleted_resistance_ohm`, `undepleted_capacitance_pF` | None (downstream default `None`) | $\Omega$, $\text{pF}$ | Equivalent resistance and capacitance of the undepleted bulk; normally computed by [field.md](field.md) from the 1D field at runtime bias, overridden when specified in the device file; both keys must be given together or both omitted |
+| `undepleted_resistance_ohm`, `undepleted_capacitance_pF` | None (downstream default `None`) | $\Omega$, $\text{pF}$ | Equivalent resistance and capacitance of the undepleted bulk; normally computed by [field.md](field.md) from the field at runtime bias, overridden when specified in the device file; both keys must be given together or both omitted |
 | `resistive_layer` | None (optional) | None | Resistive layer definition object containing `"sheet_resistance"` ($\Omega$) or implant parameters, cell spans (`"strips"` or `"pads"`), and optional `"grounded"` and `"coupling"` (mapped verbatim as an attribute) |
 
 #### Physical Models and Solving Dimension

@@ -18,13 +18,66 @@ from raser.core.deposit.ionization import PAIR_ENERGY_EV
 from raser.supports.paths import optional_component_path
 
 
-def absorption_coefficient(material: str, wavelength: float) -> float:
-    """Band-to-band absorption coefficient [1/m] at 300 K of light of this
-    wavelength [um], from the table components/laser/absorption/<material>.txt.
+# P. Grivickas et al., J. Appl. Phys. 101 (2007) 123521, Table I (E perp c) and Eq. (5); the 1/ħω of their Eq. (3) is left out, which matches their Fig. 4
+SIC_PHONON_ENERGIES_EV = (0.0324, 0.0457, 0.0508, 0.0678, 0.0763, 0.0958, 0.1062)
+SIC_PHONON_STRENGTHS = (0.5, 4.0, 7.0, 3.5, 23.0, 23.0, 40.5)  # eV^-1/2 cm^-1
+SIC_EXCITON_RATIO = 60.0  # eV^-3/2, continuum to exciton ground state
+SIC_EXCITON_BINDING_EV = 0.020
+SIC_GAP_0K_EV = 3.267
+SIC_GAP_SLOPE_EV_PER_K = 3e-4
+SIC_GAP_THETA_K = 450.0
+SIC_GAP_EXPONENT = 2.9
+SIC_HIGHEST_PHOTON_EV = 3.8
+
+PLANCK_J_S = 6.62607015e-34
+LIGHT_SPEED_M_S = 2.99792458e8
+ELEMENTARY_CHARGE_C = 1.602176634e-19
+BOLTZMANN_EV_PER_K = 8.617333262e-5
+
+
+def sic_absorption(wavelength: float, temperature: float) -> float:
+    """Band-to-band absorption coefficient [1/m] of 4H-SiC for light of this
+    wavelength [um] at this temperature [K]: phonon-assisted indirect
+    transitions into the continuum and into the exciton, each phonon emitted
+    or absorbed, Eqs. (7a) and (7b) of the deposit page."""
+    photon = PLANCK_J_S * LIGHT_SPEED_M_S / (ELEMENTARY_CHARGE_C * wavelength * 1e-6)  # eV
+    if photon > SIC_HIGHEST_PHOTON_EV:
+        raise ValueError(
+            f"the 4H-SiC absorption model reaches 3.8 eV (326 nm), the laser has "
+            f"{wavelength * 1e3:.0f} nm: give alpha [1/m] in the laser file"
+        )
+    theta = SIC_GAP_THETA_K
+    q = SIC_GAP_EXPONENT
+    gap = SIC_GAP_0K_EV - SIC_GAP_SLOPE_EV_PER_K * theta / 2 * (
+        (1 + (2 * temperature / theta) ** q) ** (1 / q) - 1
+    )
+    per_cm = 0.0
+    for phonon, strength in zip(SIC_PHONON_ENERGIES_EV, SIC_PHONON_STRENGTHS):
+        occupation = 1 / (math.exp(phonon / (BOLTZMANN_EV_PER_K * temperature)) - 1)
+        for weight, threshold in ((occupation + 1, gap + phonon), (occupation, gap - phonon)):
+            excess = photon - threshold
+            per_cm += weight * (
+                strength * math.sqrt(max(excess, 0.0))
+                + SIC_EXCITON_RATIO * strength * max(excess - SIC_EXCITON_BINDING_EV, 0.0) ** 2
+            )
+    return 100.0 * per_cm
+
+
+def absorption_coefficient(material: str, wavelength: float, temperature: float | None = None) -> float:
+    """Band-to-band absorption coefficient [1/m] of light of this wavelength
+    [um]. For "SiC" it is sic_absorption at the temperature [K] of the device;
+    for the other materials it is that at 300 K from the table
+    components/laser/absorption/<material>.txt, and the temperature is not used.
 
     Between the rows the logarithm of the coefficient is interpolated. Light of
     a longer wavelength than the table reaches is not absorbed band to band.
     """
+    if material == "SiC":
+        if temperature is None:
+            raise ValueError(
+                "the absorption of SiC depends on the temperature: give the temperature [K] of the device"
+            )
+        return sic_absorption(wavelength, temperature)
     path = optional_component_path("laser", "absorption", material + ".txt")
     if path is None:
         raise ValueError(
@@ -101,7 +154,7 @@ class LaserInjection:
         if "alpha" in laser_dic:
             self.alpha = laser_dic["alpha"]
         else:
-            self.alpha = absorption_coefficient(my_d.material, self.wavelength)
+            self.alpha = absorption_coefficient(my_d.material, self.wavelength, getattr(my_d, "temperature", None))
         self.temporal_FWHM = laser_dic["temporal_FWHM"]
         self.pulse_energy = laser_dic["pulse_energy"]
         # TODO: Rename spacial_FWHM to spatial_FWHM.
@@ -134,6 +187,8 @@ class LaserInjection:
         # around central_time: one photon follows the pulse I(t), two photons
         # follow I(t)², a Gaussian narrower by sqrt(2)
         self.time_FWHM = []
+        # (pairs_per_metre, radial_exponent) of every absorption that acts
+        self._absorptions = []
         photon_energy = 6.626e-34 * 2.998e8 / (self.wavelength * 1e-6) # J
         photons = self.pulse_energy / photon_energy
         if self.alpha != 0:
@@ -175,6 +230,41 @@ class LaserInjection:
                     lambda s, u, v: (s, u, v))
         raise NameError(self.direction)
 
+    def _w_squared(self, s):
+        """Squared radius w² [um²] of the beam at the path s [um]."""
+        w_0 = self.spacial_FWHM / (2 * np.log(2))**0.5
+        focus = self._beam_frame()[1]
+        return w_0 ** 2 * (1 + ((s - focus) / self.l_Rayleigh) ** 2)
+
+    def _path_samples(self):
+        """The points of the path [um] at which the pairs made per length are summed."""
+        length = self._beam_frame()[0]
+        finest = min(length, self.l_Rayleigh, 1e6 / self.alpha if self.alpha != 0 else length)
+        return np.linspace(0, length, int(np.ceil(50 * length / finest)) + 1)
+
+    def pair_density(self, s, r):
+        """Electron-hole pairs per um³ at the path s [um] from the entrance
+        face and the distance r [um] from the axis (arrays that broadcast):
+        the pairs made per metre of path of every absorption, spread over the
+        cross section as k/(π w²) exp(-k r²/w²)."""
+        s, r = np.asarray(s, dtype=float), np.asarray(r, dtype=float)
+        w2 = self._w_squared(s)
+        density = 0.0
+        for pairs_per_metre, k in self._absorptions:
+            density = density + pairs_per_metre(s, w2) * 1e-6 * k / (np.pi * w2) * np.exp(-k * r ** 2 / w2)
+        return density
+
+    def _drawn_path(self):
+        """Length [um] of the path the picture shows: where the pairs made so
+        far, of all absorptions together, reach 99 % of their total."""
+        path = self._path_samples()
+        w2 = self._w_squared(path)
+        per_metre = sum(pairs_per_metre(path, w2) for pairs_per_metre, _ in self._absorptions)
+        made = np.concatenate(([0.0], np.cumsum(
+            (per_metre[1:] + per_metre[:-1]) / 2 * np.diff(path) * 1e-6
+        )))
+        return float(np.interp(0.99 * made[-1], made, path))
+
     def _add_groups(self, pairs_per_metre, radial_exponent, time_FWHM):
         """Groups of carriers that hold the same number of pairs each.
 
@@ -189,14 +279,11 @@ class LaserInjection:
         at the middle share of its cell. Groups outside the detector are left
         out: that light does not pass through it.
         """
+        self._absorptions.append((pairs_per_metre, radial_exponent))
         length, focus, centre, limits, place = self._beam_frame()
-        w_0 = self.spacial_FWHM / (2 * np.log(2))**0.5
+        w_squared = self._w_squared
 
-        def w_squared(s):
-            return w_0 ** 2 * (1 + ((s - focus) / self.l_Rayleigh) ** 2)
-
-        finest = min(length, self.l_Rayleigh, 1e6 / self.alpha if self.alpha != 0 else length)
-        path = np.linspace(0, length, int(np.ceil(50 * length / finest)) + 1)
+        path = self._path_samples()
         per_metre = pairs_per_metre(path, w_squared(path))
         made = np.concatenate(([0.0], np.cumsum(
             (per_metre[1:] + per_metre[:-1]) / 2 * np.diff(path) * 1e-6
@@ -265,12 +352,32 @@ class LaserInjection:
     def draw_nocarrier2D(self, path):
         ROOT.gStyle.SetOptStat(0)
         c1 = ROOT.TCanvas("c1","canvas2",200,10,1400,1000)
-        low, high = self._extent()
+        # the x-z plane through the axis at y = fy_abs: the coordinate along the
+        # path s and the distance r from the axis follow from x and z
+        reach = self._drawn_path()
+        along = np.linspace(0, reach, 400)
+        w_max = np.sqrt(self._w_squared(along).max())
+        if self.direction == "edge":
+            x_low, x_high = 0.0, reach
+            z_low, z_high = max(self.fz_abs - 2 * w_max, 0.0), min(self.fz_abs + 2 * w_max, self.l_z)
+        else:
+            x_low, x_high = max(self.fx_abs - 2 * w_max, 0.0), min(self.fx_abs + 2 * w_max, self.l_x)
+            z_low, z_high = (0.0, reach) if self.direction == "top" else (self.l_z - reach, self.l_z)
         h = ROOT.TH2D("h","",\
-            50, low[0], high[0],\
-            50, low[2], high[2],)
-        for i in range(len(self.track_position)):
-            h.Fill(self.track_position[i][0], self.track_position[i][2], self.ionized_pairs[i],)
+            200, x_low, x_high,\
+            200, z_low, z_high,)
+        x_centres = x_low + (np.arange(200) + 0.5) * (x_high - x_low) / 200
+        z_centres = z_low + (np.arange(200) + 0.5) * (z_high - z_low) / 200
+        x, z = x_centres[:, None], z_centres[None, :]
+        if self.direction == "edge":
+            grid = self.pair_density(x, np.abs(z - self.fz_abs))
+        elif self.direction == "top":
+            grid = self.pair_density(z, np.abs(x - self.fx_abs))
+        else:
+            grid = self.pair_density(self.l_z - z, np.abs(x - self.fx_abs))
+        for i in range(200):
+            for j in range(200):
+                h.SetBinContent(i + 1, j + 1, float(grid[i, j]))
         h.Draw("COLZ")
         h.GetXaxis().SetTitle("x axis [\mum]")#[μm]
         h.GetXaxis().SetTitleSize(0.08)
@@ -279,7 +386,7 @@ class LaserInjection:
         h.GetYaxis().SetTitleSize(0.08)
         h.GetYaxis().SetLabelSize(0.08)
         h.GetYaxis().SetTitleOffset(0.9)
-        h.GetZaxis().SetTitle("Carriers")
+        h.GetZaxis().SetTitle("Pairs [\mum^{-3}]")
         h.GetZaxis().SetTitleSize(0.08)
         h.GetZaxis().SetLabelSize(0.08)
         h.GetZaxis().SetTitleOffset(1.2)

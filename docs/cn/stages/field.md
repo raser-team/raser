@@ -1,6 +1,6 @@
 # 场求解环节（`stages/field`）
 
-本环节由命令 `raser field [路径]`（短别名 `raser fld`，详见[命令行接口（`raser`）](../cli.md)）驱动，也在[仿真链与环节入口（`stages`）](README.md)的八环节仿真链（`field`、`deposit`、`current`、`readout`、`digitizer`、`trigger`、`reconstruction`、`analysis`）中与[能量沉积环节（`stages/deposit`）](deposit.md)同处最前端。本环节调度 DEVSIM 求解（或从 Sentaurus TDR 文件导入）器件在给定偏压与辐照注量下的电势、电场、载流子浓度、俘获率、导电区标志、读出电极权重场、IV/CV/噪声曲线，以及标上数值的器件参数电路图（结电容、耦合电容、未耗尽层），也支持通过 `raser field --draw <对象>` 绘制网格和网格节点上的掺杂。算出的场作为器件资产，按输入指纹存放在各实验共用的场节点 `work/<器件>/field/<节点号>/`（就地运行示例时为 `examples/<器件>/field/<节点号>/`）下，由实验的 `points.json` 参数表记录节点号并通过 `points/<点名>/field` 软链接视图引用（结果布局见[架构总纲](../architecture.md#结果)）。它向[载流子输运与感应电流环节（`stages/current`）](current.md)交付电场、权重场、导电区与俘获率以漂移载流子，向[电子学读出环节（`stages/readout`）](readout.md)交付器件参数电路图及结电容、条间互容和一维未耗尽层参数以组装器件等效电路；场节点号变化时，上述下游环节以及[数字化环节（`stages/digitizer`）](digitizer.md)、[触发环节（`stages/trigger`）](trigger.md)、[事件重建环节（`stages/reconstruction`）](reconstruction.md)和[统计分析环节（`stages/analysis`）](analysis.md)随之算出新节点。
+本环节由命令 `raser field [路径]`（短别名 `raser fld`，详见[命令行接口（`raser`）](../cli.md)）驱动，也在[仿真链与环节入口（`stages`）](README.md)的八环节仿真链（`field`、`deposit`、`current`、`readout`、`digitizer`、`trigger`、`reconstruction`、`analysis`）中与[能量沉积环节（`stages/deposit`）](deposit.md)同处最前端。本环节调度 DEVSIM 求解（或从 Sentaurus TDR 文件导入）器件在给定偏压与辐照注量下的电势、电场、载流子浓度、俘获率、导电区标志、读出电极权重场、IV/CV/噪声曲线，以及标上数值的器件参数电路图（结电容、耦合电容、未耗尽层），也支持通过 `raser field --draw <对象>` 绘制网格和网格节点上的掺杂。算出的场作为器件资产，按输入指纹存放在各实验共用的场节点 `work/<器件>/field/<节点号>/`（就地运行示例时为 `examples/<器件>/field/<节点号>/`）下，由实验的 `points.json` 参数表记录节点号并通过 `points/<点名>/field` 软链接视图引用（结果布局见[架构总纲](../architecture.md#结果)）。它向[载流子输运与感应电流环节（`stages/current`）](current.md)交付电场、权重场、导电区与俘获率以漂移载流子，向[电子学读出环节（`stages/readout`）](readout.md)交付器件参数电路图及结电容、条间互容和未耗尽层参数以组装器件等效电路；场节点号变化时，上述下游环节以及[数字化环节（`stages/digitizer`）](digitizer.md)、[触发环节（`stages/trigger`）](trigger.md)、[事件重建环节（`stages/reconstruction`）](reconstruction.md)和[统计分析环节（`stages/analysis`）](analysis.md)随之算出新节点。
 
 ## 行为
 
@@ -50,8 +50,8 @@ NotImplementedError: the <mode> mode of a field is not there yet: only field.mod
 
 | `field` 段打开的子任务 | 做什么 | 核对并记录的 `solved` 键 |
 | --- | --- | --- |
-| 三个子任务都未打开（整套求解） | 从 `0 V` 扫到目标偏压（含沿途 CV 曲线），再求解各读出电极权重场 | `"potential"`、`"undepleted"`（仅 1D）、`"weighting"` |
-| IV 扫描 | 从 `0 V` 扫到目标偏压并绘制 IV 曲线 | `"potential"`、`"undepleted"`（仅 1D） |
+| 三个子任务都未打开（整套求解） | 从 `0 V` 扫到目标偏压（含沿途 CV 曲线），再求解各读出电极权重场 | `"potential"`、`"undepleted"`、`"weighting"` |
+| IV 扫描 | 从 `0 V` 扫到目标偏压并绘制 IV 曲线 | `"potential"`、`"undepleted"` |
 | 单点电容 | 加载已保存的 `<V>V.devsim`，在单点求解小信号电容并写出 `<V>V.cv.json` | `"capacitance"` |
 | 权重场 | 读取同偏压的 `Conductive_<V>V.pkl`，求解各读出电极权重场（单晶胞条形电极另算条间互容） | `"weighting"` |
 
@@ -314,4 +314,4 @@ the field is not ready: raser field HPK-Si-PiN --set field.voltage=200.0
 
 #### `core/field` 写出的场数据、归档与图
 
-在 `<场节点目录>` 内，`.pkl` 与 `Capacitance_<V>V.json` 对整数偏压省略小数点（如 `Potential_200V.pkl`），非零偏压的 `.devsim`、`.dd` 与全部 `.undepleted.json`、`.cv.json` 保留浮点格式（如 `200.0V.undepleted.json`），零偏归档写作 `0V.devsim` 与 `0V.dd`。DEVSIM 偏压扫描（在 `0 V`、每个 `saved_voltage_interval` 存盘点与目标偏压）或 TCAD 导入写出的体区场 `.pkl`（`Potential`、`Electrons`、`Holes`、`TrappingRate_n`、`TrappingRate_p`、`Conductive`、`NetDoping_0V.pkl` 或 TCAD 下的 `NetDoping_<V>V.pkl`）、1D 未耗尽层文件 `<V>V.undepleted.json`、DEVSIM 与 Tecplot 归档（`0V`/`<V>V.devsim`、`0V`/`<V>V.dd`、`last_solvable.dd`、`<det_name>.dat`、`converted.devsim`），权重场子任务（含整套求解）或 TCAD 导入写出的权重场 `weightingfield/<电极>/Potential_<V>V.pkl`、`weightingfield/weightingfield.dat` 与单晶胞条形互容 `weightingfield/<电极>/Capacitance_<V>V.json`，IV/CV/噪声曲线与各维度场分布图（`<det_name>_iv.png`、`simIV*`、`<det_name>_cv.png`、`<det_name>_c^-2v.png`、`simCV*`、`<det_name>_noise.png`、`simnoise*`、`Doping.png` 等），以及 HEMT `drift_diffusion_v1` 分支写出的 `HEMT_TRANSPORT_*`（`IdVg.csv`、`final_profile.csv`、`final.devsim`、`IdVg.png`/`.pdf`、`summary.json`），其内部格式、键、形状、类型与单位以及物理求解与插值细节见[场求解与加载（`core/field`）](../core/field.md)。
+在 `<场节点目录>` 内，`.pkl` 与 `Capacitance_<V>V.json` 对整数偏压省略小数点（如 `Potential_200V.pkl`），非零偏压的 `.devsim`、`.dd` 与全部 `.undepleted.json`、`.cv.json` 保留浮点格式（如 `200.0V.undepleted.json`），零偏归档写作 `0V.devsim` 与 `0V.dd`。DEVSIM 偏压扫描（在 `0 V`、每个 `saved_voltage_interval` 存盘点与目标偏压）或 TCAD 导入写出的体区场 `.pkl`（`Potential`、`Electrons`、`Holes`、`TrappingRate_n`、`TrappingRate_p`、`Conductive`、`NetDoping_0V.pkl` 或 TCAD 下的 `NetDoping_<V>V.pkl`）、未耗尽层文件 `<V>V.undepleted.json`、DEVSIM 与 Tecplot 归档（`0V`/`<V>V.devsim`、`0V`/`<V>V.dd`、`last_solvable.dd`、`<det_name>.dat`、`converted.devsim`），权重场子任务（含整套求解）或 TCAD 导入写出的权重场 `weightingfield/<电极>/Potential_<V>V.pkl`、`weightingfield/weightingfield.dat` 与单晶胞条形互容 `weightingfield/<电极>/Capacitance_<V>V.json`，IV/CV/噪声曲线与各维度场分布图（`<det_name>_iv.png`、`simIV*`、`<det_name>_cv.png`、`<det_name>_c^-2v.png`、`simCV*`、`<det_name>_noise.png`、`simnoise*`、`Doping.png` 等），以及 HEMT `drift_diffusion_v1` 分支写出的 `HEMT_TRANSPORT_*`（`IdVg.csv`、`final_profile.csv`、`final.devsim`、`IdVg.png`/`.pdf`、`summary.json`），其内部格式、键、形状、类型与单位以及物理求解与插值细节见[场求解与加载（`core/field`）](../core/field.md)。
