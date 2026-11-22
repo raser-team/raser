@@ -372,21 +372,46 @@ def profile_positions(axes, points, electrode=None):
     return [("depth", *line("z", depth_at), "z"), ("lateral", *line("x", middle), "x")]
 
 
-NEARLY_CONSTANT = 1e-6  # a spread this small against the values is numerical
+NEARLY_CONSTANT_SPREAD = 0.01  # a panel varying less than this fraction of its largest magnitude starts from 0
 
 
 def value_limits(values):
-    """Limits of the axis and colour scale of a field that is constant up to
-    numerical noise, which left alone fills the ticks with digits: 5 % either
-    side of its mean. None when the field varies, for the usual limits."""
+    """Limits of the axis or colour scale of a panel whose values hardly vary,
+    where the usual scaling would stretch numerical noise into a variation.
+
+    m is the largest absolute value among the finite `values`. None (the usual
+    scaling) when m is 0 or max - min is at least NEARLY_CONSTANT_SPREAD * m;
+    otherwise the range containing 0: (0, 1.05 max) for values all >= 0,
+    (1.05 min, 0) for values all <= 0.
+    """
     values = np.asarray(values, dtype=float)
-    low, high = np.nanmin(values), np.nanmax(values)
-    middle = (low + high) / 2
-    if high - low > NEARLY_CONSTANT * max(abs(low), abs(high)):
+    values = values[np.isfinite(values)]
+    if values.size == 0:
         return None
-    if middle == 0:
-        return -1.0, 1.0
-    return middle - 0.05 * abs(middle), middle + 0.05 * abs(middle)
+    low, high = values.min(), values.max()
+    largest = max(abs(low), abs(high))
+    if largest == 0 or high - low >= NEARLY_CONSTANT_SPREAD * largest:
+        return None
+    if low >= 0:
+        return 0.0, 1.05 * high
+    if high <= 0:
+        return 1.05 * low, 0.0
+    return None
+
+
+def profile_title(axes, start, along):
+    """Title of a profile: the coordinates that stay fixed on the line, in the
+    order of `axes` without `along`, in um, e.g. "x = 50.0, y = 20.0 μm".
+
+    axes the mesh_axes, start (d,) [cm] a point of the line, along its axis;
+    the axis "z" is named "Depth".
+    """
+    parts = [
+        f"{'Depth' if axis == 'z' else axis} = {_um(start[index]):.1f}"
+        for index, axis in enumerate(axes)
+        if axis != along
+    ]
+    return ", ".join(parts) + " μm"
 
 
 def _axis_label(along):
@@ -462,11 +487,13 @@ def draw_field_map(points, elements, values, axes, label, path, name, *suffixes,
         queries = np.empty((grid_across.size, 3))
         queries[:, horizontal] = grid_across.ravel()
         queries[:, axes.index("z")] = grid_depth.ravel()
-        queries[:, axes.index("y")] = (low[axes.index("y")] + high[axes.index("y")]) / 2
+        middle_y = (low[axes.index("y")] + high[axes.index("y")]) / 2
+        queries[:, axes.index("y")] = middle_y
         slice_values = interpolate_on_elements(points, elements, values, queries).reshape(grid_across.shape)
         shown = surface.pcolormesh(
             _um(grid_across), _um(grid_depth), np.ma.masked_invalid(slice_values), shading="auto", cmap="viridis",
             vmin=limits[0], vmax=limits[1])
+        surface.set_title(f"y = {_um(middle_y):.1f} μm", fontsize=10)
     colorbar = figure.colorbar(shown, ax=surface)
     colorbar.set_label(label)
     surface.set_xlabel(_axis_label("x"))
@@ -480,8 +507,10 @@ def draw_field_map(points, elements, values, axes, label, path, name, *suffixes,
                 axis.axvline(depth, color="0.5", linestyle="--", linewidth=0.8)
         position, line_values = _along_line(points, elements, values, axes, start, end, along)
         axis.plot(position, line_values, color=figures.TOTAL)
-        if limits[0] is not None:
-            axis.set_ylim(*limits)
+        line_limits = value_limits(line_values)
+        if line_limits is not None:
+            axis.set_ylim(*line_limits)
+        axis.set_title(profile_title(axes, start, along), fontsize=10)
         axis.set_xlabel(_axis_label(along))
         axis.set_ylabel(label)
     figures.save(figure, os.path.join(path, "plots"), name, *suffixes)
@@ -502,13 +531,19 @@ def draw_depth_profiles(points, elements, curves, axes, ylabel, path, name, *suf
     if along == "z":
         for depth in boundaries:
             axis.axvline(depth, color="0.5", linestyle="--", linewidth=0.8)
+    shown = []
     for values, color, text in curves:
         position, line_values = _along_line(points, elements, values, axes, start, end, along)
+        shown.append(line_values)
         axis.plot(position, line_values, color=color, label=text)
     if log:
         axis.set_yscale("log")
+    else:
+        limits = value_limits(np.concatenate([line for line in shown]))
+        if limits is not None:
+            axis.set_ylim(*limits)
     axis.set_xlabel(_axis_label(along))
     axis.set_ylabel(ylabel)
     if any(text is not None for _, _, text in curves):
-        axis.legend()
+        axis.legend(title=profile_title(axes, start, along))
     figures.save(figure, os.path.join(path, "plots"), name, *suffixes)
