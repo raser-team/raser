@@ -1,22 +1,28 @@
+"""Legacy pymtl3 example kept as a reference for future pure digital logic.
+
+It is unrelated to analogue sampling and quantisation.
+"""
+
 #!/usr/bin/env python
-#=========================================================================
+# =========================================================================
 # regincr-sim <input-values>
-#=========================================================================
+# =========================================================================
 
 import pymtl3 as mtl
 import os
 from .regincr import RegIncr
 from raser.supports.output import output
 
+
 def main():
 
     # Get list of input values from command line
 
-    input_values = [0x01,0x13,0x25,0x37]
+    input_values = [0x01, 0x13, 0x25, 0x37]
 
     # Add three zero values to end of list of input values
 
-    input_values.extend([0]*3)
+    input_values.extend([0] * 3)
     print(input_values)
 
     # Instantiate and elaborate the model
@@ -28,8 +34,8 @@ def main():
 
     path = output(__file__, "fpga")
     vcd_path = os.path.join(path, "regincr_sim")
-    model.apply( mtl.DefaultPassGroup(textwave=True, linetrace=True,vcdwave=vcd_path) )
-    print('vcd file has been saved in ' + vcd_path)
+    model.apply(mtl.DefaultPassGroup(textwave=True, linetrace=True, vcdwave=vcd_path))
+    print("vcd file has been saved in " + vcd_path)
 
     # Reset simulator
 
@@ -38,7 +44,6 @@ def main():
     # Apply input values and display output values
 
     for input_value in input_values:
-
         # Write input value to input port
 
         model.in_ @= input_value
@@ -46,7 +51,9 @@ def main():
 
         # Display input and output ports
 
-        print(f" cycle = {model.sim_cycle_count()}: in = {model.in_}, out = {model.out}")
+        print(
+            f" cycle = {model.sim_cycle_count()}: in = {model.in_}, out = {model.out}"
+        )
 
         # Tick simulator one cycle
 
