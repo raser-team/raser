@@ -137,7 +137,7 @@ def field_circuit(folder, my_d):
     row : for a row of strips that repeats one read-out electrode, the
         capacitances of one strip the weighting field stored,
         weightingfield/<electrode>/Capacitance_<bias>V.json; None for other
-        devices, whose field stores none.
+        devices, whose field stores none, and for one with a resistive layer.
     solved_f : for a device that is not such a row, the capacitance [F] the
         field solved at the bias, as solved.solved_capacitance gives it; None
         where it solved none there, and the device keeps its estimate.
@@ -148,7 +148,12 @@ def field_circuit(folder, my_d):
         run along z, which stores no undepleted bulk.
     """
     row = None
-    if my_d.is_strip and len(my_d.read_out_contact) == 1 and my_d.read_ele_num > 1:
+    if (
+        my_d.is_strip
+        and len(my_d.read_out_contact) == 1
+        and my_d.read_ele_num > 1
+        and "resistive_layer" not in my_d.device_dict
+    ):
         electrode = my_d.read_out_contact[0]["name"]
         path = field_pickle_path(
             Path(folder) / "weightingfield" / electrode, "Capacitance", my_d.voltage
