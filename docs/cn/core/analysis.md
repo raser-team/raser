@@ -53,9 +53,9 @@ $$\sigma_{68} = \frac{q_{0.84}(X_{\text{in}}) - q_{0.16}(X_{\text{in}})}{2} \tag
 
 ### 直线径迹与残差
 
-几块器件沿束流排成望远镜时（见 [束流望远镜](../bench/telescope.md)），各槽位的团簇位置（[事件重建](reconstruction.md) 的 `cluster_x`、`cluster_y`）按槽位的摆放换到全局坐标（[能量沉积与电离](deposit.md#多块器件的放置) 的式 (17)，取器件坐标 $z = l_z/2$ 的中面）：
+几块器件沿束流排成望远镜时（见 [束流望远镜](../bench/telescope.md)），各槽位的团簇位置（[事件重建](reconstruction.md) 的 `cluster_x`、`cluster_y`）按槽位的摆放换到全局坐标（[能量沉积与电离](deposit.md#沿束流的一列) 的式 (17)–(18)，取器件坐标 $z = l_z/2$ 的中面）：
 
-$$\begin{pmatrix} X \\ Y \end{pmatrix} = \begin{pmatrix} P_x \\ P_y \end{pmatrix} + \begin{pmatrix} \cos\phi & -\sin\phi \\ \sin\phi & \cos\phi \end{pmatrix}\begin{pmatrix} \bar{x}_c - l_x/2 \\ \bar{y}_c - l_y/2 \end{pmatrix}, \qquad Z = P_z + \frac{l_z}{2} \tag{12}$$
+$$\begin{pmatrix} X \\ Y \end{pmatrix} = \begin{pmatrix} P_x \\ P_y \end{pmatrix} + \begin{pmatrix} \cos\phi & -\sin\phi \\ \sin\phi & \cos\phi \end{pmatrix}\begin{pmatrix} s\,(\bar{x}_c - l_x/2) \\ \bar{y}_c - l_y/2 \end{pmatrix}, \qquad Z = P_z + s\,\frac{l_z}{2} \tag{12}$$
 
 对每个槽位都恰有一个团簇的事例，用参考层集合 $\mathcal{R}$ 的 $(Z_j, X_j)$ 与 $(Z_j, Y_j)$ 各做一次不加权的最小二乘直线拟合，再求各槽位的残差和参考径迹的卡方：
 
@@ -66,7 +66,7 @@ $$r_{x,s} = k_x Z_s + b_x - X_s, \qquad r_{y,s} = k_y Z_s + b_y - Y_s, \qquad \c
 其中：
 
 - $(\bar{x}_c, \bar{y}_c)$：团簇在槽位器件坐标中的位置，$\mu\text{m}$；
-- $\mathbf{P}$、$\phi$：槽位的 `position`（$\mu\text{m}$）与 `rotation_z`（度）；$l_x, l_y, l_z$：该槽位器件的尺寸，$\mu\text{m}$；
+- $\mathbf{P}$：槽位器件前表面中心的世界坐标，由 `along_beam` 按式 (17) 累加得到，$\mu\text{m}$；$\phi$：槽位的 `rotation_z`（度）；$s$：槽位 `facing` 为 `"upstream"` 时取 $+1$、为 `"downstream"` 时取 $-1$；$l_x, l_y, l_z$：该槽位器件的尺寸，$\mu\text{m}$；
 - $(X, Y, Z)$：团簇的全局坐标，$\mu\text{m}$；$\bar{X}, \bar{Z}$：参考层上 $X_j$、$Z_j$ 的算术平均；$k_y$、$b_y$ 把式 (13) 的 $X$ 换成 $Y$；
 - $k_x, k_y$：径迹斜率，无量纲；$b_x, b_y$：径迹截距，$\mu\text{m}$；
 - $r_{x,s}, r_{y,s}$：槽位 $s$（参考层或被测器件）上径迹位置减团簇位置的残差，$\mu\text{m}$；
@@ -170,9 +170,9 @@ $$\delta x_{\text{orig},i} = \frac{x_{\text{orig},i}}{p_x} - \operatorname{round
 
 ### 径迹拟合与被测器件残差宽度（`tracking.py`）
 
-`track_events(hits, placements, roles)` 把一个作业各槽位的重建结果拼成径迹。三个参数都是按槽位名取值的字典，槽位顺序取 `placements` 的顺序；函数只用传入的数据。`hits[槽位]` 是 `SlotHits(event, clusters, cluster_x, cluster_y)`，取自该槽位事件表的同名列。`placements[槽位]` 是 `Placement(position, rotation_z, l_x, l_y, l_z, p_x, p_y)`。`roles[槽位]` 是 `"reference"` 或 `"dut"`。
+`track_events(hits, placements, roles)` 把一个作业各槽位的重建结果拼成径迹。三个参数都是按槽位名取值的字典，槽位顺序取 `placements` 的顺序；函数只用传入的数据。`hits[槽位]` 是 `SlotHits(event, clusters, cluster_x, cluster_y)`，取自该槽位事件表的同名列。`placements[槽位]` 是 `Placement(front, facing, rotation_z, l_x, l_y, l_z, p_x, p_y)`，`front` 为式 (12) 的 $\mathbf{P}$（`[x, y, z]`，$\mu\text{m}$），由调用方从装置的 `along_beam` 求出。`roles[槽位]` 是 `"reference"` 或 `"dut"`。
 
-1. **输入检查**：三个字典的槽位名不相同时抛 `ValueError`（`the slots of hits, placements and roles differ`）；参考层少于 `2` 个，或参考层的 $Z$ 全相同时抛 `ValueError`（`a track needs reference layers at two or more z`）；`rotation_z` 不是 `0`、`90`、`180`、`270` 时抛 `ValueError`。
+1. **输入检查**：三个字典的槽位名不相同时抛 `ValueError`（`the slots of hits, placements and roles differ`）；参考层少于 `2` 个，或参考层的 $Z$ 全相同时抛 `ValueError`（`a track needs reference layers at two or more z`）；`rotation_z` 不是 `0`、`90`、`180`、`270`，或 `facing` 不是 `"upstream"`、`"downstream"` 时抛 `ValueError`。
 2. **事例对齐**：全部槽位事例号的并集升序排列，作为结果的行；某槽位没有记录的事例，该槽位团簇数记 `0`。
 3. **选中**：每个槽位都恰有 `1` 个团簇的事例记 `selected = True`。
 4. **坐标变换与拟合**：团簇数为 `1` 的槽位按式 (12) 求 $(X, Y)$，否则为 `NaN`。选中的事例按式 (13) 求 $k_x, b_x, k_y, b_y$，按式 (14) 求全部槽位的残差与 $\chi^2$；未选中的事例这些量为 `NaN`。
