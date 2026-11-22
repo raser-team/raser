@@ -161,7 +161,51 @@ Follow the message to run `raser field <det_name>` first, then rerun.
 4. **Amplifier chain and pulse edge directions**:
    - `chain = named_chain(str(kwargs["amplifier"]))` splits `amplifier` on `"+"` and loads each `readout/<part>.cir` sequentially from component directories (see [Front-End Readout Circuit Components (`components/readout`)](../components/readout.md) for subcircuit syntax and built-in components). If missing, raises `FileNotFoundError: Cannot find RASER component readout/<part>.cir:`; check the spelling of the subcircuit name or confirm the file is placed under `readout/`.
    - `pulse_edges(my_d, chain, list(circuit.outputs))` returns the pulse edge directions matching `circuit.outputs` one-to-one.
-5. **Solve and write (`write_waveforms`)**: Removes any existing waveform file at the same path, then solves transient voltages event by event, superposes time-domain thermal noise according to the seed, drops channels whose maximum absolute swing is `< 1e-3 * largest`, and writes the result.
+5. **Readout cable, length validation, and loss conversion**:
+   - When `readout.cable` is `null`, no cable is connected; otherwise read `readout/<cable_name>.json` from component directories by the slot name (see [Front-End Readout Circuit Components (`components/readout`)](../components/readout.md) for JSON keys), take characteristic impedance $Z_0$ ($\Omega$), velocity factor $\text{VF}$, and attenuations at two frequencies, and compute propagation speed $v$ ($\text{m/s}$) and loss coefficients $a_s$ and $a_d$ per Eqs. (13)–(15) in [Electronics Readout (`core/readout`)](../core/readout.md).
+   - Validate `readout.cable.length_m` (mapping from channel name to cable length in $\text{m}$):
+     - Every output channel in `circuit.outputs` must be provided; if a channel is missing, raise:
+
+       ```text
+       ValueError: readout.cable.length_m.<channel> is missing: give a cable length in m for each output of <det_name> (<outputs>)
+       ```
+
+     - If any channel name is not in the circuit's outputs, raise:
+
+       ```text
+       ValueError: readout.cable.length_m has unknown channels <unknown>; the outputs of <det_name> are <outputs>
+       ```
+
+     - If any channel's value is not a finite non-negative number (e.g., negative, `NaN`, `Inf`, or non-numeric), raise:
+
+       ```text
+       ValueError: readout.cable.length_m.<channel> must be a finite non-negative number in m, not <value>
+       ```
+
+   - Convert each output channel's length to pure delay $\tau_r = \ell_r / v$ ($\text{s}$) and frequency-domain complex transfer factor $H_r(f)$.
+6. **Read the two window keys and compute the settling time $T_{\text{settle}}$**:
+   - Read `readout.pre_window_ns` (pre-window length $T_{\text{pre}}$, $\text{ns}$) and `readout.max_post_window_ns` (upper bound $T_{\max}$ of the post-window length, $\text{ns}$); neither key has a default. A missing key raises:
+
+     ```text
+     ValueError: readout.pre_window_ns is missing: give the length of the baseline before the signal in ns
+     ValueError: readout.max_post_window_ns is missing: give the longest settling segment after the signal in ns
+     ```
+
+   - A value that is not a number in the required range (negative, `NaN`, `Inf`, non-numeric, and for `max_post_window_ns` also `0`) raises:
+
+     ```text
+     ValueError: readout.pre_window_ns must be a finite non-negative number in ns, not <value>
+     ValueError: readout.max_post_window_ns must be a positive finite number in ns, not <value>
+     ```
+
+   - $T_{\text{settle}}$ is computed once per job for the amplifier chain of that job: on the planar probe circuit `planar_circuit` whose capacitance is the junction capacitance `values["junction_capacitance"]["farad"]` from step 3 (`values["rc_node_capacitance"]["farad"]` for resistive-layer devices), $1\ \text{fC}$ of charge is injected in the first time bin and the solve steps by `dt`; the solve window starts at $20\ \text{ns}$ and doubles while the output has not settled, until it settles or the window length reaches $T_{\max}$. The last time at which the output deviates from its rest level by more than $10^{-3}$ of the largest deviation is $T_{\text{settle}}$, and the post-window length is the smaller of it and $T_{\max}$; the definition is in Eqs. (19)–(21) of [Electronics Readout (`core/readout`)](../core/readout.md). When the chain gives no response to $1\ \text{fC}$, the existing `ValueError` of `chain_sign` applies (see "Pulse Polarity Determination and Waveform File Writing" in [Electronics Readout (`core/readout`)](../core/readout.md)).
+   - When $T_{\text{settle}} > T_{\max}$ and the post-window is cut, one INFO line is printed that states how long $T_{\text{settle}}$ is at least and which post-window length is used, so the cut is never silent:
+
+     ```text
+     INFO: readout: the amplifier chain settles in at least <T_settle> ns; the post-window is <T_post> ns (readout.max_post_window_ns)
+     ```
+
+7. **Solve and write (`write_waveforms`)**: Removes any existing waveform file at the same path, then solves transient voltages event by event (adding $n_{\text{pre}}$ zero-current time bins before the `current` window and $n_{\text{post}}$ after it, so that the written `t0` is the `t0` of `current` minus $n_{\text{pre}}$ `dt` and `count` is the total bin count; when a cable is connected, inserts lossless `T` elements before the final load in the netlist, adds $n_{\text{extra}}$ more time bins at the very end according to $\tau_{\max}$, multiplies $H_r(f)$ in the frequency domain, and weights the noise spectral density by $|H_r(f)|$), superposes time-domain thermal noise according to the seed, drops channels whose maximum absolute swing is `< 1e-3 * largest`, and writes the result.
 
 ## Software Implementation
 
@@ -209,6 +253,10 @@ Only the keys listed below are configurable in this stage; the relative swing th
 | `[path]` | Current folder | None | Experiment folder |
 | `readout.amplifier` | `"SantaCruz+Gali52+Termination50"` | None | Chain of `readout/<name>.cir` subcircuits joined with `"+"`, where leading entries are two-port amplifier stages and the final entry is a one-port load |
 | `readout.sheet_resistance` | `null` (uses the resistive-layer sheet resistance from the device file) | $\Omega$ | Overrides sheet resistance of a resistive-layer device; passing it for a standard device raises `ValueError` |
+| `readout.cable` | `null` (no cable connected) | None | Readout cable component slot: a cable component name (such as `"Belden8259"`) or an object containing `name` and `length_m`; setting `null` explicitly disables the cable |
+| `readout.cable.length_m` | Required when `readout.cable` is not `null` (e.g. `{"top": 1.5}`, or `{"strip1": 2.0, "strip2": 2.0, ...}` for strip devices) | $\text{m}$ | Mapping from channel name to cable length; when `readout.cable` is not `null`, every output channel of the circuit must be given, unknown channel names are rejected, and each value must be a finite non-negative number |
+| `readout.pre_window_ns` | `15` | $\text{ns}$ | Length of the pre-window (baseline segment), a non-negative finite number, required, no default; a segment of zero current this long is added before the `current` window, downstream steps use it to estimate the baseline, and noise is synthesized over it as well |
+| `readout.max_post_window_ns` | `1000` | $\text{ns}$ | Upper bound of the post-window length, a positive finite number, required, no default; the post-window is the smaller of the settling time of the amplifier chain and this bound, and since the decay of a charge-sensitive amplifier is of the order of a hundred microseconds, this bound is needed |
 | `field.voltage` | `200.0` (uses the bias from the device file when set to `null`) | $\text{V}$ | Belongs to the `field` section: bias voltage used to locate the field and determine collected charge polarity |
 | `field.irradiation_flux` | `null` (uses the irradiation fluence from the device file, or `0` if the device file has no irradiation block) | $\text{cm}^{-2}$ | Belongs to the `field` section: irradiation fluence used during field lookup |
 | Device file keys `read_out_contact`, `read_ele_num`, `electrodes`, `l_y`, `p_x`, `p_y`, `x_ele_num`, `y_ele_num` | See the `components/device` page | $\mu\text{m}$ / count | Define readout electrode names, layout (`"pad"`, `"strip"`, `"pixel"`), strip length, and RC node dimensions |

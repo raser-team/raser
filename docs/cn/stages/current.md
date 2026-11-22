@@ -127,7 +127,7 @@ ValueError: <deposits_path> holds no deposit in the detector <detector>: there i
    - 在器件已解过的场里筛选辐照注量等于 `flux`、求解模式等于 `mode` 的；一个都没有时抛出缺注量与模式的 `FileNotFoundError`。
    - 对筛出的场用 `changed` 比对当时读到的器件参数与当前 `my_d`，优先取无差异的；全部有差异时取第一个并抛出 `ValueError: the field in <folder> was solved for another device ...`。
    - `float(my_d.voltage)`（单位 $\text{V}$）不在已解电势的偏压里时，抛出缺电势的 `FileNotFoundError`；不在已解权重场的偏压里时，抛出缺权重场的 `FileNotFoundError`。都通过后返回该场的文件夹。
-3. **构造插值场**：返回 `devfield.DevsimField(my_d.device, my_d.voltage, my_d.read_out_contact, irradiation_flux=flux, bounds=my_d.bound, field_directory=folder, interpolation_bins=my_d.device_dict.get("field_interpolation_bins"))`。
+3. **构造插值场**：返回 `devfield.DevsimField(my_d.device, my_d.voltage, my_d.read_out_contact, irradiation_flux=flux, bounds=my_d.bound, field_directory=folder, interpolation_bins=my_d.device_dict.get("field_interpolation_bins"), pitch={"x": my_d.p_x, "y": my_d.p_y})`。
 
 ### 感应电流计算（`current.currents`）
 

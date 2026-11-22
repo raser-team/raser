@@ -1,0 +1,16 @@
+{
+    "channels": 64,
+    "bits": 14,
+    "max_sampling_rate_GSps": 20,
+    "response": "none",
+    "aperture_jitter_ps": 0,
+    "sampling_rate_GSps": 20,
+    "full_scale_V": 1.0,
+    "offset_V": 0.0,
+    "trigger": {
+        "mode": "edge",
+        "source": "CH1",
+        "level_V": -0.002,
+        "slope": "falling"
+    }
+}

@@ -17,14 +17,18 @@ def solved(my_d, kwargs):
     flux = my_d.irradiation_flux
     if kwargs.get("irradiation_flux") is not None:
         flux = float(kwargs["irradiation_flux"])
+    electrodes = my_d.read_out_contact
+    if "resistive_layer" in my_d.device_dict:
+        electrodes = [{"name": my_d.device_dict["resistive_layer"]["contact"]}]
     return devfield.DevsimField(
         my_d.device,
         my_d.voltage,
-        my_d.read_out_contact,
+        electrodes,
         irradiation_flux=flux,
         bounds=my_d.bound,
         field_directory=solved_field(my_d, my_d.voltage, flux),
         interpolation_bins=my_d.device_dict.get("field_interpolation_bins"),
+        pitch={"x": my_d.p_x, "y": my_d.p_y},
     )
 
 

@@ -10,7 +10,7 @@ from raser.supports import figures
 def draw_efficiencies(efficiencies, folder):
     """Distribution of the charge collection efficiency of the events."""
     figure, axis = figures.new()
-    axis.hist(
+    counts, _, _ = axis.hist(
         efficiencies, bins=60, histtype="stepfilled", color=figures.HISTOGRAM,
         label=f"{len(efficiencies)} events",
     )
@@ -19,7 +19,7 @@ def draw_efficiencies(efficiencies, folder):
         label=f"mean {np.mean(efficiencies):.4f}",
     )
     axis.set_xlabel(figures.label("Charge collection efficiency"))
-    axis.set_ylabel("Events")
+    figures.events(axis, counts=counts)
     axis.legend()
     figures.save(figure, folder, "efficiency")
 
@@ -28,7 +28,7 @@ def draw_amplitudes(amplitudes, amplitude_threshold, events, folder):
     """Distribution of the amplitude of the events above the amplitude
     threshold [V], out of `events` events."""
     figure, axis = figures.new()
-    axis.hist(
+    counts, _, _ = axis.hist(
         np.asarray(amplitudes) / figures.UNIT["mV"], bins=60, histtype="stepfilled",
         color=figures.HISTOGRAM, label=f"{len(amplitudes)} of {events} events",
     )
@@ -37,7 +37,7 @@ def draw_amplitudes(amplitudes, amplitude_threshold, events, folder):
         label=f"threshold {amplitude_threshold / figures.UNIT['mV']:g} mV",
     )
     axis.set_xlabel(figures.label("Amplitude", "mV"))
-    axis.set_ylabel("Events")
+    figures.events(axis, counts=counts)
     axis.legend()
     figures.save(figure, folder, "amplitude")
 
@@ -57,7 +57,10 @@ def draw_differences(times, widths, folder):
         edges = np.linspace(mean - 8 * sigma, mean + 8 * sigma, 65)
         counts, _, _ = axis.hist(difference, bins=edges, histtype="stepfilled", color=figures.HISTOGRAM)
         # room above the bars for the two lines of text
-        axis.set_ylim(0, 1.35 * max(counts.max(), 1))
+        if figures.log_counts(counts):
+            axis.set_ylim(0.5, 10 * max(counts.max(), 1))
+        else:
+            axis.set_ylim(0, 1.35 * max(counts.max(), 1))
         axis.axvspan(low, high, color="0.85", zorder=0)
         # the Gaussian that has the events of the window inside the window
         inside = 0.5 * (
@@ -79,7 +82,7 @@ def draw_differences(times, widths, folder):
             fontsize=9, transform=axis.transAxes, va="top",
         )
         axis.set_xlabel(f"{name} - truth [ps]")
-        axis.set_ylabel("Events")
+        figures.events(axis, counts=counts)
     for axis in axes.flat[len(names):]:
         axis.set_visible(False)
     figures.save(figure, folder, "time_difference")

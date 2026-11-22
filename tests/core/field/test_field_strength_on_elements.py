@@ -5,6 +5,7 @@ from raser.core.field.devsim_draw import boundaries_on_line
 from raser.core.field.devsim_draw import field_strength_at_nodes
 from raser.core.field.devsim_draw import interpolate_on_elements
 from raser.core.field.devsim_draw import profile_positions
+from raser.core.field.devsim_draw import profile_title
 from raser.core.field.devsim_draw import value_limits
 
 
@@ -165,14 +166,24 @@ def test_a_node_between_a_large_and_a_small_element_leans_to_the_large_one():
     assert strength[0] == pytest.approx((0.5 * 1.0 + 0.005 * small) / 0.505, rel=1e-12)
 
 
-def test_a_field_constant_up_to_noise_gets_limits_around_it_and_a_varying_one_none():
-    assert value_limits(6.0 + 1e-13 * np.array([-1.0, 0.0, 2.0])) == pytest.approx(
-        (5.7, 6.3)
+def test_a_panel_varying_less_than_one_percent_starts_from_zero():
+    assert value_limits(np.array([36.781, 36.785, 36.790])) == pytest.approx(
+        (0.0, 1.05 * 36.790)
     )
-    assert value_limits(36.78 + 1e-2 * np.array([0.0, 1.0])) is None
-    # the noise is judged against the size of the field, not in absolute terms
-    assert value_limits(1e9 + np.array([0.0, 100.0])) is not None
-    assert value_limits(1e-9 * np.array([1.0, 1.001])) is None
+    assert value_limits(np.array([11.20, 11.34])) is None
+    assert value_limits(np.array([-200.0, -200.1])) == pytest.approx(
+        (1.05 * -200.1, 0.0)
+    )
+    assert value_limits(np.zeros(5)) is None
+
+
+def test_a_profile_title_gives_the_coordinates_fixed_on_the_line():
+    assert profile_title(("z", "x"), np.array([0.0, 29e-4]), "z") == "x = 29.0 μm"
+    assert profile_title(("z", "x"), np.array([25e-4, 0.0]), "x") == "Depth = 25.0 μm"
+    assert (
+        profile_title(("x", "y", "z"), np.array([50e-4, 20e-4, 0.0]), "z")
+        == "x = 50.0, y = 20.0 μm"
+    )
 
 
 def _implanted_cell():

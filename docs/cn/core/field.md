@@ -272,6 +272,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 | `ELEMENTARY_CHARGE` | `1.602176634e-19` | C | `conductive.py`、`simple.py` | 无 |
 | 接触 $n_0$ 偏移 | `1e-10` | $\text{cm}^{-3}$ | 欧姆接触浓度 | 无 |
 | 最小偏压步长 | `1e-7` | V | 偏压扫描放弃条件 | 无 |
+| 最小注量步长 | `1e-7` 倍目标注量 | $\text{cm}^{-2}$ | 初值里升注量的放弃条件 | 无 |
 | 行晶胞扩展倍数 | `1.5`，上限 `2` 倍 $s_0$ | 无 | 权重场单晶胞拼接 | 无 |
 | 晶胞宽度容差 | `1e-6` 倍 `p_x` | 无 | `createRowOfCells` | 无 |
 | 节点重合容差 | `1e-9` 倍网格跨度 | 无 | `createRowOfCells`、`take_conductors_into_electrodes` | 无 |
@@ -316,7 +317,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 2. **建网格与常数**：见上节；`create_parameter` 写入温度与材料常数、可选 `parameter`、节点模型 `U_const`。
 3. **辐照与雪崩**：有 `irradiation` 块且不求权重场时启用辐照项；注量取 `field.irradiation_flux`，为 `null` 时取 `irradiation.irradiation_flux`。雪崩模型取 `avalanche_model`（`has_avalanche` 为假时为 `None`）。
 4. **电路**：在 `bias.electrode` 上接电压源 `V1`（直流 `0`，交流幅值 `ac.real`、`ac.imaginary`）。
-5. **初值**（`loop_section.initial_solver`）：先只解泊松方程，载流子取本征分布 $n = n_i e^{\psi/V_T}$、$p = n_i^2/n$，用 `initial` 的容差直流求解；再以本征浓度为初值建立式 (1)–(6) 并求解；然后删去本征载流子模型。
+5. **初值**（`loop_section.initial_solver`）：先只解泊松方程，载流子取本征分布 $n = n_i e^{\psi/V_T}$、$p = n_i^2/n$，用 `initial` 的容差直流求解；再以本征浓度为初值建立式 (1)–(6) 并求解；然后删去本征载流子模型。启用辐照项时，式 (1)–(6) 先在注量为 $0$ 下求解，再把注量逐步升到目标值 $\Phi$：各缺陷的浓度参数 `N_t_irr_<缺陷>` 取 $g_{\text{int}}\Phi_k$，每步以上一步的解为初值，用 `initial` 的容差直流求解。初始步长为 $\Phi\times$ `flux_step.initial`；一步成功，步长乘 `flux_step.increase_factor`，下一步超过 $\Phi$ 时截到 $\Phi$；一步报 `"Convergence failure"`，退回上一步的解，步长乘 `flux_step.decrease_factor` 后重试；步长小于 $10^{-7}\,\Phi$ 时抛出 `RuntimeError`，写明器件名和停下时的注量。
 6. **零偏压**：在 $0\ \text{V}$ 求解并存盘，写 `0V.dd`、`0V.devsim`，在 `node.json` 的 `solved.potential` 记 `0.0`。
 7. **目标与停点**：目标偏压 $V_g$ 取 `field.voltage`，为 `null` 时取 `bias.voltage`。一个场节点对应一个目标偏压；节点里存的中间偏压文件是升压到 $V_g$ 途中的存盘点。存盘点为 $\pm k\Delta_s$（$k = 1, \dots, \lfloor |V_g|/\Delta_s\rfloor$，$\Delta_s$ = `saved_voltage_interval`），末点不足 $|V_g|$ 时补上 $V_g$；曲线点同样按 `curve_voltage_interval` 生成。正负号随 $V_g$。间隔为 `0` 时抛出 `ValueError`。
 8. **步进**：初始步长 $\Delta$ = `voltage_step.initial`，符号随 $V_g$。每步试探 $V_t = V_c + \Delta$；若 $|V_t|$ 超过最近的停点（$V_g$、下一个存盘点、下一个曲线点中绝对值最小者），把 $V_t$ 截到该停点。
@@ -362,7 +363,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 
 ### 插值与缓存
 
-`DevsimField(device_name, voltage, read_out_contact, bounds, resolution, field_directory, interpolation_bins)` 构造时：
+`DevsimField(device_name, voltage, read_out_contact, bounds, resolution, field_directory, interpolation_bins, pitch)` 构造时：
 
 1. **目录**：用 `field_directory` 给出的场节点目录 `field/<节点号>/`。`node.json` 缺失时抛出 `FileNotFoundError`；`axes` 取自其中。
 2. **加载**：`NetDoping` 取目录中第一个匹配 `NetDoping_<V>V.pkl` 的文件；`Potential`、`TrappingRate_p`、`TrappingRate_n`、`Conductive` 与各读出电极的权重势取该偏压的文件。文件缺失时抛出 `FileNotFoundError`；文件的维数小于 `axes` 的长度时抛出 `ValueError`。
@@ -371,7 +372,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
    - 点恰好构成完整规则网格（各轴唯一坐标数之积等于点数且无重复）时直接填格；
    - 否则在各轴 $[\min, \max]$ 上取 `field_interpolation_bins` 个等距坐标（缺省 30，少于 2 或出现未知轴时抛出 `ValueError`；某轴无跨度时抛出 `ValueError`），每个格点取 8 个最近邻做反距离平方加权 $\hat v = \sum v_j d_j^{-2}/\sum d_j^{-2}$（$d_j$ 下限 $10^{-15}$，距离 $\le 10^{-15}$ 时取该点值）；
    - 最后用 `RegularGridInterpolator`（线性，界外报错）。
-4. **晶胞折回**（`_in_the_cell`）：只列一个读出电极时，对 `bounds` 中给出的非 `z` 轴，若器件宽度大于电势网格跨度的 $1 + 10^{-6}$ 倍，把位置折回网格中的一个晶胞：晶胞宽为权重势网格跨度除以 $2s + 1$（`x` 轴 $s$ 取权重势 `metadata.cells_either_side`，缺省 `read_out_contact[0].x_span` 或 `0`；`y` 轴取 `y_span`），多晶胞网格取中间一个。电势、掺杂、俘获率、导电标志经折回查询；权重势按原位置查询。
+4. **晶胞折回**（`_in_the_cell`）：只列一个读出电极时，对 `bounds` 中给出的非 `z` 轴，若器件宽度大于电势网格跨度的 $1 + 10^{-6}$ 倍，把位置折回网格中的一个晶胞：晶胞宽为该轴的节距（`pitch`，`x` 轴为 `p_x`，`y` 轴为 `p_y`），多晶胞网格取中间一个。电势、掺杂、俘获率、导电标志经折回查询；权重势按原位置查询。加载时核对网格与节距（`_check_mesh_against_pitch`）：电势网格沿 `x` 或 `y` 的跨度小于该轴节距时抛出 `ValueError`；要折回的轴上网格跨度不是节距的整数倍、或没有给出该轴节距时抛出 `ValueError`；报错写明器件名、偏压、轴、网格跨度与节距。
 5. **电场**：`get_e_field` 取 $\mathbf{E} = -\nabla\psi$，`gradient` 在每个轴上以 `STEP` 为宽做中心差分；跨出网格端点时截到端点成为单侧差分；点在网格坐标范围外时抛出 `ValueError`。返回 $(E_x, E_y, E_z)$（V/cm），不在 `axes` 中的分量为 $0$。
 6. **权重势**：`get_w_p` 的结果 $< 0$ 或 `NaN` 时返回 $0$，$> 1$ 时返回 $1$。
 7. **导电标志**：`get_conductive` 在 1D 找位置所在区间，两端点都导电才为真；多维在 Delaunay 剖分中找所在单纯形，所有顶点都导电才为真；位置在网格外时取最近节点的值。
@@ -483,6 +484,8 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 | `voltage_step.absolute_error`, `.relative_error`, `.maximum_iterations` | `1e20`, `1e-4`, `100` | 无, 无, 次 | 偏压步与单点电容的直流求解 |
 | `voltage_step.initial` | `1.0` | V | 初始步长 |
 | `voltage_step.increase_factor`, `.decrease_factor` | `2.0`, `0.5` | 无 | 成功放大、失败缩小倍数 |
+| `flux_step.initial` | `0.01` | 无 | 初值里升注量的初始步长，占目标注量的比例 |
+| `flux_step.increase_factor`, `.decrease_factor` | `2.0`, `0.5` | 无 | 升注量一步成功放大、失败缩小的倍数 |
 | `saved_voltage_interval` | `100.0` | V | 存盘间隔 |
 | `curve_voltage_interval` | `10.0` | V | IV/CV/噪声曲线点间隔 |
 | `ac.real`, `ac.imaginary` | `1.0`, `0.0` | V | 小信号激励 |
@@ -537,6 +540,8 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 - 3D：切面为过 $y$ 中点的 $x$-$z$ 平面；深度剖面取在 $x$、$y$ 的中点，横向剖面沿 $x$、取在 $y$ 与深度的中点。
 - 权重势、权重场：深度剖面取在该读出电极各节点横向坐标的平均处，即电极正下方；拼成一行晶胞时即中间晶胞的电极。
 - 剖面和 3D 切面上的值在网格单元上线性插值得到。
+- 每条剖面有一行小标题，写它取在哪里，如 `x = 29.0 μm`、`Depth = 25.0 μm`；3D 的切面写 `y = <值> μm`。
+- 一幅图里的值起伏不到其中绝对值最大者的 1% 时，纵轴（切面为色标）从 0 画起，不贴着数据缩放，免得网格上的数值噪声看着像场的起伏。
 
 ## 参考文献
 
