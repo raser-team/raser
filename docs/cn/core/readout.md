@@ -163,6 +163,36 @@ $$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 
 
 ## 算法
 
+### 读出的时间窗
+
+[载流子漂移与感应电流](current.md) 写出的窗从最早产生时刻起、到最后一个团簇停下时止，前后不留空白（见其“感应电荷分箱”一节的式 (10)、(11)）。读出在这个窗的前后各补一段，`ngspice` 求解和噪声合成都在补长后的整段上做。整段按时间顺序由四部分相接：前段、`current` 的窗、后段，以及接有读出线缆时的线缆补长。
+
+前段是信号前的基线段，长度 $T_{\text{pre}}$（$\text{ns}$）由 `readout` 段的键 `readout.pre_window_ns` 给出，是非负有限数，必填，没有默认值；这一段里感应电流为零，下游用它估基线，噪声在这一段同样合成。后段是放大器的回落段，长度 $T_{\text{post}}$（$\text{ns}$）取放大器链的回落时间 $T_{\text{settle}}$ 与 `readout.max_post_window_ns`（记为 $T_{\max}$，$\text{ns}$，正的有限数，必填，没有默认值）中较小的一个。$T_{\text{settle}}$ 是 $1\ \text{fC}$ 电荷在第一个时间箱注入探针电路后，放大器链输出偏离静止电平最后一次超过最大偏离 $10^{-3}$ 倍的时刻：
+
+$$T_{\text{settle}} = \max\Bigl\{\,t : \bigl|V_{\text{probe}}(t) - V_{\text{rest}}\bigr| > 10^{-3} \max_{t'} \bigl|V_{\text{probe}}(t') - V_{\text{rest}}\bigr|\,\Bigr\} \tag{19}$$
+
+$$T_{\text{post}} = \min(T_{\text{settle}},\ T_{\max}), \qquad n_{\text{pre}} = \left\lceil \frac{T_{\text{pre}}}{\Delta t} \right\rceil, \qquad n_{\text{post}} = \left\lceil \frac{T_{\text{post}}}{\Delta t} \right\rceil \tag{20}$$
+
+$$t_0^{\text{out}} = t_0 - n_{\text{pre}}\,\Delta t, \qquad \text{count} = n_{\text{tot}} = n_{\text{pre}} + n_{\text{bin}} + n_{\text{post}} + n_{\text{extra}} \tag{21}$$
+
+其中：
+
+- $V_{\text{probe}}(t)$：探针电路上注入 $1\ \text{fC}$ 电荷时放大器链的输出电压，$\text{V}$；探针电路是电容取器件等效电路里结电容 $C_j$（$\text{F}$）的平板电路（`pulse_edge.py` 判极性用的 `planar_circuit`），电荷在第一个时间箱注入，以 $\Delta t$ 为步长求解；$t$ 从第一个时间箱的左边界起算，$\text{s}$；
+- $V_{\text{rest}}$：注入前的静止输出电压，即 $V_{\text{probe}}(0)$，$\text{V}$；
+- $T_{\text{pre}}$、$T_{\text{post}}$、$T_{\max}$、$T_{\text{settle}}$：键里以 $\text{ns}$ 给出，进式 (19)、(20) 时乘 $10^{-9}$ 换成 $\text{s}$；
+- $\Delta t$：感应电流时间箱宽度，$\text{s}$；$n_{\text{bin}}$：`current` 的窗的时间箱数，箱；$t_0$：`current` 的窗首个时间箱的左边界，$\text{s}$；
+- $n_{\text{pre}}$、$n_{\text{post}}$：前段与后段的时间箱数，箱，感应电流在这两段为零；
+- $n_{\text{extra}}$：读出线缆的补长，$n_{\text{extra}} = \lceil \tau_{\max} / \Delta t \rceil$（见“读出线缆”与“脉冲极性判定与波形文件写出”），无线缆时为 $0$，箱；它接在整段最后；
+- $t_0^{\text{out}}$：写进 `readout.h5` 的 `t0`，$\text{s}$；`count` 为每条保存波形的时间箱数，箱，$n_{\text{tot}}$ 是补长后的总箱数，式 (3)、(4)、(12) 与噪声合成里的箱数 $n_{\text{bin}}$ 都取 $n_{\text{tot}}$。`readout.h5` 的格式不变。
+
+$T_{\text{settle}}$ 每个作业对本作业的放大器链算一次。求解窗从 $20\ \text{ns}$ 起，未回落就加倍（$20, 40, 80, \dots\ \text{ns}$），直到回落或窗长达到 $T_{\max}$ 为止：某个窗内最后一次超过阈值的时刻早于该窗末端，就是回落，该时刻即 $T_{\text{settle}}$；窗长达到 $T_{\max}$ 仍未回落时，$T_{\text{settle}}$ 只知道不小于该窗内最后一次超过阈值的时刻。$T_{\text{settle}} > T_{\max}$ 时后段被 $T_{\max}$ 截断，打印一行 INFO，写明 $T_{\text{settle}}$ 至少多长、取用的后段长度，不静默截断：
+
+```text
+INFO: readout: the amplifier chain settles in at least <T_settle> ns; the post-window is <T_post> ns (readout.max_post_window_ns)
+```
+
+电荷灵敏放大器的衰减在百微秒量级（库内 `ChargeSensitiveCremat` 为 $140\ \mu\text{s}$），回落时间可以比信号本身长几个数量级，所以需要 `readout.max_post_window_ns` 给后段设上限。回落比例 $10^{-3}$ 与 $20\ \text{ns}$ 的起始窗是固定值，没有对应的键。链对 $1\ \text{fC}$ 没有响应时，沿用 `chain_sign` 的报错（见“脉冲极性判定与波形文件写出”）。
+
 ### 内置常数
 
 下表列出 `job.py`、`spice.py`、`spectral_noise.py`、`pulse_edge.py`、`circuit.py` 与 `schematic.py` 中的全部内置常数与写死的数值。它们是模块常量或函数内固定参数，在器件文件和 `.cir` 组件文件里都没有对应的键：
@@ -252,7 +282,7 @@ $$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 
      - `setplot noise<2*k - 1>`（每次 `noise` 命令生成两个 plot，奇数号为谱密度，偶数号为积分总噪声）；
      - `wrdata <raw_k> onoise_spectrum`。
    - 调用 `ngspice -b` 执行噪声网表，读取各通道的频率列（$\text{Hz}$）与单边输出电压噪声幅度谱密度列（$\text{V}/\sqrt{\text{Hz}}$），按对称映射还原为形状 `(len(circuit.outputs), frequencies)` 的谱密度数组 `densities`。
-   - `ngspice` 频域噪声分析在 $27\ ^\circ\text{C}$ 下执行，噪声谱覆盖 `LOWEST_NOISE_HZ = 1e3` $\text{Hz}$ 至 $0.5 / \Delta t$；每个输出通道给出其自身的总输出噪声谱。接有读出线缆时，每个通道的输出噪声幅度谱密度先乘以对应线缆传递因子的模 $|H_r(f)|$，再按扩展后的箱数 $n_{\text{bin}} + n_{\text{extra}}$ 调用 `noise_from_spectrum` 合成时域噪声；各通道线长不同时各自使用自己的 $|H_r(f)|$ 加权谱。
+   - `ngspice` 频域噪声分析在 $27\ ^\circ\text{C}$ 下执行，噪声谱覆盖 `LOWEST_NOISE_HZ = 1e3` $\text{Hz}$ 至 $0.5 / \Delta t$；每个输出通道给出其自身的总输出噪声谱。接有读出线缆时，每个通道的输出噪声幅度谱密度先乘以对应线缆传递因子的模 $|H_r(f)|$，再按补长后的总箱数 $n_{\text{tot}}$ 调用 `noise_from_spectrum` 合成时域噪声；各通道线长不同时各自使用自己的 $|H_r(f)|$ 加权谱。
 2. **频带功率积分与复高斯谱逆变换（`band_power`、`noise_from_spectrum`）**：
    - `band_power(frequencies_hz, density)` 计算频率步长 `steps = np.diff(frequencies_hz)`：若 `frequencies_hz.size < 2` 或 `np.any(steps <= 0)`，抛出 `ValueError("A noise spectrum needs at least two increasing frequencies")`。按式 (8) 计算梯形累积功率并返回 `np.interp` 插值函数。
    - `noise_from_spectrum(frequencies_hz, density, bins, dt, generator)` 在长度 $N_{\text{rec}} = 256\,n_{\text{bin}}$ 上生成频率网格 `centres = np.fft.rfftfreq(record, d=dt)`，按式 (9)、式 (10) 求各频带功率 `in_band` 与 `sigma`。
@@ -272,15 +302,16 @@ $$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 
    - 对每个 `contact`，`collected_charge_sign(my_d, contact)` 按式 (16) 计算 `above`：若 `above == 0`，抛出 `ValueError("<electrode> of <det_name> and its other electrode are at one potential")`；`above > 0` 返回 `-1`，`above < 0` 返回 `+1`。按式 (18) 将两者乘积大于 `0` 记为 `"rising"`、小于 `0` 记为 `"falling"`。
 2. **事例循环、通道摆幅筛选与叠加噪声（`write_waveforms`）**：
    - 调用 `read_currents(currents_path)` 读入整批感应电流；若目标 `waveforms_path` 已存在，先调用 `os.remove(waveforms_path)` 删除旧文件。
+   - 对本作业的放大器链算一次回落时间 $T_{\text{settle}}$，按式 (19)、(20) 得后段长度 $T_{\text{post}}$ 与时间箱数 $n_{\text{pre}}$、$n_{\text{post}}$（见“读出的时间窗”）；链对 $1\ \text{fC}$ 没有响应时沿用 `chain_sign` 的报错，后段被 `readout.max_post_window_ns` 截断时打印 INFO。
    - 遍历 `currents.events` 中的每个事例 `event`：
      - 找出存在非零电流的电极列表 `hit = [name for name, current in zip(currents.electrodes, event.current, strict=True) if np.any(current)]`；
-     - 若配置了读出线缆，取本事例存储通道的最大延迟 $\tau_{\max}$，在求解窗口末尾加 $n_{\text{extra}} = \lceil \tau_{\max} / \Delta t \rceil$ 个时间箱，感应电流在加长部分置零；
-     - 若 `hit` 为空（无信号事例），令 `solved = {}`；否则当 `part_of is None` 时调用 `_solve` 求解全电路，当 `part_of` 非 `None` 时调用 `_solve_part` 求解局部扩展电路（均按加长后的箱数 $n_{\text{bin}} + n_{\text{extra}}$ 求解）；
+     - 补长求解窗口：在 `current` 的窗前补 $n_{\text{pre}}$ 个时间箱、窗后补 $n_{\text{post}}$ 个时间箱，感应电流在这两段为零；若配置了读出线缆，取本事例存储通道的最大延迟 $\tau_{\max}$，再在最后加 $n_{\text{extra}} = \lceil \tau_{\max} / \Delta t \rceil$ 个时间箱，感应电流同样置零。次序为前段、`current` 的窗、后段，线缆的 $n_{\text{extra}}$ 加在最后，总箱数为式 (21) 的 $n_{\text{tot}}$；
+     - 若 `hit` 为空（无信号事例），令 `solved = {}`；否则当 `part_of is None` 时调用 `_solve` 求解全电路，当 `part_of` 非 `None` 时调用 `_solve_part` 求解局部扩展电路（均按补长后的总箱数 $n_{\text{tot}}$ 求解）；
      - 计算已求解通道的最大绝对电压摆幅 `swing = {name: np.abs(voltage).max() for name, voltage in solved.items()}` 与最大值 `largest = max(swing.values(), default=0.0)`；
      - 按 `circuit.outputs` 的顺序筛选满足 `name in solved and largest > 0 and swing[name] >= PART_EDGE * largest` 的通道列表 `names`，组装形状为 `(len(names), bins)` 的电压矩阵 `voltage`（无信号事例时 `names = []`，`voltage` 形状为 `(0, bins)`）；
-     - 若配置了读出线缆且 `names` 非空，对每个存储通道以第一个时间箱的电压 $V_{r,0}$ 为参照，将 $V_r - V_{r,0}$ 在两倍长度上补零后做实傅里叶变换，乘以式 (14) 的传递因子 $H_r(f)$，逆变换回时域取前 $n_{\text{bin}} + n_{\text{extra}}$ 个点，再加回 $V_{r,0}$（因 $H_r(0) = 1$，参照电平不变；补零到两倍长度使色散不绕回窗口开头）；
+     - 若配置了读出线缆且 `names` 非空，对每个存储通道以第一个时间箱的电压 $V_{r,0}$ 为参照，将 $V_r - V_{r,0}$ 在两倍长度上补零后做实傅里叶变换，乘以式 (14) 的传递因子 $H_r(f)$，逆变换回时域取前 $n_{\text{tot}}$ 个点，再加回 $V_{r,0}$（因 $H_r(0) = 1$，参照电平不变；补零到两倍长度使色散不绕回窗口开头）；
      - 若 `noise_seed is not None` 且 `names` 非空，逐通道生成 `noise_from_spectrum` 并加到 `voltage` 上（接有线缆时，各通道的输出噪声谱密度先乘对应 $|H_r(f)|$ 再合成，各通道线长不同时各用各的谱）；
-     - 调用 `append_waveforms` 将当事例写入 HDF5 文件；接有线缆时 `count` 为 $n_{\text{bin}} + n_{\text{extra}}$，`t0` 不变，`readout.h5` 的格式不变，没有新属性。
+     - 调用 `append_waveforms` 将当事例写入 HDF5 文件；`t0` 为 `current` 的 `t0` 减 $n_{\text{pre}}\,\Delta t$，`count` 为 $n_{\text{tot}}$（式 (21)），`readout.h5` 的格式不变，没有新属性。
 3. **波形文件校验与追加写入（`append_waveforms`、`read_waveforms`、`read_circuit_values`）**：
    - **输入参数校验**：`append_waveforms` 取 `names = electrodes if record.electrodes is None else list(record.electrodes)`。若 `names` 含有不在 `electrodes` 中的名字或存在重复名字，抛出 `ValueError("the event <event> has traces of <names>, not each once of the electrodes <electrodes>")`。将 `record.voltage` 转为 `float64` 数组：若 `voltage.ndim != 2 or voltage.shape[0] != len(names)`，抛出 `ValueError("voltage has shape <shape>, expected (<len(names)>, bins)")`。若 `pulse_edge is not None` 且（`len(pulse_edge) != len(electrodes)` 或元素不全属于 `{"rising", "falling"}`），抛出 `ValueError("pulse_edge <pulse_edge> is not one of rising and falling for each of the electrodes <electrodes>")`。
    - **建表或校验已有文件结构**：若文件尚不存在，创建 HDF5 文件，写入属性 `electrodes`、`dt`、可选 `device_circuit`（`json.dumps(circuit_values)`）和可选 `pulse_edge`，并创建一维可扩展数据集 `event`、`t0`、`count`、`stored`、`index` 与启用 `compression="gzip"` 的 `voltage`。若文件已存在，先调用 `_check_layout` 检查 `DATASETS = ("event", "t0", "count", "stored", "index", "voltage")` 是否齐全且 `file["voltage"].ndim == 1`，不满足时抛出 `ValueError("<path> is a readout file of an older layout (no ...): run the readout again")`；再核对文件属性 `electrodes` 与 `dt` 是否与本次传入一致，不一致时抛出 `ValueError("<path> holds waveforms of electrodes <in_file> with dt <dt_file> s, not of <electrodes> with dt <dt> s")`。
@@ -406,7 +437,7 @@ Cremat CR-110-R2.2 电荷灵敏前放，空载增益 `1.4 V/pC`，衰减时间 `
 | --- | --- | --- | --- |
 | `event` | `(events,)`, `int64` | 无 | 事例编号（与输入 `current.h5` 的 `event` 一致） |
 | `t0` | `(events,)`, `float64` | $\text{s}$ | 该事例首个时间箱左边界时刻 |
-| `count` | `(events,)`, `int64` | 箱 | 该事例中每条保存波形的时间箱数（等于 `bins`） |
+| `count` | `(events,)`, `int64` | 箱 | 该事例中每条保存波形的时间箱数（等于补长后的总箱数 $n_{\text{tot}}$，见“读出的时间窗”） |
 | `stored` | `(events,)`, `int64` | 个 | 该事例中保存波形的输出通道数（无信号事例为 `0`） |
 | `index` | `(sum(stored),)`, `int64` | 无 | 每个被保存输出通道在 `electrodes` 属性中的下标（从 `0` 起），按 `stored` 切分到各事例 |
 | `voltage` | `(sum(stored * count),)`, `float64`（gzip） | $\text{V}$ | 各被保存通道在 `count` 个时间箱中心的输出电压，按事例与保存通道顺序首尾拼接 |

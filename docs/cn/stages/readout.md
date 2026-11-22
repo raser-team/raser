@@ -183,7 +183,29 @@ FileNotFoundError: no field of <det_name> ready for this run: solve it with `ras
        ```
 
    - 为每个输出通道换算纯延迟 $\tau_r = \ell_r / v$（$\text{s}$）及频域复传递因子 $H_r(f)$。
-6. **求解并写出（`write_waveforms`）**：先删掉同路径的旧波形文件，再逐事例求瞬态电压（接了线缆时在网表末级负载前插无损 `T` 元件、按 $\tau_{\max}$ 加长求解窗口、在频域乘 $H_r(f)$ 并把噪声谱密度乘 $|H_r(f)|$）、按种子叠加时域热噪声、筛掉最大绝对摆幅 `< 1e-3 * largest` 的通道后写出。
+6. **读两个窗口键、算回落时间 $T_{\text{settle}}$**：
+   - 读 `readout.pre_window_ns`（前段长度 $T_{\text{pre}}$，$\text{ns}$）与 `readout.max_post_window_ns`（后段长度上限 $T_{\max}$，$\text{ns}$），两个键都没有默认值。缺哪个就抛出：
+
+     ```text
+     ValueError: readout.pre_window_ns is missing: give the length of the baseline before the signal in ns
+     ValueError: readout.max_post_window_ns is missing: give the longest settling segment after the signal in ns
+     ```
+
+   - 值不是规定范围的数（负数、`NaN`、`Inf`、非数值，`max_post_window_ns` 还不能为 `0`）时抛出：
+
+     ```text
+     ValueError: readout.pre_window_ns must be a finite non-negative number in ns, not <value>
+     ValueError: readout.max_post_window_ns must be a positive finite number in ns, not <value>
+     ```
+
+   - 每个作业对本作业的放大器链算一次 $T_{\text{settle}}$：在电容取第 3 步得到的结电容 `values["junction_capacitance"]["farad"]`（阻性层器件取 `values["rc_node_capacitance"]["farad"]`）的平板探针电路 `planar_circuit` 上，$1\ \text{fC}$ 电荷在第一个时间箱注入，以 `dt` 为步长求解；求解窗从 $20\ \text{ns}$ 起，未回落就加倍，直到回落或窗长达到 $T_{\max}$。输出偏离静止电平最后一次超过最大偏离 $10^{-3}$ 倍的时刻即 $T_{\text{settle}}$，后段长度取它与 $T_{\max}$ 中较小的一个，定义见[电子学读出（`core/readout`）](../core/readout.md)式 (19)–(21)。链对 $1\ \text{fC}$ 没有响应时，沿用 `chain_sign` 现有的 `ValueError`（见[电子学读出（`core/readout`）](../core/readout.md)的“脉冲极性判定与波形文件写出”）。
+   - $T_{\text{settle}} > T_{\max}$、后段被截断时打印一行 INFO，写明 $T_{\text{settle}}$ 至少多长、取用的后段长度，不静默截断：
+
+     ```text
+     INFO: readout: the amplifier chain settles in at least <T_settle> ns; the post-window is <T_post> ns (readout.max_post_window_ns)
+     ```
+
+7. **求解并写出（`write_waveforms`）**：先删掉同路径的旧波形文件，再逐事例求瞬态电压（在 `current` 的窗前补 $n_{\text{pre}}$ 个、后补 $n_{\text{post}}$ 个零电流时间箱，写出的 `t0` 为 `current` 的 `t0` 减 $n_{\text{pre}}$ `dt`，`count` 为总箱数；接了线缆时在网表末级负载前插无损 `T` 元件、按 $\tau_{\max}$ 在最后再加长 $n_{\text{extra}}$ 个时间箱、在频域乘 $H_r(f)$ 并把噪声谱密度乘 $|H_r(f)|$）、按种子叠加时域热噪声、筛掉最大绝对摆幅 `< 1e-3 * largest` 的通道后写出。
 
 ## 软件实现
 
@@ -233,6 +255,8 @@ FileNotFoundError: no field of <det_name> ready for this run: solve it with `ras
 | `readout.sheet_resistance` | `null`（取器件文件里阻性层的方块电阻） | $\Omega$ | 覆盖阻性层器件的方阻；对常规器件给出会抛出 `ValueError` |
 | `readout.cable` | `null`（不接线缆） | 无 | 读出线缆组件槽位：填线缆组件名（如 `"Belden8259"`）或含 `name` 与 `length_m` 的对象；显式写 `null` 时不接线缆 |
 | `readout.cable.length_m` | 接 `readout.cable` 时必选（如 `{"top": 1.5}`，条形器件 `{"strip1": 2.0, "strip2": 2.0, ...}`） | $\text{m}$ | “通道名 $\to$ 线长”对象；`readout.cable` 不为 `null` 时必须覆盖电路全部输出通道，不能含电路里没有的通道名，值须为非负有限数 |
+| `readout.pre_window_ns` | `15` | $\text{ns}$ | 前段（基线段）的长度，非负有限数，必填，没有默认值；在 `current` 的窗前补这么长的零电流段，下游用它估基线，噪声在这一段同样合成 |
+| `readout.max_post_window_ns` | `1000` | $\text{ns}$ | 后段长度的上限，正的有限数，必填，没有默认值；后段取放大器链回落时间与它中较小的一个，电荷灵敏放大器的衰减在百微秒量级，所以需要这个上限 |
 | `field.voltage` | `200.0`（写 `null` 时取器件文件里的偏压） | $\text{V}$ | 属于 `field` 段：偏压，用来找场并判定收集电荷的极性 |
 | `field.irradiation_flux` | `null`（取器件文件里的辐照注量，器件文件没有辐照块时为 `0`） | $\text{cm}^{-2}$ | 属于 `field` 段：找场时用的辐照注量 |
 | 器件文件键 `read_out_contact`、`read_ele_num`、`electrodes`、`l_y`、`p_x`、`p_y`、`x_ele_num`、`y_ele_num` | 见 `components/device` 页 | $\mu\text{m}$ / 个 | 决定读出电极名称、布局（`"pad"`、`"strip"`、`"pixel"`）、条长与 RC 格点尺寸 |
