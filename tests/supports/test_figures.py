@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from raser.supports import figures
@@ -102,3 +103,61 @@ def test_events_axis_follows_the_counts_of_its_histogram(counts, scale) -> None:
     assert axis.get_yscale() == scale
     if scale == "linear":
         assert all(float(t).is_integer() for t in axis.get_yticks())
+
+
+def _pulse(centre: float, half: float, height: float, time):
+    return height * np.clip(1 - np.abs(time - centre) / half, 0, None)
+
+
+def test_signal_window_is_the_pulse_with_a_fifth_of_its_length_on_each_side() -> None:
+    time = np.arange(0, 50.05, 0.05)
+    values = _pulse(0.7, 0.5, 1.0, time)
+    amplitude = np.abs(values)
+    above = np.flatnonzero(amplitude > 0.01)
+    t1, t2 = time[above[0]], time[above[-1]]
+    start, stop = figures.signal_window(time, values)
+    assert start == pytest.approx(t1 - 0.2 * (t2 - t1), abs=1e-9)
+    assert stop == pytest.approx(t2 + 0.2 * (t2 - t1), abs=1e-9)
+    assert start == pytest.approx(0.0, abs=0.1)
+    assert stop == pytest.approx(1.4, abs=0.1)
+
+
+def test_signal_window_of_a_zero_waveform_is_the_whole_range() -> None:
+    time = np.linspace(0, 50, 11)
+    assert figures.signal_window(time, np.zeros(11)) == (0.0, 50.0)
+
+
+def test_signal_window_takes_the_pointwise_largest_amplitude_of_the_curves() -> None:
+    time = np.arange(0, 10.05, 0.05)
+    curves = np.array([_pulse(1.0, 0.3, 1.0, time), _pulse(3.0, 0.3, 0.5, time)])
+    start, stop = figures.signal_window(time, curves)
+    assert start < 0.75
+    assert stop > 3.25
+    assert start == pytest.approx(0.7 - 0.2 * 2.6, abs=0.1)
+    assert stop == pytest.approx(3.3 + 0.2 * 2.6, abs=0.1)
+
+
+def test_signal_window_treats_a_negative_pulse_like_a_positive_one() -> None:
+    time = np.arange(0, 50.05, 0.05)
+    values = _pulse(0.7, 0.5, 1.0, time)
+    assert figures.signal_window(time, -values) == figures.signal_window(time, values)
+
+
+def test_signal_window_ignores_samples_below_one_percent_of_the_peak() -> None:
+    time = np.arange(0, 10.05, 0.05)
+    values = _pulse(1.0, 0.3, 1.0, time) + 0.005 * (time > 5)
+    start, stop = figures.signal_window(time, values)
+    assert stop < 2.0
+
+
+def test_signal_window_stays_inside_the_time_range() -> None:
+    time = np.arange(0, 10.05, 0.05)
+    values = _pulse(0.1, 0.3, 1.0, time) + _pulse(9.9, 0.3, 1.0, time)
+    assert figures.signal_window(time, values) == (0.0, 10.0)
+
+
+def test_integers_gives_a_matplotlib_axis_integer_ticks() -> None:
+    figure, axis = figures.new()
+    axis.set_xlim(0.5, 2.5)
+    figures.integers(axis)
+    assert all(float(t).is_integer() for t in axis.get_xticks())

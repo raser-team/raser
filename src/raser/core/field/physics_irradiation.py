@@ -11,6 +11,29 @@ Description:  physics_irradiation.py
 import devsim
 from .model_create import *
 
+def irradiation_defects(device, region, label, custom_defect=None):
+    """The defects of the irradiation model `label`, as a list of dicts.
+
+    A label that names no built-in model takes `custom_defect` as the list.
+    """
+    if label == 'XingChen':
+        return CreateIrradiationModel_XingChen(device, region)
+    elif label == 'Perugia':
+        return CreateIrradiationModel_Perugia(device, region)
+    elif label == 'Schwandt':
+        return CreateIrradiationModel_Schwandt(device, region)
+    elif label == 'CommonDefect':
+        return CreateIntrinsicModel_SiCCommonDefect(device, region)
+    return custom_defect
+
+
+def set_fluence(device, region, defects, flux):
+    """Set the trap concentration N_t_irr_<name> [cm^-3] of every defect to
+    g_int [cm^-1] times the fluence `flux` [cm^-2]."""
+    for defect in defects:
+        devsim.set_parameter(device=device, region=region, name="N_t_irr_" + defect["name"], value=defect["g_int"] * flux)
+
+
 def CreateIrradiation(device, region, label="XingChen", flux=1e15, custom_defect = {}):
 
     # if not InEdgeModelList(device, region, "ElectricField"):
@@ -18,16 +41,7 @@ def CreateIrradiation(device, region, label="XingChen", flux=1e15, custom_defect
     #     CreateEdgeModelDerivatives(device, region, "ElectricField", "(Potential@n0-Potential@n1)*EdgeInverseLength", "Potential")
 
     # TODO: change labels into formal names
-    if label == 'XingChen':
-        defects = CreateIrradiationModel_XingChen(device, region)
-    elif label == 'Perugia':
-        defects = CreateIrradiationModel_Perugia(device, region)
-    elif label == 'Schwandt':
-        defects = CreateIrradiationModel_Schwandt(device, region)
-    elif label == 'CommonDefect':
-        defects = CreateIntrinsicModel_SiCCommonDefect(device, region)
-    else:
-        defects = custom_defect
+    defects = irradiation_defects(device, region, label, custom_defect)
 
     TrappedElectrons="0"
     TrappedHoles="0"
