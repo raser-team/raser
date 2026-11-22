@@ -25,7 +25,7 @@ raser analysis examples/HPK-Si-PiN/signal
 
 每个点还对收集电荷与读出幅度各算两个能量分辨率估计量（式见[统计分析](../core/analysis.md#能量分辨率估计量)），写入 `result.json` 的 `energy_resolution`：全体样本的 FWHM/均值 `resolution`，和只取中位数 ± 5 σ_MAD 以内核心样本的 FWHM/均值 `core_resolution`，其中 σ_MAD = 1.4826 × 中位绝对偏差，系数 `5` 无出处。收集电荷取全部记录事例各电极净电荷代数和的绝对值，不依赖重建；读出幅度取选中事例的 `amplitude`，已扣基线，且只含不低于幅度阈值的事例，分布在下端被阈值截去。样本不足 `2` 个，或过半样本等于中位数使核心无法确定时，该量只写 `events` 与 `error`，不影响其余结果，也不进入点结束时打印的缺项说明。每点还把全部记录事例在灵敏层内的沉积能量（各沉积步 `e` 之和）的事例数、平均值与样本标准差（`ddof=1`，$\text{MeV}$）写入 `result.json` 的 `deposited_energy`；事例不足 `2` 个时只写 `events` 与 `error`。
 
-多位置定时实验里，对每个被 `trigger` 记录的事例、每个槽位，按 `digitizer` 的 `noise_only` 标记分两类：**S**（signal，该槽位在这个事例有沉积步，波形里有信号）和 **B**（background，该槽位在这个事例是纯噪声道，它过阈值靠的是噪声）。`result.json` 的 `timing` 里，对每个槽位写 `signal`（S 的事例数）与 `noise_only`（B 的事例数）；对每个定时通道的槽位间时间差 $\Delta t = t_{\text{DUT}} - t_{\text{ref}}$，分别给出“两个槽位都是 S 的事例”与“全部被记录事例（S + B）”两套核心宽度、`sigma68` 和拟合误差；相对真实沉积时刻的时间差只对 S 有定义（B 没有 `truth`），只用 S。`events.h5` 每个槽位加一列 `noise_only`（`bool`），`time_difference` 图里 $\Delta t$ 的每个子图叠画 S + B（全部被记录事例）、S、B 三条分布，图例写各自事例数，拟合曲线画 S 的。
+多位置定时实验里，对每个被 `trigger` 记录的事例、每个槽位，按 `digitizer` 的 `noise_only` 标记分两类：**S**（signal，该槽位在这个事例命中，波形里有信号）和 **B**（background，该槽位在这个事例是纯噪声道，它过阈值靠的是噪声）。`result.json` 的 `timing` 里，对每个槽位写 `signal`（S 的事例数）与 `noise_only`（B 的事例数）；对每个定时通道的槽位间时间差 $\Delta t = t_{\text{DUT}} - t_{\text{ref}}$，分别给出“两个槽位都是 S 的事例”与“全部被记录事例（S + B）”两套核心宽度、`sigma68` 和拟合误差；相对真实沉积时刻的时间差只对 S 有定义（B 没有 `truth`），只用 S。`events.h5` 每个槽位加一列 `noise_only`（`bool`），`time_difference` 图里 $\Delta t$ 的每个子图叠画 S + B（全部被记录事例）、S、B 三条分布，图例写各自事例数，拟合曲线画 S 的。
 
 在上面的例子中（每点 `2` 个作业、共 `400` 个事例），两个点的 `result.json` 关键结果如下：
 
@@ -269,7 +269,7 @@ raser analysis examples/HPK-Si-PiN/signal
 | `collection` | `error` | `str` | 无 | `events < 2` 时替代 `mean`/`mean_error`/`spread` 写入，原文为 `<count> events in the point, a mean and a spread need at least 2` |
 | `timing` | `events`, `selected` | `int` | 个 | 总写入；总事例数与选中事例数 |
 | `timing` | `polarity` | `float` | 无 | 至少有 `1` 个事例时写入；`+1.0` 对应 `"rising"`，`-1.0` 对应 `"falling"` |
-| `timing` | `<槽位>.signal`, `<槽位>.noise_only` | `int` | 个 | 多位置定时实验写入；各槽位在被记录事例中为 S（有沉积步）与 B（纯噪声道）的事例数 |
+| `timing` | `<槽位>.signal`, `<槽位>.noise_only` | `int` | 个 | 多位置定时实验写入；各槽位在被记录事例中为 S（命中）与 B（纯噪声道）的事例数 |
 | `timing` | `times.<通道>` | `dict` | 见含义 | 全部通道拟合成功时写入；`<通道>` 为 `"ToA"`、`"CoG"` 与各 `"CFD<percent>"`，含 `events`（`int`，个）、`window`（`[low, high]`，$\text{s}$）、`window_events`（`int`，个）、`rounds`（`int`，轮）、`mean`、`mean_error`、`sigma`、`sigma_error`、`sigma68`（均为 `float`，$\text{s}$）与 `missing`（`int`，个，为 `NaN` 的选中事例数）；多位置定时实验里，$\Delta t = t_{\text{DUT}} - t_{\text{ref}}$ 分别给出“两个槽位都是 S 的事例”与“全部被记录事例（S + B）”两套核心宽度、`sigma68` 和拟合误差，相对 `truth` 的时间差只用 S |
 | `timing` | `error` | `str` | 无 | 全点 `0` 事例时写入 `"the jobs recorded no event"`；有事例但任一通道触发 `TooFewValues` 时替代 `times` 写入 `<len> values, fewer than 20` 或 `<inside> of <len> values are inside [<low>, <high>], fewer than 20` |
 | `energy_resolution` | `charge` | `dict` | 见含义 | 总写入；全部记录事例收集电荷（$\text{C}$，各电极净电荷代数和的绝对值）的 `mad_core_resolution`：`events`（个）、`mean`、`sigma`、`median`、`mad_sigma`、`core_mean`、`core_sigma`（$\text{C}$）、`core_events`（个）、`resolution`、`core_resolution`（无量纲）；样本不足 `2` 个或过半样本等于中位数时只写 `events` 与 `error` |

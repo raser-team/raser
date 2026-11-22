@@ -68,7 +68,7 @@ $$S_d^2(f) = \sum_{m=-\infty}^{\infty} S_V^2\!\left(|f + m f_s|\right)\,\bigl|H(
 - $S_V(f)$：该道的噪声谱资产（见“接口”），$\text{V}/\sqrt{\text{Hz}}$，资产频段之外取零；
 - $S_d(f)$：采样后序列的单边幅度谱密度，$\text{V}/\sqrt{\text{Hz}}$。
 
-纯噪声道用 `readout` 同一个合成方法（[电子学读出](readout.md#给定谱的频域热噪声与时域合成)的式 (5)–(9)），以 $S_d$ 为谱、$T_s$ 为步长直接抽出 $K$ 个采样电压，再按式 (4) 量化；孔径抖动不改变平稳噪声的统计，这里不加。一条道走不走纯噪声道，对不在触发条件里且沉积能量低于能量 cut 的道由上游在 `current` 之前决定，判断函数见“接口”；多位置实验里某槽位在某事例没有沉积步时，该槽位的全部电极列为纯噪声道（无论该槽位在不在触发条件里），由 `stages/digitizer` 按 `deposit.h5` 的 `detector` 列判断。
+纯噪声道用 `readout` 同一个合成方法（[电子学读出](readout.md#给定谱的频域热噪声与时域合成)的式 (5)–(9)），以 $S_d$ 为谱、$T_s$ 为步长直接抽出 $K$ 个采样电压，再按式 (4) 量化；孔径抖动不改变平稳噪声的统计，这里不加。一条道走不走纯噪声道，对不在触发条件里且沉积能量低于能量 cut 的道由上游在 `current` 之前决定，判断函数见“接口”；多位置实验里某槽位在某事例未命中时，该槽位的全部电极列为纯噪声道（无论该槽位在不在触发条件里），由 `stages/digitizer` 按 `deposit.h5` 的 `detector`、`e` 两列和能量下限判断。
 
 ### 纯噪声道与完整路径的对照
 
@@ -131,7 +131,7 @@ $\varphi$、$\delta_k$ 和纯噪声由 `digitizer` 自己的种子抽取。这�
 
 - **噪声谱资产**：一种器件、偏压和放大器链唯一确定各输出的噪声谱 $S_V(f)$，由 `readout` 算出，实验通用；本模块只读。每个输出一条谱（频率、幅度谱密度），频段从 $10^3\ \text{Hz}$ 到 `readout` 时间步的奈奎斯特频率 $1/(2\Delta t)$，和走 `readout` 的道所含的噪声成分相同。
 - **纯噪声道列表**：每个事例列为纯噪声的电极下标，由上游或 `stages/digitizer` 给出。
-- **`noise_only_channels(deposited_keV, trigger_places, cut_keV)`**：`deposited_keV` 为该事例每个电极对应区域里的沉积能量（$\text{keV}$，按电极下标），`trigger_places` 为触发用到的电极下标，`cut_keV` 为使用者给的能量 cut；返回沉积能量低于 cut、且不在 `trigger_places` 里的电极下标。此外，某槽位在某事例没有沉积步时，该槽位的全部电极列为纯噪声道，由 `stages/digitizer` 按 `deposit.h5` 的 `detector` 列判断。
+- **`noise_only_channels(deposited_keV, trigger_places, cut_keV)`**：`deposited_keV` 为该事例每个电极对应区域里的沉积能量（$\text{keV}$，按电极下标），`trigger_places` 为触发用到的电极下标，`cut_keV` 为使用者给的能量 cut；返回沉积能量低于 cut、且不在 `trigger_places` 里的电极下标。此外，某槽位在某事例未命中时，该槽位的全部电极列为纯噪声道，由 `stages/digitizer` 按 `deposit.h5` 的 `detector`、`e` 两列和能量下限判断。
 
 ### 输出：`digitizer.h5`
 
