@@ -172,7 +172,7 @@ raser tct NJU-PiN --set deposit.laser=PIL037_top_SiC --scan deposit.laser.fz_rel
 | --- | --- | --- | --- |
 | `nodes/deposit/<节点号>/nocarrier_<fx_rel>_<fy_rel>_<fz_rel>.pdf` | [`deposit`](../stages/deposit.md)（`LaserInjection.draw_nocarrier3D`） | 激光脉冲在器件内生成的初始载流子群三维对数分布直方图（`TH3D`，`50 × 50 × 50` 箱，文件名中相对坐标四舍五入至 `5` 位小数） | 三轴 `Depth [um]`、`Width [um]`、`Thick [um]`，箱权重为电子-空穴对数 |
 | `nodes/deposit/<节点号>/nocarrier2D_<fx_rel>_<fy_rel>_<fz_rel>.pdf` | [`deposit`](../stages/deposit.md)（`LaserInjection.draw_nocarrier2D`） | 激光脉冲在器件 $x$-$z$ 平面生成的初始载流子群二维对数分布图（`TH2D`，`50 × 50` 箱，`COLZ` 色标） | 横轴 `x axis [um]`，纵轴 `z axis [um]`，色标 `Carriers`（对） |
-| `nodes/current/<节点号>/No_<k>electrode_basic_infor.pdf`, `.root` | [`current`](../stages/current.md)（`draw_currents`） | 第 $k$ 号非零电流电极（从 `1` 起）经激光时间脉冲卷积后的 `electron`、`hole`、`total`（开启雪崩时含 `electron gain`、`hole gain`）感应电流波形 | 横轴 `Time [s]`，纵轴 `Current [A]` |
+| `nodes/current/<节点号>/plots/current_0.png`, `.pdf`, `.root`（多个读出电极时为 `current_0_electrode_<k>`） | [`current`](../stages/current.md)（`draw_currents`） | 第 $k$ 号非零电流电极（从 `1` 起）经激光时间脉冲卷积后的 `electrons`、`holes`、`total`（开启雪崩时含 `gain electrons`、`gain holes`）感应电流波形 | 横轴 `Time [ns]`，纵轴 `Current [μA]` |
 | `analysis/points.png` | [`analysis`](../stages/analysis.md) | 跨焦点位置扫描的收集电荷与信号随焦点位置变化曲线 | 横轴相对焦点位置（无量纲），纵轴按对应物理量标注单位 |
 
 ![NJU-PiN 激光注入二维载流子分布](../images/tct-carriers-2d-NJU-PiN.png)

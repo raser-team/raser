@@ -203,9 +203,9 @@ raser signal HPK-Si-PiN --scan field.voltage=100,200
 | 路径 | 写出环节 | 内容 | 坐标与物理量单位 |
 | --- | --- | --- | --- |
 | `nodes/deposit/<节点号>/g4_geometry.png` | [`deposit`](../stages/deposit.md) | `deposit.plots > 0` 且使用 Geant4 源时离屏绘出的装置几何与前 `deposit.plots` 个记录事例径迹图 | 空间尺寸 $\mu\text{m}$ |
-| `nodes/current/<节点号>/event_<event>/<det_model>_drift_path.pdf`, `.root` | [`current`](../stages/current.md) | 前 `current.plots` 个记录事例的三维器件边界与载流子漂移轨迹图（上）及 $x$-$z$ 平面投影图（下） | 空间轴 $\mu\text{m}$ |
-| `nodes/current/<节点号>/event_<event>/No_<k>electrode_basic_infor.pdf`, `.root` | [`current`](../stages/current.md) | 前 `current.plots` 个记录事例中非零电流电极 $k$ 的 `electron`、`hole`、`total`（及雪崩增益）感应电流波形 | 横轴 `Time [s]`，纵轴 `Current [A]` |
-| `nodes/current/<节点号>/event_<event>/cce.pdf`, `.root` | [`current`](../stages/current.md) | 条形（`strip`）或像素（`pixel`）器件在前 `current.plots` 个记录事例中各电极收集到的电子数分布 | 电极编号（无量纲），收集电子数（个） |
+| `nodes/current/<节点号>/plots/drift_path_<event>.png`, `.pdf`, `.root` | [`current`](../stages/current.md) | 前 `current.plots` 个记录事例的三维器件边界与载流子漂移轨迹图（上）及 $x$-$z$ 平面投影图（下） | 空间轴 $\mu\text{m}$ |
+| `nodes/current/<节点号>/plots/current_<event>.png`, `.pdf`, `.root`（多个读出电极时为 `current_<event>_electrode_<k>`） | [`current`](../stages/current.md) | 前 `current.plots` 个记录事例中非零电流电极 $k$ 的 `electrons`、`holes`、`total`（及雪崩增益）感应电流波形 | 横轴 `Time [ns]`，纵轴 `Current [μA]` |
+| `nodes/current/<节点号>/plots/charge_per_electrode_<event>.png`, `.pdf`, `.root` | [`current`](../stages/current.md) | 条形（`strip`）或像素（`pixel`）器件在前 `current.plots` 个记录事例中各电极收集到的电荷分布 | 电极编号（无量纲），电荷 `Charge [fC]` |
 | `nodes/analysis/<节点号>/efficiency.png`（视图 `points/<点名>/analysis/efficiency.png`） | [`analysis`](../stages/analysis.md) | 扫描点 `current` 节点全部事例（事例数 $\ge 2$）的电荷收集效率 `60` 箱直方图，虚线标出均值 | 横轴无量纲效率，纵轴 `events` |
 | `nodes/analysis/<节点号>/amplitude.png`（视图 `points/<点名>/analysis/amplitude.png`） | [`analysis`](../stages/analysis.md) | 扫描点全部 `selected` 事例基线以上脉冲幅度的 `60` 箱直方图，虚线标出 `amplitude_threshold` | 横轴 `amplitude above the baseline [mV]`，纵轴 `events` |
 | `nodes/analysis/<节点号>/time_difference.png`（视图 `points/<点名>/analysis/time_difference.png`） | [`analysis`](../stages/analysis.md) | `3 × 4` 子图展示 `ToA`、`CoG` 与各 `CFD*` 通道的 `time - truth` 分布（`mean ± 8 * sigma` 内 `64` 箱）、末轮拟合窗口阴影与截断高斯拟合曲线 | 横轴 `<通道> - truth [ps]`，纵轴事例数 |
