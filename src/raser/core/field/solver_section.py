@@ -22,6 +22,7 @@ if __name__ == "__main__":
 from ..model.material import Material
 from ..device.build_device import Detector
 from .create_mesh import DevsimMesh
+from . import saved_point
 from .create_mesh import mesh_axes
 from .reading import Reading
 from .create_parameter import create_parameter
@@ -364,7 +365,7 @@ def main (kwargs):
         dd = os.path.join(path, '0V.dd')
         devsim_device = os.path.join(path, '0V.devsim')
         devsim.write_devices(file=dd, type="tecplot")
-        devsim.write_devices(file=devsim_device, type="devsim")
+        saved_point.save_point(device, devsim_device)
         # solve and save at 0V
         if v_goal is None:
             v_goal = float(MyDetector.device_dict['bias']['voltage'])
@@ -401,7 +402,7 @@ def main (kwargs):
                     dd = os.path.join(path, str(v_trial) + 'V.dd')
                     devsim_device = os.path.join(path, str(v_trial) + 'V.devsim')
                     devsim.write_devices(file=dd, type="tecplot")
-                    devsim.write_devices(file=devsim_device, type="devsim")
+                    saved_point.save_point(device, devsim_device)
                     if goal_flag:
                         break
                     if milestone_flag:

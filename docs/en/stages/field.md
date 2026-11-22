@@ -216,7 +216,7 @@ Holding the node lock, a field-solving job enters `solve(kwargs)` and executes i
    - When `done > 0`, call `_empty_devsim()`: read `"direct_solver"` and `"solver_callback"` if present in `devsim.get_parameter_list()`, call `devsim.reset_devsim()`, and restore those two parameters in DEVSIM.
    - When `part == "cv"`, call `_capacitance(kwargs)`:
      1. Set `my_d = Detector(kwargs["det_name"], kwargs["_files"]["device"])`, `voltage = _bias(kwargs)` (when `kwargs["cv"] is True`) or `float(kwargs["cv"])` ($\text{V}$), and `folder = Path(kwargs["_run_path"])`;
-     2. Call `value, frequency = saved_point.capacitance(my_d, folder, voltage, _solver(kwargs), kwargs.get("irradiation_flux"))` to load `folder / f"{float(voltage)}V.devsim"` (raising `FileNotFoundError` if missing);
+     2. Call `value, frequency = saved_point.capacitance(my_d, folder, voltage, _solver(kwargs))` to load `folder / f"{float(voltage)}V.devsim"` (raising `FileNotFoundError` if missing);
      3. Build `point = {"voltage_V": voltage, "specific_capacitance_pF": value, "per": {1: "cm^2", 2: "cm", 3: "device"}[my_d.dimension], "area_factor": float(my_d.device_dict.get("area_factor", 1.0)), "frequency_Hz": frequency}`;
      4. Write `point` to `folder / f"{voltage}V.cv.json"`, call `save_solved(str(folder), "capacitance", voltage)` to update the node record, and print `point`.
    - When `part` is `"iv"` or `"wf"`, call `_ramp_or_weighting(kwargs, cv=not named, wf=(part == "wf"))`, merging `target=kwargs["det_name"]`, `bias=_bias(kwargs)`, `cv`, `wf`, `solver=_solver(kwargs)`, and `_field_directory=kwargs["_run_path"]` before passing to `solver_section.main`.

@@ -1,18 +1,75 @@
 """A bias point that a field solve has saved, taken up again."""
 
+import json
 from pathlib import Path
 
 import devsim
 import numpy as np
 
-from .create_parameter import create_parameter
 from .physics_drift_diffusion import GetContactBiasName
-from .physics_irradiation import CARRIER_FLOOR
-from .physics_irradiation import irradiation_defects
-from .physics_irradiation import set_defect_parameters
 
 
-def capacitance(my_d, folder, voltage, solver, irradiation_flux=None):
+def _plain(names, value_of):
+    """The parameters among `names` whose value json can hold as it is."""
+    kept = {}
+    for name in names:
+        value = value_of(name)
+        if isinstance(value, (bool, int, float, str)):
+            kept[name] = value
+    return kept
+
+
+def parameters_file(saved):
+    """<V>V.parameters.json beside the saved <V>V.devsim."""
+    saved = Path(saved)
+    return saved.with_name(saved.name[: -len(".devsim")] + ".parameters.json")
+
+
+def save_point(device, saved):
+    """Write the state of `device` into `saved`, a <V>V.devsim file, and every
+    parameter devsim holds into <V>V.parameters.json beside it: the file of
+    devsim keeps the mesh, the models and the solution, not the parameters."""
+    devsim.write_devices(file=str(saved), type="devsim")
+    parameters = {
+        "global": _plain(devsim.get_parameter_list(), lambda name: devsim.get_parameter(name=name)),
+        "device": _plain(
+            devsim.get_parameter_list(device=device),
+            lambda name: devsim.get_parameter(device=device, name=name),
+        ),
+        "regions": {
+            region: _plain(
+                devsim.get_parameter_list(device=device, region=region),
+                lambda name, region=region: devsim.get_parameter(device=device, region=region, name=name),
+            )
+            for region in devsim.get_region_list(device=device)
+        },
+    }
+    with open(parameters_file(saved), "w") as stream:
+        json.dump(parameters, stream, indent=1)
+
+
+def load_point(device, saved):
+    """Read the state `save_point` wrote back into devsim: the global
+    parameters, the device, then its parameters and those of its regions."""
+    saved = Path(saved)
+    if not parameters_file(saved).exists():
+        raise FileNotFoundError(
+            f"{saved} has no {parameters_file(saved).name} beside it: the point was "
+            "saved without its parameters and has to be solved again"
+        )
+    with open(parameters_file(saved)) as stream:
+        parameters = json.load(stream)
+    for name, value in parameters["global"].items():
+        devsim.set_parameter(name=name, value=value)
+    devsim.load_devices(file=str(saved))
+    for name, value in parameters["device"].items():
+        devsim.set_parameter(device=device, name=name, value=value)
+    for region, of_region in parameters["regions"].items():
+        for name, value in of_region.items():
+            devsim.set_parameter(device=device, region=region, name=name, value=value)
+
+
+def capacitance(my_d, folder, voltage, solver):
     """The specific capacitance at one saved bias in V, as the mesh gives it:
     pF/cm^2 of a one-dimensional mesh, pF/cm of a two-dimensional one, pF of
     a three-dimensional one. The saved state is read back, settled at its
@@ -33,19 +90,7 @@ def capacitance(my_d, folder, voltage, solver, irradiation_flux=None):
         acreal=float(solver["ac"]["real"]),
         acimag=float(solver["ac"]["imaginary"]),
     )
-    for name in ("extended_solver", "extended_model", "extended_equation"):
-        devsim.set_parameter(name=name, value=True)
-    devsim.load_devices(file=str(saved))
-    # The file keeps the mesh, the models and the solution, not the parameters.
-    create_parameter(my_d, my_d.device, my_d.region)
-    if devsim.get_material(device=my_d.device, region=my_d.region) == "Diamond":
-        devsim.set_parameter(device=my_d.device, region=my_d.region, name="CarrierFloor", value=CARRIER_FLOOR)
-    if "irradiation" in my_d.device_dict:
-        irradiation = my_d.device_dict["irradiation"]
-        if irradiation_flux is None:
-            irradiation_flux = irradiation["irradiation_flux"]
-        defects = irradiation_defects(my_d.device, my_d.region, irradiation["irradiation_model"])
-        set_defect_parameters(my_d.device, my_d.region, defects, irradiation_flux)
+    load_point(my_d.device, saved)
     for contact in devsim.get_contact_list(device=my_d.device):
         devsim.set_parameter(
             device=my_d.device,
