@@ -83,7 +83,7 @@ def test_an_experiment_inside_is_no_seed_folder_and_a_point_without_runs_is_not_
 
     lines = status._lines(plain, root, {"scan": []})
 
-    assert lines == [f"{root}: not started", f"{root / 'x_2'}: not started"]
+    assert lines == [f"{root / 'x_1'}: not started", f"{root / 'x_2'}: not started"]
 
 
 def test_a_point_on_disk_that_the_config_does_not_ask_for_is_listed_as_another_experiments(
