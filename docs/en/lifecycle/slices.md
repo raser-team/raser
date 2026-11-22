@@ -113,6 +113,7 @@ Adding `--dry-run` before running prints only the scan points, stages, and job s
 ### Module and File Responsibilities
 
 - `src/raser/lifecycle/slices.py`: Dependency queries among stages (who reads whom, transitive closure of upstream stages), and running stages one by one in dependency order within a single job.
+- `src/raser/lifecycle/nodes.py`: The nodes themselves: the canonical form of the inputs and the fingerprint (`fingerprint`, `node_of`), job seeds and stage seeds (`job_seed`, `stage_seed`), locking and writing a node (`lock`, `start`, `finish`, `found`), view links (`link_view`) and the parameter table (`write_points`).
 - `src/raser/lifecycle/workflow.py`: Deciding which results are reused and which are newly computed, coordinating sharing across scan points, and ordering scan-point execution.
 - `src/raser/lifecycle/status.py`: The `raser status` subcommand.
 - `src/raser/stages/chain.py`: Assembling the stages into the standard chain.
@@ -139,3 +140,39 @@ Adding `--dry-run` before running prints only the scan points, stages, and job s
 - `<experiment>/points/<point>/<stage>/<job>`: View, a symlink pointing to that job's node at that stage; `points/<point>/field` and `points/<point>/analysis` are each a single symlink.
 
 Formats of data files written by each stage inside its node are documented in [Field Solving and Loading (`core/field`)](../core/field.md), [Energy Deposition and Ionization (`core/deposit`)](../core/deposit.md), [Carrier Drift and Induced Current (`core/current`)](../core/current.md), [Electronics Readout (`core/readout`)](../core/readout.md), [Digitizer (`core/digitizer`)](../core/digitizer.md), [Trigger Stage (`stages/trigger`)](../stages/trigger.md), and [Event Reconstruction (`core/reconstruction`)](../core/reconstruction.md).
+
+### Format of `node.json` and `points.json`
+
+The node ID is the first `12` hex digits of the fingerprint; the fingerprint is the SHA-256 of the canonical JSON of the inputs. Canonical JSON: keys in alphabetical order, no spaces; a float with an integer value is written as an integer (`100.0` and `100` are the same value), other floats are kept as they are; a boolean is not a number; `NaN` and infinity raise an error. A file a component refers to by path (mesh, macro, `.cir`, GDML) enters the inputs as the SHA-256 of its content, not as its path.
+
+Keys of `node.json`:
+
+| Key | Type | In the fingerprint | Meaning |
+| --- | --- | --- | --- |
+| `stage` | string | no | Stage name |
+| `node` | string | no | Node ID |
+| `fingerprint` | string | no | Full fingerprint, `64` hex digits; checked before reuse, an error if the name matches and the fingerprint does not |
+| `inputs.settings` | object | yes | Keys and values this stage reads from its section of `config.json` |
+| `inputs.components` | object | yes | Slot → the part of the component file that is used |
+| `inputs.upstream` | object | yes | Upstream stage read directly → node ID; fields are listed by slot; `analysis` lists the node IDs of the jobs of this point |
+| `inputs.seed` | integer | yes | Seed of this stage, only for `deposit`, `current`, `readout`, `digitizer` |
+| `job` | object | no | Job number `index` and master seed `master_seed` |
+| `code` | string | no | Code version, with `+dirty` when the working tree has uncommitted changes |
+| `environment` | object | no | Runtime environment |
+| `state` | string | no | `running` (being written in `.part`), `done`, `ended` (upstream left nothing to compute, the node holds no data file), `failed` |
+| `notes` | object | no | What the stage left after running |
+
+What a stage records for itself goes under top-level keys of its own, such as `axes`, `read`, `solved` of `field`, merged with the keys above when written.
+
+`points.json` is an object keyed by point name, with two entries per point: `values` holds the "section.key" and value of each scan axis; `nodes` holds the node IDs of each stage, one node ID for `field` and `analysis`, and a list of node IDs ordered by job number for `deposit` through `reconstruction`.
+
+```json
+{
+  "voltage_100": {
+    "values": {"field.voltage": 100},
+    "nodes": {"field": "c41f0a9d2b7e", "deposit": ["3f9a0c1d22e4", "8b02e6f4a1c9"], "analysis": "e07d5b3a914c"}
+  }
+}
+```
+
+The lock file of a node is `.<node_id>.lock` beside the node directory.

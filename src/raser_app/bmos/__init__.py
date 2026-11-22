@@ -25,4 +25,4 @@ def register(subparsers):
     parser = subparsers.add_parser("bmos", help="Beam Monitor Online System")
     chain.add_arguments(parser)
     WORKFLOW.attach(parser)
-    parser.set_defaults(_project="det_name", _components=("apps/bmos",))
+    parser.set_defaults(_project="det_name", _components=("raser_app/bmos",))

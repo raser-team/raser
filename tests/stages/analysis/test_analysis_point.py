@@ -107,7 +107,7 @@ def test_point_with_too_few_selected_events_keeps_its_efficiency_and_tells_why(t
 
 
 def test_point_without_selected_events_is_a_result_not_a_failure(tmp_path, monkeypatch, capsys) -> None:
-    root = tmp_path / "work" / "device" / "cce"
+    root = tmp_path / "work" / "device" / "signal"
     _job(root / "seed_1", 0, 0.4, 100, seed=5)  # 4 mV, below the amplitude threshold
     monkeypatch.setattr(ana, "finished_in", lambda folder: [("", {}, [(root / "seed_1", 0)])])
     options = {"experiment": str(root), "_run_path": str(tmp_path / "out")}

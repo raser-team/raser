@@ -19,7 +19,7 @@ where:
 - $N_{\text{eff}}(\mathbf{r})$: effective net doping concentration at position $\mathbf{r}$, $\text{cm}^{-3}$;
 - $\mu$: carrier mobility, $\text{cm}^2/(\text{V}\cdot\text{s})$.
 
-Mobility is computed by `Material(material).cal_mobility`; see [model.md](model.md) for parameterizations. Mobility models are registered by name and selected by name in the device file; each material has a default model: `"Selberherr"` for Si, `"Das"` for SiC (4H-SiC), and `"Reggiani_diamond"` for Diamond. `core/current` computes mobility using the model selected by the device. Carrier drift transport in semiconductors is covered in Ref. [1].
+Mobility is computed by `Material(material).cal_mobility`; see [model.md](model.md) for parameterizations. Mobility models are registered by name and selected by name in the device file; each material has a default model: `"Selberherr"` for Si, `"Das"` for SiC (4H-SiC), and `"Pernegger"` for Diamond. `core/current` computes mobility using the model selected by the device. Carrier drift transport in semiconductors is covered in Ref. [1].
 
 ### Diffusion
 

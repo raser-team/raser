@@ -271,7 +271,7 @@ class cflmaActionInitialization(g4b.G4VUserActionInitialization):
 
 def main():
 
-    geant4_json = app_file_path("apps/cflm", "cflm_spd.json")
+    geant4_json = app_file_path("raser_app/cflm", "cflm_spd.json")
     with open(geant4_json) as f:
         g4_dic = json.load(f)
 

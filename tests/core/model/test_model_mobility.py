@@ -3,25 +3,22 @@ import pytest
 from raser.core.model.material import Material
 
 
-@pytest.mark.parametrize(("charge", "low_field"), [(+1, 1250.0), (-1, 1900.0)])
-def test_diamond_mobility_at_low_field_is_lattice_plus_minimum(
+@pytest.mark.parametrize(("charge", "low_field"), [(+1, 2064.0), (-1, 1714.0)])
+def test_diamond_mobility_at_low_field_is_the_fitted_low_field_mobility(
     charge: int, low_field: float
 ) -> None:
-    # Undoped diamond at 300 K: mu = mu_min + mu_L (holes 50 + 1200, electrons 100 + 1800).
     mobility = Material("Diamond").cal_mobility(300.0, 0.0, charge, 1.0)
 
     assert mobility == pytest.approx(low_field, rel=1e-3)
 
 
-@pytest.mark.parametrize(
-    ("charge", "v_sat", "fraction"), [(+1, 1.0e7, 1.0), (-1, 2.7e7, 0.986)]
-)
-def test_diamond_drift_velocity_saturates_at_high_field(
-    charge: int, v_sat: float, fraction: float
+@pytest.mark.parametrize(("charge", "measured"), [(+1, 7.5e6), (-1, 5.6e6)])
+def test_diamond_drift_velocity_matches_the_measurement_at_0p8_v_per_um(
+    charge: int, measured: float
 ) -> None:
-    # At 1 MV/cm mu E / v_sat is 125 for holes (beta 1.5) and 70 for electrons
-    # (beta 1): the velocity is v_sat, and 70/71 of it.
-    field = 1.0e6
+    # Pernegger et al., J. Appl. Phys. 97 (2005) 073704, section IV: the drift
+    # velocities measured at 0.8 V/um, in cm/s.
+    field = 8.0e3
     velocity = Material("Diamond").cal_mobility(300.0, 0.0, charge, field) * field
 
-    assert velocity == pytest.approx(fraction * v_sat, rel=5e-3)
+    assert velocity == pytest.approx(measured, rel=2e-2)

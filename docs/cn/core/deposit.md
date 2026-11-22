@@ -83,9 +83,15 @@ $$w = \frac{K}{2}\left\langle\frac{Z}{A}\right\rangle\frac{\rho}{\beta^2} \times
 
 激光脉冲在器件里按吸收产生载流子。单光子吸收（SPA）每吸收一个光子产生一对，强度沿光路按 Beer–Lambert 定律 $e^{-\alpha s}$ 衰减。双光子吸收（TPA）按 $dI/dz = -\alpha I - \beta_2 I^2$ [15]，产生率正比于光强平方，集中在焦点附近。光束是高斯光束，横向半径随离焦距离展宽。
 
-吸收系数 $\alpha$ 在激光文件未给 `alpha` 时由 `absorption_coefficient` 查表：
+激光文件未给 `alpha` 时，吸收系数 $\alpha$ 由 `absorption_coefficient` 按器件材料给出。硅查表：
 
 $$\alpha(\lambda) = 100\,\exp\Bigl[\operatorname{interp}\bigl(10^{3}\lambda;\ \lambda_i,\ \ln \alpha_i\bigr)\Bigr] \tag{7}$$
+
+4H-SiC 是间接带隙，带边附近的吸收要声子参与。按声子辅助间接跃迁的半经验模型 [16] 计算，带器件温度 $T$：
+
+$$\alpha(\lambda, T) = 100 \sum_{p=1}^{7} \sum_{\pm} \Bigl(n_p + \tfrac{1}{2} \pm \tfrac{1}{2}\Bigr) \Bigl\{ A_p \bigl[\hbar\omega - (E_{GX} \pm \hbar\Omega_p)\bigr]_+^{1/2} + B A_p \bigl[\hbar\omega - (E_{GX} \pm \hbar\Omega_p + E_{\text{ex}})\bigr]_+^{2} \Bigr\} \tag{7a}$$
+
+$$\hbar\omega = \frac{h c}{e\,\lambda \times 10^{-6}}, \qquad n_p = \frac{1}{\exp(\hbar\Omega_p / k_B T) - 1}, \qquad E_{GX}(T) = E_{GX}(0) - \frac{\varepsilon\,\Theta}{2}\left[\bigl(1 + (2T/\Theta)^{q}\bigr)^{1/q} - 1\right] \tag{7b}$$
 
 光子能量、光子数与高斯光束半径为：
 
@@ -110,6 +116,11 @@ $$P(t) = \frac{2\sqrt{2\ln 2}}{\sqrt{2\pi}\,\tau}\exp\!\left(-\frac{4\ln 2\; t^2
 - $\lambda$：波长，$\mu\text{m}$（激光文件的 `wavelength` 以 $\text{nm}$ 给出，乘 $10^{-3}$）；
 - $\lambda_i, \alpha_i$：吸收系数表的波长（$\text{nm}$）与吸收系数（$\text{cm}^{-1}$），`interp` 为相邻行间的线性插值，$100$ 把 $\text{cm}^{-1}$ 换成 $\text{m}^{-1}$；
 - $\alpha$：吸收系数，$\text{m}^{-1}$；
+- $\hbar\omega$：光子能量，$\text{eV}$（$e$ 为元电荷）；$T$：器件文件的 `temperature`，$\text{K}$；$k_B = 8.617\times10^{-5}\ \text{eV/K}$；
+- $\hbar\Omega_p$、$A_p$：第 $p$ 个声子的能量（$\text{eV}$）与跃迁系数（$\text{eV}^{-1/2}\,\text{cm}^{-1}$），取文献 [16] 表 I（$E \perp c$，$E$ 为光的电场）：$\hbar\Omega_p$ = 32.4、45.7、50.8、67.8、76.3、95.8、106.2 meV，$A_p$ = 0.5、4、7、3.5、23、23、40.5；
+- $\pm$：上号为放出声子，下号为吸收声子；$n_p$：声子的玻色占据数；$[x]_+ = \max(x, 0)$；
+- $B = 60\ \text{eV}^{-3/2}$：连续态与激子基态跃迁系数之比；$E_{\text{ex}} = 20\ \text{meV}$：激子结合能；
+- $E_{GX}(T)$：激子带隙，$\text{eV}$；$E_{GX}(0) = 3.267\ \text{eV}$，$\varepsilon = 3\times10^{-4}\ \text{eV/K}$，$\Theta = 450\ \text{K}$，$q = 2.9$（文献 [16] 式 (5)），$300\ \text{K}$ 时 $E_{GX} = 3.233\ \text{eV}$；
 - $h = 6.626\times10^{-34}\ \text{J}\cdot\text{s}$，$c = 2.998\times10^{8}\ \text{m/s}$；$h\nu$：光子能量，$\text{J}$；
 - $E_p$：脉冲能量 `pulse_energy`，$\text{J}$；$N_\gamma$：脉冲光子数；
 - $\text{FWHM}_s$：焦点处光斑的空间半高全宽 `spacial_FWHM`，$\mu\text{m}$；$w_0$：束腰半径，$\mu\text{m}$；
@@ -122,6 +133,10 @@ $$P(t) = \frac{2\sqrt{2\ln 2}}{\sqrt{2\pi}\,\tau}\exp\!\left(-\frac{4\ln 2\; t^2
 - $P(t)$：离脉冲中心 $t$（$\text{s}$）处的归一化时间分布，$\text{s}^{-1}$（`timePulse`）。
 
 式 (11) 中第二个因子是高斯脉冲时间分布平方的积分。光强沿光路只按 $\alpha$ 衰减。$\alpha \ne 0$ 时按式 (10) 加 SPA 载流子群，`tech` 为 `"TPA"` 时再按式 (11) 加 TPA 载流子群；双光子激光的 $\alpha$ 是缺陷对带隙以下光子的吸收（代码注释）。每个群的产生时刻以 `central_time` 为中心展宽：SPA 群的半高全宽为 $\tau$，TPA 群为 $\tau/\sqrt{2}$，因为 $P^2(t)$ 是宽度缩小 $\sqrt{2}$ 的高斯。由 `LaserInjection` 实现。吸收系数表 `Si.txt` 取自文献 [7]。
+
+式 (7a) 与文献 [16] 的式 (3) 差一个因子：原文在求和之外除以 $\hbar\omega$，按原文的参数算出的吸收比原文自己的图 4（$75\ \text{K}$）低 $\hbar\omega \approx 3.3$ 倍，去掉这个除数后与图 4 一致，与文献 [17] 的 $300\ \text{K}$ 实测相比，$353$–$364\ \text{nm}$ 相差不到 $10\%$（$355\ \text{nm}$：$225$ 对 $210\ \text{cm}^{-1}$），$336\ \text{nm}$ 高 $21\%$，$369\ \text{nm}$ 低 $26\%$；更长的波长上文献 [17] 停在约 $13\ \text{cm}^{-1}$ 的测量下限，文献 [16] 测到 $0.02\ \text{cm}^{-1}$。原文参数只拟合到 $\hbar\omega = 3.8\ \text{eV}$，波长短于 $326\ \text{nm}$ 时 `absorption_coefficient` 报错，要求在激光文件里给 `alpha`。$300\ \text{K}$ 下 $375\ \text{nm}$ 的 $\alpha = 9.05\ \text{cm}^{-1}$；最低阈值 $E_{GX} - \hbar\Omega_7 = 3.126\ \text{eV}$（约 $397\ \text{nm}$），更长的波长没有带间吸收，$\alpha = 0$，缺陷的吸收须在激光文件里给 `alpha`。
+
+局限：只用了 $E \perp c$ 的一组参数，适用于在 $c$ 面晶圆上从顶面或底面入射；侧面入射时偏振可能平行于 $c$ 轴，文献 [16] 表 II 的那组参数没有接入。不计掺杂对带边的影响，文献 [16] 测的是名义未掺杂的外延层。
 
 ### 放射源
 
@@ -205,6 +220,7 @@ $$h_s(t_0) = h_s \cdot \mathbb{I}\bigl(t_0 \le t_s \le t_0 + W\bigr), \qquad \ex
 | 器件密度 | Diamond `3.52`，SiC `3.21`（Si:C 原子数 `50:50`） | $\text{g/cm}^3$ | `geant4/detector_construction.py` | 无 |
 | `RADIOACTIVE_DECAY` | `210` | — | `geant4/nuclide_source.py`，放射性衰变的过程子类型 | 无 |
 | $h$, $c$ | `6.626e-34`, `2.998e8` | $\text{J}\cdot\text{s}$, $\text{m/s}$ | `laser.py`，式 (8) | 无 |
+| 4H-SiC 吸收模型参数 | 见式 (7a)、(7b) 的变量说明 | — | `laser.py`，文献 [16] 表 I 与式 (5) | 无 |
 | 环数、扇区数 | `4`, `8` | 个 | `laser.py`，激光横截面的划分 | 无 |
 | 光路采样密度 | 每个最细尺度 `50` 点 | — | `laser.py`，见“激光载流子群” | 无 |
 
@@ -259,7 +275,7 @@ GDML 导入模式按 `material` 为 `"Si"`（`G4_Si`）和 `"SiC"`（Si、C 原�
 
 ### 激光载流子群
 
-`LaserInjection(my_d, laser_dic)` 读入激光键（见“接口”）。未给 `alpha` 时按式 (7) 查表：组件里没有 `deposit/absorption/<material>.txt` 时抛 `ValueError`；$10^3\lambda$ 小于表的最短波长时抛 `ValueError`；大于最长波长时 $\alpha = 0$。然后先在 $\alpha \ne 0$ 时用 $k = 2$、展宽 $\tau$ 加 SPA 群，再在 `tech == "TPA"` 时用 $k = 4$、展宽 $\tau/\sqrt{2}$ 加 TPA 群。`tech` 不是 `"SPA"`、`"TPA"` 时在加完 SPA 群之后抛 `NameError(tech)`。每次加群（`_add_groups`）的步骤：
+`LaserInjection(my_d, laser_dic)` 读入激光键（见“接口”）。未给 `alpha` 时：器件材料为 `"SiC"` 时按式 (7a)、(7b) 以器件的 `temperature` 计算，$\hbar\omega > 3.8\ \text{eV}$ 时抛 `ValueError`；其他材料按式 (7) 查表，组件里没有 `deposit/absorption/<material>.txt` 时抛 `ValueError`，$10^3\lambda$ 小于表的最短波长时抛 `ValueError`，大于最长波长时 $\alpha = 0$。然后先在 $\alpha \ne 0$ 时用 $k = 2$、展宽 $\tau$ 加 SPA 群，再在 `tech == "TPA"` 时用 $k = 4$、展宽 $\tau/\sqrt{2}$ 加 TPA 群。`tech` 不是 `"SPA"`、`"TPA"` 时在加完 SPA 群之后抛 `NameError(tech)`。每次加群（`_add_groups`）的步骤：
 
 1. **光路坐标**（`_beam_frame`）：`"top"` 从 $z = 0$ 沿 $+z$，光路长 $l_z$，焦点 $s_f = f_z l_z$，横向坐标 $(u, v) = (x, y)$，中心 $(f_x l_x, f_y l_y)$；`"bottom"` 从 $z = l_z$ 沿 $-z$，光路长 $l_z$，$s_f = l_z - f_z l_z$，$z = l_z - s$；`"edge"` 从 $x = 0$ 沿 $+x$，光路长 $l_x$，$s_f = f_x l_x$，$(u, v) = (y, z)$，中心 $(f_y l_y, f_z l_z)$。其中 $f_x, f_y, f_z$ 为 `fx_rel`、`fy_rel`、`fz_rel`。其他 `direction` 抛 `NameError(direction)`。
 2. **光路采样**：最细尺度 $d = \min\bigl(L_{\text{beam}},\ z_R,\ 10^{6}/\alpha\bigr)$（$\alpha = 0$ 时第三项取 $L_{\text{beam}}$），在 $[0, L_{\text{beam}}]$ 上取 $\lceil 50 L_{\text{beam}}/d \rceil + 1$ 个等距点，按式 (10) 或 (11) 求 $dN/ds$，用梯形法累积得 $M(s)$（乘 $10^{-6}$ 换成每 $\mu\text{m}$），总对数 $N_{\text{tot}} = M(L_{\text{beam}})$。
@@ -323,6 +339,7 @@ GDML 导入模式按 `material` 为 `"Si"`（`G4_Si`）和 `"SiC"`（Si、C 原�
 | --- | --- | --- | --- |
 | `l_x`, `l_y`, `l_z` | 无（必选） | $\mu\text{m}$ | 器件有源层尺寸，见 [器件模型](device.md) |
 | `material` | 无（必选） | 无 | `"Si"`、`"SiC"` 或 `"Diamond"`；决定 Geant4 材料、电离能与 Fano 因子；toy MIP 只支持 `"Si"`、`"SiC"` |
+| `temperature` | 无（`"SiC"` 器件的激光未给 `alpha` 时必选） | $\text{K}$ | 式 (7b) 的 $T$ |
 
 器件几何按深度分层，灵敏层以外的各层（衬底等）见 [探测器组件](../components/device.md)；Geant4 按器件几何建出全部层，只记录灵敏层里的沉积。
 
@@ -492,7 +509,7 @@ GDML 文件中含字符串 `RASER_GDML_WRAPPER_WORLD` 时，GDML 的世界体直
 | `direction` | 无（必填） | 无 | `"top"`（从 $z = 0$ 沿 $+z$）、`"bottom"`（从 $z = l_z$ 沿 $-z$）或 `"edge"`（从 $x = 0$ 沿 $+x$） |
 | `refractionIndex` | 无（必填） | 无 | 器件材料在该波长的折射率 $n$ |
 | `wavelength` | 无（必填） | $\text{nm}$ | 激光波长 |
-| `alpha` | 按式 (7) 查表 | $\text{m}^{-1}$ | 吸收系数；给 `0` 时没有单光子吸收，`"TPA"` 激光只有 TPA 群 |
+| `alpha` | 硅按式 (7) 查表，碳化硅按式 (7a) 计算 | $\text{m}^{-1}$ | 吸收系数；给 `0` 时没有单光子吸收，`"TPA"` 激光只有 TPA 群 |
 | `beta_2` | 无（`"TPA"` 必填） | $\text{m/W}$ | 双光子吸收系数 |
 | `temporal_FWHM` | 无（必填） | $\text{s}$ | 脉冲时间半高全宽 $\tau$ |
 | `pulse_energy` | 无（必填） | $\text{J}$ | 脉冲能量 $E_p$ |
@@ -513,7 +530,7 @@ GDML 文件中含字符串 `RASER_GDML_WRAPPER_WORLD` 时，GDML 的世界体直
 | --- | --- | --- |
 | `LA01IR_top_Si`、`LA01IR_edge_Si` | `"SPA"` | $1064\ \text{nm}$，硅，查表取 $\alpha$ |
 | `LA01R_top_Si`、`LA01R_bottom_Si` | `"SPA"` | $660\ \text{nm}$，硅，查表取 $\alpha$ |
-| `PIL037_top_SiC`、`PIL037_edge_SiC` | `"SPA"` | $375\ \text{nm}$，碳化硅，`alpha` 分别为 `1000`、`21000` $\text{m}^{-1}$ |
+| `PIL037_top_SiC`、`PIL037_edge_SiC` | `"SPA"` | $375\ \text{nm}$，碳化硅，按式 (7a) 计算 $\alpha$（$300\ \text{K}$ 时 $9.05\ \text{cm}^{-1}$） |
 | `TPA1550_top_Si`、`TPA1550_edge_Si` | `"TPA"` | $1550\ \text{nm}$，硅，长于表的上限，$\alpha = 0$，只有 TPA 群 |
 
 ### `deposit.h5` 文件格式
@@ -553,7 +570,7 @@ GDML 文件中含字符串 `RASER_GDML_WRAPPER_WORLD` 时，GDML 的世界体直
 | `<output>.png` | `view_geometry`（TSG 驱动） | 几何与生成事例的径迹 | Geant4 坐标 |
 | `<output>` 矢量图 | `view_geometry`（OGL 驱动） | 同上，`2000 × 2000`，白底 | Geant4 坐标 |
 | `nocarrier_<fx>_<fy>_<fz>.pdf` | `LaserInjection.draw_nocarrier3D` | 载流子群按对数加权的 `TH3D`，$50^3$ 箱，范围为各群的包围盒；轴标题 `Depth`、`Width`、`Thick`（即 $x$、$y$、$z$）；文件名中的相对坐标保留 5 位小数 | $\mu\text{m}$ |
-| `nocarrier2D_<fx>_<fy>_<fz>.pdf` | `LaserInjection.draw_nocarrier2D` | $x$-$z$ 平面的 `TH2D`（`COLZ`），$50 \times 50$ 箱，颜色为对数（`Carriers`） | $\mu\text{m}$ |
+| `nocarrier2D_<fx>_<fy>_<fz>.pdf` | `LaserInjection.draw_nocarrier2D` | $y = f_y l_y$ 的 $x$-$z$ 面上（三种入射方向下这个面都过光轴）电子-空穴对的体密度，`TH2D`（`COLZ`），由式 (10)、(11) 的 $dN/ds$ 乘横向分布 $\frac{k}{\pi w^2}\exp(-k r^2/w^2)$ 在 $200 \times 200$ 的网格上直接算出，颜色为对每 $\mu\text{m}^3$（`Pairs [μm⁻³]`）；沿光路从入射面画到累积对数 $M(s)$ 达到 $0.99\,N_{\text{tot}}$ 处，横向画到光轴两侧 $2 w_{\max}$（$w_{\max}$ 为这段光路上光斑半径的最大值，超出器件处截掉） | $\mu\text{m}$ |
 
 ## 参考文献
 
@@ -572,3 +589,5 @@ GDML 文件中含字符串 `RASER_GDML_WRAPPER_WORLD` 时，GDML 的世界体直
 - [13] M. E. Levinshtein, S. L. Rumyantsev, M. S. Shur (eds.), *Properties of Advanced Semiconductor Materials*, Wiley (2001)
 - [14] H. Bichsel, “Straggling in thin silicon detectors”, Rev. Mod. Phys. 60 (1988) 663, doi:10.1103/RevModPhys.60.663
 - [15] R. W. Boyd, *Nonlinear Optics*, 3rd ed., Academic Press (2008)
+- [16] P. Grivickas, V. Grivickas, J. Linnros, A. Galeckas, “Fundamental band edge absorption in nominally undoped and doped 4H-SiC”, J. Appl. Phys. 101 (2007) 123521, doi:10.1063/1.2749335
+- [17] S. G. Sridhara, R. P. Devaty, W. J. Choyke, “Absorption coefficient of 4H silicon carbide from 3900 to 3250 Å”, J. Appl. Phys. 84 (1998) 2963, doi:10.1063/1.368403
