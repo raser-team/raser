@@ -361,6 +361,51 @@ def _add_telescope(subparsers):
     parser = subparsers.add_parser("telescope", help="telescope")
     setups = parser.add_subparsers(dest="telescope_setup", required=True)
 
+    joint = setups.add_parser(
+        "joint-strip", help="single-layer strip position and angle reconstruction"
+    )
+    actions = joint.add_subparsers(dest="joint_action", required=True)
+    for action in ("features", "calibrate", "predict", "evaluate"):
+        command = actions.add_parser(action)
+        command.add_argument("--dataset", required=True, help="strip waveform manifest")
+        command.add_argument("--output", required=True, help="new output file")
+        if action in ("features", "calibrate"):
+            command.add_argument(
+                "--estimator",
+                choices=(
+                    "template",
+                    "difference-peak",
+                    "difference-waveform",
+                    "ridge",
+                    "mlp",
+                ),
+                default="template",
+            )
+            command.add_argument(
+                "--feature-config", help="feature windows and numerical settings"
+            )
+        if action in ("calibrate", "evaluate"):
+            command.add_argument(
+                "--labels", required=True, help="separate slope and entrance labels"
+            )
+        if action == "calibrate":
+            command.add_argument(
+                "--interval-dataset", help="independent template interval calibration"
+            )
+            command.add_argument(
+                "--interval-labels", help="independent interval labels"
+            )
+            command.add_argument(
+                "--representation", choices=("summary", "waveform"), default="waveform"
+            )
+            command.add_argument("--seed", type=int, default=20261120)
+            command.add_argument("--epochs", type=int, default=220)
+        if action in ("predict", "evaluate"):
+            command.add_argument("--model", required=True)
+        _entry(
+            command, ".apps.telescope.single_strip", command="telescope", group="app"
+        )
+
     taichu_v1 = setups.add_parser("taichu_v1")
     _entry(
         taichu_v1,
