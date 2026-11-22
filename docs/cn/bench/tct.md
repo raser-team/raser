@@ -34,7 +34,7 @@ $$P(t) = \frac{2\sqrt{\ln 2}}{\sqrt{\pi}\,\text{FWHM}_t}\exp\!\left(-\frac{4\ln 
 - $\lambda$：激光波长，$\mu\text{m}$（由组件文件的 `wavelength` [$\text{nm}$] 乘以 $10^{-3}$ 换算）；
 - $l_R$：介质内的瑞利长度 `l_Rayleigh`，$\mu\text{m}$（组件文件未显式给出时按式 (2) 计算）；
 - $s_{\text{focus}}$：焦点沿光束传播方向距入射面的距离，$\mu\text{m}$；
-- $\alpha$：线性（单光子）吸收系数 `alpha`，$\text{m}^{-1}$（组件文件未给出时查 `raser/components/deposit/absorption/<material>.txt` 对数插值并乘以 $100$ 换算）；
+- $\alpha$：线性（单光子）吸收系数 `alpha`，$\text{m}^{-1}$（组件文件未给出时：硅查 `raser/components/deposit/absorption/Si.txt` 对数插值并乘以 $100$ 换算，碳化硅按器件温度由 4H-SiC 间接吸收模型计算，见 [`core/deposit`](../core/deposit.md) 式 (7a)、(7b)）；
 - $\beta_2$：双光子吸收系数 `beta_2`，$\text{m/W}$；
 - $E_{\text{pulse}}$：单次激光脉冲能量 `pulse_energy`，$\text{J}$；$E_{\text{ph}}$ 为单光子能量，$\text{J}$（$h = 6.626\times 10^{-34}\ \text{J}\cdot\text{s}$，$c = 2.998\times 10^{8}\ \text{m/s}$）；
 - $\text{FWHM}_t$：激光脉冲时间半高全宽 `temporal_FWHM`，$\text{s}$；

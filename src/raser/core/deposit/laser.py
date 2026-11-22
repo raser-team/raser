@@ -18,13 +18,66 @@ from raser.core.deposit.ionization import PAIR_ENERGY_EV
 from raser.supports.paths import optional_component_path
 
 
-def absorption_coefficient(material: str, wavelength: float) -> float:
-    """Band-to-band absorption coefficient [1/m] at 300 K of light of this
-    wavelength [um], from the table components/laser/absorption/<material>.txt.
+# P. Grivickas et al., J. Appl. Phys. 101 (2007) 123521, Table I (E perp c) and Eq. (5); the 1/ħω of their Eq. (3) is left out, which matches their Fig. 4
+SIC_PHONON_ENERGIES_EV = (0.0324, 0.0457, 0.0508, 0.0678, 0.0763, 0.0958, 0.1062)
+SIC_PHONON_STRENGTHS = (0.5, 4.0, 7.0, 3.5, 23.0, 23.0, 40.5)  # eV^-1/2 cm^-1
+SIC_EXCITON_RATIO = 60.0  # eV^-3/2, continuum to exciton ground state
+SIC_EXCITON_BINDING_EV = 0.020
+SIC_GAP_0K_EV = 3.267
+SIC_GAP_SLOPE_EV_PER_K = 3e-4
+SIC_GAP_THETA_K = 450.0
+SIC_GAP_EXPONENT = 2.9
+SIC_HIGHEST_PHOTON_EV = 3.8
+
+PLANCK_J_S = 6.62607015e-34
+LIGHT_SPEED_M_S = 2.99792458e8
+ELEMENTARY_CHARGE_C = 1.602176634e-19
+BOLTZMANN_EV_PER_K = 8.617333262e-5
+
+
+def sic_absorption(wavelength: float, temperature: float) -> float:
+    """Band-to-band absorption coefficient [1/m] of 4H-SiC for light of this
+    wavelength [um] at this temperature [K]: phonon-assisted indirect
+    transitions into the continuum and into the exciton, each phonon emitted
+    or absorbed, Eqs. (7a) and (7b) of the deposit page."""
+    photon = PLANCK_J_S * LIGHT_SPEED_M_S / (ELEMENTARY_CHARGE_C * wavelength * 1e-6)  # eV
+    if photon > SIC_HIGHEST_PHOTON_EV:
+        raise ValueError(
+            f"the 4H-SiC absorption model reaches 3.8 eV (326 nm), the laser has "
+            f"{wavelength * 1e3:.0f} nm: give alpha [1/m] in the laser file"
+        )
+    theta = SIC_GAP_THETA_K
+    q = SIC_GAP_EXPONENT
+    gap = SIC_GAP_0K_EV - SIC_GAP_SLOPE_EV_PER_K * theta / 2 * (
+        (1 + (2 * temperature / theta) ** q) ** (1 / q) - 1
+    )
+    per_cm = 0.0
+    for phonon, strength in zip(SIC_PHONON_ENERGIES_EV, SIC_PHONON_STRENGTHS):
+        occupation = 1 / (math.exp(phonon / (BOLTZMANN_EV_PER_K * temperature)) - 1)
+        for weight, threshold in ((occupation + 1, gap + phonon), (occupation, gap - phonon)):
+            excess = photon - threshold
+            per_cm += weight * (
+                strength * math.sqrt(max(excess, 0.0))
+                + SIC_EXCITON_RATIO * strength * max(excess - SIC_EXCITON_BINDING_EV, 0.0) ** 2
+            )
+    return 100.0 * per_cm
+
+
+def absorption_coefficient(material: str, wavelength: float, temperature: float | None = None) -> float:
+    """Band-to-band absorption coefficient [1/m] of light of this wavelength
+    [um]. For "SiC" it is sic_absorption at the temperature [K] of the device;
+    for the other materials it is that at 300 K from the table
+    components/laser/absorption/<material>.txt, and the temperature is not used.
 
     Between the rows the logarithm of the coefficient is interpolated. Light of
     a longer wavelength than the table reaches is not absorbed band to band.
     """
+    if material == "SiC":
+        if temperature is None:
+            raise ValueError(
+                "the absorption of SiC depends on the temperature: give the temperature [K] of the device"
+            )
+        return sic_absorption(wavelength, temperature)
     path = optional_component_path("laser", "absorption", material + ".txt")
     if path is None:
         raise ValueError(
@@ -101,7 +154,7 @@ class LaserInjection:
         if "alpha" in laser_dic:
             self.alpha = laser_dic["alpha"]
         else:
-            self.alpha = absorption_coefficient(my_d.material, self.wavelength)
+            self.alpha = absorption_coefficient(my_d.material, self.wavelength, getattr(my_d, "temperature", None))
         self.temporal_FWHM = laser_dic["temporal_FWHM"]
         self.pulse_energy = laser_dic["pulse_energy"]
         # TODO: Rename spacial_FWHM to spatial_FWHM.

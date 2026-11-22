@@ -201,7 +201,7 @@ G4SETUP = {
 | `direction` | 无（必填） | 无 | 入射面：`"top"`（从 $z = 0$ 沿 $+z$）、`"bottom"`（从 $z = l_z$ 沿 $-z$）或 `"edge"`（从 $x = 0$ 沿 $+x$） |
 | `refractionIndex` | 无（必填） | 无 | 器件材料在该波长下的折射率 $n$ |
 | `wavelength` | 无（必填） | `nm` | 激光波长（读入后乘以 `1e-3` 转为 `um`） |
-| `alpha` | 查 `deposit/absorption/<material>.txt` 对数插值 | `1/m` | 线性吸收系数 $\alpha$ |
+| `alpha` | 硅查 `deposit/absorption/<material>.txt` 对数插值；碳化硅按器件温度由 4H-SiC 间接吸收模型计算（见 [`core/deposit`](../core/deposit.md) 式 (7a)、(7b)） | `1/m` | 线性吸收系数 $\alpha$ |
 | `beta_2` | 无（`"TPA"` 必填） | `m/W` | 双光子吸收系数 $\beta_2$ |
 | `temporal_FWHM` | 无（必填） | `s` | 激光脉冲时间半高全宽 $\text{FWHM}_t$ |
 | `pulse_energy` | 无（必填） | `J` | 单次激光脉冲能量 $E_{\text{pulse}}$ |
@@ -324,8 +324,8 @@ G4SETUP = {
 | 单光子硅（`Si`） | `LA01IR_top_Si` | `"SPA"`，`1064 nm` 顶面（`"top"`）入射，脉宽 `350 ps`，光斑 `11 um`，脉冲能量 `1.8e-13 J` | `description`：Particulars LA-01 IR FC（`1064 nm`）扫描 TCT 激光器参数 | [`tct`](../bench/tct.md) 默认激光组件（如 `HPK-Si-PiN`） |
 | 单光子硅（`Si`） | `LA01R_bottom_Si` | `"SPA"`，`660 nm` 底面（`"bottom"`）入射，脉宽 `350 ps`，光斑 `8 um`，脉冲能量 `7.2e-14 J` | `description`：Particulars LA-01 R FC（`660 nm`）扫描 TCT 激光器参数 | 硅器件底面 [`tct`](../bench/tct.md) |
 | 单光子硅（`Si`） | `LA01R_top_Si` | `"SPA"`，`660 nm` 顶面（`"top"`）入射，脉宽 `350 ps`，光斑 `8 um`，脉冲能量 `7.2e-14 J` | `description`：Particulars LA-01 R FC（`660 nm`）扫描 TCT 激光器参数 | 硅器件顶面 [`tct`](../bench/tct.md) |
-| 单光子碳化硅（`SiC`） | `PIL037_edge_SiC` | `"SPA"`，`375 nm` 侧面（`"edge"`）入射，$\alpha = 21000\ \text{m}^{-1}$，脉宽 `60 ps`，光斑 `20 um`，脉冲能量 `1.23e-12 J` | `description`：NKT Photonics PILAS PIL037（`375 nm`）数据手册 | 碳化硅器件侧面 [`tct`](../bench/tct.md)（如 `NJU-PiN`） |
-| 单光子碳化硅（`SiC`） | `PIL037_top_SiC` | `"SPA"`，`375 nm` 顶面（`"top"`）入射，$\alpha = 1000\ \text{m}^{-1}$，脉宽 `60 ps`，光斑 `20 um`，脉冲能量 `1.23e-12 J` | `description`：NKT Photonics PILAS PIL037（`375 nm`）数据手册 | 碳化硅器件顶面 [`tct`](../bench/tct.md) 与 [`signal`](../bench/signal.md)（如 `NJU-PiN`） |
+| 单光子碳化硅（`SiC`） | `PIL037_edge_SiC` | `"SPA"`，`375 nm` 侧面（`"edge"`）入射，$\alpha$ 由 4H-SiC 吸收模型计算（$300\ \text{K}$ 时 $905\ \text{m}^{-1}$），脉宽 `60 ps`，光斑 `20 um`，脉冲能量 `1.23e-12 J` | `description`：NKT Photonics PILAS PIL037（`375 nm`）数据手册 | 碳化硅器件侧面 [`tct`](../bench/tct.md)（如 `NJU-PiN`） |
+| 单光子碳化硅（`SiC`） | `PIL037_top_SiC` | `"SPA"`，`375 nm` 顶面（`"top"`）入射，$\alpha$ 由 4H-SiC 吸收模型计算（$300\ \text{K}$ 时 $905\ \text{m}^{-1}$），脉宽 `60 ps`，光斑 `20 um`，脉冲能量 `1.23e-12 J` | `description`：NKT Photonics PILAS PIL037（`375 nm`）数据手册 | 碳化硅器件顶面 [`tct`](../bench/tct.md) 与 [`signal`](../bench/signal.md)（如 `NJU-PiN`） |
 | 双光子硅（`Si`） | `TPA1550_edge_Si` | `"TPA"`，`1550 nm` 侧面（`"edge"`）入射，$\beta_2 = 1.5\times 10^{-11}\ \text{m/W}$，脉宽 `430 fs`，光斑 `1.448 um`，$l_R = 10.73\ \mu\text{m}$，脉冲能量 `5e-11 J` | `description`：TPA-TCT `1550 nm` 飞秒光纤激光器（`arXiv:2412.09017` 第 2.1 节） | 硅器件侧面双光子 [`tct`](../bench/tct.md) |
 | 双光子硅（`Si`） | `TPA1550_top_Si` | `"TPA"`，`1550 nm` 顶面（`"top"`）入射，$\beta_2 = 1.5\times 10^{-11}\ \text{m/W}$，脉宽 `430 fs`，光斑 `1.448 um`，$l_R = 10.73\ \mu\text{m}$，脉冲能量 `1.5e-12 J` | `description`：TPA-TCT `1550 nm` 飞秒光纤激光器（`arXiv:2412.09017` 第 2.1 节） | 硅器件顶面双光子 [`tct`](../bench/tct.md) |
 | 吸收系数表（`deposit/absorption/`） | `Si.txt` | `300 K` 本征硅在波长 `250 nm` 至 `1450 nm` 的带间吸收系数（`1/cm`） | 文件头注释：M. A. Green, *Sol. Energy Mater. Sol. Cells* 92 (2008) 1305, Table 1（doi:10.1016/j.solmat.2008.06.009） | 未显式指定 `alpha` 的硅（`"Si"`）器件激光模拟 |

@@ -216,3 +216,49 @@ def test_two_photon_presets_make_a_signal_and_absorb_little(name: str) -> None:
     laser = LaserInjection(SimpleNamespace(l_x=50.0, l_y=50.0, l_z=50.0, material="Si"), preset)
     photons = preset["pulse_energy"] * 1.55e-6 / H_C
     assert 100 < sum(laser.ionized_pairs) < 0.1 * photons
+
+
+def test_sic_absorption_matches_the_measured_coefficients_at_room_temperature() -> None:
+    # Sridhara et al. 1998, Table I: 290, 230, 210, 180 /cm at 351.1, 354.0,
+    # 355.0, 356.4 nm and room temperature
+    for nm, per_cm in ((351.1, 290.0), (354.0, 230.0), (355.0, 210.0), (356.4, 180.0)):
+        assert absorption_coefficient("SiC", nm * 1e-3, 300.0) == pytest.approx(100.0 * per_cm, rel=0.15)
+
+
+def test_sic_absorption_follows_the_measured_edge_at_75_K() -> None:
+    # Grivickas et al. 2007, Fig. 4: sqrt(α[/cm] ħω[eV]) = 1.7, 2.6, 7.5 at
+    # 3.32, 3.34, 3.38 eV and 75 K
+    for photon, root in ((3.32, 1.7), (3.34, 2.6), (3.38, 7.5)):
+        alpha = absorption_coefficient("SiC", 1.23984198 / photon, 75.0)
+        assert math.sqrt(alpha / 100.0 * photon) == pytest.approx(root, rel=0.10)
+
+
+def test_sic_does_not_absorb_band_to_band_below_the_lowest_phonon_threshold() -> None:
+    # at 300 K the gap is 3.2326 eV; with the 106.2 meV phonon absorbed the
+    # threshold is 3.126 eV (397 nm)
+    assert absorption_coefficient("SiC", 0.401, 300.0) == 0.0
+    assert absorption_coefficient("SiC", 0.395, 300.0) > 0.0
+
+
+def test_warmer_sic_absorbs_more_at_the_edge() -> None:
+    # the gap narrows with the temperature (Grivickas et al. 2007, Eq. (5))
+    assert absorption_coefficient("SiC", 0.375, 350.0) > 1.5 * absorption_coefficient("SiC", 0.375, 300.0)
+
+
+def test_sic_absorption_needs_the_temperature_and_stops_at_its_fitted_range() -> None:
+    # the model of Grivickas et al. 2007 is fitted up to 3.8 eV (326 nm)
+    with pytest.raises(ValueError, match="temperature"):
+        absorption_coefficient("SiC", 0.375)
+    with pytest.raises(ValueError, match="give alpha"):
+        absorption_coefficient("SiC", 0.320, 300.0)
+
+
+def test_sic_laser_takes_the_absorption_of_its_device_temperature() -> None:
+    # Grivickas et al. 2007, Table I and Eq. (5): 9.05 /cm at 375 nm and 300 K
+    with open(component_path("laser", "PIL037_top_SiC.json")) as file:
+        laser = json.load(file)
+    detector = SimpleNamespace(l_x=50.0, l_y=50.0, l_z=50.0, material="SiC", temperature=300.0)
+    alpha = LaserInjection(detector, laser).alpha
+
+    assert alpha == absorption_coefficient("SiC", 0.375, 300.0)
+    assert 900.0 < alpha < 910.0
