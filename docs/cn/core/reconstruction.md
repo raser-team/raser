@@ -1,6 +1,6 @@
 # 事件重建（`core/reconstruction`）
 
-`src/raser/core/reconstruction/` 承接[触发环节](../stages/trigger.md)记录的事例：各电极经[数字化](digitizer.md)得到的时域电压波形，文件格式与[电子学读出](readout.md)的波形文件相同。该包从每条波形中扣除脉冲前基线并估计电子学基线噪声，按各电极所选触发边沿将负向脉冲翻转为正向脉冲，提取峰值幅度、前沿过阈到达时间（`ToA`）、过阈持续时间（`ToT`）、过阈区间时间重心（`CoG`）、正向主瓣积分面积（`area`）、恒比定时（`CFD`）以及跨电极团簇（cluster）大小与空间重心，并写出 `reconstruction_<job>.h5` 文件（另提供面向条形探测器的单事例独立重建类 `InputWaveform`）。输出的事件汇总表 `EventTable` 交给 [统计分析](analysis.md)。
+`src/raser/core/reconstruction/` 承接[触发环节](../stages/trigger.md)记录的事例：从[数字化](digitizer.md)写出的 `digitizer.h5` 里取 `trigger.h5` 所列事例的量化码，按 `lsb_V`、`offset_V` 换回电压（$\text{V}$），第 $k$ 个采样点的时刻是 `t0 + k·sampling_period`（$\text{s}$）。该包从每条波形中扣除脉冲前基线并估计电子学基线噪声，按各电极所选触发边沿将负向脉冲翻转为正向脉冲，提取峰值幅度、前沿过阈到达时间（`ToA`）、过阈持续时间（`ToT`）、过阈区间时间重心（`CoG`）、正向主瓣积分面积（`area`）、恒比定时（`CFD`）以及跨电极团簇（cluster）大小与空间重心，并写出 `reconstruction.h5` 文件（多位置实验为 `reconstruction.<位置>.h5`；另提供面向条形探测器的单事例独立重建类 `InputWaveform`）。输出的事件汇总表 `EventTable` 交给 [统计分析](analysis.md)。
 
 ## 物理
 
@@ -8,7 +8,7 @@
 
 读出电子学输出的离散电压波形包含前端静态直流偏置与电子学随机噪声，且脉冲方向随收集载流子极性与放大级反相特性而呈现上升沿（正脉冲）或下降沿（负脉冲）。特征提取前，取脉冲到达前的平稳采样段计算基线均值与基线噪声（总体标准差），从原始波形中扣除基线后乘以边沿极性符号，统一转化为基线以上的正向脉冲：
 
-$$t_i = t_0 + \left(i + \frac{1}{2}\right)\Delta t \tag{1}$$
+$$t_i = t_0 + i\,\Delta t \tag{1}$$
 
 $$B = \frac{1}{N_{\text{base}}} \sum_{i=0}^{N_{\text{base}}-1} V_i, \qquad \sigma_{\text{noise}} = \sqrt{\frac{1}{N_{\text{base}}} \sum_{i=0}^{N_{\text{base}}-1} (V_i - B)^2} \tag{2}$$
 
@@ -16,21 +16,21 @@ $$v_i = s_{\text{edge}}\,(V_i - B) \tag{3}$$
 
 其中：
 
-- $t_i$：第 $i$ 个时间箱（$i = 0, 1, \dots, N-1$）的中心时刻，$\text{s}$；
-- $t_0$：事例首个时间箱的左边界时刻（`t0`），$\text{s}$；
-- $\Delta t$：时间箱宽度（`dt`），$\text{s}$；
-- $V_i$：第 $i$ 个时间箱中心的原始输出电压采样值（`samples`），$\text{V}$；
+- $t_i$：第 $i$ 个采样点（$i = 0, 1, \dots, N-1$）的标称时刻，$\text{s}$；
+- $t_0$：该电极第一个采样点的时刻（`digitizer.h5` 的 `t0`，已含时钟相位），$\text{s}$；
+- $\Delta t$：采样间隔（`digitizer.h5` 的 `sampling_period`），$\text{s}$；
+- $V_i$：第 $i$ 个采样点由码换回的电压（`samples`），$V_i = (c_i - 2^{N_{\text{bit}}-1} + 0.5)\cdot$`lsb_V`$ + $`offset_V`，$\text{V}$，其中 $c_i$ 为码，$N_{\text{bit}}$ 为属性 `bits`；
 - $N_{\text{base}}$：脉冲前基线采样点数（无量纲），代码取固定常数 `BASELINE_POINTS = 200`；
 - $B$：脉冲前基线均值（`baseline`），$\text{V}$；
 - $\sigma_{\text{noise}}$：脉冲前基线噪声总体标准差（`noise`），$\text{V}$；
 - $s_{\text{edge}}$：触发边沿极性系数（无量纲），由 `EDGE_SIGN` 给出，上升沿 `"rising"` 取 $+1.0$，下降沿 `"falling"` 取 $-1.0$；
 - $v_i$：扣除基线并翻转为正向后的净电压采样值（`net`），$\text{V}$。
 
-基线扣除与噪声计算对应 `event.py` 中的 `net_pulse(samples, baseline_points=BASELINE_POINTS)`，默认 `baseline_points = 200`。时间箱中心计算与极性翻转在 `event_table.py` 的 `event_table` 中执行；各电极边沿方向由 `chosen_edges` 确定，缺省沿用输入波形文件为各电极记下的 `pulse_edge`（读出链按器件与电子学派生）。所选边沿与某电极脉冲的实际方向相反时，该电极的脉冲留在基线以下：`amplitude` 是基线以上最大的采样，只有噪声或过冲的量级，通常低于 `threshold`，于是 `above = False`，定时与面积列为 `NaN`；过冲达到 `threshold` 时，定时量按过冲算出。`InputWaveform` 则假定输入 `voltage` 已为扣除基线后的正向脉冲。半导体探测器脉冲基线恢复与噪声表征见文献 [1]。
+基线扣除与噪声计算对应 `event.py` 中的 `net_pulse(samples, baseline_points=BASELINE_POINTS)`，默认 `baseline_points = 200`。采样时刻计算与极性翻转在 `event_table.py` 的 `event_table` 中执行；各电极边沿方向由 `chosen_edges` 确定，`reconstruction.edge` 为 `null` 时沿用输入波形文件为各电极记下的 `pulse_edge`（读出链按器件与电子学派生）。所选边沿与某电极脉冲的实际方向相反时，该电极的脉冲留在基线以下：`amplitude` 是基线以上最大的采样，只有噪声或过冲的量级，通常低于 `threshold`，于是 `above = False`，定时与面积列为 `NaN`；过冲达到 `threshold` 时，定时量按过冲算出。`InputWaveform` 则假定输入 `voltage` 已为扣除基线后的正向脉冲。半导体探测器脉冲基线恢复与噪声表征见文献 [1]。
 
 ### 峰值幅度与固定阈值过零定时（ToA 与 ToT）
 
-前沿固定阈值甄别（leading-edge discrimination）在脉冲跨越预设电压阈值 $V_{\text{th}}$ 时产生时间标记。净波形的最大采样值给出脉冲峰值幅度；从峰值所在时间箱分别向前、向后搜索首次低于阈值的时间箱，在与相邻过阈时间箱中心连线上作线性插值，得到上升沿过阈到达时间（`ToA`）与下降沿过阈时刻，两者之差即为过阈持续时间（`ToT`）：
+前沿固定阈值甄别（leading-edge discrimination）在脉冲跨越预设电压阈值 $V_{\text{th}}$ 时产生时间标记。净波形的最大采样值给出脉冲峰值幅度；从峰值所在采样点分别向前、向后搜索首次低于阈值的采样点，在与相邻过阈采样点的连线上作线性插值，得到上升沿过阈到达时间（`ToA`）与下降沿过阈时刻，两者之差即为过阈持续时间（`ToT`）：
 
 $$A = v_{i_{\text{peak}}}, \qquad i_{\text{peak}} = \operatorname{argmax}_{0 \le i < N} v_i \tag{4}$$
 
@@ -43,16 +43,16 @@ $$t_{\text{ToT}} = t_{\text{cross}}\bigl(V_{\text{th}};\, i_{\text{trail}},\, i_
 其中：
 
 - $A$：基线以上最大脉冲幅度（`amplitude`），$\text{V}$；
-- $i_{\text{peak}}$：峰值所在时间箱下标（`peak`，无量纲，存在并列最大值时取首个下标）；
+- $i_{\text{peak}}$：峰值所在采样点下标（`peak`，无量纲，存在并列最大值时取首个下标）；
 - $V_{\text{th}}$：固定过阈电压阈值（`threshold`），$\text{V}$；
-- $i_{\text{below}}, i_{\text{above}}$：阈值两侧相邻时间箱下标（无量纲），满足 $v_{i_{\text{below}}} < V_{\text{th}} \le v_{i_{\text{above}}}$；
-- $t_{\text{cross}}$：相邻两箱中心连线越过阈值 $V_{\text{th}}$ 的线性插值时刻，$\text{s}$；
-- $i_{\text{lead}}$：从 $i_{\text{peak}} - 1$ 向 $0$ 反向搜索遇到的首个满足 $v_i < V_{\text{th}}$ 的时间箱下标（无量纲）；
-- $i_{\text{trail}}$：从 $i_{\text{peak}} + 1$ 向 $N - 1$ 正向搜索遇到的首个满足 $v_i < V_{\text{th}}$ 的时间箱下标（无量纲）；
+- $i_{\text{below}}, i_{\text{above}}$：阈值两侧相邻采样点下标（无量纲），满足 $v_{i_{\text{below}}} < V_{\text{th}} \le v_{i_{\text{above}}}$；
+- $t_{\text{cross}}$：相邻两采样点连线越过阈值 $V_{\text{th}}$ 的线性插值时刻，$\text{s}$；
+- $i_{\text{lead}}$：从 $i_{\text{peak}} - 1$ 向 $0$ 反向搜索遇到的首个满足 $v_i < V_{\text{th}}$ 的采样点下标（无量纲）；
+- $i_{\text{trail}}$：从 $i_{\text{peak}} + 1$ 向 $N - 1$ 正向搜索遇到的首个满足 $v_i < V_{\text{th}}$ 的采样点下标（无量纲）；
 - $t_{\text{ToA}}$：上升沿过阈到达时间（`ToA`），$\text{s}$；
 - $t_{\text{ToT}}$：脉冲在阈值以上的持续时间（`ToT`），$\text{s}$。
 
-峰值幅度由 `event.py` 中的 `get_amplitude` 计算，阈值过零插值、到达时间与过阈持续时间分别由 `crossing`、`get_ToA` 与 `get_ToT` 计算。仅当 $A \ge V_{\text{th}}$（`above = True`）时执行定时计算；[../stages/reconstruction.md](../stages/reconstruction.md) 中 `threshold` 缺省为 `10.0` $\text{mV}$（换算后为 $0.01\ \text{V}$）。前沿甄别与 `ToT` 测量原理见文献 [1, 2]。
+峰值幅度由 `event.py` 中的 `get_amplitude` 计算，阈值过零插值、到达时间与过阈持续时间分别由 `crossing`、`get_ToA` 与 `get_ToT` 计算。仅当 $A \ge V_{\text{th}}$（`above = True`）时执行定时计算；示例 `config.json` 里 `reconstruction.threshold` 写 `10.0` $\text{mV}$（换算后为 $0.01\ \text{V}$，见 [../stages/reconstruction.md](../stages/reconstruction.md)）。前沿甄别与 `ToT` 测量原理见文献 [1, 2]。
 
 ### 恒比定时（CFD）
 
@@ -67,10 +67,10 @@ $$t_{\text{CFD}}(f) = \begin{cases} t_{i-1}, & v_i = v_{i-1} \\ t_{i-1} + \dfrac
 - $f$：恒比甄别比例（`CFD` 或 `fractions` 的元素，无量纲），满足 $0 < f < 1$；
 - $A = v_{i_{\text{peak}}}$：脉冲峰值幅度，$\text{V}$（要求 $A > 0$）；
 - $V_{\text{CFD}}$：恒比触发目标电压（`target`），$\text{V}$；
-- $i$：从 $i_{\text{peak}}$ 向 $1$ 反向搜索遇到的首个满足 $v_{i-1} \le V_{\text{CFD}} \le v_i$ 的时间箱下标（无量纲）；
+- $i$：从 $i_{\text{peak}}$ 向 $1$ 反向搜索遇到的首个满足 $v_{i-1} \le V_{\text{CFD}} \le v_i$ 的采样点下标（无量纲）；
 - $t_{\text{CFD}}(f)$：比例 $f$ 对应的恒比定时时刻（`CFD` 或 `CFD50`），$\text{s}$。
 
-恒比定时由 `event.py` 中的 `get_CFD50(times, samples, CFD, peak)` 计算。`InputWaveform` 缺省取模块常数 `CFD = 0.5`（对应字典键 `CFD_LABEL = "CFD50"`）；`electrode_row`（由 `event_table` 对每个已存电极调用）对 `fractions` 中的每个比例分别调用 `get_CFD50`，[../stages/reconstruction.md](../stages/reconstruction.md) 中 `fractions` 缺省为 `[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]`。恒比定时甄别原理见文献 [1, 3]。
+恒比定时由 `event.py` 中的 `get_CFD50(times, samples, CFD, peak)` 计算。`InputWaveform` 缺省取模块常数 `CFD = 0.5`（对应字典键 `CFD_LABEL = "CFD50"`）；`electrode_row`（由 `event_table` 对每个已存电极调用）对 `fractions` 中的每个比例分别调用 `get_CFD50`，示例 `config.json` 里 `reconstruction.fractions` 写 `[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]`（见 [../stages/reconstruction.md](../stages/reconstruction.md)）。恒比定时甄别原理见文献 [1, 3]。
 
 ### 时间重心（CoG）与脉冲积分（area 与 charge）
 
@@ -84,9 +84,9 @@ $$Q_{\text{sum}} = \sum_{i = 0}^{N - 1} |v_i| \tag{12}$$
 
 其中：
 
-- $i_{\text{first}}^{\text{th}}, i_{\text{last}}^{\text{th}}$：包含 $i_{\text{peak}}$ 且连续满足 $v_i \ge V_{\text{th}}$ 的起止时间箱下标（无量纲）；
+- $i_{\text{first}}^{\text{th}}, i_{\text{last}}^{\text{th}}$：包含 $i_{\text{peak}}$ 且连续满足 $v_i \ge V_{\text{th}}$ 的起止采样点下标（无量纲）；
 - $t_{\text{CoG}}$：过阈脉冲段按采样值加权的时间重心（`CoG`），$\text{s}$；
-- $i_{\text{first}}^{0}, i_{\text{last}}^{0}$：包含 $i_{\text{peak}}$ 且连续满足 $v_i > 0$（基线以上）的正向脉冲主瓣起止时间箱下标（无量纲）；
+- $i_{\text{first}}^{0}, i_{\text{last}}^{0}$：包含 $i_{\text{peak}}$ 且连续满足 $v_i > 0$（基线以上）的正向脉冲主瓣起止采样点下标（无量纲）；
 - $S_{\text{area}}$：正向主瓣的矩形数值积分面积（`area`），$\text{V}\cdot\text{s}$；
 - $Q_{\text{sum}}$：整条波形全部采样点绝对值的离散总和（`InputWaveform.charge`），$\text{V}$。
 
@@ -110,7 +110,7 @@ $$\Delta x_{\text{clu}} = x_{\text{clu}} - \frac{x_{\text{true}}}{p_x} \tag{14}$
 - $x_{\text{true}}$：入射粒子真实 $x$ 坐标（`original_x`），与电极间距 $p_x$（`pitch_x`）同单位；
 - $\Delta x_{\text{clu}}$：重建电极重心与归一化真实坐标之差（`gravity_center_*_error`），以电极间距 $p_x$ 为单位（无量纲）。
 
-作业级事件表中的成簇由 `event_table.py` 的 `cluster(amplitudes, threshold, amplitude_threshold)` 计算，只输出 $N_{\text{clu}}$ 与幅度加权的 $x_{\text{clu}}$，[../stages/reconstruction.md](../stages/reconstruction.md) 中 `amplitude_threshold` 与 `threshold` 缺省均为 `10.0` $\text{mV}$。单事例类 `InputWaveform` 则调用 `event.py` 的 `get_total_amp` 与 `get_gravity_center_and_cluster_size` 计算式 (13)，在 `get_total_data` 中按式 (14) 计算位置误差，并用 `get_conjoined_time` 取 `ToA` 与 `CFD50`；其 `data` 字典交给 [统计分析](analysis.md) 的 `WaveformStatistics.fill_data`，键与 `fill_data`、`draw` 读取的键相同。微条探测器电荷共享与重心位置重建见文献 [4]。
+作业级事件表中的成簇由 `event_table.py` 的 `cluster(amplitudes, threshold, amplitude_threshold)` 计算，只输出 $N_{\text{clu}}$ 与幅度加权的 $x_{\text{clu}}$，示例 `config.json` 里 `reconstruction.amplitude_threshold` 与 `reconstruction.threshold` 都写 `10.0` $\text{mV}$（见 [../stages/reconstruction.md](../stages/reconstruction.md)）。单事例类 `InputWaveform` 则调用 `event.py` 的 `get_total_amp` 与 `get_gravity_center_and_cluster_size` 计算式 (13)，在 `get_total_data` 中按式 (14) 计算位置误差，并用 `get_conjoined_time` 取 `ToA` 与 `CFD50`；其 `data` 字典交给 [统计分析](analysis.md) 的 `WaveformStatistics.fill_data`，键与 `fill_data`、`draw` 读取的键相同。微条探测器电荷共享与重心位置重建见文献 [4]。
 
 ## 算法
 
@@ -143,9 +143,9 @@ $$\Delta x_{\text{clu}} = x_{\text{clu}} - \frac{x_{\text{true}}}{p_x} \tag{14}$
 
 ### 单电极基线扣除、边沿搜索与插值特征提取
 
-`event_table` 遍历 `waveforms.events` 中的每个事例 `record`（设总电极数为 $W = \text{len}(\text{waveforms.electrodes})$，当前事例时间箱数为 $N = \text{record.voltage.shape}[1]$），按以下顺序处理各电极波形：
+`event_table` 遍历 `waveforms.events` 中的每个事例 `record`（设总电极数为 $W = \text{len}(\text{waveforms.electrodes})$，当前事例采样点数为 $N = \text{record.voltage.shape}[1]$），按以下顺序处理各电极波形：
 
-1. **计算时间箱中心并预填未追踪电极**：按式 (1) 计算长度 $N$ 的时间箱中心数组 `times = record.t0 + (np.arange(N) + 0.5) * waveforms.dt`。为全部 $W$ 个电极初始化未追踪缺省字典 `untraced`：`traced = False`、`above = False`，其余数值列（`baseline`、`noise`、`amplitude`、`ToA`、`ToT`、`CoG`、`area`）以及 `len(fractions)` 个 `CFD` 值均填 `NaN`。不在 `record.electrodes` 中的电极（读出环节未保存波形的通道）保持该缺省状态。
+1. **计算采样时刻并预填未追踪电极**：对每个已保存电极按式 (1) 计算长度 $N$ 的采样时刻数组 `times = t0 + np.arange(N) * waveforms.dt`，`t0` 取该电极在 `digitizer.h5` 里的 `t0`，`waveforms.dt` 为 `sampling_period`。为全部 $W$ 个电极初始化未追踪缺省字典 `untraced`：`traced = False`、`above = False`，其余数值列（`baseline`、`noise`、`amplitude`、`ToA`、`ToT`、`CoG`、`area`）以及 `len(fractions)` 个 `CFD` 值均填 `NaN`。不在 `record.electrodes` 中的电极（读出环节未保存波形的通道）保持该缺省状态。
 2. **扣除前 200 点基线并算噪声（`net_pulse(samples, baseline_points=200)`）**：对 `zip(record.electrodes, record.voltage)` 中的每个已保存电极 `name`（对应全局列下标 $k = \text{place}[\text{name}]$）及其采样数组 `samples`：
    - 将 `samples` 转换为 `float64` 数组；
    - 若 $\text{len}(\text{samples}) \le \text{baseline\_points}$（即 $N \le 200$），抛出 `ValueError("<len(samples)> samples, not more than the <baseline_points> of the baseline")`；
@@ -197,7 +197,7 @@ $$\Delta x_{\text{clu}} = x_{\text{clu}} - \frac{x_{\text{true}}}{p_x} \tag{14}$
 
 `InputWaveform(voltage, t0, dt, original_x, threshold, amplitude_threshold, pitch_x, pitch_y, CFD=0.5)`（`event.py`）供 Python 脚本对已扣除基线且翻正的二维电压矩阵 `voltage`（形状 `(read_ele_num, bins)`）直接提取单事例量：
 
-1. **单电极扫描**：按式 (1) 计算 `times = t0 + (np.arange(len(voltage[0])) + 0.5) * dt`。对每个电极 $i \in \{0, \dots, \text{read\_ele\_num} - 1\}$ 调用 `get_amplitude(voltage[i])` 得 `(amplitude[i], peak_time[i])`（其中 `peak_time[i]` 存的是峰值箱整数下标 `peak`）：
+1. **单电极扫描**：按式 (1) 计算 `times = t0 + np.arange(len(voltage[0])) * dt`（`dt` 为采样间隔）。对每个电极 $i \in \{0, \dots, \text{read\_ele\_num} - 1\}$ 调用 `get_amplitude(voltage[i])` 得 `(amplitude[i], peak_time[i])`（其中 `peak_time[i]` 存的是峰值箱整数下标 `peak`）：
    - 若 $\text{amplitude}[i] < \text{threshold}$，拒绝该电极，将 `amplitude[i]`、`ToT[i]`、`charge[i]` 置为 `0`，将 `ToA[i]`、`CFD50[i]` 置为 `None`；
    - 否则分别调用 `get_ToA`、`get_ToT`、`get_charge`（按式 (12) 计算 `np.sum(np.abs(voltage[i]))`）与 `get_CFD50`（比例为 `CFD`）。
 2. **多通道特征汇总（`get_total_data`）**：初始化 `self.data = {}`，在末尾固定写入 `self.data["original_x"] = original_x`，其余 14 个键按以下三档赋值：
@@ -215,72 +215,76 @@ $$\Delta x_{\text{clu}} = x_{\text{clu}} - \frac{x_{\text{true}}}{p_x} \tag{14}$
 ### 模块与函数分工
 
 - `event.py`：实现单电极脉冲基线扣除、阈值过零线性插值、恒比定时、时间重心计算以及单事例独立重建类。`net_pulse` 计算并扣除脉冲前 200 点基线、给出基线噪声；`get_amplitude`、`crossing`、`get_ToA`、`get_ToT`、`get_CFD50`、`get_CoG` 与 `get_charge` 提取单条正向波形的特征量；`InputWaveform` 配合 `get_conjoined_time`、`get_total_amp`、`get_gravity_center_and_cluster_size` 与 `remove_none` 汇总单事例多条形通道特征。
-- `event_table.py`：实现作业级多事例特征提取、跨电极成簇与 `reconstruction_<job>.h5` 文件读写。`lobe_area` 计算包含峰值的正向主瓣积分面积；`electrode_row` 汇总单电极的过阈判定与全部特征列；`cluster` 执行跨电极一维成簇并计算幅度加权中心；`chosen_edges` 解析并校验各电极触发边沿；`event_table` 将整个作业的 `Waveforms` 重建为 `EventTable`；`write_event_table` 与 `read_event_table` 负责 HDF5 事件表文件的一次性写出与读取。
+- `event_table.py`：实现作业级多事例特征提取、跨电极成簇与 `reconstruction.h5` 文件读写。`lobe_area` 计算包含峰值的正向主瓣积分面积；`electrode_row` 汇总单电极的过阈判定与全部特征列；`cluster` 执行跨电极一维成簇并计算幅度加权中心；`chosen_edges` 解析并校验各电极触发边沿；`event_table` 将整个作业的 `Waveforms` 重建为 `EventTable`；`write_event_table` 与 `read_event_table` 负责 HDF5 事件表文件的一次性写出与读取。
 
 ### 核心数据结构
 
 - `EventTable`（`event_table.py`）：单作业重建结果数据类（`@dataclass`），支持 `len(table)` 返回事例行数，包含以下字段：
   - `electrodes`（`list[str]`，无单位）：读出电极名称列表，顺序与二维、三维数据集的电极列顺序一致；
   - `threshold`（`float`，$\text{V}$）：过阈时间、时间重心、主瓣面积及紧邻电极入簇的基线以上电压阈值；
-  - `amplitude_threshold`（`float`，$\text{V}$）：事例选中（`selected`）与团簇种子电极的基线以上幅度阈值；
+  - `amplitude_threshold`（`float`，$\text{V}$）：团簇种子电极的基线以上幅度阈值；被 `trigger` 记录的事例里找到种子的记为 `selected`；
   - `fractions`（`tuple[float, ...]`，无量纲）：恒比定时的比例元组；
   - `edges`（`list[str]`，无单位）：各电极使用的触发边沿方向列表，元素为 `"rising"` 或 `"falling"`；
-  - `columns`（`dict[str, np.ndarray]`）：将 `EVENT_COLUMNS`、`ELECTRODE_COLUMNS` 与 `"CFD"` 共 14 个列名映射到对应 NumPy 数组的字典，各数组形状、类型与单位见下节 `reconstruction_<job>.h5` 数据集表。
+  - `columns`（`dict[str, np.ndarray]`）：将 `EVENT_COLUMNS`、`ELECTRODE_COLUMNS` 与 `"CFD"` 共 14 个列名映射到对应 NumPy 数组的字典，各数组形状、类型与单位见下节 `reconstruction.h5` 数据集表。
 - `InputWaveform`（`event.py`）：单事例独立重建对象，包含以下属性字段：
-  - `times`（`np.ndarray`，形状 `(bins,)`，$\text{s}$）：各时间箱中心时刻；
+  - `times`（`np.ndarray`，形状 `(bins,)`，$\text{s}$）：各采样点时刻；
   - `waveforms`（`list[np.ndarray]`，长度为 `read_ele_num`，$\text{V}$）：各电极基线以上正向电压波形；
   - `read_ele_num`（`int`，个）：读出电极数量；
   - `pitch_x`, `pitch_y`（`float`，与 `original_x` 同单位）：$x$、$y$ 方向电极间距；
   - `CFD`（`float`，无量纲）：恒比定时比例（默认 `0.5`）；
   - `threshold`, `amplitude_threshold`（`float`，$\text{V}$）：单电极过阈阈值与团簇种子幅度阈值；
   - `original_x`（`float`，与 `pitch_x` 同单位）：入射径迹真实 $x$ 坐标；
-  - `peak_time`（`list[int]`，无量纲）：各电极峰值所在的时间箱下标列表；
+  - `peak_time`（`list[int]`，无量纲）：各电极峰值所在的采样点下标列表；
   - `ToA`, `ToT`, `CFD50`（`list[float | None]`，$\text{s}$）：各电极过阈到达时间、过阈持续时间与 50% 恒比定时列表；
   - `amplitude`, `charge`（`list[float]`，$\text{V}$）：各电极峰值幅度与采样点绝对值总和列表；
   - `data`（`dict[str, float | int | None]`）：单事例汇总字典，含 `"ToA"`（$\text{s}$）、`"ToT"`（$\text{s}$）、`"amplitude"`（$\text{V}$）、`"charge"`（$\text{V}$）、`"CFD50"`（$\text{s}$）、`"gravity_center_ToT"` / `"_amplitude"` / `"_charge"`（从 `0` 起的电极下标）、`"cluster_size_ToT"` / `"_amplitude"` / `"cluster_charge"`（个）、`"gravity_center_ToT_error"` / `"_amplitude_error"` / `"_charge_error"`（以 `pitch_x` 为单位的相对位置误差）及 `"original_x"`（与 `pitch_x` 同单位）。
 
 ## 接口
 
-使用者能设的只有下表列出的 4 个重建选项键（在 `config.json`、`--set`、`--scan` 或命令行中设置）；其余参数（基线采样点数 `BASELINE_POINTS = 200`、边沿极性系数 `EDGE_SIGN` 及 `InputWaveform` 内部阈值）都写死在代码里。命令行入口与切片调度用法见 [../stages/reconstruction.md](../stages/reconstruction.md)。
+使用者能设的只有下表列出的 4 个设置，写在 `config.json` 的 `reconstruction` 段，用 `--set`、`--scan` 改；其余参数（基线采样点数 `BASELINE_POINTS = 200`、边沿极性系数 `EDGE_SIGN` 及 `InputWaveform` 内部阈值）都写死在代码里。命令与用法见 [../stages/reconstruction.md](../stages/reconstruction.md)。
 
 ### 重建配置键与函数参数
 
-[../stages/reconstruction.md](../stages/reconstruction.md) 中的 `reconstruct` 接收以 $\text{mV}$ 为单位的 `threshold` 与 `amplitude_threshold`，乘以 `MILLIVOLT = 1.0e-3` 换算为 $\text{V}$ 后传入 `event_table`：
+[../stages/reconstruction.md](../stages/reconstruction.md) 中的 `reconstruct` 接收以 $\text{mV}$ 为单位的 `reconstruction.threshold` 与 `reconstruction.amplitude_threshold`，乘以 `MILLIVOLT = 1.0e-3` 换算为 $\text{V}$ 后传入 `event_table`：
 
-| 键名 / 参数名 | 默认值（`stages/chain.py`） | 单位 | 含义 |
+| 段.键 / 参数名 | 示例里的值 | 单位 | 含义 |
 | --- | --- | --- | --- |
-| `threshold` | `10.0`（环节选项）/ 无默认（`event_table` 参数） | 环节选项：$\text{mV}$；`event_table` 与文件属性：$\text{V}$ | 单电极过阈判定（`above`）、`ToA`、`ToT`、`CoG`、`area` 计算及团簇紧邻电极并入的基线以上阈值 |
-| `amplitude_threshold` | `10.0`（环节选项）/ 无默认（`event_table` 参数） | 环节选项：$\text{mV}$；`event_table` 与文件属性：$\text{V}$ | 事例选中（`selected`）与团簇种子电极筛选的基线以上峰值幅度阈值 |
-| `fractions` | `[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]` | 无量纲 | 恒比定时（`CFD`）的幅度比例序列，每个元素须严格位于 $(0, 1)$ 开区间内 |
-| `edge` | `None` | 无 | 触发边沿方向，取 `"rising"`、`"falling"` 或 `None`；为 `None` 时 `chosen_edges` 沿用输入波形文件的 `pulse_edge` 属性 |
+| `reconstruction.threshold` | `10.0` | `config.json`：$\text{mV}$；`event_table` 与文件属性：$\text{V}$ | 单电极过阈判定（`above`）、`ToA`、`ToT`、`CoG`、`area` 计算及团簇紧邻电极并入的基线以上阈值 |
+| `reconstruction.amplitude_threshold` | `10.0` | `config.json`：$\text{mV}$；`event_table` 与文件属性：$\text{V}$ | 团簇种子电极的基线以上峰值幅度阈值；被 `trigger` 记录的事例里找到种子的记为 `selected` |
+| `reconstruction.fractions` | `[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]` | 无量纲 | 恒比定时（`CFD`）的幅度比例序列，每个元素须严格位于 $(0, 1)$ 开区间内 |
+| `reconstruction.edge` | `null`（沿用输入波形文件的 `pulse_edge`） | 无 | 触发边沿方向，取 `"rising"`、`"falling"` 或 `null`；为 `null` 时 `chosen_edges` 沿用输入波形文件的 `pulse_edge` 属性 |
 
-### 输入波形文件属性与数据集
+### 输入文件属性与数据集
 
-`event_table` 接收 `trigger` 记录事例的波形，由 [电子学读出](readout.md) 的 `read_waveforms` 读为 `Waveforms(electrodes, dt, events, pulse_edge)` 对象；事件表每一行对应其中一个事例。文件的属性与数据集如下：
+`event_table` 接收 `trigger` 记录事例的数字波形：读 `trigger` 节点 `trigger.h5` 的数据集 `event`（`(recorded,)`，`int64`，被记录事例的事例号），再从 `digitizer` 节点的 `digitizer.h5`（多位置实验为 `digitizer.<位置>.h5`，格式见[数字化器](digitizer.md#输出digitizerh5)）取出这些事例，按式 (1) 的时刻和码换回的电压还原为 `Waveforms(electrodes, dt, events, pulse_edge)` 对象，`dt` 取 `sampling_period`；事件表每一行对应其中一个事例。`digitizer.h5` 的属性与数据集如下：
 
 **输入文件属性（Attributes）**
 
 | 属性名 | 类型 | 单位 | 含义 |
 | --- | --- | --- | --- |
 | `electrodes` | 字符串数组 | 无 | 电路全部读出电极名称列表，决定 `EventTable.electrodes` 的列顺序 |
-| `dt` | `float64` | $\text{s}$ | 时间箱宽度 |
+| `sampling_period` | `float64` | $\text{s}$ | 采样间隔 $\Delta t$ |
+| `lsb_V` | `float64` | $\text{V}$ | 每档电压，码换回电压用 |
+| `offset_V` | `float64` | $\text{V}$ | 量程中心，码换回电压用 |
+| `bits` | 整数 | 位 | ADC 位数 $N_{\text{bit}}$ |
 | `pulse_edge` | 字符串数组 | 无 | 读出链派生的各电极脉冲边沿方向（`"rising"` 或 `"falling"`），供 `chosen_edges` 作为默认边沿与比对基准 |
-| `device_circuit` | JSON 字符串（可选） | $\text{F}$, $\Omega$, $\text{F/m}^2$ | 器件等效电路参数记录 |
+| `device` | 字符串 | 无 | 所用的数字化器组件名 |
 
 **输入数据集（Datasets）**
 
 | 数据集名 | 形状与类型 | 单位 | 含义 |
 | --- | --- | --- | --- |
 | `event` | `(events,)`, `int64` | 无 | 事例编号，还原为 `EventWaveforms.event` |
-| `t0` | `(events,)`, `float64` | $\text{s}$ | 该事例首个时间箱的左边界时刻，还原为 `EventWaveforms.t0` |
-| `count` | `(events,)`, `int64` | 箱 | 该事例每条已存波形的时间箱数 $N$ |
-| `stored` | `(events,)`, `int64` | 个 | 该事例保存了波形的电极数 $M$（无信号事例为 `0`） |
+| `count` | `(events,)`, `int64` | 点 | 该事例每条已存波形的采样点数 $N$ |
+| `stored` | `(events,)`, `int64` | 个 | 该事例存了数字波形的电极数 $M$ |
 | `index` | `(sum(stored),)`, `int64` | 无 | 每个已存电极在 `electrodes` 中的下标（从 `0` 起），还原为 `EventWaveforms.electrodes` |
-| `voltage` | `(sum(stored * count),)`, `float64`（gzip） | $\text{V}$ | 各已存电极在时间箱中心的输出电压，按事例切分重塑为 `(M, N)` 的 `EventWaveforms.voltage` |
+| `t0` | `(sum(stored),)`, `float64` | $\text{s}$ | 该电极第一个采样点的时刻，已含所属设备的时钟相位 |
+| `clipped` | `(sum(stored),)`, `int64` | 点 | 该电极被截在最大或最小码的点数 |
+| `code` | `(sum(stored * count),)`, `int16` | 无 | 各已存电极的码，按事例切分并换回电压后重塑为 `(M, N)` 的 `EventWaveforms.voltage`（$\text{V}$） |
 
-### 输出 `reconstruction_<job>.h5` 文件格式
+### 输出 `reconstruction.h5` 文件格式
 
-文件由 `write_event_table(path, table)` 一次性写出，由 `read_event_table(path)` 读回为 `EventTable` 对象。
+文件写在 `nodes/reconstruction/<节点号>/reconstruction.h5`（多位置实验为同节点下的 `reconstruction.<位置>.h5`），由 `write_event_table(path, table)` 一次性写出，由 `read_event_table(path)` 读回为 `EventTable` 对象。
 
 **文件属性（Attributes）**
 
@@ -288,7 +292,7 @@ $$\Delta x_{\text{clu}} = x_{\text{clu}} - \frac{x_{\text{true}}}{p_x} \tag{14}$
 | --- | --- | --- | --- |
 | `electrodes` | 字符串数组 | 无 | 读出电极名称列表，与二维、三维数据集的电极维顺序一致 |
 | `threshold` | `float64` | $\text{V}$ | 过阈定时、时间重心、主瓣面积及紧邻电极入簇阈值（基线以上） |
-| `amplitude_threshold` | `float64` | $\text{V}$ | 事例选中与团簇种子电极的幅度阈值（基线以上） |
+| `amplitude_threshold` | `float64` | $\text{V}$ | 团簇种子电极的幅度阈值（基线以上） |
 | `fractions` | `float64` 一维数组，形状 `(fractions,)` | 无量纲 | 恒比定时比例数组，与 `CFD` 数据集第 3 维顺序一致 |
 | `edge` | 字符串数组 | 无 | 各电极实际使用的触发边沿方向，元素为 `"rising"` 或 `"falling"`（对应 `EventTable.edges`） |
 
@@ -297,10 +301,10 @@ $$\Delta x_{\text{clu}} = x_{\text{clu}} - \frac{x_{\text{true}}}{p_x} \tag{14}$
 | 数据集名 | 形状与类型 | 单位 | 含义 |
 | --- | --- | --- | --- |
 | `event` | `(events,)`, `int64` | 无 | Geant4 事例编号 |
-| `selected` | `(events,)`, `bool` | 无 | 事例是否含有团簇（即 `cluster_size > 0`，至少一个电极 `amplitude >= amplitude_threshold`） |
+| `selected` | `(events,)`, `bool` | 无 | 被 `trigger` 记录的事例里是否找到团簇种子（即 `cluster_size > 0`，至少一个电极 `amplitude >= amplitude_threshold`） |
 | `cluster_size` | `(events,)`, `int64` | 个 | 团簇包含的电极数（无团簇时为 `0`） |
 | `cluster_center` | `(events,)`, `float64` | 电极下标（从 `0` 起） | 团簇的幅度加权电极下标中心（无团簇时为 `NaN`） |
-| `traced` | `(events, len(electrodes))`, `bool` | 无 | 输入 `readout` 在该事例中是否存有该电极波形；为 `False` 时该电极所有数值列为 `NaN`、`above` 为 `False` |
+| `traced` | `(events, len(electrodes))`, `bool` | 无 | 输入 `digitizer.h5` 在该事例中是否存有该电极波形；为 `False` 时该电极所有数值列为 `NaN`、`above` 为 `False` |
 | `baseline` | `(events, len(electrodes))`, `float64` | $\text{V}$ | 原始波形开头 `200` 个采样点的算术平均值 |
 | `noise` | `(events, len(electrodes))`, `float64` | $\text{V}$ | 原始波形开头 `200` 个采样点的总体标准差 |
 | `amplitude` | `(events, len(electrodes))`, `float64` | $\text{V}$ | 扣除基线并按 `edge` 翻正后的最大采样值 |
@@ -319,7 +323,7 @@ $$\Delta x_{\text{clu}} = x_{\text{clu}} - \frac{x_{\text{true}}}{p_x} \tag{14}$
 
 ## 参考文献
 
-- [1] H. Spieler, *Semiconductor Detector Systems*, Oxford University Press (2005)，出处待补
+- [1] H. Spieler, *Semiconductor Detector Systems*, Oxford University Press (2005), ISBN 978-0-19-852784-8, doi:10.1093/acprof:oso/9780198527848.001.0001
 - [2] I. Kipnis, T. Collins, J. DeWitt, S. Dow, A. Frey, A. Grillo, R. Johnson, W. Kroeger, A. Leona, L. Luo, et al., “A time-over-threshold machine: the readout integrated circuit for the BABAR Silicon Vertex Tracker”, IEEE Trans. Nucl. Sci. 44 (1997) 289, doi:10.1109/23.603658
 - [3] D. A. Gedcke, W. J. McDonald, “Design of the Constant Fraction of Pulse Height Trigger for Optimum Time Resolution”, Nucl. Instrum. Methods 58 (1968) 253, doi:10.1016/0029-554X(68)90473-4
 - [4] R. Turchetta, “Spatial resolution of silicon microstrip detectors”, Nucl. Instrum. Methods Phys. Res. A 335 (1993) 44, doi:10.1016/0168-9002(93)90255-G

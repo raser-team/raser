@@ -1,6 +1,6 @@
 # 电子学读出（`core/readout`）
 
-`src/raser/core/readout/` 承接 [载流子漂移与感应电流](current.md) 写出的电极时域感应电流（`current_<job>.h5`）、[器件场](field.md) 构造的器件等效电路 `DeviceCircuit`、[器件定义](device.md) 的偏置与读出电极配置，以及 [前端读出电路组件](../components/readout.md) 的 SPICE 子电路文件（`.cir`）。该包将器件等效电路与前端放大器链拼入同一张 `ngspice` 网表，求解各读出通道的瞬态输出电压与频域电压噪声谱，合成时域高斯热噪声并判定脉冲边沿极性，写出 `readout_<job>.h5` 文件（另提供器件输出端对地短路电流求解与放大级原理图绘制接口）。输出的电压波形与脉冲边沿方向交给 [事件重建](reconstruction.md)（或 [数字化器](digitizer.md)）。
+`src/raser/core/readout/` 承接 [载流子漂移与感应电流](current.md) 写出的电极时域感应电流（`current.h5`）、[器件场](field.md) 构造的器件等效电路 `DeviceCircuit`、[器件定义](device.md) 的偏置与读出电极配置，以及 [前端读出电路组件](../components/readout.md) 的 SPICE 子电路文件（`.cir`）。该包将器件等效电路与前端放大器链拼入同一张 `ngspice` 网表，求解各读出通道的瞬态输出电压与频域电压噪声谱，合成时域高斯热噪声并判定脉冲边沿极性，写出 `readout.h5` 文件（多位置实验为 `readout.<位置>.h5`；另提供器件输出端对地短路电流求解与放大级原理图绘制接口）。输出的电压波形与脉冲边沿方向交给 [数字化器](digitizer.md)。
 
 ## 物理
 
@@ -39,7 +39,7 @@ $$V_{r,m} = V_r(t_j) + \frac{t_m - t_j}{t_{j+1} - t_j}\bigl[V_r(t_{j+1}) - V_r(t
 - $V_r(t_j)$：第 $r$ 个读出通道输出节点（链中含放大级时为末级放大器输出与负载输入共用的节点 `out<r>`，无放大级仅含负载时为器件输出节点 `circuit.outputs`）在时刻 $t_j$ 的瞬态电压，$\text{V}$；
 - $V_{r,m}$：线性插值到第 $m$ 个时间箱中心 $t_m$ 处的通道输出电压，$\text{V}$。
 
-级联网表构建与瞬态求解由 `spice.py` 中的 `_chain`、`write_netlist`、`_transient`、`_run` 与 `solve` 实现；另由 `write_short_circuit_netlist` 与 `short_circuit_currents` 提供将器件各输出端经零电压源 `Vshort<r> <output> 0 0` 对地短路的瞬态短路电流求解。前端放大器链由 `circuit.py` 的 `named_chain` 从 [前端读出电路组件](../components/readout.md) 加载，[../stages/readout.md](../stages/readout.md) 中的缺省放大器链为 `"SantaCruz+Gali52+Termination50"`。SPICE 改进节点分析与瞬态数值积分见文献 [2, 3]。
+级联网表构建与瞬态求解由 `spice.py` 中的 `_chain`、`write_netlist`、`_transient`、`_run` 与 `solve` 实现；另由 `write_short_circuit_netlist` 与 `short_circuit_currents` 提供将器件各输出端经零电压源 `Vshort<r> <output> 0 0` 对地短路的瞬态短路电流求解。前端放大器链由 `circuit.py` 的 `named_chain` 从 [前端读出电路组件](../components/readout.md) 加载，示例 `config.json` 里 `readout.amplifier` 写的放大器链为 `"SantaCruz+Gali52+Termination50"`（见 [../stages/readout.md](../stages/readout.md)）。SPICE 改进节点分析与瞬态数值积分见文献 [2, 3]。
 
 ### 给定谱的频域热噪声与时域合成
 
@@ -88,7 +88,7 @@ $$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 
 - $s_{\text{chain}} \in \{-1, +1\}$：放大器链对正输入电荷的净传递极性符号（`chain_sign` 返回值，同相为 $+1$，反相为 $-1$，无量纲）；
 - $\text{edge}$：读出通道输出脉冲极性标识（`pulse_edges` 返回值，`"rising"` 或 `"falling"`）。
 
-收集电荷符号判定、放大器链极性探测与各通道极性列表生成分别由 `pulse_edge.py` 中的 `collected_charge_sign`、`chain_sign` 与 `pulse_edges` 实现，探针平板电路由 [器件场](field.md) 的 `planar_circuit("probe", 1e-12)` 构造。`write_waveforms` 的 `pulse_edge` 参数缺省为 `None`（[../stages/readout.md](../stages/readout.md) 调用时传入 `pulse_edges` 的结果），写入 `readout_<job>.h5` 后供 [事件重建](reconstruction.md) 翻转脉冲极性使用。探测器读出极性与前端脉冲响应见文献 [1]。
+收集电荷符号判定、放大器链极性探测与各通道极性列表生成分别由 `pulse_edge.py` 中的 `collected_charge_sign`、`chain_sign` 与 `pulse_edges` 实现，探针平板电路由 [器件场](field.md) 的 `planar_circuit("probe", 1e-12)` 构造。`write_waveforms` 的 `pulse_edge` 参数缺省为 `None`（[../stages/readout.md](../stages/readout.md) 调用时传入 `pulse_edges` 的结果），写入 `readout.h5`，由 [数字化器](digitizer.md) 照抄进数字波形文件，下游据此翻转脉冲极性。探测器读出极性与前端脉冲响应见文献 [1]。
 
 ## 算法
 
@@ -125,7 +125,7 @@ $$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 
      - 其余行无法识别，立即抛出 `ValueError("Cannot read the element <line> of <path>")`；若数值不匹配正则 `([-+]?\d*\.?\d+(?:e[-+]?\d+)?)(meg|[tgkmunpf])?[a-z]*`，`spice_number` 抛出 `ValueError("<text> is not a SPICE number")`。
    - 读完文件后检查主子电路端口列表 `ports`：若未找到 `.subckt <name>` 或 `len(ports) not in (1, 2)`，抛出 `ValueError("<path> has to hold .subckt <name> with the nodes in, or in and out")`。将 `ports` 映射为 `dict(zip(("in", "out"), ports))` 返回。
 2. **组装放大级与末级负载链（`named_chain`、`read_chain`）**：
-   - `named_chain(name)` 按 `"+"` 拆分链名，通过 `component_path("afe", f"{part}.cir")` 定位各文件路径后调用 `read_chain(paths)`。
+   - `named_chain(name)` 按 `"+"` 拆分链名，通过 `component_path("readout", f"{part}.cir")` 定位各文件路径后调用 `read_chain(paths)`。
    - `read_chain` 将路径序列拆为前序放大级 `*stage_paths` 与末项负载 `load_path`：
      - 遍历 `stage_paths`：若某级 `"out" not in stage["ports"]`，抛出 `ValueError("<path> has no output: it can only be the load, the last of the chain, not its part <place> of <len>")`。级名默认取 `path.stem`；若与前面已有的放大级重名，则从 `2` 起递增追加后缀 `f"{path.stem}_{number}"`（如 `Gali52`、`Gali52_2`）。
      - 读取 `load = read_subcircuit(load_path)`：若 `"out" in load["ports"]`，抛出 `ValueError("<load_path> is the last of the chain and has to be a load, with the node in alone")`。返回 `{"stages": stages, "load": load}`。
@@ -170,7 +170,7 @@ $$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 
 
 ### 频域噪声求解与随机流合成
 
-`noise_seed` 是 `readout` 环节的种子，由命令行 `--seed` 与 `--same-seeds` 经[实验、扫描点与种子](../lifecycle/experiments.md)分给各环节。当 `write_waveforms` 的 `noise_seed` 为整数时，按以下步骤求解噪声谱并抽取各通道时域噪声：
+`noise_seed` 是 `readout` 自己的种子（NGspice 噪声），由作业的种子派生（见[实验、扫描点与种子](../lifecycle/experiments.md#种子)）。当 `write_waveforms` 的 `noise_seed` 为整数时，按以下步骤求解噪声谱并抽取各通道时域噪声：
 
 1. **对称通道分组与噪声网表求解（`noise_spectra`、`write_noise_netlist`、`output_noise_spectrum`）**：
    - 遍历 `circuit.alike` 中的每个对称通道组 `group`，将该组内所有输出通道映射到组内居中通道 `group[len(group) // 2]`；不在任何组内的通道映射到自身。按 `circuit.outputs` 顺序去重得到实际需要调用 `ngspice` 分析的通道列表 `analysed`。
@@ -190,7 +190,7 @@ $$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 
    - 对事例 `event` 中被保留的第 `name` 号输出通道，使用三维整数种子列表构造独立的 NumPy 随机数生成器：
      $$\text{generator} = \text{np.random.default\_rng}\bigl([\text{noise\_seed},\, \text{event.event},\, \text{place}[\text{name}]]\bigr)$$
      其中 `place[name]` 是该通道在完整 `circuit.outputs` 中的固定下标（$0, 1, \dots, N_{\text{out}} - 1$）。
-   - 该设计保证任意通道在任意事例中的噪声序列仅由 `(noise_seed, event.event, place[name])` 唯一决定，与当事例保存了哪些其他通道无关，且任意两个不同通道的噪声相互统计独立。
+   - 这样任意通道在任意事例中的噪声序列仅由 `(noise_seed, event.event, place[name])` 唯一决定，与当事例保存了哪些其他通道无关，且任意两个不同通道的噪声相互统计独立。
 
 ### 脉冲极性判定与波形文件写出
 
@@ -239,7 +239,7 @@ $$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 
 - `spectral_noise.py`：负责由单边幅度谱密度合成时域高斯噪声。`band_power` 计算梯形累积噪声功率插值函数，`noise_from_spectrum` 在扩展频域网格上抽取复高斯频谱并经 `irfft` 生成单条时域噪声波形。
 - `pulse_edge.py`：负责判定各读出通道的输出脉冲极性。`collected_charge_sign` 由器件偏压判定收集载流子符号，`chain_sign` 用 $1\ \text{pF}$ 平板探针电路测定放大器链同相或反相，`pulse_edges` 返回各通道的 `"rising"` 或 `"falling"` 列表。
 - `job.py`：负责单作业从感应电流文件到读出波形文件的批处理调度。`_solve` 与 `_solve_part` 执行单事例全电路或条形行局部自适应扩展求解，`noise_spectra` 按 `circuit.alike` 复用对称通道噪声谱，`write_waveforms` 完成逐事例求解、通道筛选、独立随机流噪声叠加与写出。
-- `waveforms.py`：定义 `EventWaveforms`、`Waveforms` 数据类及 `_check_layout`、`append_waveforms`、`read_waveforms`、`read_circuit_values`，负责 `readout_<job>.h5` 的稀疏追加写入与读取。
+- `waveforms.py`：定义 `EventWaveforms`、`Waveforms` 数据类及 `_check_layout`、`append_waveforms`、`read_waveforms`、`read_circuit_values`，负责 `readout.h5` 的稀疏追加写入与读取。
 - `schematic.py`：提供 `read_hints`、`arrange`、`layout`、`value_text` 与 `draw`，将 `.cir` 子电路文件绘制为原理图图像。
 
 ### 核心数据结构
@@ -251,9 +251,9 @@ $$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 
 
 ## 接口
 
-命令行入口与切片调度选项（如 `-amp`/`--amplifier`、`--sheet-resistance`）见 [../stages/readout.md](../stages/readout.md)，器件等效电路 `DeviceCircuit` 的参数提取与构建见 [field.md](field.md)，前端读出电路组件的详细图文说明见 [../components/readout.md](../components/readout.md)。使用者能设的只有下表列出的器件文件键、`.cir` 组件文件键，以及放大级元件数值的覆盖；页内其余参数（`LOWEST_NOISE_HZ`、`PART_EDGE`、`PER_DECADE`、噪声分析温度、`RECORD`、`NO_ANSWER_V`、探针电路参数）均写死在代码里。
+命令与 `readout` 段的设置（如 `readout.amplifier`、`readout.sheet_resistance`）见 [../stages/readout.md](../stages/readout.md)，器件等效电路 `DeviceCircuit` 的参数提取与构建见 [field.md](field.md)，前端读出电路组件的详细图文说明见 [../components/readout.md](../components/readout.md)。使用者能设的只有下表列出的器件文件键、`.cir` 组件文件键，以及放大级元件数值的覆盖；页内其余参数（`LOWEST_NOISE_HZ`、`PART_EDGE`、`PER_DECADE`、噪声分析温度、`RECORD`、`NO_ANSWER_V`、探针电路参数）均写死在代码里。
 
-放大级元件数值的覆盖：`read_subcircuit` 读出的各放大级描述（元件名下的纯数值）写进 `readout` 节点的 `node.json`，实验 `config.json` 与命令行 `--set`、`--scan` 按 `readout.<放大级名>.<元件名>` 寻址改写这些数值，例如 `--set readout.ChargeSensitiveCremat.Cf=2e-12`、`--scan readout.ChargeSensitiveCremat.Cf=1.4e-12,2e-12,3e-12`。`<放大级名>` 是放大级在链中的名字，即 `.cir` 文件名词干，同一文件在链中重复出现时第二个起带后缀（`Gali52_2`）；`<元件名>` 是 `.cir` 里的元件名（如 `Cf`、`Rf`、`E1`）。值是国际单位制下的纯数字，按元件种类分别为电阻 $\Omega$、电容 $\text{F}$、电感 $\text{H}$、直流电压源 $\text{V}$、压控电压源增益（无量纲），写成 `2e-12` 这样的十进制数；SPICE 词头写法（`2p`）用在 `.cir` 文件里。改电路结构（增删元件、改节点）则复制 `.cir` 另存为新名字（文件名词干与 `.subckt` 名一致），放进 project 的 `components/afe/`，组件查找先查 project 再查库内，链名里换成新名字。
+放大级元件数值的覆盖：`read_subcircuit` 读出的各放大级描述（元件名下的纯数值）写进 `readout` 节点的 `node.json`，实验 `config.json` 与命令行 `--set`、`--scan` 按 `readout.amplifier.<放大级名>.<元件名>` 寻址改写这些数值（`readout.amplifier` 是槽位，放大器链加一层级名），例如 `--set readout.amplifier.ChargeSensitiveCremat.Cf=2e-12`、`--scan readout.amplifier.ChargeSensitiveCremat.Cf=1.4e-12,2e-12,3e-12`。`<放大级名>` 是放大级在链中的名字，即 `.cir` 文件名词干，同一文件在链中重复出现时第二个起带后缀（`Gali52_2`）；`<元件名>` 是 `.cir` 里的元件名（如 `Cf`、`Rf`、`E1`）。值是国际单位制下的纯数字，按元件种类分别为电阻 $\Omega$、电容 $\text{F}$、电感 $\text{H}$、直流电压源 $\text{V}$、压控电压源增益（无量纲），写成 `2e-12` 这样的十进制数；SPICE 词头写法（`2p`）用在 `.cir` 文件里。改电路结构（增删元件、改节点）则复制 `.cir` 另存为新名字（文件名词干与 `.subckt` 名一致），放进 project 的 `components/readout/`，组件查找先查 project 再查库内，链名里换成新名字。换放大器链写 `--set readout.amplifier=<组件名>`，扫放大器链写 `--scan readout.amplifier=<组件名1>,<组件名2>`，这时槽位整个换成那套组件，原来覆盖的元件数值一并去掉。
 
 ### 器件文件读取的键
 
@@ -263,7 +263,7 @@ $$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 
 | `bias.electrode` | 无（必选） | 无 | 施加偏置电压的电极名称（其余电极接地），由 `collected_charge_sign` 读取 |
 | `bias.voltage` | 无（必选） | $\text{V}$ | 偏置电压，与 `bias.electrode` 共同决定读出电极收集电子（`-1`）或空穴（`+1`） |
 | `read_out_contact` | 无（必选） | 无 | 读出电极字典列表，每项含 `"name"`；长度为 `1` 时扩展到全部输出通道，否则长度须等于 `len(circuit.outputs)` |
-| `capacitance_pF`, `bias_resistance_ohm`, `coupling_capacitance_pF`, `undepleted_resistance_ohm`, `undepleted_capacitance_pF`, `resistive_layer` | 见 [field.md](field.md) | $\text{pF}$, $\Omega$ | 由 [field.md](field.md) 的 `circuit_parameters.py` 读取以构建传入本包的 `DeviceCircuit` 与 `circuit_values`（写入 `readout_<job>.h5` 的 `device_circuit` 属性） |
+| `capacitance_pF`, `bias_resistance_ohm`, `coupling_capacitance_pF`, `undepleted_resistance_ohm`, `undepleted_capacitance_pF`, `resistive_layer` | 见 [field.md](field.md) | $\text{pF}$, $\Omega$ | 由 [field.md](field.md) 的 `circuit_parameters.py` 读取以构建传入本包的 `DeviceCircuit` 与 `circuit_values`（写入 `readout.h5` 的 `device_circuit` 属性） |
 
 ### 组件文件的键
 
@@ -290,7 +290,7 @@ $$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 
 
 #### 库中组件
 
-`components/readout/`（源码目录 `src/raser/components/afe/`，详见 [../components/readout.md](../components/readout.md)）包含以下 5 个 SPICE 组件：
+`raser/components/readout/`（详见 [../components/readout.md](../components/readout.md)）包含以下 5 个 SPICE 组件：
 
 | 组件名称 | 端口数 | 电路描述 |
 | --- | --- | --- |
@@ -310,24 +310,24 @@ Cremat CR-110-R2.2 电荷灵敏前放，空载增益 `1.4 V/pC`，衰减时间 `
 
 ### 输入与输出文件格式
 
-`write_waveforms` 通过 [current.md](current.md) 的 `read_currents(currents_path)` 读取上游 `current_<job>.h5` 的属性 `electrodes`（字符串数组）、`dt`（`float64`，$\text{s}$）以及各事例的 `event`（`int64`）、`t0`（`float64`，$\text{s}$）和还原为全电极形状 `(len(electrodes), count)` 的时域感应电流 `current`（`float64`，$\text{A}$）。
+`write_waveforms` 通过 [current.md](current.md) 的 `read_currents(currents_path)` 读取上游 `current.h5` 的属性 `electrodes`（字符串数组）、`dt`（`float64`，$\text{s}$）以及各事例的 `event`（`int64`）、`t0`（`float64`，$\text{s}$）和还原为全电极形状 `(len(electrodes), count)` 的时域感应电流 `current`（`float64`，$\text{A}$）。
 
-输出文件 `readout_<job>.h5` 由 `append_waveforms` 逐事例追加写出，仅存储当事例存在非零感应电流且最大电压摆幅达到当事例最大通道摆幅 `PART_EDGE = 1e-3` 倍的输出通道；`read_waveforms` 读出时按各事例实际保存的通道列表还原为 `EventWaveforms`。直接用 h5py 读取时，第 $e$ 个事例的通道下标是 `index[a:a + stored[e]]`，其中 $a$ 为前 $e$ 个事例 `stored` 之和；其中第 $j$ 条通道的波形是 `voltage[b + j*count[e] : b + (j+1)*count[e]]`，其中 $b$ 为前 $e$ 个事例 `stored * count` 之和；某通道下标不在该事例的 `index` 段里，即该事例未存这条通道。
+输出文件 `readout.h5` 由 `append_waveforms` 逐事例追加写出，仅存储当事例存在非零感应电流且最大电压摆幅达到当事例最大通道摆幅 `PART_EDGE = 1e-3` 倍的输出通道；`read_waveforms` 读出时按各事例实际保存的通道列表还原为 `EventWaveforms`。直接用 h5py 读取时，第 $e$ 个事例的通道下标是 `index[a:a + stored[e]]`，其中 $a$ 为前 $e$ 个事例 `stored` 之和；其中第 $j$ 条通道的波形是 `voltage[b + j*count[e] : b + (j+1)*count[e]]`，其中 $b$ 为前 $e$ 个事例 `stored * count` 之和；某通道下标不在该事例的 `index` 段里，即该事例未存这条通道。
 
-**`readout_<job>.h5` 文件属性（Attributes）**
+**`readout.h5` 文件属性（Attributes）**
 
 | 属性名 | 类型 | 单位 | 含义 |
 | --- | --- | --- | --- |
 | `electrodes` | 字符串数组 | 无 | `circuit.outputs` 定义的全部读出输出通道名称列表 |
-| `dt` | `float64` | $\text{s}$ | 时间箱宽度（与输入 `current_<job>.h5` 的 `dt` 相同） |
+| `dt` | `float64` | $\text{s}$ | 时间箱宽度（与输入 `current.h5` 的 `dt` 相同） |
 | `pulse_edge` | 字符串数组（写入时可选，读取时必选） | 无 | 与 `electrodes` 顺序一一对应的输出脉冲极性，每项为 `"rising"` 或 `"falling"` |
 | `device_circuit` | JSON 字符串（可选） | $\text{F}$, $\Omega$, $\text{F/m}^2$ | 器件等效电路各元件取值及来源字典，由 `read_circuit_values` 解析返回（`write_waveforms` 收到 `circuit_values` 时写入；文件无此属性时 `read_circuit_values` 返回 `None`） |
 
-**`readout_<job>.h5` 数据集（Datasets）**
+**`readout.h5` 数据集（Datasets）**
 
 | 数据集名 | 形状与类型 | 单位 | 含义 |
 | --- | --- | --- | --- |
-| `event` | `(events,)`, `int64` | 无 | 事例编号（与输入 `current_<job>.h5` 的 `event` 一致） |
+| `event` | `(events,)`, `int64` | 无 | 事例编号（与输入 `current.h5` 的 `event` 一致） |
 | `t0` | `(events,)`, `float64` | $\text{s}$ | 该事例首个时间箱左边界时刻 |
 | `count` | `(events,)`, `int64` | 箱 | 该事例中每条保存波形的时间箱数（等于 `bins`） |
 | `stored` | `(events,)`, `int64` | 个 | 该事例中保存波形的输出通道数（无信号事例为 `0`） |

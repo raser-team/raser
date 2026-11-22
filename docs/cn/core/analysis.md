@@ -186,7 +186,7 @@ $$\delta x_{\text{orig},i} = \frac{x_{\text{orig},i}}{p_x} - \operatorname{round
 
 ## 接口
 
-命令行入口与实验多扫描点汇总流程见 [../stages/analysis.md](../stages/analysis.md)。`collection_efficiency` 与 `core_width` 的输入全部来自函数参数，统计分析环节以缺省 `window=None` 调用 `core_width`，首轮窗口只能在 Python 中直接调用时给定（[../stages/analysis.md](../stages/analysis.md) 所需的重建阈值、恒比比例与边沿方向均从上游 `reconstruction_<job>.h5` 的属性中读取）；在 Python 中调用 `WaveformStatistics(my_d, threshold, amplitude_threshold)` 时从 `Detector` 实例读取下表中的器件键，其余拟合轮数、最小事例数、窗口倍数、海森差分步长与直方图分箱参数全部写死在代码里。
+命令行入口与实验多扫描点汇总流程见 [../stages/analysis.md](../stages/analysis.md)。`collection_efficiency` 与 `core_width` 的输入全部来自函数参数，统计分析环节以缺省 `window=None` 调用 `core_width`，首轮窗口只能在 Python 中直接调用时给定（[../stages/analysis.md](../stages/analysis.md) 所需的重建阈值、恒比比例与边沿方向均从上游 `reconstruction.h5` 的属性中读取）；在 Python 中调用 `WaveformStatistics(my_d, threshold, amplitude_threshold)` 时从 `Detector` 实例读取下表中的器件键，其余拟合轮数、最小事例数、窗口倍数、海森差分步长与直方图分箱参数全部写死在代码里。
 
 ### 器件文件读取的键
 
@@ -206,15 +206,17 @@ $$\delta x_{\text{orig},i} = \frac{x_{\text{orig},i}}{p_x} - \operatorname{round
 
 | 来源文件 | 名称与类别 | 形状与类型 | 单位 | 用途 |
 | --- | --- | --- | --- | --- |
-| `current_<job>.h5`（[current.md](current.md)） | 数据集 `event` | `(events,)`, `int64` | 无 | 与 `reconstruction_<job>.h5` 的 `event` 核对事例号集合完全一致 |
-| `current_<job>.h5`（[current.md](current.md)） | 数据集 `charge` | `(events, len(electrodes))`, `float64` | $\text{C}$ | 作为 `collection_efficiency(charge, pairs)` 的 `charge` 输入 |
-| `current_<job>.h5`（[current.md](current.md)） | 数据集 `pairs` | `(events,)`, `float64` | 对 | 作为 `collection_efficiency(charge, pairs)` 的 `pairs` 输入 |
-| `reconstruction_<job>.h5`（[reconstruction.md](reconstruction.md)） | 属性 `electrodes` | 字符串数组 | 无 | 校验单电极约束（`len(electrodes) == 1`） |
-| `reconstruction_<job>.h5`（[reconstruction.md](reconstruction.md)） | 属性 `threshold`, `amplitude_threshold`, `fractions`, `edge` | `float64`, `float64`, `float64[]`, 字符串数组 | $\text{V}$, $\text{V}$, 无量纲, 无 | 校验同扫描点各作业重建参数一致，并将两个阈值除以 `1e-3` 换算为 $\text{mV}$ 写入 `result.json` |
-| `reconstruction_<job>.h5`（[reconstruction.md](reconstruction.md)） | 数据集 `event`, `selected` | `(events,)`, `int64` / `bool` | 无 | 筛选满足 `selected == True` 的选中事例 |
-| `reconstruction_<job>.h5`（[reconstruction.md](reconstruction.md)） | 数据集 `ToA`, `ToT`, `CoG`, `amplitude`, `baseline`, `noise` | `(events, electrodes)`, `float64` | 前三项 $\text{s}$，后三项 $\text{V}$ | 提取选中事例在第 `0` 号电极上的定时量与波形电压量 |
-| `reconstruction_<job>.h5`（[reconstruction.md](reconstruction.md)） | 数据集 `CFD` | `(events, electrodes, fractions)`, `float64` | $\text{s}$ | 提取选中事例在第 `0` 号电极上各恒比分数 `part` 对应的 `CFD<round(100*part)>` 时刻 |
-| `deposit_<job>.h5`（[deposit.md](deposit.md)） | 数据集 `event`, `count`, `t` | `(recorded_events,)`, `int64` / `(sum(count),)`, `float64` | 无, 步, $\text{s}$ | 取每个事例所有沉积步的最小 `t` 作为真实参考时刻 `truth`（$\text{s}$），将 `time - truth` 传入 `core_width` |
+| `current.h5`（[current.md](current.md)） | 数据集 `event` | `(events,)`, `int64` | 无 | 与 `reconstruction.h5` 的 `event` 核对事例号集合完全一致 |
+| `current.h5`（[current.md](current.md)） | 数据集 `charge` | `(events, len(electrodes))`, `float64` | $\text{C}$ | 作为 `collection_efficiency(charge, pairs)` 的 `charge` 输入 |
+| `current.h5`（[current.md](current.md)） | 数据集 `pairs` | `(events,)`, `float64` | 对 | 作为 `collection_efficiency(charge, pairs)` 的 `pairs` 输入 |
+| `reconstruction.h5`（[reconstruction.md](reconstruction.md)） | 属性 `electrodes` | 字符串数组 | 无 | 校验单电极约束（`len(electrodes) == 1`） |
+| `reconstruction.h5`（[reconstruction.md](reconstruction.md)） | 属性 `threshold`, `amplitude_threshold`, `fractions`, `edge` | `float64`, `float64`, `float64[]`, 字符串数组 | $\text{V}$, $\text{V}$, 无量纲, 无 | 校验同扫描点各作业重建参数一致，并将两个阈值除以 `1e-3` 换算为 $\text{mV}$ 写入 `result.json` |
+| `reconstruction.h5`（[reconstruction.md](reconstruction.md)） | 数据集 `event`, `selected` | `(events,)`, `int64` / `bool` | 无 | 筛选满足 `selected == True` 的选中事例 |
+| `reconstruction.h5`（[reconstruction.md](reconstruction.md)） | 数据集 `ToA`, `ToT`, `CoG`, `amplitude`, `baseline`, `noise` | `(events, electrodes)`, `float64` | 前三项 $\text{s}$，后三项 $\text{V}$ | 提取选中事例在第 `0` 号电极上的定时量与波形电压量 |
+| `reconstruction.h5`（[reconstruction.md](reconstruction.md)） | 数据集 `CFD` | `(events, electrodes, fractions)`, `float64` | $\text{s}$ | 提取选中事例在第 `0` 号电极上各恒比分数 `part` 对应的 `CFD<round(100*part)>` 时刻 |
+| `deposit.h5`（[deposit.md](deposit.md)） | 数据集 `event`, `count`, `t` | `(recorded_events,)`, `int64` / `(sum(count),)`, `float64` | 无, 步, $\text{s}$ | 取每个事例所有沉积步的最小 `t` 作为真实参考时刻 `truth`（$\text{s}$），将 `time - truth` 传入 `core_width` |
+
+局限：`analysis` 现在只统计单电极的结果，多电极、多位置的统计（例如 telescope 的残差、cflm 各焊盘的汇总）还没做。
 
 #### 输出文件 `events.h5`
 
@@ -229,7 +231,7 @@ $$\delta x_{\text{orig},i} = \frac{x_{\text{orig},i}}{p_x} - \operatorname{round
 | `amplitude` | `(selected,)`, `float64` | $\text{V}$ | 基线以上的最大脉冲幅度 |
 | `baseline` | `(selected,)`, `float64` | $\text{V}$ | 波形开头 `200` 个采样点的算术平均值 |
 | `noise` | `(selected,)`, `float64` | $\text{V}$ | 波形开头 `200` 个采样点的总体标准差 |
-| `truth` | `(selected,)`, `float64` | $\text{s}$ | 事例在 `deposit_<job>.h5` 中最早沉积步的时刻 |
+| `truth` | `(selected,)`, `float64` | $\text{s}$ | 事例在 `deposit.h5` 中最早沉积步的时刻 |
 | `CoG` | `(selected,)`, `float64` | $\text{s}$ | 过阈区间内按采样值加权的时间重心 |
 | `CFD<percent>` | `(selected,)`, `float64` | $\text{s}$ | 恒比定时时刻，`<percent>` 为 `round(100 * part)`（未找到时为 `NaN`） |
 
@@ -239,7 +241,7 @@ $$\delta x_{\text{orig},i} = \frac{x_{\text{orig},i}}{p_x} - \operatorname{round
 
 | 文件与键路径 | 类型或形状 | 单位 | 含义 |
 | --- | --- | --- | --- |
-| `result.json`: `reconstruction.threshold`, `amplitude_threshold` | `float` | $\text{mV}$ | 重建过阈阈值与事例选中幅度阈值（有记录事例时写入） |
+| `result.json`: `reconstruction.threshold`, `amplitude_threshold` | `float` | $\text{mV}$ | 重建过阈阈值与团簇种子通道的幅度阈值（有记录事例时写入） |
 | `result.json`: `reconstruction.fractions`, `edge` | `list[float]`, `list[str]` | 无量纲, 无 | 恒比定时比例列表与各电极脉冲边沿方向（有记录事例时写入） |
 | `result.json`: `collection.events` | `int` | 个 | 该扫描点的记录事例总数 |
 | `result.json`: `collection.mean`, `mean_error`, `spread` | `float` | 无量纲 | 全部记录事例 `collection_efficiency` 的均值、均值标准误与样本标准差（`ddof=1`；`events >= 2` 时写入） |
@@ -273,7 +275,7 @@ $$\delta x_{\text{orig},i} = \frac{x_{\text{orig},i}}{p_x} - \operatorname{round
 
 ## 参考文献
 
-- [1] H. Spieler, *Semiconductor Detector Systems*, Oxford University Press (2005)，出处待补
+- [1] H. Spieler, *Semiconductor Detector Systems*, Oxford University Press (2005), ISBN 978-0-19-852784-8, doi:10.1093/acprof:oso/9780198527848.001.0001
 - [2] E. Tiesinga, P. J. Mohr, D. B. Newell, B. N. Taylor, “CODATA recommended values of the fundamental physical constants: 2018”, Rev. Mod. Phys. 93 (2021) 025010, doi:10.1103/RevModPhys.93.025010
 - [3] A. C. Cohen, “Estimating the Mean and Variance of Normal Populations from Singly Truncated and Doubly Truncated Samples”, Ann. Math. Statist. 21 (1950) 557, doi:10.1214/aoms/1177729751
 - [4] F. James, *Statistical Methods in Experimental Physics*, 2nd ed., World Scientific (2006), doi:10.1142/6096

@@ -11,8 +11,8 @@ RASER 是半导体辐射探测器全链路仿真软件，用一套命令行连�
 
 ## lifecycle
 
-- [lifecycle/experiments.md](lifecycle/experiments.md)：project 与实验文件夹、`config.json`、`run.json`、`--set` 与 `--scan` 参数扫描、随机种子。
-- [lifecycle/slices.md](lifecycle/slices.md)：环节切片依赖、代码版本提示、完成标记与 `raser status` 状态查看。
+- [lifecycle/experiments.md](lifecycle/experiments.md)：project 与实验文件夹、`config.json`、节点与 `points.json`、`--set` 与 `--scan` 参数扫描、随机种子。
+- [lifecycle/slices.md](lifecycle/slices.md)：节点与指纹、复用、代码版本提示与 `raser status` 状态查看。
 - [lifecycle/jobs.md](lifecycle/jobs.md)：并行作业拆分、日志、文件锁、断点续跑与集群提交。
 
 ## 环节（stages）
@@ -57,7 +57,7 @@ RASER 是半导体辐射探测器全链路仿真软件，用一套命令行连�
 - [bench/signal.md](bench/signal.md)：`raser signal`，单器件全链路信号测试，给出电荷收集效率。
 - [bench/timeres.md](bench/timeres.md)：`raser timeres`，时间分辨（Time Resolution）测试。
 - [bench/tct.md](bench/tct.md)：`raser tct`，瞬态电流技术（Transient Current Technique）测试，扫激光相对器件的位置。
-- [bench/telescope.md](bench/telescope.md)：`raser telescope`，束流望远镜空间分辨测试，默认用 TAICHU 做参考器件。
+- [bench/telescope.md](bench/telescope.md)：`raser telescope`，束流望远镜空间分辨测试，默认前后各 3 层 `TAICHU3` 做参考层，中间放 2 块被测器件。
 
 ## 应用（apps）
 

@@ -55,10 +55,9 @@ $$C = \frac{\varepsilon_0 \varepsilon_r \left(A \times 10^{-12}\right)}{d \times
 
 1. **解析路径与保存字典副本**：调用 `path = device_file(device_name)`（按名称查找失败时在此步抛出 `FileNotFoundError`）。若 `device_dict is None`，调用 `device_json(device_name)` 从磁盘读取字典。将 `copy.deepcopy(device_dict)` 赋给 `self.device_dict`，使器件对象持有的字典与外部传入字典隔离；将 `path.resolve()` 赋给 `self.definition_path`。
 2. **映射顶层键为同名属性**：执行 `self.__dict__.update(self.device_dict)`，将 JSON 顶层的所有键值直接写入实例属性字典。
-3. **提取偏压、辐照与网格生成器嵌套键**：
+3. **提取偏压与辐照嵌套键**：
    - 计算 `self.voltage = float(self.device_dict['bias']['voltage'])`（$\text{V}$）。若缺少 `'bias'` 或 `'voltage'`，抛出 `KeyError`；若电压值无法转换为 `float`，抛出 `TypeError` 或 `ValueError`。
    - 检查 `"irradiation" in self.device_dict`：若为真，令 `self.irradiation_model = self.device_dict['irradiation']['irradiation_model']`、`self.irradiation_flux = self.device_dict['irradiation']['irradiation_flux']`（$\text{cm}^{-2}$；若 `'irradiation'` 字典内缺少 `'irradiation_model'` 或 `'irradiation_flux'`，抛出 `KeyError`）；若为假，令 `self.irradiation_model = None`、`self.irradiation_flux = 0`。
-   - 计算 `self.mesher = self.device_dict.get('mesh', {}).get('mesher')`（无 `'mesh'` 或无 `'mesher'` 时为 `None`）。
 4. **计算名称、求解维度与三维边界**：
    - 令 `self.det_name = self.device_dict.get('det_name', path.stem)`，并同时令 `self.device = self.det_name`、`self.region = self.det_name`。
    - 令 `self.dimension = self.device_dict.get('field_dimension', self.device_dict['default_dimension'])`。`default_dimension` 必填，缺少时抛出 `KeyError`。
@@ -92,14 +91,13 @@ $$C = \frac{\varepsilon_0 \varepsilon_r \left(A \times 10^{-12}\right)}{d \times
 2. **附属文件定位（`Detector.file(name)`）**：
    - 计算 `path = Path(name).expanduser()`；若 `not path.is_absolute()`，将其拼接到器件 JSON 所在目录：`path = Path(self.definition_path).parent / path`。
    - 调用 `path = path.resolve()`。若 `not path.is_file()`，抛出 `FileNotFoundError`（`Cannot find <path>, named by <definition_path>`）；否则返回解析后的 `Path` 对象。
-3. **横向二维网格判定（`Detector.is_plugin()`）**：返回 `bool(self.device_dict.get('mesh', {}).get('plugin', False))`。
 
 ## 软件实现
 
 ### 模块与函数分工
 
 - `__init__.py`：包说明文件。
-- `build_device.py`：实现器件 JSON 路径定位函数 `device_file`、JSON 读取函数 `device_json` 以及探测器数据结构 `Detector`（含构造校验、电极布局判断属性 `is_strip` 与 `is_pixel`、单电极面积计算 `_readout_area_um2`、缓存结电容属性 `capacitance`、外部文件解析方法 `file` 与横向网格判断方法 `is_plugin`）。
+- `build_device.py`：实现器件 JSON 路径定位函数 `device_file`、JSON 读取函数 `device_json` 以及探测器数据结构 `Detector`（含构造校验、电极布局判断属性 `is_strip` 与 `is_pixel`、单电极面积计算 `_readout_area_um2`、缓存结电容属性 `capacitance`与外部文件解析方法 `file`）。
 
 ### 核心数据结构
 
@@ -114,7 +112,6 @@ $$C = \frac{\varepsilon_0 \varepsilon_r \left(A \times 10^{-12}\right)}{d \times
 | `voltage` | `float` | $\text{V}$ | 偏置电压 `float(device_dict["bias"]["voltage"])` |
 | `irradiation_model` | `str \| None` | 无 | 辐照缺陷模型名称（无 `irradiation` 块时为 `None`） |
 | `irradiation_flux` | `float \| int` | $\text{cm}^{-2}$ | 辐照注量（无 `irradiation` 块时为 `0`） |
-| `mesher` | `str \| None` | 无 | 网格生成器标识 `device_dict.get("mesh", {}).get("mesher")` |
 | `bound` | `dict[str, tuple]` | $\mu\text{m}$ | 器件三维坐标边界 `{'x': (0, l_x), 'y': (0, l_y), 'z': (0, l_z)}` |
 | `electrodes` | `str` | 无 | 读出电极排布方式（`"pad"`、`"strip"` 或 `"pixel"`） |
 | `is_strip`, `is_pixel` | `bool` | 无 | `electrodes` 是否为 `"strip"` 或 `"pixel"` |
@@ -124,7 +121,6 @@ $$C = \frac{\varepsilon_0 \varepsilon_r \left(A \times 10^{-12}\right)}{d \times
 | `has_avalanche` | `bool` | 无 | 是否同时满足 `avalanche_model is not None` 与 `bool(enable_gain)` |
 | `capacitance` | `float \| None` | $\text{pF}$ | 单个读出电极结电容（直接指定值、平行板估算值，或 3D 模型返回 `None`） |
 | `file(name)` | `Path` | 无 | 解析器件 JSON 引用的附属文件绝对路径并校验文件存在 |
-| `is_plugin()` | `bool` | 无 | 二维网格是否位于横向 $x$-$y$ 平面 |
 
 ## 接口
 
@@ -170,15 +166,14 @@ $$C = \frac{\varepsilon_0 \varepsilon_r \left(A \times 10^{-12}\right)}{d \times
 | `undepleted_resistance_ohm`, `undepleted_capacitance_pF` | 无（下游缺省取 `None`） | $\Omega$, $\text{pF}$ | 未耗尽体区的等效电阻与电容；通常由 [field.md](field.md) 按运行时偏压从一维场算出，器件文件给出时优先采用给定值，两个键须同时给出或同时省略 |
 | `resistive_layer` | 无（可选） | 无 | 阻性层定义对象，含方阻 `"sheet_resistance"`（$\Omega$）或注入参数、单元跨度（`"strips"` 或 `"pads"`）及可选 `"grounded"`、`"coupling"`（原样映射为同名属性） |
 
-#### 物理模型、网格与求解维度
+#### 物理模型与求解维度
+
+器件文件里没有 `mesh` 段：几何（各层厚度、材料、电极在哪一面）是器件的固有性质，网格属于 `field`，用哪一套网格由 `field` 段的设置指定（见 [field.md](field.md)）。物理模型按名字注册，器件文件按名字选用；每种材料有缺省选用的模型（见 [model.md](model.md)）。
 
 | 键名 | 默认值 | 单位 | 含义 |
 | --- | --- | --- | --- |
 | `default_dimension` | 无（必填） | 无 | 默认场求解维度，取 `1`、`2` 或 `3` |
 | `field_dimension` | `default_dimension` | 无 | 覆盖 `default_dimension` 的场求解维度，构造时赋给 `Detector.dimension` |
-| `mesh.mesher` | `None` | 无 | 网格生成器标识（如 `"sde"`），构造时提取为 `Detector.mesher` |
-| `mesh.gmsh_mesh.file` | 无（用 Gmsh 网格时必填） | 无 | Gmsh `.msh` 网格文件名，经 `Detector.file` 解析：相对路径相对于器件 JSON 所在目录，复制器件文件时网格文件须按同一相对位置一起复制 |
-| `mesh.plugin` | `False` | 无 | 二维网格是否位于横向 $x$-$y$ 平面，由 `Detector.is_plugin()` 读取并转为 `bool` |
 | `area_factor` | 无（下游 `field` 缺省取 `1.0`） | 1D 为 $\text{cm}^2$，2D 为 $\text{cm}$，3D 无量纲 | 将一维或二维求解的 IV、CV 与比阻抗换算为整块器件总值的面积或长度因子（给出时原样映射为同名属性） |
 
 ### 库中组件
@@ -213,7 +208,7 @@ $$C = \frac{\varepsilon_0 \varepsilon_r \left(A \times 10^{-12}\right)}{d \times
 
 ### 输入输出文件与绘图输出
 
-- **输入文件**：UTF-8 编码的器件 JSON 文件（`<work_root>/<device_name>/device.json`、`components/device/<device_name>.json` 或显式路径）以及通过 `Detector.file(name)` 解析的附属文件（如 Gmsh `.msh` 网格文件）。
+- **输入文件**：UTF-8 编码的器件 JSON 文件（`<work_root>/<device_name>/device.json`、`components/device/<device_name>.json` 或显式路径）以及通过 `Detector.file(name)` 解析的附属文件。
 - **输出文件与数据集**：无。`core/device` 仅在内存中构造 `Detector` 实例，不写出磁盘数据文件、属性或数据集。
 - **绘图输出**：无。
 

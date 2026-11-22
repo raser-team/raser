@@ -6,7 +6,7 @@
 
 ## 组件文件
 
-一个组件文件描述一台触发设备，文件名就是组件名，在实验 `config.json` 的 `trigger` 段里按名字选用。需要几块器件同时过阈的符合触发（例如 [`timeres`](../bench/timeres.md)），符合条件也写在触发组件里。
+一个组件文件描述一台触发设备，文件名就是组件名，在实验 `config.json` 的 `trigger` 段里用 `device` 按名字选用。需要几块器件同时过阈的符合触发（例如 [`timeres`](../bench/timeres.md)），符合条件也写在触发组件里。
 
 ## 键的含义
 
@@ -15,9 +15,9 @@
 - **幅度阈值**：波形越过阈值的事例被记录，没越过的丢掉（例如 `HPK-Si-PiN` 示例，见[触发环节](../stages/trigger.md#按幅度阈值触发)）。
 - **符合条件**：哪几块器件要在同一事例里都过幅度阈值，这个事例才被记录（例如 `timeres` 的双器件符合）。
 
-一个事例记不记录，由这里的触发条件决定；要调触发阈值，改触发条件。[`reconstruction`](../stages/reconstruction.md) 段里的 `threshold` 和 `amplitude_threshold` 是重建用的阈值，作用在已被记录的事例上：`threshold` 用于过阈定时，`amplitude_threshold` 只用来找团簇 seed。
+一个事例记不记录，由这里的触发条件决定；要调触发阈值，改触发条件。[`reconstruction`](../stages/reconstruction.md) 段里的 `reconstruction.threshold` 和 `reconstruction.amplitude_threshold` 是重建用的阈值，作用在已被记录的事例上：`reconstruction.threshold` 用于过阈定时；`reconstruction.amplitude_threshold` 是团簇种子通道的幅度阈值，被记录的事例里找到种子的记为 `selected`。
 
-组件里的量按“段.组件.键”寻址：独立触发设备的量写成 `trigger.<组件名>.<键>`，用 `--set trigger.<组件名>.<键>=<值>` 改一个，用 `--scan trigger.<组件名>.<键>=<值1>,<值2>` 扫描。兼管触发的示波器，触发条件是它在 `digitizer` 段里的组件的量，写成 `digitizer.MXR608A.<键>`（见[数字化器组件](digitizer.md#键的含义)）。环节本身的设置见[触发环节](../stages/trigger.md#设置)。
+`trigger.device` 是槽位，组件里的量按“段.槽位.键”寻址：独立触发设备的量写成 `trigger.device.<键>`，用 `--set trigger.device.<键>=<值>` 改一个，用 `--scan trigger.device.<键>=<值1>,<值2>` 扫描。兼管触发的示波器，触发条件在 `digitizer.device` 槽位里，写成 `digitizer.device.<键>`，例如 `digitizer.device.trigger_level_V`（见[数字化器组件](digitizer.md#键的含义)）。`name` 不能用 `--set`、`--scan` 改；换设备写 `--set trigger.device=<组件名>`，扫设备写 `--scan trigger.device=<组件名1>,<组件名2>`，这时槽位整个换成那个组件文件，原来覆盖的键一并去掉。环节本身的设置见[触发环节](../stages/trigger.md#设置)。
 
 ## 读进程序以后怎么用
 

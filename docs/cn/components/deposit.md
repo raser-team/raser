@@ -1,6 +1,6 @@
 # 能量沉积组件（`components/deposit`）
 
-按顶层设计（[架构总纲](../architecture.md#组件)），能量沉积组件统一存放在 `components/deposit/` 下，由 [`components/loader.py`](../supports/README.md) 的 `read_g4setup`、`load_source` 与 `load_laser` 定位加载。它们结合 [探测器组件](device.md) 的几何尺寸与材料，分别描述 Geant4 周边几何装置（Python 脚本）、放射源与粒子束流（JSON）以及激光脉冲与材料带间吸收系数表（JSON 与 `.txt`），由 [`deposit`](../stages/deposit.md) 环节（[`core/deposit`](../core/deposit.md)）读取并算出器件内的能量沉积步与初始电子-空穴对（[`tct`](../bench/tct.md) 测试在 [`current`](../stages/current.md) 切片中也通过 `LaserInjection` 直接读取激光组件），结果交给 [`current`](../stages/current.md)（[`core/current`](../core/current.md)）和 [`analysis`](../stages/analysis.md)（[`core/analysis`](../core/analysis.md)）。
+能量沉积组件统一存放在 `components/deposit/` 下（见[架构总纲](../architecture.md#组件)），由 [`components/loader.py`](../supports/README.md) 的 `read_g4setup`、`load_source` 与 `load_laser` 定位加载。它们结合 [探测器组件](device.md) 的几何尺寸与材料，分别描述 Geant4 周边几何装置（Python 脚本）、放射源与粒子束流（JSON）以及激光脉冲与材料带间吸收系数表（JSON 与 `.txt`），由 [`deposit`](../stages/deposit.md) 环节（[`core/deposit`](../core/deposit.md)）读取并算出器件内的能量沉积步与初始电子-空穴对，结果交给 [`current`](../stages/current.md)（[`core/current`](../core/current.md)）和 [`analysis`](../stages/analysis.md)（[`core/analysis`](../core/analysis.md)）。
 
 ```mermaid
 flowchart LR
@@ -201,7 +201,7 @@ G4SETUP = {
 | `direction` | 无（必填） | 无 | 入射面：`"top"`（从 $z = 0$ 沿 $+z$）、`"bottom"`（从 $z = l_z$ 沿 $-z$）或 `"edge"`（从 $x = 0$ 沿 $+x$） |
 | `refractionIndex` | 无（必填） | 无 | 器件材料在该波长下的折射率 $n$ |
 | `wavelength` | 无（必填） | `nm` | 激光波长（读入后乘以 `1e-3` 转为 `um`） |
-| `alpha` | 查 `absorption/<material>.txt` 对数插值 | `1/m` | 线性吸收系数 $\alpha$ |
+| `alpha` | 查 `deposit/absorption/<material>.txt` 对数插值 | `1/m` | 线性吸收系数 $\alpha$ |
 | `beta_2` | 无（`"TPA"` 必填） | `m/W` | 双光子吸收系数 $\beta_2$ |
 | `temporal_FWHM` | 无（必填） | `s` | 激光脉冲时间半高全宽 $\text{FWHM}_t$ |
 | `pulse_energy` | 无（必填） | `J` | 单次激光脉冲能量 $E_{\text{pulse}}$ |
@@ -212,25 +212,25 @@ G4SETUP = {
 | `groups` | 无（必填） | 群 | 每种吸收机制划分的最少载流子群数 |
 | `fx_rel`, `fy_rel`, `fz_rel` | 无（必填） | 无 | 焦点在器件坐标系中的相对坐标，绝对位置为 `(fx_rel * l_x, fy_rel * l_y, fz_rel * l_z)`（单位 `um`） |
 
-吸收系数表（`absorption/<material>.txt`）是空白分隔的两列文本文件，`#` 开头为注释行：第一列是波长（单位 `nm`），第二列是 `300 K` 下的带间吸收系数（单位 `1/cm`）。
+吸收系数表（`deposit/absorption/<material>.txt`）是空白分隔的两列文本文件，`#` 开头为注释行：第一列是波长（单位 `nm`），第二列是 `300 K` 下的带间吸收系数（单位 `1/cm`）。
 
 其余参数（世界默认半边长、最大生成事例数上限、Geant4 中金刚石与碳化硅的内置密度、放射性衰变寿命阈值、材料平均电离能、Fano 因子、`toy_mip` 的平均线电离率与 Landau 宽度、激光横截面切分的 `4` 环 $\times$ `8` 扇区及光路积分加密步数）全部写死在代码里，组件文件中不能设置：
 
 | 常数名或固定项 | 值 | 单位 | 定义位置与含义 |
 | --- | --- | --- | --- |
-| `WORLD_HALF_SIDE` | `25000` | `um` | `src/raser/core/deposit/simulate_deposits.py:30`，器件、周边物体与源未超出该范围时的 Geant4 世界立方体默认半边长 |
-| `GENERATED_LIMIT` | `10000000` | 事例 | `src/raser/core/deposit/generation.py:8`，为录满目标记录事例数允许生成的最大源事例数默认上限 |
-| Geant4 `"Diamond"` 密度 | `3.52` | `g/cm^3` | `src/raser/core/deposit/geant4/detector_construction.py:48`，用碳（`"G4_C"`）构建金刚石探测器材料时的固定密度 |
-| Geant4 `"SiC"` 密度与原子配比 | `3.2`，`50 : 50` | `g/cm^3`, 无量纲 | `src/raser/core/deposit/geant4/detector_construction.py:68-70`，构建碳化硅探测器材料时的固定密度与硅、碳原子数配比 |
-| 放射性衰变时间阈值 | `1.0e60` | `year` | `src/raser/core/deposit/geant4/interaction.py:110`，传给 `SetTimeThresholdForRadioactiveDecay` 以允许任意长寿命核素衰变 |
-| `RADIOACTIVE_DECAY` | `210` | 无量纲 | `src/raser/core/deposit/geant4/nuclide_source.py:13`，`DecayStackingAction` 识别 `G4RadioactiveDecay` 产物的子过程编号 |
-| `PAIR_ENERGY_EV` | `"Si": 3.6`，`"SiC": 8.4`，`"Diamond": 13.1` | `eV` | `src/raser/core/deposit/ionization.py:12-18`，各材料产生一对电子-空穴对的平均电离能（金刚石值引自 T. Shimaoka et al., *Phys. Status Solidi A* 213 (2016) 2629, doi:10.1002/pssa.201600195） |
-| `FANO_FACTOR` | `"Si": 0.115`，`"SiC": 0.128`，`"Diamond": 0.382` | 无量纲 | `src/raser/core/deposit/ionization.py:20-25`，各材料电离对数涨落的 Fano 因子（金刚石值同上） |
-| `PAIRS_PER_UM` | `"Si": 80.0`，`"SiC": 55.0` | `对/um` | `src/raser/core/deposit/mip_track.py:15`，`toy_mip` 模式下单位径迹长度产生的平均电子-空穴对数 |
-| `LANDAU_WIDTH_MEV_PER_UM` | `"Si": 2.0e-5`，`"SiC": 3.2e-5` | `MeV/um` | `src/raser/core/deposit/mip_track.py:17`，`toy_mip` 模式下单位径迹长度沉积能量 Landau 抽样的宽度参数 |
-| 光子能量常数 $h$, $c$ | `6.626e-34`, `2.998e8` | `J s`, `m/s` | `src/raser/core/deposit/laser.py:137`，计算单光子能量 $h c / \lambda$ 使用的普朗克常数与光速 |
-| 激光光路积分步数倍数 | `50` | 步 | `src/raser/core/deposit/laser.py:198-199`，沿光路长度除以最小特征尺度 $\min(L, l_R, 10^6/\alpha)$ 后的积分细分倍数 |
-| `rings`, `sectors` | `4`, `8` | 环, 扇区 | `src/raser/core/deposit/laser.py:206`，激光横截面等份额切分的同心环数与方位角扇区数（每层共 `32` 群） |
+| `WORLD_HALF_SIDE` | `25000` | `um` | `src/raser/core/deposit/simulate_deposits.py`，器件、周边物体与源未超出该范围时的 Geant4 世界立方体默认半边长 |
+| `GENERATED_LIMIT` | `10000000` | 事例 | `src/raser/core/deposit/generation.py`，为录满目标记录事例数允许生成的最大源事例数默认上限 |
+| Geant4 `"Diamond"` 密度 | `3.52` | `g/cm^3` | `src/raser/core/deposit/geant4/detector_construction.py`，用碳（`"G4_C"`）构建金刚石探测器材料时的固定密度（PDG 原子与核性质表，diamond） |
+| Geant4 `"SiC"` 密度与原子配比 | `3.21`，`50 : 50` | `g/cm^3`, 无量纲 | `src/raser/core/deposit/geant4/detector_construction.py`，构建碳化硅探测器材料时的固定密度与硅、碳原子数配比（4H-SiC 密度引自 M. E. Levinshtein, S. L. Rumyantsev, M. S. Shur (eds.), *Properties of Advanced Semiconductor Materials*, Wiley (2001)） |
+| 放射性衰变时间阈值 | `1.0e60` | `year` | `src/raser/core/deposit/geant4/interaction.py`，传给 `SetTimeThresholdForRadioactiveDecay` 以允许任意长寿命核素衰变 |
+| `RADIOACTIVE_DECAY` | `210` | 无量纲 | `src/raser/core/deposit/geant4/nuclide_source.py`，`DecayStackingAction` 识别 `G4RadioactiveDecay` 产物的子过程编号 |
+| `PAIR_ENERGY_EV` | `"Si": 3.6`，`"SiC": 7.83`，`"Diamond": 13.1` | `eV` | `src/raser/core/deposit/ionization.py`，各材料产生一对电子-空穴对的平均电离能（硅值是 S. Navas et al. (PDG), *Phys. Rev. D* 110 (2024) 030001, doi:10.1103/PhysRevD.110.030001 第 35.8 节所给 3.65 eV 的近似；碳化硅值引自 A. Gsponer et al., *Nucl. Instrum. Methods Phys. Res. A* 1064 (2024) 169412, doi:10.1016/j.nima.2024.169412；金刚石值引自 T. Shimaoka et al., *Phys. Status Solidi A* 213 (2016) 2629, doi:10.1002/pssa.201600195） |
+| `FANO_FACTOR` | `"Si": 0.115`，`"SiC": 0.128`，`"Diamond": 0.382` | 无量纲 | `src/raser/core/deposit/ionization.py`，各材料电离对数涨落的 Fano 因子（硅值引自 K. Ramanathan, N. Kurinsky, *Phys. Rev. D* 102 (2020) 063026, doi:10.1103/PhysRevD.102.063026；碳化硅值引自 S. K. Chaudhuri, K. J. Zavalla, K. C. Mandal, *Appl. Phys. Lett.* 102 (2013) 031109, doi:10.1063/1.4776703；金刚石值引自 Shimaoka et al.，同上） |
+| `PAIRS_PER_UM` | `"Si": 80.0`，`"SiC": 55.0` | `对/um` | `src/raser/core/deposit/mip_track.py`，`toy_mip` 模式下单位径迹长度产生的平均电子-空穴对数（硅值见 PDG 第 35.8 节与 H. Bichsel, *Rev. Mod. Phys.* 60 (1988) 663, doi:10.1103/RevModPhys.60.663；碳化硅值按 7.83 eV 与 MIP 能损换算） |
+| `LANDAU_WIDTH_MEV_PER_UM` | `"Si": 1.78e-5`，`"SiC": 2.46e-5` | `MeV/um` | `src/raser/core/deposit/mip_track.py`，`toy_mip` 模式下单位径迹长度沉积能量 Landau 抽样的宽度参数，按 PDG 第 34 章 $\xi = (K/2)\langle Z/A\rangle\rho x/\beta^2$（$\beta = 1$）算出（见 [`core/deposit`](../core/deposit.md#toy-mip-径迹)） |
+| 光子能量常数 $h$, $c$ | `6.626e-34`, `2.998e8` | `J s`, `m/s` | `src/raser/core/deposit/laser.py`，计算单光子能量 $h c / \lambda$ 使用的普朗克常数与光速 |
+| 激光光路积分步数倍数 | `50` | 步 | `src/raser/core/deposit/laser.py`，沿光路长度除以最小特征尺度 $\min(L, l_R, 10^6/\alpha)$ 后的积分细分倍数 |
+| `rings`, `sectors` | `4`, `8` | 环, 扇区 | `src/raser/core/deposit/laser.py`，激光横截面等份额切分的同心环数与方位角扇区数（每层共 `32` 群） |
 
 ## 读进程序以后怎么用
 
@@ -254,7 +254,7 @@ G4SETUP = {
    $$f_{\text{gen}} = \frac{1 - \cos\theta_{\text{cone}}}{2} \tag{3}$$
    其中 $f_{\text{gen}}$ 为无量纲立体角占比（例如 `Sr90.json` 中 $\theta_{\text{cone}} = 15^\circ$ 时 $f_{\text{gen}} \approx 0.017037$，生成事例数除以 $f_{\text{gen}}$ 即为全部 $4\pi$ 方向上的总衰变数）；未设 `nuclides` 或未设 `par_cone` 时 $f_{\text{gen}} = 1.0$。不含 `nuclides` 而给出 `par_type`、`par_energy` 的衰变源（如 `decay/Am241.json`）按下面粒子束流方式发射单能粒子。
 2. **粒子束流（`kind == "beam"`）**：`GeneralPrimaryGeneratorAction` 在每个事例中同时发射 `particles` 列表中的所有粒子（未给 `particles` 时为单粒子）：对每个粒子从随机流 `stream("source")` 抽取横向均匀偏移 $\Delta x \sim \mathcal{U}(-\text{par\_randx}, \text{par\_randx})$、$\Delta y \sim \mathcal{U}(-\text{par\_randy}, \text{par\_randy})$（`um`），加到方向向量 `par_out - par_in` 的 $x$、$y$ 分量上（若 `par_type` 与 `par_energy` 为等长列表，每事例等概率抽取其中一种粒子与对应动能），从 `par_in + offset`（`um`）发射。
-3. **直线最小电离径迹（`kind == "toy_mip"`）**：`mip_deposits` 不启动 Geant4，在器件坐标系中确定径迹起点 $\mathbf{r}_{\text{start}}$（默认 $[l_x/2, l_y/2, 0.0]$ `um`；若给 `position_range_um` 则从 `stream("toy_mip")` 在区间内均匀抽样 $x_0, y_0$）和终点 $\mathbf{r}_{\text{end}}$（默认 $[l_x/2, l_y/2, l_z]$ `um`；若给 `direction_sigma_mrad` 则按 $\mathcal{N}(0, (\sigma_{\text{mrad}}\times 10^{-3})^2)$ 抽取斜率 $s_x, s_y$，并只要抽样过起点或斜率就令 $x_{\text{end}} = x_{\text{start}} + s_x(z_{\text{end}} - z_{\text{start}})$、$y_{\text{end}} = y_{\text{start}} + s_y(z_{\text{end}} - z_{\text{start}})$）。将径迹长度 $L = |\mathbf{r}_{\text{end}} - \mathbf{r}_{\text{start}}|$（`um`）等分为 $N_{\text{pkt}}$ 段（给定 `packets` 时取 `int(packets)`，否则取 $\lceil L / \text{maxstep} \rceil$），每段长 $\Delta s = L / N_{\text{pkt}}$（`um`），平均沉积能量为 $\bar{E}_{\text{seg}} = \text{PAIRS\_PER\_UM}[\text{material}] \times \varepsilon_{\text{pair}} \times 10^{-6} \times \Delta s$（`MeV`）。当 `landau_sampling` 为 `true` 时，每段能量从 `stream("toy_mip")` 按 $\max(0.0,\, \text{Landau}(\bar{E}_{\text{seg}},\, w_{\text{Landau}}\Delta s))$ 抽样；为 `false` 时固定取 $\bar{E}_{\text{seg}}$。所有沉积段的产生时刻均设为 `0.0 s`。
+3. **直线最小电离径迹（`kind == "toy_mip"`）**：`mip_deposits` 不启动 Geant4，在器件坐标系中确定径迹起点 $\mathbf{r}_{\text{start}}$（默认 $[l_x/2, l_y/2, 0.0]$ `um`；若给 `position_range_um` 则从 `stream("toy_mip")` 在区间内均匀抽样 $x_0, y_0$）和终点 $\mathbf{r}_{\text{end}}$（默认 $[l_x/2, l_y/2, l_z]$ `um`；若给 `direction_sigma_mrad` 则按 $\mathcal{N}(0, (\sigma_{\text{mrad}}\times 10^{-3})^2)$ 抽取斜率 $s_x, s_y$，并只要抽样过起点或斜率就令 $x_{\text{end}} = x_{\text{start}} + s_x(z_{\text{end}} - z_{\text{start}})$、$y_{\text{end}} = y_{\text{start}} + s_y(z_{\text{end}} - z_{\text{start}})$）。将径迹长度 $L = |\mathbf{r}_{\text{end}} - \mathbf{r}_{\text{start}}|$（`um`）等分为 $N_{\text{pkt}}$ 段（给定 `packets` 时取 `int(packets)`，否则取 $\lceil L / \text{maxstep} \rceil$），每段长 $\Delta s = L / N_{\text{pkt}}$（`um`），平均沉积能量为 $\bar{E}_{\text{seg}} = \text{PAIRS\_PER\_UM}[\text{material}] \times \varepsilon_{\text{pair}} \times 10^{-6} \times \Delta s$（`MeV`）。其中 $\varepsilon_{\text{pair}}$ 为材料平均电离能 `PAIR_ENERGY_EV[material]`（`eV`，见式 (4)）。当 `landau_sampling` 为 `true` 时，每段能量从 `stream("toy_mip")` 按 $\max(0.0,\, \text{Landau}(\bar{E}_{\text{seg}},\, w_{\text{Landau}}\Delta s))$ 抽样，$w_{\text{Landau}}$ 为单位径迹长度的 Landau 宽度 `LANDAU_WIDTH_MEV_PER_UM[material]`（`MeV/um`）；为 `false` 时固定取 $\bar{E}_{\text{seg}}$。所有沉积段的产生时刻均设为 `0.0 s`。
 4. **电离对数转化（`ionized_pairs`）**：Geant4 和 `toy_mip` 得到的每步沉积能量 $E_k$（`MeV`）在 `ionized_pairs(event, material, fano=True)` 中除以材料平均电离能转化为平均电子-空穴对数 $\bar{N}_k$：
    $$\bar{N}_k = \frac{E_k}{\varepsilon_{\text{pair}} \times 10^{-6}}, \qquad N_k = \begin{cases} \max\!\left(0.0,\, \mathcal{N}\bigl(\bar{N}_k,\, F\,\bar{N}_k\bigr)\right), & \text{fano} = \text{True} \\ \bar{N}_k, & \text{fano} = \text{False} \end{cases} \tag{4}$$
    其中：
@@ -265,7 +265,7 @@ G4SETUP = {
 
 ### 激光吸收与载流子群切分（`laser.py`）
 
-1. **吸收系数与高斯光束包络（`absorption_coefficient`、`LaserInjection`）**：`LaserInjection` 将输入的 `wavelength`（`nm`）乘以 $10^{-3}$ 换为波长 $\lambda$（`um`）。若激光文件未给 `alpha`（`1/m`），`absorption_coefficient` 读取 `absorption/<material>.txt`，在相邻波长间对吸收系数的自然对数做线性插值并乘以 `100.0` 换为 `1/m`（波长大于表上限时取 `0.0`，小于表下限时抛出 `ValueError`）。焦点光斑束腰半径 $w_0$、介质内瑞利长度 $l_R$（未给 `l_Rayleigh` 时）以及沿光路距离 $s$（`um`）处的光斑半径平方 $w^2(s)$ 为：
+1. **吸收系数与高斯光束包络（`absorption_coefficient`、`LaserInjection`）**：`LaserInjection` 将输入的 `wavelength`（`nm`）乘以 $10^{-3}$ 换为波长 $\lambda$（`um`）。若激光文件未给 `alpha`（`1/m`），`absorption_coefficient` 读取 `deposit/absorption/<material>.txt`，在相邻波长间对吸收系数的自然对数做线性插值并乘以 `100.0` 换为 `1/m`（波长大于表上限时取 `0.0`，小于表下限时抛出 `ValueError`）。焦点光斑束腰半径 $w_0$、介质内瑞利长度 $l_R$（未给 `l_Rayleigh` 时）以及沿光路距离 $s$（`um`）处的光斑半径平方 $w^2(s)$ 为：
    $$w_0 = \frac{\text{FWHM}_{\text{sp}}}{\sqrt{2\ln 2}}, \qquad l_R = \frac{\pi w_0^2 n}{\lambda}, \qquad w^2(s) = w_0^2\!\left[1 + \left(\frac{s - s_{\text{focus}}}{l_R}\right)^2\right] \tag{5}$$
    其中：
    - $\text{FWHM}_{\text{sp}}$：焦点处光斑空间半高全宽 `spacial_FWHM`，`um`；
@@ -328,4 +328,4 @@ G4SETUP = {
 | 单光子碳化硅（`SiC`） | `PIL037_top_SiC` | `"SPA"`，`375 nm` 顶面（`"top"`）入射，$\alpha = 1000\ \text{m}^{-1}$，脉宽 `60 ps`，光斑 `20 um`，脉冲能量 `1.23e-12 J` | `description`：NKT Photonics PILAS PIL037（`375 nm`）数据手册 | 碳化硅器件顶面 [`tct`](../bench/tct.md) 与 [`signal`](../bench/signal.md)（如 `NJU-PiN`） |
 | 双光子硅（`Si`） | `TPA1550_edge_Si` | `"TPA"`，`1550 nm` 侧面（`"edge"`）入射，$\beta_2 = 1.5\times 10^{-11}\ \text{m/W}$，脉宽 `430 fs`，光斑 `1.448 um`，$l_R = 10.73\ \mu\text{m}$，脉冲能量 `5e-11 J` | `description`：TPA-TCT `1550 nm` 飞秒光纤激光器（`arXiv:2412.09017` 第 2.1 节） | 硅器件侧面双光子 [`tct`](../bench/tct.md) |
 | 双光子硅（`Si`） | `TPA1550_top_Si` | `"TPA"`，`1550 nm` 顶面（`"top"`）入射，$\beta_2 = 1.5\times 10^{-11}\ \text{m/W}$，脉宽 `430 fs`，光斑 `1.448 um`，$l_R = 10.73\ \mu\text{m}$，脉冲能量 `1.5e-12 J` | `description`：TPA-TCT `1550 nm` 飞秒光纤激光器（`arXiv:2412.09017` 第 2.1 节） | 硅器件顶面双光子 [`tct`](../bench/tct.md) |
-| 吸收系数表（`absorption/`） | `Si.txt` | `300 K` 本征硅在波长 `250 nm` 至 `1450 nm` 的带间吸收系数（`1/cm`） | 文件头注释：M. A. Green, *Sol. Energy Mater. Sol. Cells* 92 (2008) 1305, Table 1（doi:10.1016/j.solmat.2008.06.009） | 未显式指定 `alpha` 的硅（`"Si"`）器件激光模拟 |
+| 吸收系数表（`deposit/absorption/`） | `Si.txt` | `300 K` 本征硅在波长 `250 nm` 至 `1450 nm` 的带间吸收系数（`1/cm`） | 文件头注释：M. A. Green, *Sol. Energy Mater. Sol. Cells* 92 (2008) 1305, Table 1（doi:10.1016/j.solmat.2008.06.009） | 未显式指定 `alpha` 的硅（`"Si"`）器件激光模拟 |
