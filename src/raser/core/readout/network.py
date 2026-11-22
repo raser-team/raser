@@ -1,61 +1,15 @@
 """Response of the network of a resistive layer to an impulse on a point of
-the device."""
+the device, and admittance between its read-outs."""
+
+import subprocess
+import tempfile
+from pathlib import Path
 
 import numpy as np
 
-from .spice import solve
+from raser.core.field.resistive_layer import shares
 
-
-def _along(here_um, length_um, pitch_um, count, axis):
-    """Parts of a charge at here_um that go to the cells of one axis, by the
-    number of the cell: `count` cells at pitch_um, centred on length_um."""
-    first_edge = (length_um - count * pitch_um) / 2
-    last_edge = first_edge + count * pitch_um
-    if not first_edge <= here_um <= last_edge:
-        raise ValueError(
-            f"The point lies at {axis} = {here_um} um, and the cells of the "
-            f"layer reach from {first_edge} to {last_edge} um"
-        )
-    # in cell widths, from the middle of the first cell
-    place = (here_um - first_edge) / pitch_um - 0.5
-    if place <= 0:
-        return {0: 1.0}
-    if place >= count - 1:
-        return {count - 1: 1.0}
-    number = int(np.floor(place))
-    to_next = place - number
-    if to_next == 0:
-        return {number: 1.0}
-    return {number: 1 - to_next, number + 1: to_next}
-
-
-def shares(my_d, point_um):
-    """Parts of a charge on the point (x, y) [um] that go to the cells of the
-    resistive layer of the device.
-
-    my_d : the Detector. Its electrodes are the cells: x_ele_num of them at
-        p_x along x and y_ele_num at p_y along y, centred on the device.
-    point_um : x and y [um], 0 <= x <= l_x and 0 <= y <= l_y; x alone for a
-        point on the middle line, y = l_y / 2.
-
-    Returns the parts, which add up to 1, by the number of the cell,
-    i * y_ele_num + j for the cell number i along x and j along y, from 0, as
-    electrode_names orders them. Along each axis a point between the middles
-    of two cells is shared between them linearly, the nearer one taking more;
-    one beyond the middle of the outermost cell goes to that cell alone. The
-    parts of the two axes are multiplied. A cell that takes nothing is left
-    out. A point off the cells raises ValueError.
-    """
-    point = np.atleast_1d(np.asarray(point_um, dtype=np.float64))
-    x_um = float(point[0])
-    y_um = float(point[1]) if len(point) > 1 else float(my_d.l_y) / 2
-    along_x = _along(x_um, float(my_d.l_x), float(my_d.p_x), int(my_d.x_ele_num), "x")
-    along_y = _along(y_um, float(my_d.l_y), float(my_d.p_y), int(my_d.y_ele_num), "y")
-    return {
-        i * int(my_d.y_ele_num) + j: part_x * part_y
-        for i, part_x in along_x.items()
-        for j, part_y in along_y.items()
-    }
+from .spice import _ngspice, solve
 
 
 def impulse_response(
@@ -65,20 +19,20 @@ def impulse_response(
     layer for a charge injected at each of several points, shape
     (points, outputs, bins), the outputs in the order of circuit.outputs.
 
-    my_d : the Detector, whose electrodes are the cells of the layer.
-    circuit : DeviceCircuit of the device, its sources those of the cells.
+    my_d : the Detector, whose electrodes are the RC nodes of the layer.
+    circuit : DeviceCircuit of the device, its sources those of the RC nodes.
     chain : the amplifier chain, as named_chain gives it.
     points_um : the points, each as shares takes it.
     dt : width of a time bin [s].
     bins : number of time bins.
     charge : the charge [C], injected as a rectangular current pulse in the
-        first bin, shared among the cells as shares gives it.
+        first bin, shared among the RC nodes as shares gives it.
     """
-    cells = list(circuit.sources)
+    rc_nodes = list(circuit.sources)
     count = int(my_d.x_ele_num) * int(my_d.y_ele_num)
-    if len(cells) != count:
+    if len(rc_nodes) != count:
         raise ValueError(
-            f"The circuit has the currents of {len(cells)} cells, and "
+            f"The circuit has the currents of {len(rc_nodes)} RC nodes, and "
             f"{my_d.det_name} has {count}"
         )
     voltages = []
@@ -86,5 +40,70 @@ def impulse_response(
         currents = np.zeros((count, bins))
         for number, part in shares(my_d, point_um).items():
             currents[number, 0] = part * charge / dt
-        voltages.append(solve(chain, cells, dt, currents, circuit))
+        voltages.append(solve(chain, rc_nodes, dt, currents, circuit))
     return np.array(voltages)
+
+
+def _port_netlist(circuit, driven, frequencies_hz, raws):
+    """Netlist of the AC analysis of the circuit with 1 V on the read-out
+    driven and the other read-outs on AC ground, the induced current sources
+    open. raws are the files ngspice writes the currents of the voltage
+    sources to, one per frequency, as frequency, real and imaginary part of
+    each, in the order of circuit.outputs."""
+    lines = ["device > ports", *circuit.lines]
+    vectors = []
+    for k, node in enumerate(circuit.outputs.values()):
+        lines.append(f"Vport{k} {node} 0 dc 0 ac {1 if k == driven else 0}")
+        vectors.append(f"i(Vport{k})")
+    lines.append(".control")
+    for frequency, raw in zip(frequencies_hz, raws):
+        lines.append(f"ac lin 1 {frequency:.17g} {frequency:.17g}")
+        lines.append(f"wrdata {raw} {' '.join(vectors)}")
+    lines.extend([".endc", ".end"])
+    return "\n".join(lines) + "\n"
+
+
+def admittance(circuit, frequencies_hz):
+    """Admittance [S] between the read-outs of the circuit of a device, as
+    ngspice's AC small-signal analysis gives it, shape (frequencies, outputs,
+    outputs), complex, the outputs in the order of circuit.outputs. Y[f, i, j]
+    is the current [A] that flows from outside into the i-th read-out when 1 V
+    of AC is put on the j-th, the other read-outs on AC ground and the induced
+    current sources open.
+
+    circuit : DeviceCircuit.
+    frequencies_hz : increasing positive frequencies [Hz].
+    """
+    frequencies = np.asarray(frequencies_hz, dtype=np.float64)
+    if frequencies.ndim != 1 or frequencies.size == 0:
+        raise ValueError("The admittance needs a non-empty list of frequencies")
+    if np.any(frequencies <= 0):
+        raise ValueError("The frequencies of the admittance must be positive")
+    if np.any(np.diff(frequencies) <= 0):
+        raise ValueError("The frequencies of the admittance must increase")
+    count = len(circuit.outputs)
+    result = np.empty((frequencies.size, count, count), dtype=np.complex128)
+    with tempfile.TemporaryDirectory() as folder:
+        for driven in range(count):
+            raws = [
+                Path(folder) / f"ac{driven}_{n}.raw" for n in range(frequencies.size)
+            ]
+            netlist = Path(folder) / f"ac{driven}.cir"
+            netlist.write_text(
+                _port_netlist(circuit, driven, frequencies, raws), encoding="utf-8"
+            )
+            subprocess.run(
+                [_ngspice(), "-b", str(netlist)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            for n, raw in enumerate(raws):
+                # wrdata writes the frequency, the real and the imaginary part
+                # of each vector
+                data = np.loadtxt(raw, dtype=np.float64, ndmin=2)[0]
+                currents = data[1::3] + 1j * data[2::3]
+                # the current of a voltage source flows through it from the
+                # positive node; what flows into the device is the opposite
+                result[n, :, driven] = -currents
+    return result

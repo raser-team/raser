@@ -22,10 +22,12 @@ def waveforms(kwargs, position=None):
     with the seed lifecycle gives the slice; a run without seeds has no noise.
     The file says which way the pulse of each output goes.
 
-    A device with a resistive layer has its currents on the cells of the
+    A device with a resistive layer has its currents on the RC nodes of the
     layer and is read out on the strips or the pads on it. Its sheet
     resistance is that of its file unless sheet_resistance [Ohm] is
-    given; a device without a resistive layer takes none.
+    given; a device without a resistive layer takes none. It takes from
+    the field the capacitance of the RC nodes and the undepleted layer, as
+    the other devices do.
 
     Other devices take from the field at their bias the capacitances between
     strips of a row and the undepleted bulk of a planar device; the junction
@@ -46,21 +48,32 @@ def waveforms(kwargs, position=None):
     electrodes = electrode_names(my_d.read_out_contact, my_d.read_ele_num)
     part_of = None
     sheet_ohm = kwargs.get("sheet_resistance")
-    if "resistive_layer" in my_d.device_dict:
-        build = device_grid if my_d.is_pixel else device_row
-        circuit, values = build(my_d, electrodes, sheet_ohm=sheet_ohm)
-    elif sheet_ohm is not None:
+    has_layer = "resistive_layer" in my_d.device_dict
+    if not has_layer and sheet_ohm is not None:
         raise ValueError(
             f"{my_d.det_name} has no resistive layer to give a sheet "
             f"resistance of {sheet_ohm} Ohm"
         )
-    else:
-        flux = my_d.irradiation_flux
-        if kwargs.get("irradiation") is not None:
-            flux = float(kwargs["irradiation"])
-        row, solved_f, undepleted = field_circuit(
-            solved_field(my_d, my_d.voltage, flux), my_d
+    flux = my_d.irradiation_flux
+    if kwargs.get("irradiation_flux") is not None:
+        flux = float(kwargs["irradiation_flux"])
+    row, solved_f, undepleted = field_circuit(
+        solved_field(my_d, my_d.voltage, flux), my_d
+    )
+    if has_layer:
+        build = device_grid if my_d.is_pixel else device_row
+        # the part of the area of the device that one RC node takes
+        share = float(my_d.p_x) / float(my_d.device_dict["l_x"])
+        if my_d.is_pixel:
+            share *= float(my_d.p_y) / float(my_d.device_dict["l_y"])
+        circuit, values = build(
+            my_d,
+            electrodes,
+            None if solved_f is None else solved_f * share,
+            sheet_ohm=sheet_ohm,
+            solved_undepleted=undepleted,
         )
+    else:
         circuit, values = device_circuit(
             my_d, electrodes, solved_f, row=row, solved_undepleted=undepleted
         )

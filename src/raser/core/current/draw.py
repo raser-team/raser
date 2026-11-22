@@ -3,6 +3,7 @@
 from array import array
 import logging
 
+import numpy as np
 import ROOT
 
 from raser.supports import figures
@@ -60,6 +61,9 @@ def draw_currents(path, event, t0, dt, current, hole_current, electron_current,
         if margin > 0:
             sum_cu.SetMinimum(low - margin)
             sum_cu.SetMaximum(high + margin)
+        time = t0 + (np.arange(len(current[electrode])) + 0.5) * dt
+        start, stop = figures.signal_window(time, np.array(values))
+        sum_cu.GetXaxis().SetRangeUser(start, stop)
         # the total first and wide, the parts over it: where a part is the
         # whole current, as the holes after the electrons are collected,
         # both stay in sight
@@ -103,15 +107,32 @@ def draw_currents(path, event, t0, dt, current, hole_current, electron_current,
         del canvas
 
 
-def charge_collection_strip(path, event, charge):
-    """Draw the net charge [C] of every strip, in fC, against its number."""
+def electrode_edges(length, number, pitch):
+    """Edges [um] of `number` electrodes of `pitch`, centred in `length`."""
+    first = (length - number * pitch) / 2
+    return [first + k * pitch for k in range(number + 1)]
+
+
+def electrode_centers(length, number, pitch):
+    """Centres [um] of `number` electrodes of `pitch`, centred in `length`."""
+    first = (length - number * pitch) / 2
+    return [first + (k + 0.5) * pitch for k in range(number)]
+
+
+def pixel_cells(charge, x_ele_num, y_ele_num):
+    """(ix, jy, value) of every pixel; electrode number i = ix * y_ele_num + jy."""
+    return [(i // y_ele_num, i % y_ele_num, charge[i]) for i in range(x_ele_num * y_ele_num)]
+
+
+def charge_collection_strip(path, event, charge, l_x, x_ele_num, p_x):
+    """Draw the net charge [C] of every strip, in fC, against the x [um] of its centre."""
     electrons = [value / ELECTRON_CHARGE for value in charge]
     logger.info(
         "Collected charge of the strips that have any (number from 1: e): %s",
         {number: value for number, value in enumerate(electrons, start=1) if value},
     )
     femtocoulombs = array('d', [value / figures.UNIT["fC"] for value in charge])
-    x = array('d', range(1, len(femtocoulombs) + 1))
+    x = array('d', electrode_centers(l_x, x_ele_num, p_x))
     canvas = figures.canvas()
     canvas.SetLeftMargin(0.12)
     canvas.SetBottomMargin(0.13)
@@ -119,13 +140,25 @@ def charge_collection_strip(path, event, charge):
     graph.SetMarkerStyle(20)
     graph.SetMarkerColor(figures.root_color(figures.TOTAL))
     graph.Draw("AP")
-    graph.GetXaxis().SetTitle("Electrode")
+    graph.GetXaxis().SetTitle(figures.label("x", "um", root=True))
     graph.GetYaxis().SetTitle(figures.label("Charge", "fC", root=True))
     figures.save_canvas(canvas, path, "charge_per_electrode", event)
 
 
-def charge_collection_pixel(path, event, charge, x_ele_num, y_ele_num):
-    """Draw the net charge [C] of every pixel, in fC, as a map."""
+def pixel_histogram(charge, l_x, l_y, x_ele_num, y_ele_num, p_x, p_y):
+    """The charge [C] of every pixel in fC, on the pixels' x, y [um] edges."""
+    histogram = ROOT.TH2D(
+        "cce", "",
+        x_ele_num, array('d', electrode_edges(l_x, x_ele_num, p_x)),
+        y_ele_num, array('d', electrode_edges(l_y, y_ele_num, p_y)),
+    )
+    for ix, jy, value in pixel_cells(charge, x_ele_num, y_ele_num):
+        histogram.SetBinContent(ix + 1, jy + 1, float(value) / figures.UNIT["fC"])
+    return histogram
+
+
+def charge_collection_pixel(path, event, charge, l_x, l_y, x_ele_num, y_ele_num, p_x, p_y):
+    """Draw the net charge [C] of every pixel, in fC, as a map over x, y [um]."""
     electrons = [value / ELECTRON_CHARGE for value in charge]
     logger.info(
         "Collected charge of the pixels that have any (number from 1: e): %s",
@@ -135,11 +168,9 @@ def charge_collection_pixel(path, event, charge, x_ele_num, y_ele_num):
     canvas.SetLeftMargin(0.12)
     canvas.SetRightMargin(0.15)
     canvas.SetBottomMargin(0.13)
-    histogram = ROOT.TH2D("cce", "", x_ele_num, 0, x_ele_num, y_ele_num, 0, y_ele_num)
-    for i in range(x_ele_num*y_ele_num):
-        histogram.Fill(i % x_ele_num, i // x_ele_num, charge[i] / figures.UNIT["fC"])
+    histogram = pixel_histogram(charge, l_x, l_y, x_ele_num, y_ele_num, p_x, p_y)
     histogram.Draw("COLZ")
-    histogram.GetXaxis().SetTitle("Electrode column")
-    histogram.GetYaxis().SetTitle("Electrode row")
+    histogram.GetXaxis().SetTitle(figures.label("x", "um", root=True))
+    histogram.GetYaxis().SetTitle(figures.label("y", "um", root=True))
     histogram.GetZaxis().SetTitle(figures.label("Charge", "fC", root=True))
     figures.save_canvas(canvas, path, "charge_per_electrode", event)

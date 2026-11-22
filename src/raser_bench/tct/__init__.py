@@ -8,6 +8,7 @@ Description:  tct/__init__.py
 import json
 from pathlib import Path
 
+from raser.lifecycle.experiment import Experiment
 from raser.lifecycle.slices import Slice
 from raser.lifecycle.workflow import Workflow
 from raser.stages import chain
@@ -18,16 +19,6 @@ DEFAULTS = json.loads(
 KEYS = ("laser", "voltage", "amplifier")
 COMPONENTS = {"laser": "laser"}  # kind of file -> option
 IN_FILE = {"voltage": "device.bias.voltage"}  # option -> where it sits in a file
-
-
-def register(subparsers):
-    parser = subparsers.add_parser("tct", help="TCT simulation")
-    parser.add_argument("det_name", help="name of the detector")
-    parser.add_argument("laser", nargs="?", help="name of the laser")
-    parser.add_argument("-vol", "--voltage", type=float, help="bias voltage")
-    parser.add_argument("-amp", "--amplifier", type=str, help="amplifier")
-    WORKFLOW.attach(parser)
-    parser.set_defaults(_project="det_name")
 
 
 def _currents(kwargs):
@@ -42,16 +33,38 @@ def _waveforms(kwargs):
     tct_signal.waveforms(kwargs)
 
 
-WORKFLOW = Workflow(
-    name="tct",
-    keys=KEYS,
-    defaults={"laser": DEFAULTS["laser"], **chain.READOUT_DEFAULTS},
-    components=COMPONENTS,
-    in_file=IN_FILE,
-    slices=(
-        Slice("current", _currents, keys=("laser", "voltage"), kinds=("laser",)),
-        Slice("readout", _waveforms, keys=("amplifier",), new_events=False),
-    ),
-    seeds=False,
-)
+class Tct(Experiment):
+    name = "tct"
+    help = "TCT simulation"
+    stages = ("field", "current", "readout")
 
+    @classmethod
+    def arguments(cls, parser) -> None:
+        parser.add_argument("det_name", help="name of the detector")
+        parser.add_argument("laser", nargs="?", help="name of the laser")
+        parser.add_argument("-vol", "--voltage", type=float, help="bias voltage")
+        parser.add_argument("-amp", "--amplifier", type=str, help="amplifier")
+
+    @classmethod
+    def build(cls) -> Workflow:
+        return Workflow(
+            name=cls.name,
+            keys=KEYS,
+            defaults={
+                "laser": DEFAULTS["laser"],
+                "amplifier": chain.DEFAULTS["readout.amplifier"],
+                "sheet_resistance": None,
+            },
+            components=COMPONENTS,
+            in_file=IN_FILE,
+            slices=(
+                Slice(
+                    "current", _currents, keys=("laser", "voltage"), kinds=("laser",)
+                ),
+                Slice("readout", _waveforms, keys=("amplifier",), new_events=False),
+            ),
+            seeds=False,
+        )
+
+
+WORKFLOW = Tct.workflow()

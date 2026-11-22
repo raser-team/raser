@@ -96,7 +96,7 @@ Pulse amplitude of recorded events; the dashed line is the amplitude threshold.
 
 Difference between the times given by various timing methods and the true deposition time. Because simulation knows each event's true deposition time, time resolution can be computed this way; in an experiment the true time is unavailable, so measuring time resolution requires a reference device—see `timeres`.
 
-The results of each step are organized by scan point under `examples/HPK-Si-PiN/signal/points/<point>/<stage>/`, and statistics and trend plots are placed under `examples/HPK-Si-PiN/signal/analysis/`; see [architecture.md](architecture.md#results) for how they are stored.
+The results of each step are organized by scan point under `examples/HPK-Si-PiN/signal/points/<point>/<stage>/`, the statistics of each point and the three distributions above are in `points/<point>/analysis/` (the figures in `plots/` there; the point is named `default` when nothing is scanned), and the trend plots across points are placed under `examples/HPK-Si-PiN/signal/analysis/`; see [architecture.md](architecture.md#results) for how they are stored.
 
 ## 5. Creating Your Own Project
 

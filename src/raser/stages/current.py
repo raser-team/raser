@@ -15,12 +15,15 @@ def solved(my_d, kwargs):
     """The solved field of the device at its bias; the flux is of the field
     the run takes, not of the device."""
     flux = my_d.irradiation_flux
-    if kwargs.get("irradiation") is not None:
-        flux = float(kwargs["irradiation"])
+    if kwargs.get("irradiation_flux") is not None:
+        flux = float(kwargs["irradiation_flux"])
+    electrodes = my_d.read_out_contact
+    if "resistive_layer" in my_d.device_dict:
+        electrodes = [{"name": my_d.device_dict["resistive_layer"]["contact"]}]
     return devfield.DevsimField(
         my_d.device,
         my_d.voltage,
-        my_d.read_out_contact,
+        electrodes,
         irradiation_flux=flux,
         bounds=my_d.bound,
         field_directory=solved_field(my_d, my_d.voltage, flux),

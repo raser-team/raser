@@ -266,8 +266,8 @@ def run(kwargs):
 
 def _flux_of_run(my_d, options):
     """The flux of the field a run of the chain takes: its option, else that of the device."""
-    if options.get("irradiation") is not None:
-        return float(options["irradiation"])
+    if options.get("irradiation_flux") is not None:
+        return float(options["irradiation_flux"])
     return float(my_d.irradiation_flux)
 
 

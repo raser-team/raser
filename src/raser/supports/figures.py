@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import itertools
+import math
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import matplotlib
+import matplotlib.axes
 import matplotlib.colors
 import matplotlib.pyplot as plt
+import matplotlib.ticker
 import numpy as np
 
 if TYPE_CHECKING:
@@ -68,6 +71,13 @@ GAIN_HOLE = "#f08a3c"
 TOTAL = "black"
 DEPOSIT = "#808080"
 HISTOGRAM = "#6c8ebf"
+
+# the tallest bin over the lowest non-empty bin above which a count axis is log
+LOG_COUNT_RATIO = 30
+# the fraction of the peak amplitude above which a waveform counts as signal
+SIGNAL_FRACTION = 0.01
+# the margin on each side of the signal, as a fraction of its length
+SIGNAL_MARGIN = 0.2
 
 OKABE_ITO = [
     "#000000",
@@ -175,6 +185,93 @@ def label(quantity: str, unit: str | None = None, root: bool = False) -> str:
     else:
         shown = unit
     return f"{quantity} [{shown}]"
+
+
+def log_counts(counts) -> bool:
+    """Whether the bin `counts` call for a log axis: the tallest bin is more
+    than LOG_COUNT_RATIO times the lowest non-empty bin."""
+    filled = np.asarray(list(counts), dtype=float)
+    filled = filled[filled > 0]
+    if filled.size == 0 or filled.max() == filled.min():
+        return False
+    return bool(filled.max() / filled.min() > LOG_COUNT_RATIO)
+
+
+def integers(axis, which: str = "x") -> None:
+    """Give an axis integer ticks only: the `which` axis of a matplotlib Axes,
+    or a ROOT TAxis, whose range is widened to a multiple of the tick step
+    (1, 2, 5, 10, 20, 50, ... with at most 10 steps) so that every major tick
+    is an integer."""
+    if hasattr(axis, "GetXmin"):
+        low = axis.GetXmin()
+        high = axis.GetXmax()
+        step = 1
+        while (high - low) / step > 10:
+            step = _next_step(step)
+        first = math.floor(low / step) * step
+        last = math.ceil(high / step) * step
+        if last == first:
+            last = first + step
+        axis.SetLimits(first, last)
+        axis.SetNdivisions(round((last - first) / step), False)
+        return
+    if which not in ("x", "y"):
+        raise ValueError(f"unknown axis: {which}")
+    target = axis.xaxis if which == "x" else axis.yaxis
+    target.set_major_locator(matplotlib.ticker.MaxNLocator(integer=True))
+
+
+def _next_step(step: int) -> int:
+    """The step after `step` in 1, 2, 5, 10, 20, 50, ..."""
+    return step * 5 // 2 if str(step)[0] == "2" else step * 2
+
+
+def signal_window(time, values) -> tuple[float, float]:
+    """Return the (start, stop) of the signal in a waveform, in the unit of
+    `time`: from the first to the last sample whose amplitude exceeds
+    SIGNAL_FRACTION of the peak, with SIGNAL_MARGIN of that length on each
+    side, within the range of `time`. `values` is (points,) or (curves,
+    points); the amplitude is the pointwise largest absolute value. A waveform
+    that is zero throughout gives the whole range."""
+    time = np.asarray(time, dtype=float)
+    amplitude = np.abs(np.asarray(values, dtype=float))
+    if amplitude.ndim == 2:
+        amplitude = amplitude.max(axis=0)
+    if amplitude.shape != time.shape or time.ndim != 1:
+        raise ValueError("time and values must have the same number of points")
+    peak = amplitude.max()
+    if peak == 0:
+        return float(time[0]), float(time[-1])
+    above = np.flatnonzero(amplitude > SIGNAL_FRACTION * peak)
+    first, last = above[0], above[-1]
+    width = time[last] - time[first]
+    if width == 0:
+        width = time[1] - time[0]
+    margin = SIGNAL_MARGIN * width
+    return (
+        float(max(time[0], time[first] - margin)),
+        float(min(time[-1], time[last] + margin)),
+    )
+
+
+def events(axis: matplotlib.axes.Axes, which: str = "y", counts=None) -> None:
+    """Title a count axis `Events`. It is log when the bin `counts` call for it
+    (see `log_counts`) and otherwise has integer ticks only."""
+    if which not in ("x", "y"):
+        raise ValueError(f"unknown axis: {which}")
+    log = counts is not None and log_counts(counts)
+    if which == "y":
+        axis.set_ylabel("Events")
+        if log:
+            axis.set_yscale("log")
+        else:
+            integers(axis, "y")
+    else:
+        axis.set_xlabel("Events")
+        if log:
+            axis.set_xscale("log")
+        else:
+            integers(axis, "x")
 
 
 def series(count: int, ordered: bool) -> list[str]:

@@ -179,9 +179,13 @@ $$\mathbf{r}_{\text{G4}} = \begin{cases} \mathbf{P} + \begin{pmatrix} \cos\phi &
 
 ### 多器件的记录条件
 
-多器件实验中，粒子未必击中所有需要触发的器件。在 `timeres` 默认装置（Sr-90 源，被测器件 `HPK-Si-PiN`）上，每次 Geant4 衰变约 `0.18 ms`；下游漂移、读出、重建每个记录事例约 `0.2 s`；被测器件有沉积的事例里约四分之三参考器件没有沉积，真实测量中不触发。因此在 `deposit` 阶段就按符合条件预筛选，只记录满足条件的有效事例，避免为不触发的事例运行耗时的下游环节。
+`deposit` 的筛选只用沉积本身的信息（各槽位灵敏层的总沉积能量、最早沉积时刻），不用任何下游信息；哪几块器件的波形要同时过阈、怎么算触发，由 `trigger` 环节按它自己的设置判，`deposit` 不读、不引用那些设置。同一批沉积事例因此可以用不同的触发条件各判一遍，比较触发对分布的影响。
 
-槽位 $s$ 在一个事例里“命中”定义为该槽位有源层内总沉积能量 $E_s > 0$ 且落在它的能量窗 $[E_{s,\min},\ E_{s,\max}]$ 内（`None` 表示该侧不检查），命中时刻 $t_s$ 取该槽位有源层内最早一个沉积步的全局时间；逻辑式 `require` 的语法与求值定义见 [符合条件](../components/trigger.md#符合条件)——操作数是槽位名，运算是 `AND`、`OR` 和括号，`"all"` 是全部槽位相与的简写，`"any"` 是全部槽位相或的简写，`deposit` 的命中判据是上面的能量判据，`trigger` 的命中判据是过幅度阈值。加上符合时间窗 `coincidence_window_ns`（记为 $W$）后，存在某个时刻 $t_0$，只把命中时刻落在 $[t_0,\ t_0 + W]$ 内的槽位算作命中时逻辑式为真，事例才记录：
+`deposit` 保留只凭沉积本身就能判的三项筛选，均在本页定义：
+
+- **能量窗**：槽位 $s$ 在一个事例里“命中”定义为该槽位有源层内总沉积能量 $E_s > 0$ 且落在它的能量窗 $[E_{s,\min},\ E_{s,\max}]$ 内（`None` 表示该侧不检查），命中时刻 $t_s$ 取该槽位有源层内最早一个沉积步的全局时间，即式 (19)。
+- **槽位逻辑式 `require`**：操作数是槽位名，运算是 `AND`、`OR` 和括号，`AND` 比 `OR` 结合得紧；`"any"` 是全部槽位相或的简写，`"all"` 是全部槽位相与的简写。式里出现不是槽位的名字、或有槽位没用到时报错。
+- **时间窗 `coincidence_window_ns`**（记为 $W$）：存在某个时刻 $t_0$，只把命中时刻落在 $[t_0,\ t_0 + W]$ 内的槽位算作命中时 `require` 为真，事例才记录，即式 (20)；为 `None` 时不卡时间，直接令 $h_s(t_0) = h_s$。
 
 $$h_s = \mathbb{I}\bigl(E_s > 0,\ E_{s,\min} \le E_s \le E_{s,\max}\bigr), \qquad t_s = \min_{k \in \mathcal{K}_s} t_{s,k} \tag{19}$$
 
@@ -194,12 +198,12 @@ $$h_s(t_0) = h_s \cdot \mathbb{I}\bigl(t_0 \le t_s \le t_0 + W\bigr), \qquad \ex
 - $E_{s,\min}, E_{s,\max}$：槽位 $s$ 能量窗的下限与上限，$\text{MeV}$（未给的一侧不检查）；
 - $h_s \in \{0, 1\}$：不计时间窗时槽位 $s$ 的命中标志；
 - $t_{s,k}$：槽位 $s$ 第 $k$ 个沉积步的全局时间，$\text{s}$；$t_s$：槽位 $s$ 最早一个沉积步的全局时间，$\text{s}$；
-- $W$：符合时间窗 `coincidence_window_ns`，输入单位 $\text{ns}$（与 $t_s$ 比较时换算为 $W \times 10^{-9}\ \text{s}$；为 `None` 时不卡时间，直接令 $h_s(t_0) = h_s$）；
+- $W$：时间窗 `coincidence_window_ns`，输入单位 $\text{ns}$（与 $t_s$ 比较时换算为 $W \times 10^{-9}\ \text{s}$；为 `None` 时不卡时间，直接令 $h_s(t_0) = h_s$）；
 - $t_0$：时间窗左端点，$\text{s}$；
 - $h_s(t_0) \in \{0, 1\}$：在时间窗 $[t_0,\ t_0 + W]$ 内槽位 $s$ 的命中标志；
 - $\mathcal{F}$：由 `require` 解析得到的布尔函数。
 
-`deposit` 的 `coincidence_window_ns` 不得窄于 `trigger` 的符合窗加上漂移与成形的时间，否则会筛掉 `trigger` 本会留下的事例。单槽位时条件就是器件内总沉积 $> 0$ 且在窗内。某槽位在某事例里没有命中时，这个槽位在该事例里没有沉积步；下游 `current.<槽位>` 不为它写这个事例。
+单槽位时条件就是器件内总沉积 $> 0$ 且在它的能量窗内。被记录的事例保留所有槽位的沉积步。示例里的值一律是 `require = "any"`、`coincidence_window_ns = null`，只去掉所有槽位的灵敏层里都没有沉积的事例；在 `timeres` 默认装置（Sr-90 源，被测器件 `HPK-Si-PiN`）上，下游漂移、读出、重建每个记录事例约 `0.2 s`，被测器件有沉积的事例里约四分之三参考器件没有沉积，需要省下游计算时可以把 `require` 设成 `"ref AND dut"`，让这些事例不进下游，但也就不能用来比较别的触发条件。
 
 ## 算法
 
@@ -226,12 +230,12 @@ $$h_s(t_0) = h_s \cdot \mathbb{I}\bigl(t_0 \le t_s \le t_0 + W\bigr), \qquad \ex
 
 ### `simulate_deposits` 的分支
 
-`simulate_deposits(devices, source, g4setup, events, g4_seed, windows, require, coincidence_window_ns, fano, generated, generated_limit, picture, drawn)` 按以下顺序执行。`devices` 是槽位名到器件的有序字典；`windows` 是槽位名到 `(下限, 上限)`（$\text{MeV}$，`None` 表示该侧不检查）的映射；`require` 是符合条件的逻辑式字符串；`coincidence_window_ns` 是符合时间窗（$\text{ns}$，`None` 表示不卡时间）。未给装置时取 `DEVICE_ALONE`，等同于 `"along_beam": ["source", {"gap": 17000}, {"slot": "Device"}]`；只有一块器件的装置槽位名写 `"Device"`、传 `{"Device": my_d}`。装置的槽位名与 `devices` 参数的槽位名必须一一对上，多了、少了都抛 `ValueError`（`the g4setup places <装置的槽位>, the devices are <给的槽位>`）；各槽位在输出中的顺序以 `devices` 参数为准。
+`simulate_deposits(devices, source, g4setup, events, g4_seed, windows, require, coincidence_window_ns, fano, generated, generated_limit, picture, drawn)` 按以下顺序执行。`devices` 是槽位名到器件的有序字典；`windows` 是槽位名到 `(下限, 上限)`（$\text{MeV}$，`None` 表示该侧不检查）的映射；`require` 是槽位逻辑式字符串；`coincidence_window_ns` 是符合时间窗（$\text{ns}$，`None` 表示不卡时间）。未给装置时取 `DEVICE_ALONE`，等同于 `"along_beam": ["source", {"gap": 17000}, {"slot": "Device"}]`；只有一块器件的装置槽位名写 `"Device"`、传 `{"Device": my_d}`。装置的槽位名与 `devices` 参数的槽位名必须一一对上，多了、少了都抛 `ValueError`（`the g4setup places <装置的槽位>, the devices are <给的槽位>`）；各槽位在输出中的顺序以 `devices` 参数为准。
 
 1. **检查源的类型**：`source["kind"]` 不是 `"toy_mip"`、`"beam"`、`"decay_source"` 之一时抛 `ValueError`（`no simulation of deposits for a source of kind ...`）。
 2. **检查事例数与记录条件**：
    - `asked(events, generated, generated_limit)` 要求 `events`（要记录的事例数）与 `generated`（要生成的事例数）恰好给一个，否则抛 `ValueError`；给出的数和 `generated_limit` 小于 `1` 时抛 `ValueError`（`the <name> asked for are <number>: at least 1`）。
-   - 校验记录条件参数，任一不合法即抛 `ValueError`：`windows` 的槽位名与 `devices` 不一致（`the energy windows are for <windows 的槽位>, the devices are <给的槽位>`）；某槽位下限大于上限（`slot '<槽位>' has edep_min (<lo> MeV) > edep_max (<hi> MeV)`）；`require` 语法错误或出现不是槽位名的操作数（`invalid require expression '<require>'` 或 `require '<require>' names unknown slot '<操作数>'`）；`coincidence_window_ns` 非 `None` 且不大于 `0`（`coincidence_window_ns must be positive, got <值> ns`）。
+   - 校验记录条件参数，任一不合法即抛 `ValueError`：`windows` 的槽位名与 `devices` 不一致（`the energy windows are for <windows 的槽位>, the devices are <给的槽位>`）；某槽位下限大于上限（`slot '<槽位>' has edep_min (<lo> MeV) > edep_max (<hi> MeV)`）；`require` 语法错误、出现不是槽位名的操作数，或有槽位没用到（`invalid require expression '<require>'`、`require '<require>' names unknown slot '<操作数>'` 或 `require '<require>' does not use the slot '<槽位>'`）；`coincidence_window_ns` 非 `None` 且不大于 `0`（`coincidence_window_ns must be positive, got <值> ns`）。
 3. **toy MIP 分支**（`kind == "toy_mip"`）：取 `g4setup["maxstep"]`（`g4setup` 为 `None` 时取 `DEVICE_ALONE["maxstep"] = 2`），调用 `mip_deposits(devices, source, g4setup, ...)`，见下节。这一支由 Python 完成，随机数取自流 `stream("toy_mip")`。
 4. **Geant4 分支**（`kind` 为 `"beam"` 或 `"decay_source"`）：
    1. 导入 `geant4.interaction`。缺 `g4ppyy` 时抛 `MissingDependency`（`Geant4's Python bindings, g4ppyy, are not installed in this Python`）。
@@ -242,8 +246,8 @@ $$h_s(t_0) = h_s \cdot \mathbb{I}\bigl(t_0 \le t_s \le t_0 + W\bigr), \qquad \ex
    4. 构建几何（`GeneralDetectorConstruction`；`geant4_model == "gdml_import"` 时用 `GDMLDetectorConstruction`，几何由 GDML 给出，不用 `along_beam`）。先校验 `along_beam` 与 `object`（不合法均抛 `ValueError`）：第一项不是 `"source"`（`the first item of along_beam must be 'source'`）；`gap` 为负（`gap must be non-negative`）；物体名不在 `object` 里（`object '<物体>' is not in object`）；同一物体或槽位出现两次（`duplicate '<名称>' in along_beam`）；`facing` 取值不是 `"upstream"` 或 `"downstream"`（`slot '<槽位>' has facing <值>: expected 'upstream' or 'downstream'`）；`rotation_z` 不是 `0`、`90`、`180`、`270`；并排的几项横向重叠（`side-by-side items overlap`）；槽位名与 `devices` 参数对不上（`the g4setup places <装置的槽位>, the devices are <给的槽位>`）。世界是 `world` 材料的立方体，中心在 `along_beam` 一列的中点 $(0, 0, L_{\text{col}}/2)$，半边长由 `world_half_side` 给出：令 $\rho = \max\bigl(L_{\text{col}}/2,\ \max_{\text{项}}(|o_x| + w_x/2,\ |o_y| + w_y/2),\ R\bigr)$，其中 $L_{\text{col}} = \sum_j d_j$ 为这一列的总长度，$w_x, w_y$ 为各项（物体或槽位旋转后的）横向全尺寸，$o_x, o_y$ 为 `offset`，$R$ 为 `par_radius`；$\rho \le 25000\ \mu\text{m}$ 时取 `25000`，否则取 $2\rho$。从 `"source"`（$z = 0$）起按式 (17) 算出各项前端面位置 $z_i$：每个槽位建一个以槽位名命名、材料按该槽位器件 `material` 取的有源层长方体逻辑体（$l_x \times l_y \times l_z$），按式 (17)–(18) 放置；器件的各层厚度和材料是器件的固有性质，写在器件文件里，Geant4 用同一份几何（见 [架构总纲](../architecture.md#组件)），参考器件的衬底在射线路径上，它引起的多次散射决定有多少粒子能到达下游器件。器件几何按深度分层，灵敏层以外的各层（衬底等）见 [探测器组件](../components/device.md)；Geant4 按器件几何建出全部层，灵敏层以外的各层各建一个逻辑体，其中的沉积不记录，只记录灵敏层里的沉积。随后按 `along_beam` 放置引用的 `object` 物体（中心横向在 `offset`，中心 $z$ 在 $z_i + \texttt{side\_z}/2$）。同一 `compound_name` 的二元化合物组分或密度不一致时抛 `ValueError`（`Conflicting Geant4 material definition for ...`）。二元化合物按原子数份额换算质量份额 $m_i = n_i A_i / (n_1 A_1 + n_2 A_2)$。
    5. 设置随机引擎、物理表与用户动作。源含 `nuclides` 时用 `NuclideGeneratorAction` 与 `DecayStackingAction`，否则用 `GeneralPrimaryGeneratorAction`。后者每事例对每个粒子从流 `stream("source")` 抽 $\delta_x \sim U(-\texttt{par\_randx}, \texttt{par\_randx})$、$\delta_y \sim U(-\texttt{par\_randy}, \texttt{par\_randy})$，方向取 $\mathbf{d} = \mathbf{r}_{\text{out}} - \mathbf{r}_{\text{in}} + (\delta_x, \delta_y, 0)$，从 $\mathbf{r}_{\text{in}}$ 发射；`par_type` 为列表时再抽一个等概率的下标。`par_type` 与 `par_energy` 列表长度不等时抛 `ValueError`。
    6. 执行 `/run/initialize`；给了 `picture` 且 `drawn > 0` 时打开离屏绘图（见“图”）；`BeamOn(total_events)`。
-   7. 事例记录：事例结束时，按式 (19) 对每个槽位 $s$ 计算有源层内总沉积 $E_s$：若 $E_s > 0$ 且满足 `windows[s]`（`None` 一侧不检查），记该槽位命中（$h_s = 1$）并取该槽位最早一个沉积步的全局时间为 $t_s$；否则未命中（$h_s = 0$）。不卡时间窗（`coincidence_window_ns` 为 `None`）时直接用 $\{h_s\}$ 对 `require` 求值；否则依次以各命中槽位的 $t_s$ 作左端点 $t_0$，按式 (20) 将命中时刻落在 $[t_0, t_0 + W]$ 内的槽位算作命中并对 `require` 求值，存在令 `require` 为真的 $t_0$ 时记下该事例。对该事例内未命中的槽位不保留其沉积步。按记录数运行时，记录数达到 `recorded_events` 即 `AbortRun`；生成事例数 `generated_events` 取已结束的事例数。按生成数运行时 `generated_events = total_events`。
-   8. `deposits()`：按记录数运行而记录数仍少于 `recorded_events` 时抛 `RuntimeError`（`... events asked for were recorded when the limit of ... generated events was reached ...`）。否则把各步位置由 Geant4 世界坐标按所在槽位式 (18) 的逆变换换到该槽位器件的器件坐标；对每块器件用 `deposits_of_steps(<槽位名>, ...)` 去掉 $E_k \le 0$ 的步（未命中的槽位在该事例里没有沉积步），一个事例的各器件沉积步按 `devices` 的顺序首尾相接，去掉没有剩余步的事例。事例号是 Geant4 的 `eventID`。
+   7. 事例记录：事例结束时，按式 (19) 对每个槽位 $s$ 计算有源层内总沉积 $E_s$：若 $E_s > 0$ 且满足 `windows[s]`（`None` 一侧不检查），记该槽位命中（$h_s = 1$）并取该槽位最早一个沉积步的全局时间为 $t_s$；否则未命中（$h_s = 0$）。不卡时间窗（`coincidence_window_ns` 为 `None`）时直接用 $\{h_s\}$ 对 `require` 求值；否则依次以各命中槽位的 $t_s$ 作左端点 $t_0$，按式 (20) 将命中时刻落在 $[t_0, t_0 + W]$ 内的槽位算作命中并对 `require` 求值，存在令 `require` 为真的 $t_0$ 时记下该事例。被记录的事例保留所有槽位的沉积步。按记录数运行时，记录数达到 `recorded_events` 即 `AbortRun`；生成事例数 `generated_events` 取已结束的事例数。按生成数运行时 `generated_events = total_events`。
+   8. `deposits()`：按记录数运行而记录数仍少于 `recorded_events` 时抛 `RuntimeError`（`... events asked for were recorded when the limit of ... generated events was reached ...`）。否则把各步位置由 Geant4 世界坐标按所在槽位式 (18) 的逆变换换到该槽位器件的器件坐标；对每块器件用 `deposits_of_steps(<槽位名>, ...)` 去掉 $E_k \le 0$ 的步，一个事例的各器件沉积步按 `devices` 的顺序首尾相接，去掉没有剩余步的事例。事例号是 Geant4 的 `eventID`。
    9. 无论是否出错，最后调用 `close()` 释放 Geant4 对象。
 5. **写入源发射比例**：`generated_fraction(source)`：源含 `nuclides` 且 `par_cone` 非 `None` 时为式 (16)，否则为 `1.0`。
 6. **电离**：对每个事例调用 `ionized_pairs(event, material, fano)`，每一步的 `material` 取它所在槽位器件的 `material`。材料不在 `PAIR_ENERGY_EV` 中时抛 `ValueError`；`fano=True` 而材料不在 `FANO_FACTOR` 中时抛 `ValueError`。每个事例从自己的流 `stream(f"ionization/{event.event}")` 抽样，所以一个事例的对数与其前记录了哪些事例无关。
@@ -271,7 +275,7 @@ GDML 导入模式按 `material` 为 `"Si"`（`G4_Si`）和 `"SiC"`（Si、C 原�
 - 源含 `start`、`end`、`position_range_um` 时抛 `ValueError`（多槽位时径迹从装置的源出发）。
 - 起点 $\mathbf{r}_s$ 取源所在的世界原点 $(0, 0, 0)$，方向沿 $+z$（`[0, 0, 1]`）；有 `direction_sigma_mrad` 时按第 3 步抽斜率，作为方向的 $dx/dz$、$dy/dz$（方向向量为 $(k_x, k_y, 1)$）。
 - 对 `devices` 的每个槽位，取径迹在槽位有源层 $z$ 区间（`"upstream"` 时为 $[P_z,\ P_z + l_z]$，`"downstream"` 时为 $[P_z - l_z,\ P_z]$）内的一段，长度 $L$ 按第 4 步分段，每段中点和起点按式 (18) 的逆变换换到该槽位的器件坐标，横向落在 $[0, l_x] \times [0, l_y]$ 以外的段舍去，探测器名为槽位名，时刻 $0.0\ \text{s}$。
-- 第 5 步按式 (19)–(20) 对各槽位能量窗 `windows`、`require` 与 `coincidence_window_ns` 判选记录（所有命中槽位时刻均为 $0.0\ \text{s}$）；只保留命中槽位的段并按 `devices` 的顺序首尾相接，未命中槽位在该事例里没有沉积步。
+- 第 5 步按式 (19)–(20) 对各槽位能量窗 `windows`、`require` 与 `coincidence_window_ns` 判选记录（所有命中槽位时刻均为 $0.0\ \text{s}$）；保留所有槽位的段并按 `devices` 的顺序首尾相接。
 
 ### 激光载流子群
 
@@ -326,7 +330,7 @@ GDML 导入模式按 `material` 为 `"Si"`（`G4_Si`）和 `"SiC"`（Si、C 原�
 ### 核心数据结构
 
 - `EventDeposits`：一个事例的沉积。`event`（事例号）；每步一项的列表 `detector`（探测器名）、`x`、`y`、`z`（器件坐标中的步中点，$\mu\text{m}$）、`t`（$\text{s}$）、`e`（$\text{MeV}$）；`pairs`（对，电离抽样前为 `None`）；`x_start`、`y_start`、`z_start`（步起点，$\mu\text{m}$，未知时为 `None`）；`t_fwhm`（产生时刻围绕 `t` 的高斯展宽 FWHM，$\text{s}$，`None` 表示都在 `t` 产生）。
-- `Deposits`：一个作业的沉积。`generated_events`（源生成的事例数）、`windows`（槽位名到 `(edep_min, edep_max)` 的字典，$\text{MeV}$，各侧可为 `None`）、`require`（符合条件逻辑式字符串）、`coincidence_window_ns`（符合时间窗，$\text{ns}$，可为 `None`）、`events`（`EventDeposits` 列表）、`generated_fraction`（缺省 `1.0`）。
+- `Deposits`：一个作业的沉积。`generated_events`（源生成的事例数）、`windows`（槽位名到 `(edep_min, edep_max)` 的字典，$\text{MeV}$，各侧可为 `None`）、`require`（槽位逻辑式字符串）、`coincidence_window_ns`（时间窗，$\text{ns}$，可为 `None`）、`events`（`EventDeposits` 列表）、`generated_fraction`（缺省 `1.0`）。
 - `LaserInjection`：`track_position`（每群 `[x, y, z, t]`，$\mu\text{m}$、$\text{s}$）、`ionized_pairs`（每群对数）、`time_FWHM`（每群时间展宽，$\text{s}$），以及 `temporal_FWHM`、`timePulse` 等供电流卷积使用的属性。
 
 ## 接口
@@ -543,8 +547,8 @@ GDML 文件中含字符串 `RASER_GDML_WRAPPER_WORLD` 时，GDML 的世界体直
 | `recorded_events` | `int` | 事例 | 文件里的事例数 |
 | `generated_fraction` | `float` | 无 | 源发射中被生成的部分；带 `par_cone` 的核素源为式 (16)，其余为 `1.0` |
 | `edep_min.<槽位>`, `edep_max.<槽位>` | `float` | $\text{MeV}$ | 该槽位有源层内总沉积能量窗的下限、上限（单器件槽位名为 `"Device"`），给了才写 |
-| `require` | `str` | 无 | 符合条件逻辑式 |
-| `coincidence_window_ns` | `float` | $\text{ns}$ | 符合时间窗，给了才写 |
+| `require` | `str` | 无 | 槽位逻辑式 |
+| `coincidence_window_ns` | `float` | $\text{ns}$ | 时间窗，给了才写 |
 
 生成事例中被记录的比例是 `recorded_events / generated_events`；每次源发射记录的事例数是 `recorded_events / generated_events * generated_fraction`。
 

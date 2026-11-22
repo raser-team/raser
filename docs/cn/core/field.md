@@ -152,6 +152,8 @@ $$C_j = \frac{\varepsilon_r\,|Q_j|}{V_1} \tag{18}$$
 
 其中 $Q_j$ 为第 $j$ 个电极上的接触电荷（$\text{C/cm}$），$V_1 = 1\ \text{V}$ 为读出电极上置的电压，$\varepsilon_r$ 为器件材料的相对介电常数（解在 $\varepsilon_0$ 中求得，再乘回），$C_j$ 单位 $\text{F/cm}$。离读出条 $k$ 个位置的左右两条合为一个电极 `neighbour<k>`。
 
+阻性电荷共享层（器件文件有 `resistive_layer`）是连续的一片导体，对漂移的载流子是一个平面电极：权重势只求一个，是层所在的接触 `resistive_layer.contact` 置 $1$、其余电极置 $0$ 的解，在器件自己的网格上按式 (16) 求得，一维网格上即平板的权重势。RC 格点不各求权重势；总的感应电流落到哪几个 RC 格点由 [current.md](current.md) 按载流子的横向位置分配。
+
 ### 导电区的划分
 
 求解后，代码按每个节点的电阻率与耗尽程度判定它在该偏压下是否导电：
@@ -184,13 +186,13 @@ $$\text{1D:}\quad r = \sum_{k} w_k\,\bar\rho_k, \quad W_{\text{und}} = \sum_k w_
 
 一维的集总模型是精确的。二维、三维中共用节点只保留所有电极同相的那一部分，对所有电极信号之和是精确的，对单个电极在成形时间远大于 $\max(\tau_0, 2\tau_r)$ 时趋于精确，对相邻电极的信号不准（$\tau_r = \varepsilon\rho$，$\tau_0 = \tau_r\,l_z/d_0$，$d_0 = l_z - W_{\text{und}}$ 为耗尽深度）。二维、三维器件有未耗尽层时，组装器件电路的一步打印一条警告，给出偏压、$d_0$、$\tau_r$ 与 $\tau_0$，说明偏压过低、未耗尽层的集总参数对相邻电极不准。
 
-条形电极行（`field_circuit` 读到 `Capacitance_<V>V.json`）中，相隔 $k$ 个位置的两条之间接电容 $C_k = \tfrac12 C_{\text{neighbour}k}\,L$，$k \le$ `neighbours_coupled`，$L$ 为条长 `l_y`（换成 cm）；每条接到 `undepleted` 的电容为 $C_{\text{total}}L$（或 `capacitance_pF`）减去它到行内其他条的互容之和。只为击中条附近的一段条搭电路时（`part_of_row`），段外的 $n$ 根条在虚地上，它们的这份电容合成 $n$ 倍行中部一根条的值，接在 `undepleted` 与地之间（`C_undepleted_rest`）。
+条形电极行（一个读出电极重复排布、没有 `resistive_layer` 的器件，`field_circuit` 读 `Capacitance_<V>V.json`）中，相隔 $k$ 个位置的两条之间接电容 $C_k = \tfrac12 C_{\text{neighbour}k}\,L$，$k \le$ `neighbours_coupled`，$L$ 为条长 `l_y`（换成 cm）；每条接到 `undepleted` 的电容为 $C_{\text{total}}L$（或 `capacitance_pF`）减去它到行内其他条的互容之和。只为击中条附近的一段条搭电路时（`part_of_row`），段外的 $n$ 根条在虚地上，它们的这份电容合成 $n$ 倍行中部一根条的值，接在 `undepleted` 与地之间（`C_undepleted_rest`）。
 
-阻性电荷共享层（`resistive_layer`）把层切成宽为间距的晶胞，每个晶胞是一个节点，经耗尽层电容接到 `undepleted`；相邻晶胞之间接层电阻：
+阻性电荷共享层（`resistive_layer`）把层切成宽为间距的 RC 格点，每个 RC 格点是一个节点，经耗尽层电容接到 `undepleted`；相邻 RC 格点之间接层电阻：
 
-$$C_{\text{cell}} = c_A\,w\,l, \qquad R_{\text{row}} = \frac{R_\square}{l}\,w\,\Bigl(1 - \frac{m}{2}\Bigr), \qquad R_{\text{grid}} = R_\square\,\frac{w_\parallel}{w_\perp}\Bigl(1 - \frac{m}{2}\Bigr) \tag{21}$$
+$$C_{\text{node}} = c_A\,w\,l, \qquad R_{\text{row}} = \frac{R_\square}{l}\,w\,\Bigl(1 - \frac{m}{2}\Bigr), \qquad R_{\text{grid}} = R_\square\,\frac{w_\parallel}{w_\perp}\Bigl(1 - \frac{m}{2}\Bigr) \tag{21}$$
 
-其中 $c_A = C_{\text{dep}}/(w\,l)$ 为单位面积耗尽层电容（$\text{F/m}^2$，$C_{\text{dep}}$ 为一个晶胞的结电容）；$w$、$l$ 为晶胞宽度（`p_x`）与条长（`l_y`），$\text{m}$（网格中为 `p_x`、`p_y`）；$R_\square$ 为方块电阻，$\Omega$；$m \in \{0, 1\}$ 为这对晶胞中位于电极下的个数（电极从晶胞边缘开始，离邻胞中心半个晶胞）；网格中 $w_\parallel$、$w_\perp$ 为沿电阻方向与垂直方向的晶胞宽度。电极下的晶胞并成一个节点；给出 `coupling` 时电极经介质耦合到层上，层在电极下连续，每个晶胞到电极的电容为 $\varepsilon_0\varepsilon_r w l / t$（$t$ 为 `coupling.thickness`，器件文件里以 $\mu\text{m}$ 给出，代码换成 m）。
+其中 $c_A = C_{\text{dep}}/(w\,l)$ 为单位面积耗尽层电容（$\text{F/m}^2$，$C_{\text{dep}}$ 为一个 RC 格点的结电容）；$w$、$l$ 为 RC 格点宽度（`p_x`）与条长（`l_y`），$\text{m}$（网格中为 `p_x`、`p_y`）；$R_\square$ 为方块电阻，$\Omega$；$m \in \{0, 1\}$ 为这对 RC 格点中位于电极下的个数（电极从 RC 格点边缘开始，离邻 RC 格点中心半个 RC 格点）；网格中 $w_\parallel$、$w_\perp$ 为沿电阻方向与垂直方向的 RC 格点宽度。电极下的 RC 格点并成一个节点；给出 `coupling` 时电极经介质耦合到层上，层在电极下连续，每个 RC 格点到电极的电容为 $\varepsilon_0\varepsilon_r w l / t$（$t$ 为 `coupling.thickness`，器件文件里以 $\mu\text{m}$ 给出，代码换成 m）。
 
 方块电阻 $R_\square$ 取器件文件 `resistive_layer.sheet_resistance`，没有时由铝注入 4H-SiC 层的模型算出 [11]：
 
@@ -338,7 +340,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 
 1. **前提**：`Conductive_<V_g>V.pkl` 不存在时抛出 `FileNotFoundError`，提示先求该偏压的场。
 2. **电极**：读出电极取 `read_out_contact` 的 `name`（所选二维网格的 `ac_contact` 非空时取它的 `name`），每个电极接一个电压源。
-3. **行晶胞数**：`read_out_contact` 只有一项且 `read_ele_num > 1` 时，$s$ 取式 (17)。
+3. **行晶胞数**：`read_out_contact` 只有一项且 `read_ele_num > 1` 时，$s$ 取式 (17)。 器件有 `resistive_layer` 时 $s = 0$，读出电极只取 `resistive_layer.contact` 一个。
 4. **逐个电极**：只解泊松方程（材料 `"gas"`）；`take_conductors_into_electrodes` 读 `Conductive_<V_g>V.pkl`，每个区域节点按最近邻匹配到文件中的点（拼接行先把横向坐标对晶胞宽度取模），距离超过 $10^{-9}$ 倍网格跨度的节点视为不在网格上，抛出 `ValueError`；然后沿两端都导电的网格边把导电节点连成片，一片里有两个电极的接触节点时抛出 `ValueError`，写明这两个电极、偏压 $V_g$、该片的节点数与坐标范围：这片导电区把两个电极连成一块导体，式 (18) 的互容会被放大约 `CONDUCTOR_PERMITTIVITY` 倍；最后按式 (16) 改写 `PotentialEdgeFlux` 与 `contactcharge_edge`，读出电极置 $1\ \text{V}$ 求解。
 5. **行端检查**（$s > 0$）：取两端各一个晶胞内 $|\phi_w|$ 的最大值 $r$，按式 (18) 求互容，`neighbours_coupled` 从 `neighbour1` 起数满足 $C_{\text{neighbour}k} \ge$ `crosstalk_tolerance` $\times\sum_j C_j$ 的连续个数 $c$。若 $r >$ `weighting_tolerance` 或 $c = s$：令 $s' = \lceil 1.5\,s\rceil$；$s' > 2s_0$ 时抛出 `ValueError`（行上权重势不衰减，通常是接触读出电极的导电区所致）；否则清空 DEVSIM（保留 `direct_solver`、`solver_callback`）后以 $s'$ 从头重解。
 6. **存盘**：权重势存为 `weightingfield/<contact>/Potential_<V_g>V.pkl`；$s > 0$ 时另写 `Capacitance_<V_g>V.json`；在 `solved.weighting` 记 $V_g$；写 `weightingfield/weightingfield.dat`。
@@ -413,7 +415,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 - `gradient.py`：限定在网格范围内的中心差分梯度。
 - `device_circuit.py`：`DeviceCircuit`、`planar_circuit`、`side_by_side`、`row_of_electrodes`。
 - `circuit_parameters.py`：结电容、偏置与耦合、未耗尽层、方块电阻的取值，`field_circuit`、`device_circuit`、`part_of_row`、`device_row`、`device_grid`；`undepleted_layer` 按 Riegler 的平板式由面积、厚度、耗尽宽度、介电常数与电阻率给出未耗尽层的 $R$、$C$。
-- `resistive_layer.py`：阻性层的行电路 `resistive_row` 与网格电路 `resistive_grid`。
+- `resistive_layer.py`：阻性层的行电路 `resistive_row` 与网格电路 `resistive_grid`，以及 `shares(my_d, point_um)`：一点的电荷分到各 RC 格点的份额。
 - `implanted_aluminium.py`：铝注入 4H-SiC 层的方块电阻。
 - `simple.py`：解析 toy 场。
 - `tcad.py`：TDR 场导入与其权重场求解。
@@ -463,9 +465,10 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 | `undepleted_resistance_ohm`, `undepleted_capacitance_pF` | `None` | $\Omega$, pF | 未耗尽层，必须成对给出 |
 | `resistive_layer.sheet_resistance` | 无 | $\Omega$ | 方块电阻 |
 | `resistive_layer.implanted`, `.thickness`, `.anneal` | 无 | $\text{cm}^{-2}$, $\mu\text{m}$, $^\circ\text{C}$ | 无 `sheet_resistance` 时按式 (22) 计算 |
-| `resistive_layer.strips` | 无 | 晶胞号 | 行电路：条名到首末晶胞号 `[first, last]` |
-| `resistive_layer.pads` | 无 | 晶胞号 | 网格电路：电极名到 `[x_first, x_last, y_first, y_last]` |
-| `resistive_layer.grounded` | `{}` | 晶胞号 | 接地触点；行为 `[first, last]`，网格为矩形列表 |
+| `resistive_layer.strips` | 无 | RC 格点号 | 行电路：条名到首末 RC 格点号 `[first, last]` |
+| `resistive_layer.pads` | 无 | RC 格点号 | 网格电路：电极名到 `[x_first, x_last, y_first, y_last]` |
+| `resistive_layer.grounded` | `{}` | RC 格点号 | 接地触点；行为 `[first, last]`，网格为矩形列表 |
+| `resistive_layer.contact` | 无（有 `resistive_layer` 时必选） | 无 | 阻性层所在的网格接触名；权重势按这个接触求，存为 `weightingfield/<contact>/Potential_<V>V.pkl` |
 | `resistive_layer.coupling.thickness`, `.permittivity` | 无 | $\mu\text{m}$, 无 | 电极下介质层 |
 | `det_model` | 无 | 无 | 选解析场类型；含 `"3d"` 时 `Detector.capacitance` 在没有 `capacitance_pF` 时为 `None` |
 | `depletion_voltage`, `input_doping` | `|bias.voltage|`, `1e12` | V, $\text{cm}^{-3}$ | 解析场 |
@@ -537,6 +540,8 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 - 3D：切面为过 $y$ 中点的 $x$-$z$ 平面；深度剖面取在 $x$、$y$ 的中点，横向剖面沿 $x$、取在 $y$ 与深度的中点。
 - 权重势、权重场：深度剖面取在该读出电极各节点横向坐标的平均处，即电极正下方；拼成一行晶胞时即中间晶胞的电极。
 - 剖面和 3D 切面上的值在网格单元上线性插值得到。
+- 每条剖面有一行小标题，写它取在哪里，如 `x = 29.0 μm`、`Depth = 25.0 μm`；3D 的切面写 `y = <值> μm`。
+- 一幅图里的值起伏不到其中绝对值最大者的 1% 时，纵轴（切面为色标）从 0 画起，不贴着数据缩放，免得网格上的数值噪声看着像场的起伏。
 
 ## 参考文献
 

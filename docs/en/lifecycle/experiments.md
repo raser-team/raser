@@ -170,7 +170,8 @@ Random number generators for measurement stages and jobs are seeded centrally in
 
 ### Source File Responsibilities
 
-- `src/raser/lifecycle/workflow.py`: Provides the experiment base class and the concurrent-occupancy exit exception `Running`; implements `raser new --from` example project copying, shared run option registration `run_arguments`, sectioned `config.json` reading/writing and `--set`/`--scan` `"section.key"` address merging, node fingerprint calculation, maintenance of the `points.json` parameter table and `points/<point>/<stage>/<job>` symlink views, shared field node preparation, multi-point local and cluster job scheduling, and automatic cluster resume `_start_again`/`_run_again`.
+- `src/raser/lifecycle/experiment.py`: the experiment base class `Experiment` and the device slot `Slot`.
+- `src/raser/lifecycle/workflow.py`: Provides the concurrent-occupancy exit exception `Running`; implements `raser new --from` example project copying, shared run option registration `run_arguments`, sectioned `config.json` reading/writing and `--set`/`--scan` `"section.key"` address merging, node fingerprint calculation, maintenance of the `points.json` parameter table and `points/<point>/<stage>/<job>` symlink views, shared field node preparation, multi-point local and cluster job scheduling, and automatic cluster resume `_start_again`/`_run_again`.
 - `src/raser/core/seeding.py`: Maintains the module-level current seed `_job_seed` and named random stream dictionary `_streams`; provides `seed_generators(seed)` to seed Python `random` and `ROOT.gRandom` together and clear the stream cache, and `stream(name)` to derive via SHA-256 and cache independent `ROOT.TRandom3` instances by stream name.
 - `src/raser/cli/raser.py`: Defines the `raser` CLI entry point `main` and argument parser `build_parser`, maintains the subcommand map `APPLICATIONS` and the eight-stage short-alias map `SHORT`; provides `_experiment_arguments` to auto-complete command words and device name in the root of an experiment folder containing `config.json`, and merges top-level `-b`/`-t` global options into subcommand arguments.
 
@@ -179,6 +180,8 @@ Random number generators for measurement stages and jobs are seeded centrally in
 | Data structure and fields | Type and default | Unit | Meaning |
 | --- | --- | --- | --- |
 | Experiment base class and experiment subclasses | Python classes | None | Base class inherited by `raser_bench`, `raser_app`, and user-defined experiments, declaring the stages included in the experiment, the device list, and each device's role (such as device under test or reference device); discovered via the `raser.experiments` package entry point or project folders and registered by name (see [Architecture Overview](../architecture.md#experiments-are-python-classes)) |
+| Class attributes of `Experiment` | `name` (the command word), `stages`, `devices` (slot name → `Slot`, in the order of the experiment), `components`, `application` (default `False`) | None | An experiment of one device has the single slot `Device`; a slot name uses letters, digits, `_` and `-` only; with `application` `True` the output goes to `work/<name>/`, otherwise to `work/<device>/<name>/` |
+| `Slot(role, device, positions)` | `role` is `"tested"` (default) or `"reference"`; `device` defaults to `None`; `positions` defaults to `()` | None | A tested slot takes the device given on the command line and names no `device`; a reference slot must name its `device`; at least one slot is tested; `positions` are the places the device takes, one place named as the slot when omitted |
 | `Running` | Subclass of `SystemExit` | None | Concurrent-occupancy exit exception raised when the target lock file is already held by another process |
 | `seeding._job_seed` | `int \| None`, default `None` | None | Current integer random seed written by `seed_generators` (range $[1, 2^{31}-1]$) |
 | `seeding._streams` | `dict[str, ROOT.TRandom3]`, default `{}` | None | Dictionary caching independent `ROOT.TRandom3` instances by stream name `name` within the current job or stage |
@@ -213,3 +216,53 @@ The table below lists the shared run options and configuration sections users ca
 - **`<experiment_folder>/nodes/<stage>/<node_id>/` and `<device_project>/field/<node_id>/`**: Node directories named by input fingerprint (carrying a `.part` suffix while being written, renamed to their final names upon completion, each locked individually), storing the data files written by the stage (such as HDF5 files and stage plots; see [Simulation Chain and Stage Entry Points (`stages`)](../stages/README.md) and the pages under `docs/en/core/` for exact formats) together with a `node.json`. `node.json` records verbatim the four inputs determining the node fingerprint (setting values used by this stage, used portions of component files, upstream node IDs, the seeds of the measurement stages `deposit` and `current`, and the own seeds of `readout` and `digitizer`), and additionally records the code version, runtime environment, and run status.
 - **`<experiment_folder>/points/<point>/<stage>/<job>`**: Scan-point view symlinks where `<point>` is named from scan-axis values (such as `voltage_100`); `deposit` through `reconstruction` have one symlink per job pointing to `../../../nodes/<stage>/<node_id>`, while `points/<point>/field` points to `<device_project>/field/<node_id>` and `points/<point>/analysis` points to `../../nodes/analysis/<node_id>`.
 - **`<experiment_folder>/analysis/`**: Directory holding cross-point statistics and trend plots written by the `analysis` stage.
+
+### Format of `config.json`
+
+`config.json` comes with the project: `raser new --from <example> <path>` copies the `config.json` of every experiment of the example along, and a run in place on an example uses the one the example carries. The keys of each section and their meaning are in the settings table of [Simulation Chain and Stage Entry Points (`stages`)](../stages/README.md#settings) and on the page of each stage.
+
+`config.json` is a JSON object. Its top-level keys fall into three groups:
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `workflow` | string | Command word of the experiment, such as `"signal"` |
+| `device` | string | Device name; absent for an application that takes no device |
+| `field`, `deposit`, `current`, `readout`, `digitizer`, `trigger`, `reconstruction`, `analysis` | object | One section per stage, holding all settings of that stage; an empty object for a stage the experiment does not have |
+| `names` | object | Short names for long addresses: "section.key" or "section.slot.key" → short name, for example `{"readout.amplifier": "amp"}`; point names use the short name (`amp_SantaCruz`), `--set` and `--scan` accept both spellings |
+| `same_seeds` | boolean | Whether jobs of the same number share their seed across scan points |
+
+The `signal` example of `HPK-Si-PiN`:
+
+```json
+{
+  "workflow": "signal",
+  "device": "HPK-Si-PiN",
+  "field": {"voltage": 200.0, "irradiation_flux": null},
+  "deposit": {
+    "source": "decay/Sr90", "g4setup": "device_alone",
+    "events_per_job": 200, "generated_per_job": null, "generated_limit": 10000000,
+    "edep_min": null, "edep_max": null, "fano": true, "plots": 100
+  },
+  "current": {"plots": 100},
+  "readout": {"amplifier": "SantaCruz+Gali52+Termination50", "sheet_resistance": null},
+  "digitizer": {},
+  "trigger": {},
+  "reconstruction": {
+    "threshold": 10.0, "amplitude_threshold": 10.0,
+    "fractions": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9], "edge": null
+  },
+  "analysis": {},
+  "names": {},
+  "same_seeds": false
+}
+```
+
+Rules for reading and writing:
+
+1. **One way to give a setting**: `--set <section.key>=<value>` writes the value into its section, `--scan <section.key>=<value1>,<value2>` writes the list of values into the same place. Both stay in `config.json`, and later commands without options use them. The settings of the chain have no command-line options of their own; switches that hold for one run only (`-g4_vis`, `--g4-vis-driver`) do not enter `config.json`.
+2. **Two kinds of settings**: the settings of the four sections `field`, `deposit`, `current`, `readout` say what is measured and are physics parameters; the settings of the four sections `digitizer`, `trigger`, `reconstruction`, `analysis` say how the measured events are analysed and are analysis parameters. One more value of a physics parameter is one more set of experiments: written as a list in its section it is a scan, one point per value, for example `"field": {"voltage": [100, 200]}`, with points named by the values (`voltage_100`, `voltage_200`). An analysis parameter is not scanned: its list is the value of the parameter itself, such as `reconstruction.fractions`; giving it to `--scan` is an error. To use another analysis parameter, change it with `--set` and run again with the same `--seed`; the events already measured are reused and only the analysis stages are redone. Without `--seed` every run is a new measurement. Giving a physics parameter a list with `--set` is an error as well, with a hint to use `--scan`.
+3. **Ending a scan and restoring a setting**: giving `--set` for an address that is scanned replaces the list in the section by this one value, and the scan ends. An experiment that scans nothing has one point, named `default`; with a scan there is no point `default`. After a scan ends or its values change, the views under `points/` of points that no longer belong to the experiment are removed; the nodes stay. A value given with `--set` stays in its section, and there is no "undo"; to restore it, give `--set` once more with the earlier value, or edit `config.json` directly.
+4. **Keys inside a component**: a key of a section that selects a component is a slot, such as `deposit.source` and `deposit.g4setup`; the device is `field.device`. A key inside the component file is written "section.slot.key", for example `--set deposit.source.par_radius=1000` changes `par_radius` in the source file (the radius of the source disk, $\mu\text{m}$). In `config.json` it is written into the object of the slot, beside the name of the component: `"source": {"name": "decay/Sr90", "par_radius": 1000}`; when scanned it is written as a list, and the point name takes the last two parts of the address (`source.par_radius_1000`). Giving the slot another component (`--set deposit.source=decay/Am241`) removes the keys written in the object. An address that is neither a setting nor under a slot is an error that lists all settings and slots. A key of a component that is itself a list cannot be overridden this way: to change it, copy the component file into the project and edit it there.
+5. **Each stage reads its own section**: a running stage receives the settings of its own section, so `deposit.plots` and `current.plots` are two settings.
+6. **Missing and unknown keys**: a key not written in its section is `null`; when a stage needs its value and it is `null`, an error names the missing "section.key", for example `ValueError: examples/HPK-Si-PiN/signal/config.json has no deposit.generated_limit`; a missing key that is not used raises no error. A key in a section that the stage does not know is an error, for example `config.json: no current.plot; the settings of current are plots`; so is a top-level key other than those in the table above. The program writes every key when it writes `config.json`.
+7. **`null` is a value**: keys whose table entry says "`null` takes …" (such as `field.voltage`, which takes the bias in the device file) take that value when written `null`.

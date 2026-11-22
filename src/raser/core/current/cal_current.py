@@ -21,14 +21,17 @@ from .drift import Cluster, Drifted, advance, induced_charges, surviving, surviv
 from . import draw
 from .draw_drift_path import draw_drift_path
 from .currents import EventCurrents, append_currents
+from ..field.resistive_layer import shares
 
 from ..deposit.deposits import EventDeposits, read_deposits
 from raser.supports.output import output
 
+# smaller steps no longer change the waveforms: the CFD time moves by less
+# than 1 ps and the rise time by less than 2 % behind a 2 GHz front end
 t_bin = {
     1: 5e-12,
-    2: 50e-12,
-    3: 50e-12  # resolution of oscilloscope
+    2: 10e-12,
+    3: 10e-12
 }
 
 t_end = {
@@ -43,8 +46,8 @@ t_start = {
 
 delta_t = {
     1: 2e-12,  # simulation time step
-    2: 20e-12,
-    3: 20e-12
+    2: 5e-12,
+    3: 5e-12
 }
 
 logger = logging.getLogger(__name__)
@@ -208,6 +211,8 @@ class CalCurrent:
         if hasattr(my_d, "x_ele_num") and hasattr(my_d, "y_ele_num"):
             self.x_ele_num = my_d.x_ele_num
             self.y_ele_num = my_d.y_ele_num
+            self.l_x, self.l_y = my_d.l_x, my_d.l_y
+            self.p_x, self.p_y = my_d.p_x, my_d.p_y
         self.read_out_contact = my_d.read_out_contact
         self.electrodes = electrode_names(self.read_out_contact, self.read_ele_num)
         
@@ -396,6 +401,15 @@ class CalCurrent:
             if len(path) < 2:
                 continue
             carriers = born if remaining is None else remaining
+            if getattr(my_d, "resistive_layer", None) is not None:
+                induced = induced_charges(path, carriers, my_f, 0, (0.0, 0.0))
+                for value, start, end in zip(induced, path[:-1], path[1:]):
+                    middle = (0.5 * (start[0] + end[0]), 0.5 * (start[1] + end[1]))
+                    for number, share in shares(my_d, middle).items():
+                        spread_over_bins(
+                            bins[number], share * value / self.t_bin, start[3], end[3], self.t_start, bin_width
+                        )
+                continue
             for number, in_field, offset in self.electrodes_near(path[0][0], path[0][1], my_d, my_f):
                 induced = induced_charges(path, carriers, my_f, in_field, offset)
                 for value, t_from, t_to in zip(induced, path[:-1, 3], path[1:, 3]):
@@ -428,10 +442,12 @@ class CalCurrent:
         )
 
     def charge_collection_strip(self, path, event):
-        draw.charge_collection_strip(path, event, self.charge)
+        draw.charge_collection_strip(path, event, self.charge, self.l_x, self.x_ele_num, self.p_x)
 
     def charge_collection_pixel(self, path, event):
-        draw.charge_collection_pixel(path, event, self.charge, self.x_ele_num, self.y_ele_num)
+        draw.charge_collection_pixel(
+            path, event, self.charge, self.l_x, self.l_y, self.x_ele_num, self.y_ele_num, self.p_x, self.p_y
+        )
 
 class CalCurrentGain(CalCurrent):
     '''Calculation of gain carriers and gain current, simplified version'''

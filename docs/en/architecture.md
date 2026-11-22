@@ -113,7 +113,7 @@ On each run, the program computes `points.json` from `config.json`: one row per 
 
 ### Views
 
-`points/<point>/<stage>/` is a folder containing one symlink per job at that scan point, named by the job index and pointing to that job's node at that stage; `field` and `analysis` have only one node per point, so `points/<point>/field` and `points/<point>/analysis` are symlinks directly. Point names are derived from scan-axis values, such as `voltage_100`, serving as human-readable entry points; if settings change or a scan axis is added, the point name may stay the same while the node it points to updates accordingly, so parameters and results always match. Every point is named by the values of all scan axes, including the point whose values equal those without the scan; an experiment that scans nothing has one point, named `default`. Once a scan begins, `points/default` is a symlink to the point whose values equal those without the scan, when the scan holds such a point.
+`points/<point>/<stage>/` is a folder containing one symlink per job at that scan point, named by the job index and pointing to that job's node at that stage; `field` and `analysis` have only one node per point, so `points/<point>/field` and `points/<point>/analysis` are symlinks directly. Point names are derived from scan-axis values, such as `voltage_100`, serving as human-readable entry points; if settings change or a scan axis is added, the point name may stay the same while the node it points to updates accordingly, so parameters and results always match. Every point is named by the values of all scan axes; an experiment that scans nothing has one point, named `default`, and with a scan there is no such point.
 
 ### Reuse
 

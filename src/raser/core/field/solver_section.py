@@ -173,6 +173,22 @@ def _empty_devsim():
         devsim.set_parameter(name=name, value=value)
 
 
+def weighting_contacts(device_dict):
+    """The mesh contacts the weighting potential is solved for.
+
+    A device with a resistive layer has one: the contact of the layer, a plane
+    electrode to the carriers. Any other device has its readout contacts.
+    """
+    if "resistive_layer" not in device_dict:
+        return [contact["name"] for contact in device_dict["read_out_contact"]]
+    if "contact" not in device_dict["resistive_layer"]:
+        raise ValueError(
+            f"The device {device_dict.get('det_name')} has a resistive layer but not the key "
+            "resistive_layer.contact, the name of the mesh contact the layer lies on"
+        )
+    return [device_dict["resistive_layer"]["contact"]]
+
+
 def main (kwargs):
     simname = kwargs['target']
     is_cv = kwargs['cv']
@@ -205,7 +221,12 @@ def main (kwargs):
     cells_either_side = 0
     weighting_tolerance = float(configuration["solver"]["weighting_tolerance"])
     crosstalk_tolerance = float(configuration["solver"]["crosstalk_tolerance"])
-    if is_wf and len(listed) == 1 and MyDetector.read_ele_num > 1:
+    if (
+        is_wf
+        and len(listed) == 1
+        and MyDetector.read_ele_num > 1
+        and "resistive_layer" not in MyDetector.device_dict
+    ):
         cells_either_side = kwargs.get("_cells_either_side") or cells_to_fall_off(
             MyDetector.l_z, MyDetector.p_x, weighting_tolerance
         )
@@ -245,8 +266,7 @@ def main (kwargs):
                         value=0.0, acreal=paras['acreal'], acimag=paras['acimag'],)
         else:
             print("===============RASER info===================\nNot AC detector\n===========info=============")
-            for read_out_electrode in MyDetector.device_dict["read_out_contact"]:
-                readout_contacts.append(read_out_electrode["name"])
+            readout_contacts = weighting_contacts(MyDetector.device_dict)
             for i,c in enumerate(readout_contacts):
                 devsim.circuit_element(name="V{}".format(i+1), n1=physics_drift_diffusion.GetContactBiasName(c), n2=0,
                         value=0.0, acreal=paras['acreal'], acimag=paras['acimag'],)

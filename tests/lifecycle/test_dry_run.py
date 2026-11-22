@@ -15,7 +15,7 @@ def test_dry_run_names_the_seed_folder_of_every_point_and_writes_nothing(
     work_root = tmp_path / "work"
     monkeypatch.setenv("RASER_WORK_PATH", str(work_root))
     monkeypatch.delenv("RASER_PROJECT_PATH", raising=False)
-    command = "signal HPK-Si-PiN -s 2 --scan voltage=200,300 --seed 42 --dry-run"
+    command = "signal HPK-Si-PiN -s 2 --scan field.voltage=200,300 --seed 42 --dry-run"
 
     assert main(command.split()) == 0
     lines = capsys.readouterr().out.splitlines()

@@ -7,8 +7,9 @@ from raser.core.current.cal_current import electrode_names
 from raser.core.device.build_device import Detector
 from raser.core.device.build_device import device_file
 from raser.core.field.circuit_parameters import device_row
-from raser.core.readout.network import impulse_response
-from raser.core.readout.network import shares
+from raser.core.field.device_circuit import DeviceCircuit
+from raser.core.readout.network import admittance, impulse_response
+from raser.core.field.resistive_layer import shares
 
 pytestmark = pytest.mark.ngspice
 
@@ -28,14 +29,14 @@ SHEET_OHM, LENGTH_UM = 1000.0, 1000.0
 
 
 def _device(**layer):
-    """A device of 20 cells 10 um wide and 1000 um long on 200 um, 12.3 fF
-    each, with strips on the cells 2 to 4 (20 to 50 um) and 15 to 17 (150 to
+    """A device of 20 RC nodes 10 um wide and 1000 um long on 200 um, 12.3 fF
+    each, with strips on the RC nodes 2 to 4 (20 to 50 um) and 15 to 17 (150 to
     180 um) of its resistive layer. Over keys of the device file give the
-    halved cells, as 40 cells of 5 um with 6.15 fF each."""
+    halved RC nodes, as 40 RC nodes of 5 um with 6.15 fF each."""
     return _build({}, layer)
 
 
-def _half_cells(**layer):
+def _half_rc_nodes(**layer):
     return _build(
         {
             "read_ele_num": 40,
@@ -54,7 +55,7 @@ def _build(over, layer, strips=None):
         {
             **content,
             "read_ele_num": 20,
-            "read_out_contact": [{"x_span": 0, "y_span": 0, "name": "cell"}],
+            "read_out_contact": [{"x_span": 0, "y_span": 0, "name": "node"}],
             "p_x": 10,
             "l_x": 200,
             "l_y": 1000,
@@ -71,8 +72,8 @@ def _build(over, layer, strips=None):
 def _response(my_d, points_um):
     """Voltage [V] of the strips, shape (points, strips, bins), for 1 fC on
     each point."""
-    cells = electrode_names(my_d.read_out_contact, my_d.read_ele_num)
-    circuit, _ = device_row(my_d, cells)
+    rc_nodes = electrode_names(my_d.read_out_contact, my_d.read_ele_num)
+    circuit, _ = device_row(my_d, rc_nodes)
     return impulse_response(my_d, circuit, ON_THE_LOAD, points_um, dt=DT_S)
 
 
@@ -106,13 +107,13 @@ def test_charge_between_two_strips_is_shared_by_the_distances_to_them():
         assert to_right == pytest.approx(1 - _share_to_left(x_um), rel=0.01)
 
 
-def test_charge_shared_is_the_same_for_cells_of_half_the_width():
+def test_charge_shared_is_the_same_for_rc_nodes_of_half_the_width():
     # the same coordinates, the same strips at 20 to 50 um and 150 to 180 um,
-    # on cells of 10 um and of 5 um
+    # on RC nodes of 10 um and of 5 um
     points = [75.0, 120.0]
 
     coarse = _charges(_response(_device(sheet_resistance=1000.0), points))
-    fine = _charges(_response(_half_cells(sheet_resistance=1000.0), points))
+    fine = _charges(_response(_half_rc_nodes(sheet_resistance=1000.0), points))
 
     assert fine == pytest.approx(coarse, rel=0.01)
 
@@ -132,7 +133,7 @@ def test_response_of_a_point_mirrored_across_the_device_swaps_the_strips():
 
 
 def test_strips_on_a_dielectric_over_a_grounded_layer_see_no_net_charge():
-    # the layer held on ground at the cell 19, the strips over 0.5 um of
+    # the layer held on ground at the RC node 19, the strips over 0.5 um of
     # oxide: the charge leaves through the ground and the strips see it pass
     my_d = _device(
         sheet_resistance=1000.0,
@@ -150,7 +151,7 @@ def test_strips_on_a_dielectric_over_a_grounded_layer_see_no_net_charge():
 def test_higher_sheet_resistance_keeps_more_of_the_signal_on_the_nearer_strip():
     # the wide strips of HPK in table 1 of arXiv:2407.09928: 500 um pitch,
     # 50 um of metal, 10 mm long, 50 um thick, 600 pF/mm^2 under the strips,
-    # the layer of 400 or of 1600 Ohm a square. Cells of 50 um, 1.036 pF
+    # the layer of 400 or of 1600 Ohm a square. RC nodes of 50 um, 1.036 pF
     # each over 50 um of silicon; seven strips, the layer on ground at both
     # ends. A point 100 um from the middle of the strip s3, towards s4: the
     # more resistive the layer, the more of the amplitude stays on s3
@@ -180,8 +181,78 @@ def test_higher_sheet_resistance_keeps_more_of_the_signal_on_the_nearer_strip():
 
 
 @pytest.mark.parametrize("x_um", [201.0, -1.0])
-def test_point_off_the_cells_of_the_layer_is_refused(x_um):
+def test_point_off_the_rc_nodes_of_the_layer_is_refused(x_um):
     my_d = _device(sheet_resistance=1000.0)
 
-    with pytest.raises(ValueError, match="cells of the layer"):
+    with pytest.raises(ValueError, match="RC nodes of the layer"):
         shares(my_d, [x_um])
+
+
+def _strip_admittance(frequencies_hz, **layer):
+    my_d = _device(sheet_resistance=1000.0, **layer)
+    rc_nodes = electrode_names(my_d.read_out_contact, my_d.read_ele_num)
+    circuit, _ = device_row(my_d, rc_nodes)
+    return admittance(circuit, frequencies_hz)
+
+
+def test_admittance_between_two_read_outs_joined_by_one_kiloohm_is_a_conductance():
+    # a resistor of 1 kOhm between the two ports: 1 / 1000 Ohm = 1 mS on the
+    # diagonal, minus that off it, and no imaginary part
+    circuit = DeviceCircuit(
+        lines=("R1 a b 1000",), sources={}, outputs={"a": "a", "b": "b"}
+    )
+
+    y = admittance(circuit, [1e3, 1e6, 1e9])
+
+    assert y.shape == (3, 2, 2)
+    expected = np.array([[1e-3, -1e-3], [-1e-3, 1e-3]])
+    for row in y:
+        assert row.real == pytest.approx(expected, rel=1e-6, abs=1e-12)
+        assert row.imag == pytest.approx(0.0, abs=1e-12)
+
+
+def test_admittance_of_a_read_out_on_one_picofarad_is_its_susceptance():
+    # j * 2 pi f C with C = 1 pF
+    circuit = DeviceCircuit(lines=("C1 a 0 1p",), sources={}, outputs={"a": "a"})
+    frequencies = np.array([1e6, 1e8])
+
+    y = admittance(circuit, frequencies)
+
+    expected = 2j * np.pi * frequencies * 1e-12
+    assert y[:, 0, 0].imag == pytest.approx(expected.imag, rel=1e-6)
+    assert y[:, 0, 0].real == pytest.approx(0.0, abs=1e-12)
+
+
+def test_admittance_of_two_strips_on_an_open_layer_is_the_layer_between_them():
+    # the strips touch the layer, which has no other way to ground: what goes
+    # in at one strip comes out at the other, through the layer between their
+    # inner edges at 50 and 150 um: 1000 Ohm a square * 100 um / 1000 um
+    # = 100 Ohm, so -1 / 100 Ohm = -0.01 S off the diagonal
+    (y,) = _strip_admittance([1e3])
+
+    assert np.abs(y.sum(axis=1)).max() < 1e-3 * abs(y[0, 0])
+    assert y[0, 1] == pytest.approx(y[1, 0], rel=1e-6)
+    assert y[0, 1].real == pytest.approx(-1 / 100.0, rel=1e-2)
+
+
+def test_admittance_of_strips_coupled_through_a_dielectric_has_no_direct_current():
+    # the layer is held on ground at the RC node 19 and the strips lie on it
+    # over 0.5 um of oxide: only the coupling capacitance carries current, and
+    # its susceptance grows with the frequency
+    y = _strip_admittance(
+        [1e3, 1e9],
+        grounded={"ring": [19, 19]},
+        coupling={"thickness": 0.5, "permittivity": 3.9},
+    )
+
+    assert abs(y[0, 0, 0]) < 1e-3 * abs(y[1, 0, 0])
+
+
+@pytest.mark.parametrize("frequencies", [[], [0.0], [2e6, 1e6]])
+def test_admittance_at_no_frequency_a_zero_one_or_a_falling_list_is_refused(
+    frequencies,
+):
+    circuit = DeviceCircuit(lines=("R1 a 0 50",), sources={}, outputs={"a": "a"})
+
+    with pytest.raises(ValueError):
+        admittance(circuit, frequencies)

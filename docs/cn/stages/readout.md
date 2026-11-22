@@ -59,7 +59,7 @@ raser rdo examples/HPK-Si-PiN/signal --scan field.voltage=100,200 --scan readout
 
 `raser readout --draw <对象>` 画本环节的对象：前端电路的原理图和冲击响应。前端电路图和冲击响应只取决于电路和它的参数，是资产，放在 `work/<电路名>/` 下，被各实验的 `readout` 引用。
 
-阻性层器件（器件文件有 `resistive_layer`）另有一个对象 `network`：`raser readout --draw network [路径]` 只解器件电路与 `readout.amplifier` 的放大器链，不读 `deposit` 和 `current` 的结果。冲击的位置是器件上的一个点，用几何坐标 $(x, y)$ 给出，单位 $\mu\text{m}$，坐标系与 `current` 相同（$0 \le x \le l_x$，$0 \le y \le l_y$）；条形器件只用 $x$。$1\ \text{fC}$ 的电荷在第一个时间箱里以矩形电流脉冲注入这一点，按它到相邻晶胞中心的距离线性分给这些晶胞的节点；时间箱宽 $10\ \text{ps}$、共 $2000$ 箱；方阻取 `readout.sheet_resistance`，没有时取器件文件。给出 `--at <x>,<y>` 时冲击这一点，`network_waveforms.png` 画每个读出电极（条或焊盘）的输出波形；不给时沿 $x$ 以晶胞宽度为步长扫过器件中线（$y = l_y/2$），`network_waveforms.png` 画扫描中点那一个冲击点的波形，另画 `network_sharing.png`：各读出电极的波形幅度和波形积分随冲击点 $x$ 的曲线。两种情形都画 `network_schematic.png`：器件网络的电路图，标上各元件的数值。
+阻性层器件（器件文件有 `resistive_layer`）另有一个对象 `network`：`raser readout --draw network [路径]` 只解器件电路与 `readout.amplifier` 的放大器链，不读 `deposit` 和 `current` 的结果。冲击的位置是器件上的一个点，用几何坐标 $(x, y)$ 给出，单位 $\mu\text{m}$，坐标系与 `current` 相同（$0 \le x \le l_x$，$0 \le y \le l_y$）；条形器件只用 $x$。$1\ \text{fC}$ 的电荷在第一个时间箱里以矩形电流脉冲注入这一点，按它到相邻 RC 格点中心的距离线性分给这些 RC 格点的节点；时间箱宽 $10\ \text{ps}$、共 $2000$ 箱；方阻取 `readout.sheet_resistance`，没有时取器件文件。给出 `--at <x>,<y>` 时冲击这一点，`network_waveforms.png` 画每个读出电极（条或焊盘）的输出波形；不给时沿 $x$ 以 RC 格点宽度为步长扫过器件中线（$y = l_y/2$），`network_waveforms.png` 画扫描中点那一个冲击点的波形，另画 `network_sharing.png`：各读出电极的波形幅度和波形积分随冲击点 $x$ 的曲线。两种情形都画 `network_schematic.png`：器件网络的电路图，标上各元件的数值。
 
 ## 规则
 
@@ -100,7 +100,7 @@ FileNotFoundError: no field of <det_name> ready for this run: solve it with `ras
 3. **组装器件等效电路**：
    - **器件文件有 `resistive_layer`（阻性层器件）**：
      1. `my_d.is_pixel` 为真时取 `build = device_grid`（二维阻性网格），否则取 `build = device_row`（一维阻性行）。
-     2. `circuit, values = build(my_d, electrodes, sheet_ohm=sheet_ohm)`：方阻依次按 `sheet_ohm` 非 `None`（来源记 `"chosen"`）→ `resistive_layer["sheet_resistance"]`（`"device file"`）→ 铝注入层参数推算（`"implanted layer"`）选取；单元电容依次按 `capacitance_pF`（`"device file"`）→ 器件平板电容估算（`"parallel plate"`）选取。
+     2. 照下面常规器件第 1、2 步取该偏压的场文件夹，`row, solved_f, undepleted = field_circuit(...)`（阻性层器件的 `row` 为 `None`）；`circuit, values = build(my_d, electrodes, solved_f, sheet_ohm=sheet_ohm, solved_undepleted=undepleted)`：方阻依次按 `sheet_ohm` 非 `None`（来源记 `"chosen"`）→ `resistive_layer["sheet_resistance"]`（`"device file"`）→ 铝注入层参数推算（`"implanted layer"`）选取；RC 格点电容依次按 `capacitance_pF`（`"device file"`）→ 场在该偏压解出的电容乘一个 RC 格点占器件面积的比例 $p_x p_y / (l_x l_y)$（一维阻性行为 $p_x / l_x$；`"field"`）→ 器件平板电容估算（`"parallel plate"`）选取；器件在该偏压没有全耗尽时，各 RC 格点的电容和电流源接到共用的未耗尽节点，整块器件的未耗尽层电阻和电容从这个节点接地（见[器件场](../core/field.md)的“器件电路参数”）。
    - **没有阻性层却给了 `sheet_ohm`**：抛出
 
      ```text
@@ -161,7 +161,51 @@ FileNotFoundError: no field of <det_name> ready for this run: solve it with `ras
 4. **放大器链与脉冲方向**：
    - `chain = named_chain(str(kwargs["amplifier"]))` 按 `"+"` 拆开 `amplifier`，从组件目录依次加载 `readout/<part>.cir`（子电路语法与内置组件见[前端读出电路组件（`components/readout`）](../components/readout.md)）。找不到时抛出 `FileNotFoundError: Cannot find RASER component readout/<part>.cir:`，检查子电路名的拼写，或确认文件放进了 `readout/`。
    - `pulse_edges(my_d, chain, list(circuit.outputs))` 给出与 `circuit.outputs` 一一对应的脉冲方向。
-5. **求解并写出（`write_waveforms`）**：先删掉同路径的旧波形文件，再逐事例求瞬态电压、按种子叠加时域热噪声、筛掉最大绝对摆幅 `< 1e-3 * largest` 的通道后写出。
+5. **读出线缆、校验线长与换算损耗**：
+   - `readout.cable` 为 `null` 时不接线缆；否则按槽位名字读取组件目录下的 `readout/<线缆名>.json`（键格式见[前端读出电路组件（`components/readout`）](../components/readout.md)），取特性阻抗 $Z_0$（$\Omega$）、速度因子 $\text{VF}$ 与两个频率处的衰减，按[电子学读出（`core/readout`）](../core/readout.md)式 (13)–(15) 换算传播速度 $v$（$\text{m/s}$）与损耗系数 $a_s$、$a_d$。
+   - 校验 `readout.cable.length_m`（“通道名 $\to$ 线长（$\text{m}$）”映射）：
+     - `circuit.outputs` 的每个输出通道都必须给值；缺某个通道时抛出：
+
+       ```text
+       ValueError: readout.cable.length_m.<channel> is missing: give a cable length in m for each output of <det_name> (<outputs>)
+       ```
+
+     - 给了电路里没有的通道名时抛出：
+
+       ```text
+       ValueError: readout.cable.length_m has unknown channels <unknown>; the outputs of <det_name> are <outputs>
+       ```
+
+     - 任意通道的值不是非负有限数（例如负数、`NaN`、`Inf` 或非数值）时抛出：
+
+       ```text
+       ValueError: readout.cable.length_m.<channel> must be a finite non-negative number in m, not <value>
+       ```
+
+   - 为每个输出通道换算纯延迟 $\tau_r = \ell_r / v$（$\text{s}$）及频域复传递因子 $H_r(f)$。
+6. **读两个窗口键、算回落时间 $T_{\text{settle}}$**：
+   - 读 `readout.pre_window_ns`（前段长度 $T_{\text{pre}}$，$\text{ns}$）与 `readout.max_post_window_ns`（后段长度上限 $T_{\max}$，$\text{ns}$），两个键都没有默认值。缺哪个就抛出：
+
+     ```text
+     ValueError: readout.pre_window_ns is missing: give the length of the baseline before the signal in ns
+     ValueError: readout.max_post_window_ns is missing: give the longest settling segment after the signal in ns
+     ```
+
+   - 值不是规定范围的数（负数、`NaN`、`Inf`、非数值，`max_post_window_ns` 还不能为 `0`）时抛出：
+
+     ```text
+     ValueError: readout.pre_window_ns must be a finite non-negative number in ns, not <value>
+     ValueError: readout.max_post_window_ns must be a positive finite number in ns, not <value>
+     ```
+
+   - 每个作业对本作业的放大器链算一次 $T_{\text{settle}}$：在电容取第 3 步得到的结电容 `values["junction_capacitance"]["farad"]`（阻性层器件取 `values["rc_node_capacitance"]["farad"]`）的平板探针电路 `planar_circuit` 上，$1\ \text{fC}$ 电荷在第一个时间箱注入，以 `dt` 为步长求解；求解窗从 $20\ \text{ns}$ 起，未回落就加倍，直到回落或窗长达到 $T_{\max}$。输出偏离静止电平最后一次超过最大偏离 $10^{-3}$ 倍的时刻即 $T_{\text{settle}}$，后段长度取它与 $T_{\max}$ 中较小的一个，定义见[电子学读出（`core/readout`）](../core/readout.md)式 (19)–(21)。链对 $1\ \text{fC}$ 没有响应时，沿用 `chain_sign` 现有的 `ValueError`（见[电子学读出（`core/readout`）](../core/readout.md)的“脉冲极性判定与波形文件写出”）。
+   - $T_{\text{settle}} > T_{\max}$、后段被截断时打印一行 INFO，写明 $T_{\text{settle}}$ 至少多长、取用的后段长度，不静默截断：
+
+     ```text
+     INFO: readout: the amplifier chain settles in at least <T_settle> ns; the post-window is <T_post> ns (readout.max_post_window_ns)
+     ```
+
+7. **求解并写出（`write_waveforms`）**：先删掉同路径的旧波形文件，再逐事例求瞬态电压（在 `current` 的窗前补 $n_{\text{pre}}$ 个、后补 $n_{\text{post}}$ 个零电流时间箱，写出的 `t0` 为 `current` 的 `t0` 减 $n_{\text{pre}}$ `dt`，`count` 为总箱数；接了线缆时在网表末级负载前插无损 `T` 元件、按 $\tau_{\max}$ 在最后再加长 $n_{\text{extra}}$ 个时间箱、在频域乘 $H_r(f)$ 并把噪声谱密度乘 $|H_r(f)|$）、按种子叠加时域热噪声、筛掉最大绝对摆幅 `< 1e-3 * largest` 的通道后写出。
 
 ## 软件实现
 
@@ -194,7 +238,7 @@ FileNotFoundError: no field of <det_name> ready for this run: solve it with `ras
 | `"bias_resistance"` | 常规器件：`{"ohm": float} \| None` | $\Omega$ | 单电极偏置电阻（未配置为 `null`） |
 | `"coupling_capacitance"` | 常规器件：`{"farad": float} \| None` | $\text{F}$ | 单电极交流耦合电容（未配置为 `null`） |
 | `"undepleted_layer"` | 常规器件：`{"ohm": float, "farad": float, "from": str} \| None` | $\Omega$, $\text{F}$ | 未耗尽层并联电阻、电容及来源（已全耗尽为 `null`） |
-| `"cell_capacitance"` | 阻性层器件：`{"farad": float, "from": str}` | $\text{F}$ | 阻性层单个网格单元对背面的电容及来源 |
+| `"rc_node_capacitance"` | 阻性层器件：`{"farad": float, "from": str}` | $\text{F}$ | 阻性层单个 RC 格点对背面的电容及来源 |
 | `"sheet_resistance"` | 阻性层器件：`{"ohm": float, "from": str}` | $\Omega$ | 阻性层方阻及来源（`"chosen"`、`"device file"` 或 `"implanted layer"`） |
 | `"coupling_per_area_f_m2"` | 阻性层器件：`float \| None` | $\text{F/m}^2$ | 读出条或焊盘下方介质层的单位面积耦合电容（直连时为 `null`） |
 
@@ -209,10 +253,14 @@ FileNotFoundError: no field of <det_name> ready for this run: solve it with `ras
 | `[路径]` | 当前文件夹 | 无 | 实验文件夹 |
 | `readout.amplifier` | `"SantaCruz+Gali52+Termination50"` | 无 | 以 `"+"` 连接的 `readout/<名称>.cir` 子电路链，前几项是双端口放大级，末项是单端口负载 |
 | `readout.sheet_resistance` | `null`（取器件文件里阻性层的方块电阻） | $\Omega$ | 覆盖阻性层器件的方阻；对常规器件给出会抛出 `ValueError` |
+| `readout.cable` | `null`（不接线缆） | 无 | 读出线缆组件槽位：填线缆组件名（如 `"Belden8259"`）或含 `name` 与 `length_m` 的对象；显式写 `null` 时不接线缆 |
+| `readout.cable.length_m` | 接 `readout.cable` 时必选（如 `{"top": 1.5}`，条形器件 `{"strip1": 2.0, "strip2": 2.0, ...}`） | $\text{m}$ | “通道名 $\to$ 线长”对象；`readout.cable` 不为 `null` 时必须覆盖电路全部输出通道，不能含电路里没有的通道名，值须为非负有限数 |
+| `readout.pre_window_ns` | `15` | $\text{ns}$ | 前段（基线段）的长度，非负有限数，必填，没有默认值；在 `current` 的窗前补这么长的零电流段，下游用它估基线，噪声在这一段同样合成 |
+| `readout.max_post_window_ns` | `1000` | $\text{ns}$ | 后段长度的上限，正的有限数，必填，没有默认值；后段取放大器链回落时间与它中较小的一个，电荷灵敏放大器的衰减在百微秒量级，所以需要这个上限 |
 | `field.voltage` | `200.0`（写 `null` 时取器件文件里的偏压） | $\text{V}$ | 属于 `field` 段：偏压，用来找场并判定收集电荷的极性 |
 | `field.irradiation_flux` | `null`（取器件文件里的辐照注量，器件文件没有辐照块时为 `0`） | $\text{cm}^{-2}$ | 属于 `field` 段：找场时用的辐照注量 |
-| 器件文件键 `read_out_contact`、`read_ele_num`、`electrodes`、`l_y`、`p_x`、`p_y`、`x_ele_num`、`y_ele_num` | 见 `components/device` 页 | $\mu\text{m}$ / 个 | 决定读出电极名称、布局（`"pad"`、`"strip"`、`"pixel"`）、条长与网格单元尺寸 |
-| 器件文件键 `capacitance_pF` | 无（可选） | $\text{pF}$ | 直接给出的单电极耗尽层结电容（或阻性层单元电容），优先于场电容与平板估算 |
+| 器件文件键 `read_out_contact`、`read_ele_num`、`electrodes`、`l_y`、`p_x`、`p_y`、`x_ele_num`、`y_ele_num` | 见 `components/device` 页 | $\mu\text{m}$ / 个 | 决定读出电极名称、布局（`"pad"`、`"strip"`、`"pixel"`）、条长与 RC 格点尺寸 |
+| 器件文件键 `capacitance_pF` | 无（可选） | $\text{pF}$ | 直接给出的单电极耗尽层结电容（或阻性层 RC 格点电容），优先于场电容与平板估算 |
 | 器件文件键 `bias_resistance_ohm` | 不写（可选） | $\Omega$ | 常规器件单电极偏置电阻；给了 `coupling_capacitance_pF` 时必须给 |
 | 器件文件键 `coupling_capacitance_pF` | 不写（可选） | $\text{pF}$ | 常规器件单电极交流耦合电容 |
 | 器件文件键 `undepleted_resistance_ohm`、`undepleted_capacitance_pF` | 不写（可选） | $\Omega$, $\text{pF}$ | 常规器件未耗尽层并联电阻与电容，必须成对给出；不给时从场里读 |

@@ -59,7 +59,7 @@ On each run, the program computes the parameter table `points.json` from `config
 
 ### Views
 
-`<experiment>/points/<point>/<stage>/` is a folder containing one symlink per job at that scan point, named by the job index and pointing to that job's node at that stage; `field` and `analysis` have only one node per point, so `points/<point>/field` and `points/<point>/analysis` are symlinks directly. Point names are derived from scan-axis values, such as `voltage_100`, serving as human-readable entry points. Every point is named by the values of all scan axes, including the point whose values equal those without the scan; an experiment that scans nothing has one point, named `default`. Once a scan begins, `points/default` is a symlink to the point whose values equal those without the scan, when the scan holds such a point. After changing settings or adding a scan axis, the point name may stay the same while the node it points to updates accordingly, so parameters and results always match.
+`<experiment>/points/<point>/<stage>/` is a folder containing one symlink per job at that scan point, named by the job index and pointing to that job's node at that stage; `field` and `analysis` have only one node per point, so `points/<point>/field` and `points/<point>/analysis` are symlinks directly. Point names are derived from scan-axis values, such as `voltage_100`, serving as human-readable entry points. Every point is named by the values of all scan axes; an experiment that scans nothing has one point, named `default`, and with a scan there is no such point. After changing settings or adding a scan axis, the point name may stay the same while the node it points to updates accordingly, so parameters and results always match.
 
 ### Which jobs `analysis` counts
 
@@ -71,7 +71,7 @@ On each run, the program computes the parameter table `points.json` from `config
 | Statistics | seed, jobs per point, events per job | merged |
 | Drawing only | `plots` | merged |
 
-What a point measures is taken from the latest run. Two chains that read the same deposits (for example one drawn and one not) are the same events and count once. `raser ana` lists on screen, by seed, how many jobs it merged for each point, for example `seed 1: 2 jobs, seed 2: 4 jobs`.
+What a point measures is taken from the latest run. Two chains that read the same deposits (for example one drawn and one not) are the same events and count once. The result of a point is written in its `analysis` node; the node ID follows from the jobs it counts, so other settings give another node, the earlier result stays, and `points/<point>/analysis` points back to the earlier node when the settings are restored. `raser ana` writes on screen the number of events counted for each point and the jobs of each run, for example `default: 200 events of seed 1: 2 jobs, seed 2: 4 jobs`; a run given no `--seed` is listed by its start time; jobs left out for other settings get a line of their own with their number and the settings that differ, for example `default: 2 jobs measured something else and are not counted: source=decay/Am241`.
 
 ### Code Version
 
