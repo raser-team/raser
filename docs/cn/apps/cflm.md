@@ -46,7 +46,7 @@ $$x = \frac{l_x}{2} - Y + (i + 0.5)\,l_x, \qquad y = \frac{l_y}{2} + Z - \bigl(1
 | `1` | `25.9726` | `[-27.893, 2.647, 108.2917]` | `[-0.0483, 0.003, 25.9725]` |
 | `2` | `24.7832` | `[27.8585, 2.8364, 78.2917]` | `[0.0434, 0.003, 24.7832]` |
 
-局限：`cflm_p1.py` 的 `RecordDetector` 仅记录每个沉积步的步首位置 `point_in` 与沉积能量 `edep`，不记录 Geant4 全局时刻，因此 `deposits.py` 将所有沉积步的时刻 `t` 固定写入 `0.0 s`，不反映束团内不同电子及次级簇射粒子到达不同焊盘的飞行时间差；`cflm_p1.json` 固定从包内路径读取，不通过 `deposit.g4setup` 或 `deposit.source` 切换。
+局限：`cflm_p1.py` 的 `RecordDetector` 仅记录每个沉积步的步首位置 `point_in` 与沉积能量 `edep`，不记录 Geant4 全局时刻，因此 `deposits.py` 将所有沉积步的时刻 `t` 固定写入 `0.0 s`，不反映束团内不同电子及次级簇射粒子到达不同焊盘的飞行时间差；`cflm_p1.json` 固定从包内路径读取，不通过 `deposit.g4setup`（含其 `source` 块）切换。
 
 ### 代码执行步骤与内置常数
 
@@ -158,7 +158,7 @@ raser cflm --scan field.voltage=-300,-500
 
 | 文件名 | 写出环节 / 脚本 | 内容与主要字段 | 单位 |
 | --- | --- | --- | --- |
-| `nodes/deposit/<节点号>/deposit.h5` | [`deposit`](../stages/deposit.md)（`src/raser_app/cflm/deposits.py`） | 单次 Geant4 运行记录的全部 `24` 块焊盘能量沉积步：属性 `generated_events`（等于 `BeamOn`）、`recorded_events`、`generated_fraction`；数据集 `event`、`count`、`detector`（取 `<side>_<i>_<j>`）、焊盘局部坐标 `x`/`y`/`z`、固定时刻 `t = 0.0`、`e`、`pairs` | 坐标 $\mu\text{m}$，时间 $\text{s}$，能量 $\text{MeV}$，`pairs` 为对 |
+| `nodes/deposit/<节点号>/deposit.h5` | [`deposit`](../stages/deposit.md)（`src/raser_app/cflm/deposits.py`） | 单次 Geant4 运行记录的全部 `24` 块焊盘能量沉积步：属性 `generated_events`（等于 `BeamOn`）、`recorded_events`、`emission_probability`（没有出射分布的源为 `1.0`）；数据集 `event`、`count`、`detector`（取 `<side>_<i>_<j>`）、焊盘局部坐标 `x`/`y`/`z`、固定时刻 `t = 0.0`、`e`、`pairs` | 坐标 $\mu\text{m}$，时间 $\text{s}$，能量 $\text{MeV}$，`pairs` 为对 |
 | `nodes/current/<节点号>/current.<pos>.h5` | [`current`](../stages/current.md) | 焊盘 `<pos>` 在有沉积束团中的感应电流与净电荷（该焊盘无沉积时不写对应 `.h5`）：属性 `electrodes`、`dt`；数据集 `event`、`t0`、`count`、`pairs`、`sensitive_pairs`、`carriers_without_field`、`charge`、`stored`、`index`、`current` | `dt`、`t0` 为 $\text{s}$，`charge` 为 $\text{C}$，`current` 为 $\text{A}$ |
 | `nodes/readout/<节点号>/readout.<pos>.h5` | [`readout`](../stages/readout.md) | 焊盘 `<pos>` 经器件等效电路与前端放大器链求解并叠加频域热噪声后的输出电压波形（无对应电流文件时不写对应 `.h5`）：属性 `electrodes`、`dt`、`pulse_edge`、`device_circuit`；数据集 `event`、`t0`、`count`、`stored`、`index`、`voltage` | `dt`、`t0` 为 $\text{s}$，`voltage` 为 $\text{V}$ |
 | `nodes/digitizer/<节点号>/digitizer.<pos>.h5` | [`digitizer`](../stages/digitizer.md) | 焊盘 `<pos>` 经模拟带宽、采样与量化得到的数字波形（无对应读出文件时不写对应 `.h5`；格式见[`stages/digitizer`](../stages/digitizer.md)）：属性 `electrodes`、`sampling_period`、`lsb_V`、`offset_V`、`bits`、`pulse_edge`、`device`；数据集 `event`、`t0`、`count`、`stored`、`index`、`clipped`、`code` | `sampling_period`、`t0` 为 $\text{s}$，`lsb_V`、`offset_V` 为 $\text{V}$，`bits` 为位，`code` 无量纲 |

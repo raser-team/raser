@@ -30,17 +30,17 @@ $$\Delta t = t_{\text{reco}} - t_{\text{truth}}, \qquad t_{\text{truth}} = \min_
 
 ### Geant4 装置几何
 
-默认装置为 `device_alone`（`raser/components/deposit/device_alone.py`，见 [`../components/deposit.md`](../components/deposit.md)）：世界立方体材料为真空 `"G4_Galactic"`（默认半边长 `WORLD_HALF_SIDE = 25000` $\mu\text{m}$），被测器件逻辑体 `"Device"` 单独置于世界中心，顶面中心位于原点 $(0, 0, 0)\ \mu\text{m}$，占据 $x \in [-l_x/2, l_x/2]$、$y \in [-l_y/2, l_y/2]$、$z \in [0, l_z]\ \mu\text{m}$，器件内最大步长 `maxstep = 2` $\mu\text{m}$；放射源或束流起点位于顶面上方 $17\ \text{mm}$ 处（`at = [0, 0, -17000]` $\mu\text{m}$），瞄准原点 `towards = [0, 0, 0]` $\mu\text{m}$，入射倾角 `angle = 0` $\text{degree}$。
+默认装置为 `device_alone`（`raser/components/deposit/device_alone.py`，见 [`../components/deposit.md`](../components/deposit.md)）：世界立方体材料为真空 `"G4_Galactic"`，以 `along_beam` 一列的中点为中心，半边长不小于 `WORLD_HALF_SIDE = 25000` $\mu\text{m}$。世界坐标原点 $(0, 0, 0)\ \mu\text{m}$ 在源上（带准直孔时在准直孔出口面中心，准直孔本体在 $z < 0$ 一侧，装置里各 `gap` 从准直孔出口面算起），$z$ 轴沿束流指向下游，入射倾角 `angle = 0` $\text{degree}$；装置通过 `"along_beam": ["source", {"gap": 17000}, {"slot": "Device"}]`（`"materials": {}`、`"objects": {}`）在源下游 $17\ \text{mm}$ 处放置被测器件逻辑体 `"Device"`，前表面中心位于 $(0, 0, 17000)\ \mu\text{m}$，有源层占据 $x \in [-l_x/2, l_x/2]$、$y \in [-l_y/2, l_y/2]$、$z \in [17000, 17000 + l_z]\ \mu\text{m}$（器件如含灵敏层以外的各层则紧接在其下游），器件内最大步长 `maxstep = 2` $\mu\text{m}$。
 
 电荷收集效率就由这个装置给出，和时间分辨用同一批事例，测效率不另换装置。
 
-此外，`signal` 组件目录（`src/raser_bench/signal/components/deposit/`，见 [`../components/deposit.md`](../components/deposit.md)）还提供 `Sr90_collimator`（空气 `"G4_AIR"` 中在 $z = -14000\ \mu\text{m}$ 处放置 $10000 \times 10000 \times 5000\ \mu\text{m}$、中心圆孔半径 `tub_radius = 500` $\mu\text{m}$、半深 `tub_depth = 2600` $\mu\text{m}$ 的黄铜 `"G4_BRASS"` 准直器，跨越 $z \in [-16500, -11500]\ \mu\text{m}$）和 `pcb_readout_gdml`（`"geant4_model": "gdml_import"`，导入外部 `pcb_readout.gdml`，世界半边长 `world_half_size_um = 2000000` $\mu\text{m}$）。
+`device_alone` 的 `source` 块写 `{"name": "decay/Sr90", "angle": 0}`，准直源测量直接用带铜准直孔的 `decay/Sr90`。此外，`signal` 组件目录（`src/raser_bench/signal/components/deposit/`，见 [`../components/deposit.md`](../components/deposit.md)）还提供 `pcb_readout_gdml`（`"geant4_model": "gdml_import"`，导入外部 `pcb_readout.gdml`，世界半边长 `world_half_size_um = 2000000` $\mu\text{m}$，`source` 块同样写 `{"name": "decay/Sr90", "angle": 0}`）。
 
 ### 四类信号源
 
-换源就是换 `deposit` 环节读的源组件，链和输出不变：
+换源就是换装置 `source` 块指的源组件，链和输出不变：
 
-- **$\beta$ 源**：默认是 `decay/Sr90`（`raser/components/deposit/decay/Sr90.json`，`"kind": "decay_source"`）。每个事例在半径 `par_radius = 2500` $\mu\text{m}$（直径 $5\ \text{mm}$）的圆盘上等概率抽取 $^{90}\text{Sr}$（`[38, 90]`）或子核 $^{90}\text{Y}$（`[39, 90]`）静止衰变一次，衰变产物在围绕轴线半顶角 `par_cone = 15` $\text{degree}$ 的圆锥内各向同性出射（立体角占比 $f_{\text{gen}} = (1 - \cos 15^\circ)/2 \approx 0.017037$）。电子穿透器件，整条径迹穿过灵敏区，近似最小电离粒子。
+- **$\beta$ 源**：`device_alone` 写的是 `decay/Sr90`（`raser/components/deposit/decay/Sr90.json`，`"kind": "decay_source"`）。每个事例等概率抽取 $^{90}\text{Sr}$（`[38, 90]`）或子核 $^{90}\text{Y}$（`[39, 90]`）在 `decay/Sr90` 所带铜准直孔（`par_radius = 0`，孔半径 `500` $\mu\text{m}$、长 `3000` $\mu\text{m}$、外边长 `8000` $\mu\text{m}$，见 [`../components/deposit.md`](../components/deposit.md)）的入口面上静止衰变一次，实验从准直孔出口面的出射分布发出粒子。电子穿透器件，整条径迹穿过灵敏区，近似最小电离粒子。
 - **$\alpha$ 源**：例如 `decay/Am241`（`raser/components/deposit/decay/Am241.json`，`"kind": "decay_source"`，`par_type = "alpha"`，单能动能 `par_energy = 5.54` $\text{MeV}$）。$\alpha$ 粒子在器件表层很浅的深度内停下，能量沉积集中在入射面附近。
 - **激光**：单光子吸收（`"SPA"`）或双光子吸收（`"TPA"`），从顶面、底面或侧面（`"top"`、`"bottom"`、`"edge"`）入射，在焦点 $(x_{\text{focus}}, y_{\text{focus}}, z_{\text{focus}}) = (\text{fx\_rel}\cdot l_x,\, \text{fy\_rel}\cdot l_y,\, \text{fz\_rel}\cdot l_z)$（单位 $\mu\text{m}$）附近产生载流子。激光组件的键见 [`../components/deposit.md`](../components/deposit.md)。
 
@@ -48,7 +48,7 @@ $$\Delta t = t_{\text{reco}} - t_{\text{truth}}, \qquad t_{\text{truth}} = \min_
 
 ![HPK-Si-PiN 单事例载流子漂移路径](../images/current-drift-path-HPK-Si-PiN.png)
 
-`HPK-Si-PiN` 在默认 `decay/Sr90` 源下一个事例的电子和空穴漂移路径：$\beta$ 电子穿透整个器件，沿径迹产生的载流子分别向两极漂移。
+`HPK-Si-PiN` 在 `device_alone` 写的 `decay/Sr90` 源下一个事例的电子和空穴漂移路径：$\beta$ 电子穿透整个器件，沿径迹产生的载流子分别向两极漂移。
 
 ![HPK-Si-PiN 单事例感应电流](../images/current-event-HPK-Si-PiN.png)
 
@@ -59,7 +59,7 @@ $$\Delta t = t_{\text{reco}} - t_{\text{truth}}, \qquad t_{\text{truth}} = \min_
 单个 `signal` 作业按以下顺序执行：
 
 1. **检查与求解共享场（`field`）**：主命令在作业开始前检查 `<project>/field/` 下是否存在匹配当前器件、偏压 `voltage`（$\text{V}$）与辐照注量 `irradiation_flux`（$\text{cm}^{-2}$，$1\ \text{MeV}$ 中子等效注量）的场节点；未就绪则在作业开始前补算，存进 `<project>/field/<节点号>/`（写入期间带 `.part` 后缀，完成后落盘并含 `node.json`）。实验在 `points.json` 中记录该节点号，并用视图软链接 `points/<点名>/field` 指向它。
-2. **能量沉积与电离对生成（`deposit`）**：`stages/deposit.py` 调用 `write_simulated_deposits` 运行 Geant4（或 `toy_mip`）。仅保留在 `"Device"` 内总沉积能量 $E_{\text{tot}} > 0$ 且满足 $\text{edep\_min} \le E_{\text{tot}} \le \text{edep\_max}$（单位 $\text{MeV}$，未设上下限时仅要求 $E_{\text{tot}} > 0$）的事例，直至录满 `events_per_job` 个事例（最多生成 `generated_limit` 个源事例，超过仍未录满则抛出 `RuntimeError`）或生成满 `generated_per_job` 个源事例。每步沉积能量 $E_k$（$\text{MeV}$）在 `ionized_pairs` 中除以材料平均电离能 $\varepsilon_{\text{pair}}\times 10^{-6}$（$\text{MeV}$）并按 `fano` 开关抽样电子-空穴对数，将坐标从 Geant4 中心坐标系平移 $+l_x/2, +l_y/2$ 到 $[0, l_x] \times [0, l_y] \times [0, l_z]\ \mu\text{m}$ 写入 `deposit` 节点的 `deposit.h5`，并按 `deposit.plots` 在节点内绘制几何与径迹图。若录得 `0` 个事例，抛出 `Ended` 提前结束作业。
+2. **能量沉积与电离对生成（`deposit`）**：`stages/deposit.py` 调用 `write_simulated_deposits` 运行 Geant4（或 `toy_mip`）。仅保留在 `"Device"` 内总沉积能量 $E_{\text{tot}} > 0$ 且满足 $\text{edep\_min} \le E_{\text{tot}} \le \text{edep\_max}$ （单位 $\text{MeV}$，未设上下限时仅要求 $E_{\text{tot}} > 0$）的事例，直至录满 `events_per_job` 个事例（最多生成 `generated_limit` 个源事例，超过仍未录满则抛出 `RuntimeError`）或生成满 `generated_per_job` 个源事例。每步沉积能量 $E_k$（$\text{MeV}$）在 `ionized_pairs` 中除以材料平均电离能 $\varepsilon_{\text{pair}}\times 10^{-6}$（$\text{MeV}$）并按 `fano` 开关抽样电子-空穴对数，将每步坐标从 Geant4 世界坐标按式 (18) 的逆变换（见 [`core/deposit`](../core/deposit.md#沿束流的一列)）换到器件坐标 $[0, l_x] \times [0, l_y] \times [0, l_z]\ \mu\text{m}$ 写入 `deposit` 节点的 `deposit.h5`，并按 `deposit.plots` 在节点内绘制几何与径迹图。若录得 `0` 个事例，抛出 `Ended` 提前结束作业。
 3. **载流子漂移与感应电流分箱（`current`）**：`stages/current.py` 加载 `DevsimField`，调用 `write_induced_currents`（默认开启热扩散 `diffusion=True`）对每个记录事例在器件与电极阵列边界内推进电子、空穴漂移（含辐照俘获与雪崩倍增），按 Shockley-Ramo 定理在时间箱宽 `t_bin`（1D 为 $5\ \text{ps}$，2D/3D 为 $50\ \text{ps}$）上分箱累加感应电流并写出 `current` 节点的 `current.h5`，同时在节点内为前 `current.plots` 个事例绘制漂移路径与电流图。
 4. **等效电路与前端放大器读出（`readout`）**：`stages/readout.py` 构建器件等效电路 `DeviceCircuit` 并按 `+` 拆分加载 `amplifier` 指定的 SPICE 子电路链，调用 `ngspice` 求解瞬态响应与频域热噪声谱（以由作业种子派生的 `readout` 噪声种子独立合成时域高斯热噪声叠入波形），仅保存最大电压摆幅 $\ge 10^{-3} V_{\max}$ 的通道写入 `readout` 节点的 `readout.h5`。
 5. **数字化与触发（`digitizer`、`trigger`）**：`digitizer` 按数字化器组件（默认 `MXR608A`）的模拟带宽、采样和量化（时钟相位与孔径抖动由作业种子派生的 `digitizer` 种子抽取）把模拟波形转为量化码写入 `digitizer` 节点的 `digitizer.h5`；`trigger` 按触发条件判定记录哪些事例，将被记录事例的事例号数据集 `event`（`int64`）写入 `trigger` 节点的 `trigger.h5`。
@@ -97,7 +97,7 @@ $$\Delta t = t_{\text{reco}} - t_{\text{truth}}, \qquad t_{\text{truth}} = \min_
 ### 组件
 
 - [探测器组件（`components/device`）](../components/device.md)：提供被测器件的尺寸、材料、掺杂、偏压、温度、辐照模型、雪崩模型与等效电路参数（如 `HPK-Si-PiN.json`、`NJU-PiN.json`）。
-- [能量沉积组件（`components/deposit`）](../components/deposit.md)：提供放射源与束流（如默认 `decay/Sr90.json`、`decay/Am241.json`、`beam/proton.json`）、激光（如 `PIL037_top_SiC.json`）及 Geant4 装置（如默认 `device_alone.py`、`Sr90_collimator.py`）。
+- [能量沉积组件（`components/deposit`）](../components/deposit.md)：提供放射源与束流（如 `decay/Sr90.json`、`decay/Am241.json`、`beam/proton.json`）、激光（如 `PIL037_top_SiC.json`）及 Geant4 装置（如默认 `device_alone.py`、`pcb_readout_gdml.py`）。
 - [前端读出电路组件（`components/readout`）](../components/readout.md)：提供以 `+` 串联的 SPICE 放大器级与终端负载子电路（默认 `SantaCruz+Gali52+Termination50`）。
 - [数字化器组件（`components/digitizer`）](../components/digitizer.md)：提供示波器或数字化板的采样和量化设置；兼管触发的设备（如示波器 `MXR608A`），它的触发条件也写在这里。
 - [触发组件（`components/trigger`）](../components/trigger.md)：提供独立触发设备的触发判选条件定义。
@@ -110,10 +110,10 @@ $$\Delta t = t_{\text{reco}} - t_{\text{truth}}, \qquad t_{\text{truth}} = \min_
 raser signal HPK-Si-PiN
 ```
 
-在 `config.json` 的 `deposit` 段里设置 `source` 或在命令行用 `--set` 切换信号源（例如换为 $\alpha$ 源 `decay/Am241`）：
+在命令行用 `--set deposit.g4setup.source=<源名>` 切换信号源（例如换为 $\alpha$ 源 `decay/Am241`），装置里的 `angle` 沿用：
 
 ```bash
-raser signal HPK-Si-PiN --set deposit.source=decay/Am241
+raser signal HPK-Si-PiN --set deposit.g4setup.source=decay/Am241
 ```
 
 用 `--scan` 扫描偏压、扫描源的能量或扫描激光脉冲能量与波长都在 `signal` 里做；当激光相对器件的位置作为扫描轴时，改用 [`tct`](tct.md)：
@@ -133,7 +133,6 @@ raser signal HPK-Si-PiN --scan field.voltage=100,200
     "irradiation_flux": null
   },
   "deposit": {
-    "source": "decay/Sr90",
     "g4setup": "device_alone",
     "events_per_job": 200,
     "fano": true,
@@ -161,8 +160,8 @@ raser signal HPK-Si-PiN --scan field.voltage=100,200
 | --- | --- | --- | --- |
 | `field.voltage` | `200.0`（写 `null` 时取器件文件里的偏压） | $\text{V}$ | 被测器件反向偏置电压 |
 | `field.irradiation_flux` | `null`（取器件文件里的辐照注量，器件文件没有辐照块时为 `0`） | $\text{cm}^{-2}$ | 被测器件辐照注量（$1\ \text{MeV}$ 中子等效注量） |
-| `deposit.source` | `"decay/Sr90"` | 无 | 放射源或束流组件名称或路径 |
-| `deposit.g4setup` | `"device_alone"` | 无 | Geant4 装置组件名称或路径 |
+| `deposit.g4setup` | `"device_alone"` | 无 | Geant4 装置组件名称或路径；装置的 `source` 块写明它用的源 |
+| `deposit.g4setup.source` | 不写（取 `device_alone` 的 `"decay/Sr90"`） | 无 | 整套换源：放射源或束流组件名称或路径；装置里的 `angle` 沿用 |
 | `deposit.events_per_job` | `200` | 事例 | 每作业需记录的有效沉积事例数（与 `deposit.generated_per_job` 互斥） |
 | `deposit.generated_per_job` | `null`（不用） | 事例 | 每作业由源生成的总事例数（与 `deposit.events_per_job` 互斥） |
 | `deposit.generated_limit` | `10000000` | 事例 | 为录满 `events_per_job` 允许生成的最大源事例数上限 |
@@ -188,7 +187,7 @@ raser signal HPK-Si-PiN --scan field.voltage=100,200
 
 | 路径 | 写出环节 | 内容与主要字段 | 单位 |
 | --- | --- | --- | --- |
-| `nodes/deposit/<节点号>/deposit.h5` | [`deposit`](../stages/deposit.md) | 沉积步数据：属性 `generated_events`、`recorded_events`、`generated_fraction`、`edep_min`/`edep_max`；数据集 `event`、`count`、`detector`、`x`/`y`/`z`、`t`、`e`、`pairs` | 坐标 $\mu\text{m}$，时间 $\text{s}$，能量 $\text{MeV}$，`pairs` 为对 |
+| `nodes/deposit/<节点号>/deposit.h5` | [`deposit`](../stages/deposit.md) | 沉积步数据：属性 `generated_events`、`recorded_events`、`emission_probability`（没有出射分布的源为 `1.0`）、`edep_min`/`edep_max`；数据集 `event`、`count`、`detector`、`x`/`y`/`z`、`t`、`e`、`pairs` | 坐标 $\mu\text{m}$，时间 $\text{s}$，能量 $\text{MeV}$，`pairs` 为对 |
 | `nodes/current/<节点号>/current.h5` | [`current`](../stages/current.md) | 感应电流与净电荷：属性 `electrodes`、`dt`；数据集 `event`、`t0`、`count`、`pairs`、`sensitive_pairs`、`carriers_without_field`、`charge`、`stored`、`index`、`current` | `dt`、`t0` 为 $\text{s}$，`charge` 为 $\text{C}$，`current` 为 $\text{A}$ |
 | `nodes/readout/<节点号>/readout.h5` | [`readout`](../stages/readout.md) | 前端读出电压波形：属性 `electrodes`、`dt`、`pulse_edge`、`device_circuit`；数据集 `event`、`t0`、`count`、`stored`、`index`、`voltage` | `dt`、`t0` 为 $\text{s}$，`voltage` 为 $\text{V}$ |
 | `nodes/digitizer/<节点号>/digitizer.h5` | [`digitizer`](../stages/digitizer.md) | 数字化量化码波形：属性 `electrodes`、`sampling_period`、`lsb_V`、`offset_V`、`bits`、`pulse_edge`、`device`；数据集 `event`、`t0`、`count`、`stored`、`index`、`clipped`、`code`（`int16`） | `sampling_period`、`t0` 为 $\text{s}$，`lsb_V`、`offset_V` 为 $\text{V}$，`bits` 为位，`code` 无量纲 |

@@ -49,7 +49,7 @@ raser hbf
 raser hbf --scan field.voltage=400,500
 ```
 
-Experiment configuration is written in `work/hbf/config.json`, sectioned by stage. This scenario requires three types of components: a SiC AC-LGAD pixel device (detector component), a fusion α-particle source `fusion/pB11_alpha`, and a target-chamber-to-device flight-distance setup `target_chamber` (both energy deposition components, selected in the `deposit` section). Only the sections relevant to this page are excerpted below; `examples/hbf/config.json` specifies all eight sections in full.
+Experiment configuration is written in `work/hbf/config.json`, sectioned by stage. This scenario requires three types of components: a SiC AC-LGAD pixel device (detector component), a fusion α-particle source `fusion/pB11_alpha`, and a target-chamber-to-device flight-distance setup `target_chamber` (both energy deposition components); the setup `target_chamber` is selected in the `deposit` section, and its `source` block is `{"name": "fusion/pB11_alpha", "angle": 0}`. Only the sections relevant to this page are excerpted below; `examples/hbf/config.json` specifies all eight sections in full.
 
 ```json
 {
@@ -59,7 +59,6 @@ Experiment configuration is written in `work/hbf/config.json`, sectioned by stag
     "irradiation_flux": null
   },
   "deposit": {
-    "source": "fusion/pB11_alpha",
     "g4setup": "target_chamber"
   },
   "readout": {

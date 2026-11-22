@@ -30,29 +30,32 @@ What surrounds the device in Geant4; reading it imports no Geant4."""
 G4SETUP = {
     "name": "device_alone",
     "description": "The device alone in vacuum",
+    "source": {"name": "decay/Sr90", "angle": 0},
     "geant4_model": "device",
-    "object": {},
+    "materials": {},
+    "objects": {},
     "along_beam": ["source", {"gap": 17000}, {"slot": "Device"}],
     "world": "G4_Galactic",
     "maxstep": 2,
 }
 ```
 
-带周边几何体时，在 `object["elemental"]`（Geant4 NIST 材料）或 `object["binary_compounds"]`（二元化合物）中按长方体名称列出，并在 `along_beam` 中排布位置。例如 `time_resolution.py` 中的一块铝片：
+带周边几何体时，在 `materials` 中定义自定义材料（也可用以 `"G4_"` 开头的 Geant4 NIST 材料名），在 `objects` 中按名称列出物体（长方体 `"box"` 或圆柱/圆管 `"tube"`），并在 `along_beam` 中排布位置。例如：
 
 ```python
-"object": {
-    "elemental": {
-        "Al": {
-            "name": "Al",
-            "material": "G4_Al",
-            "side_x": 5000,
-            "side_y": 5000,
-            "side_z": 10,
-            "colour": [1, 0.1, 0.8],
-        },
+G4SETUP = {
+    "world": "G4_Galactic",
+    "maxstep": 2,
+    "materials": {
+        "SiO2": {"density": 2.2, "elements": {"Si": 1, "O": 2}},
     },
-},
+    "objects": {
+        "Al":   {"shape": "box", "size": [5000, 5000, 10], "material": "G4_Al"},
+        "pcb1": {"shape": "box", "size": [20000, 20000, 1500], "hole": 500, "material": "SiO2"},
+        "pipe": {"shape": "tube", "inner_radius": 10000, "outer_radius": 10500, "length": 200000, "material": "G4_Al"},
+    },
+    "along_beam": [...],
+}
 ```
 
 ### 放射源：`decay/Sr90.json`
@@ -61,12 +64,19 @@ G4SETUP = {
 {
     "name" : "Sr90",
     "kind" : "decay_source",
-    "description" : "Sr-90 beta source: every event is one decay, of Sr-90 or of its daughter Y-90 with the same chance, on a disk 5 mm across; what the decay emits goes isotropically within 15 degrees of the axis",
+    "description" : "Sr-90 beta source: every event is one decay, of Sr-90 or of its daughter Y-90 with the same chance, at the entrance of a 3 mm copper collimator with a 1 mm bore",
     "nuclides" : [[38, 90], [39, 90]],
-    "par_radius" : 2500,
-    "par_cone" : 15
+    "par_radius" : 0,
+    "collimator" : {
+        "material" : "G4_Cu",
+        "length" : 3000,
+        "radius" : 500,
+        "outer_side" : 8000
+    }
 }
 ```
+
+这是常用的铜准直孔的尺寸，实际使用的源以实物为准。库里的放射源都带着它的准直盖一起描述；没有 `collimator` 键的放射源仍可写，朝全空间发射。
 
 ### 粒子束流：`beam/proton.json`
 
@@ -120,11 +130,12 @@ G4SETUP = {
 | --- | --- | --- | --- |
 | `name` | 无（可选） | 无 | 装置名称 |
 | `description` | 无（可选） | 无 | 装置几何的文字说明 |
-| `geant4_model` | `"device"`（Geant4 源必填） | 无 | 几何模型标识；取 `"gdml_import"` 时导入外部 GDML，其余值按 `object` 构建周边长方体 |
+| `geant4_model` | `"device"`（Geant4 源必填） | 无 | 几何模型标识；取 `"gdml_import"` 时导入外部 GDML，其余值按 `materials` 与 `objects` 构建周边几何体 |
 | `world` | `"G4_Galactic"`（Geant4 源必填） | 无 | 世界立方体的 Geant4 NIST 材料名 |
 | `maxstep` | `2`（必填） | `um` | 器件有源层逻辑体内的最大步长限制（`toy_mip` 未指定 `packets` 时也读取该值） |
-| `source` | `{"angle": 0}`（可选） | `degree` | 只留入射倾角 `angle`（缺省 `0`），只用于单槽位装置：绕器件前表面中心转动源；束流源发射方向为 $+z$ |
-| `object` | `{}`（Geant4 源必填） | 无 | 周边几何体字典，无周边物体时为 `{}`，可含 `"elemental"` 和 `"binary_compounds"` 两类子字典；各物体只定义材料、尺寸、孔与颜色，在 `along_beam` 中放置 |
+| `source` | `{"name": "decay/Sr90", "angle": 0}` | 无；`degree` | 装置用的源。`name` 是源组件名（源是单独的组件，可被多个装置、多个实验共用）；`angle` 是入射倾角（缺省 `0`），只用于单槽位装置：绕器件前表面中心转动源（带准直孔时源连同准直孔整体转动，出射粒子的位置和方向随之转动）；束流源发射方向为 $+z$。`name`、`angle` 以外的键覆盖源组件的同名键 |
+| `materials` | `{}`（可选） | `density` 为 `g/cm^3` | 自定义材料字典：材料名映射到 `{"density": <g/cm3>, "elements": {<元素符号>: <原子数份额>, ...}}`（元素个数不限）；与以 `"G4_"` 开头的 Geant4 NIST 材料名一样只用于 `objects` 的 `material`（器件的 `material` 只取 `"Si"`、`"SiC"`、`"Diamond"`） |
+| `objects` | `{}`（Geant4 源必填） | `um` | 周边物体字典，无周边物体时为 `{}`；各物体只定义形状（`"box"` 或 `"tube"`）、尺寸、材料与可选 `colour`，不写位置，在 `along_beam` 中放置 |
 | `along_beam` | `["source", {"gap": 17000}, {"slot": "Device"}]`（必填，`"gdml_import"` 除外） | 无 | 从 `"source"` 开始沿 $+z$ 指向下游的一列，按顺序排布源、间隔、物体与器件槽位（支持并排列表）；每个槽位放哪块器件由实验给出，放置公式见 [能量沉积与电离](../core/deposit.md#沿束流的一列) |
 
 #### `along_beam` 各项键
@@ -144,27 +155,32 @@ G4SETUP = {
 
 | 项的种类 | 键名 | 默认值 | 单位 | 含义 |
 | --- | --- | --- | --- | --- |
-| `"source"` | 无（字符串） | 无（首项必填） | 无 | 源，必须位于 `along_beam` 第一项，厚度为 `0`，世界坐标原点在其上 |
+| `"source"` | 无（字符串） | 无（首项必填） | 无 | 源，必须位于 `along_beam` 第一项，厚度为 `0`，世界坐标原点在其上（带准直孔时在准直孔出口面中心，装置里各 `gap` 从准直孔出口面算起） |
 | `{"gap": d}` | `gap` | 无 | `um` | 间隔，沿 $z$ 占长度 $d \ge 0$ |
-| `"<物体名>"` 或 `{"object": "<物体名>", ...}` | `object`、`offset` | `offset` 默认 `[0, 0]` | `offset` 为 `um` | `object` 中的一个几何体，沿 $z$ 占其厚度 `side_z`，横向中心位于 `offset`；简写为 `"<物体名>"` 时等同于 `offset = [0, 0]` |
+| `"<物体名>"` 或 `{"object": "<物体名>", ...}` | `object`、`offset` | `offset` 默认 `[0, 0]` | `offset` 为 `um` | `objects` 中的一个物体，沿 $z$ 占其厚度（`"box"` 取 `size[2]`，`"tube"` 取 `length`），横向中心位于 `offset`；简写为 `"<物体名>"` 时等同于 `offset = [0, 0]` |
 | `{"slot": "<槽位名>", ...}` | `slot`、`facing`、`offset`、`rotation_z`、`colour` | `facing` 默认 `"upstream"`，`offset` 默认 `[0, 0]`，`rotation_z` 默认 `0`，`colour` 默认 `[1, 0.1, 0.8]` | `offset` 为 `um`，`rotation_z` 为 `degree` | 一块器件（只有一块器件的装置槽位名写 `"Device"`），沿 $z$ 占其几何全部层总厚 $l_z + t$；`facing` 取 `"upstream"`（前表面朝源）或 `"downstream"`（绕 $y$ 轴翻转 $180^\circ$，前表面朝下游）；`rotation_z` 绕 $z$ 轴转角只取 `0`、`90`、`180`、`270`；`colour` 为可视化 RGB 颜色列表 `[r, g, b]`（`0` 至 `1`） |
 | `[项, 项, ...]` | 列表中各项 | 无 | 无 | 并排放置的几项，前端面对齐在同一个 $z$，沿 $z$ 占其中最厚一项的厚度，靠各自的 `offset` 横向错开 |
 
-`along_beam` 第一项不是 `"source"`、`gap` 为负、物体名不在 `object` 里、同一物体或槽位出现两次、`facing` 不是 `"upstream"` 或 `"downstream"`、`rotation_z` 取值不合法、并排的几项横向重叠，以及槽位名与实验器件表对不上时，均抛 `ValueError`。
+`along_beam` 第一项不是 `"source"`、`gap` 为负、物体名不在 `objects` 里、同一物体或槽位出现两次、`facing` 不是 `"upstream"` 或 `"downstream"`、`rotation_z` 取值不合法、并排的几项横向重叠，以及槽位名与实验器件表对不上时，均抛 `ValueError`。
 
-#### `object` 两类几何体键
+#### `materials` 与 `objects` 键
 
-| 键名 | 适用分类 | 单位 | 含义 |
-| --- | --- | --- | --- |
-| `name` | 两者（必填） | 无 | 几何体名称 |
-| `material` | `elemental`（必填） | 无 | Geant4 NIST 材料名，如 `"G4_Al"`、`"G4_Ni"`、`"G4_Ti"`、`"G4_Si"`、`"G4_BRASS"` |
-| `material_1`, `material_2` | `binary_compounds`（必填） | 无 | 组成二元化合物的两种元素符号，如 `"Si"`、`"C"`、`"N"`、`"O"` |
-| `compound_name` | `binary_compounds`（必填） | 无 | 化合物材料名称，同一运行中同名化合物的组分与密度须一致 |
-| `density` | `binary_compounds`（必填） | `g/cm^3` | 化合物密度 |
-| `natoms_1`, `natoms_2` | `binary_compounds`（必填） | 无 | 两种元素的原子数份额（代码中乘以各元素原子量换算为质量分数） |
-| `side_x`, `side_y`, `side_z` | 两者（必填） | `um` | 长方体沿 $x$、$y$、$z$ 方向的全尺寸（`side_z` 为厚度） |
-| `colour` | 两者（必填） | 无 | 可视化 RGB 颜色列表 `[r, g, b]`（无量纲，`0` 至 `1`） |
-| `tub` | `elemental` 可选，`binary_compounds` 必填（无孔填 `{}`） | `um` | 从长方体中心沿 $z$ 轴减去的圆柱孔，含半径 `"tub_radius"` 和半长 `"tub_depth"` |
+`materials` 中每个材料名映射到一个包含密度与元素原子数份额的字典（元素个数不限，代码中按原子量换算为质量分数，见 [`core/deposit`](../core/deposit.md#装置) 式 (25)）；同名材料与 Geant4 NIST 材料名冲突、元素符号 Geant4 不认识、密度或份额不是正数时均抛 `ValueError`：
+
+| 键名 | 所属字典 / 适用形状 | 默认值 | 单位 | 含义 |
+| --- | --- | --- | --- | --- |
+| `density` | `materials.<材料名>` | 无（必填） | `g/cm^3` | 材料密度（须为正数） |
+| `elements` | `materials.<材料名>` | 无（必填） | 无 | 元素符号到原子数份额的字典 `{<符号>: <份额>, ...}`（元素个数不限，份额须为正数） |
+| `shape` | `objects.<物体名>` | 无（必填） | 无 | 物体形状，取 `"box"`（长方体）或 `"tube"`（轴沿 $z$ 的圆柱或圆管） |
+| `material` | `objects.<物体名>` | 无（必填） | 无 | 材料名称，取 `materials` 中定义的名字或以 `"G4_"` 开头的 Geant4 NIST 材料名 |
+| `size` | `objects.<物体名>`（`"box"`） | 无（`"box"` 必填） | `um` | 长方体沿 $x$、$y$、$z$ 方向的全尺寸列表 `[x, y, z]`（沿 $z$ 厚度为 `size[2]`） |
+| `hole` | `objects.<物体名>`（`"box"`） | 无（可选） | `um` | 沿 $z$ 贯穿长方体整个厚度、位于中心的圆孔半径（须大于 `0` 且小于盒子横向半尺寸 $\min(\texttt{size[0]}, \texttt{size[1]})/2$） |
+| `outer_radius` | `objects.<物体名>`（`"tube"`） | 无（`"tube"` 必填） | `um` | 圆柱外半径（须为正数） |
+| `length` | `objects.<物体名>`（`"tube"`） | 无（`"tube"` 必填） | `um` | 圆柱沿 $z$ 的总长度（沿 $z$ 厚度为 `length`，须为正数） |
+| `inner_radius` | `objects.<物体名>`（`"tube"`） | `0`（可选） | `um` | 圆柱内半径（缺省 `0` 为实心圆柱；大于 `0` 时为管子或圆环，须满足 $0 \le \texttt{inner\_radius} < \texttt{outer\_radius}$） |
+| `colour` | `objects.<物体名>` | 无（可选） | 无 | 可视化 RGB 颜色列表 `[r, g, b]`（无量纲，`0` 至 `1`） |
+
+`shape` 不是 `"box"` 或 `"tube"`、缺尺寸键、尺寸不是正数、`hole` 不小于盒子横向半尺寸、`inner_radius` 不小于 `outer_radius`，或 `material` 既不在 `materials` 里也不是有效的 NIST 名时，均抛 `ValueError`。
 
 #### `"gdml_import"` 附加键
 
@@ -199,8 +215,9 @@ G4SETUP = {
 | `par_randx`, `par_randy` | `0`, `0` | `um` | 加在发射方向向量（$\mathbf{r}_{\text{out}} - \mathbf{r}_{\text{in}}$，单位 `um`）的 $x$、$y$ 分量上的均匀随机偏移半宽 |
 | `particles` | 无（可选） | `offset` 为 `um` | 多粒子束团字典列表，每事例同时发射列表中的所有粒子；每项可设平移 `"offset"`（默认 `[0, 0, 0]` `um`）并覆盖 `par_type`、`par_energy`、`par_randx`、`par_randy` |
 | `nuclides` | 无（核素衰变 `decay_source` 必填） | 无 | 静止放射性核素 `[Z, A]` 列表，每事例等概率抽取一种核素衰变一次 |
-| `par_radius` | `0` | `um` | 垂直于发射轴线的圆形平面衰变源半径 |
-| `par_cone` | `None` | `degree` | 衰变产物围绕发射轴线各向同性出射的圆锥半顶角 |
+| `par_radius` | `0` | `um` | 垂直于发射轴线的圆形平面衰变源半径；带 `collimator` 时圆盘位于准直孔入口面上、圆心在孔轴上 |
+| `collimator` | 无（可选） | `length`、`radius`、`outer_side` 为 `um` | 准直孔字典 `{"material": <Geant4 NIST 材料名>, "length": <um>, "radius": <孔半径 um>, "outer_side": <外边长 um>}`；出口面中心在世界原点 $z = 0$，准直孔本体在 $z < 0$ 一侧；未给时朝全空间各向同性发射 |
+| `activity` | 无（可选） | `Bq` | 每种核素每秒的衰变数；Sr-90 与 Y-90 处于长期平衡，两种核素各按该活度衰变 |
 
 #### `toy_mip` 键
 
@@ -241,6 +258,7 @@ G4SETUP = {
 | --- | --- | --- | --- |
 | `WORLD_HALF_SIDE` | `25000` | `um` | `src/raser/core/deposit/simulate_deposits.py`，器件、周边物体与源未超出该范围时的 Geant4 世界立方体默认半边长 |
 | `GENERATED_LIMIT` | `10000000` | 事例 | `src/raser/core/deposit/generation.py`，为录满目标记录事例数允许生成的最大源事例数默认上限 |
+| `EMISSION_BLOCK_DECAYS` | `1000000` | 衰变 | 带准直孔放射源出射分布每块实际送进 Geant4 的衰变数（落在被发射方向内） |
 | Geant4 `"Diamond"` 密度 | `3.52` | `g/cm^3` | `src/raser/core/deposit/geant4/detector_construction.py`，用碳（`"G4_C"`）构建金刚石探测器材料时的固定密度（PDG 原子与核性质表，diamond） |
 | Geant4 `"SiC"` 密度与原子配比 | `3.21`，`50 : 50` | `g/cm^3`, 无量纲 | `src/raser/core/deposit/geant4/detector_construction.py`，构建碳化硅探测器材料时的固定密度与硅、碳原子数配比（4H-SiC 密度引自 M. E. Levinshtein, S. L. Rumyantsev, M. S. Shur (eds.), *Properties of Advanced Semiconductor Materials*, Wiley (2001)） |
 | 放射性衰变时间阈值 | `1.0e60` | `year` | `src/raser/core/deposit/geant4/interaction.py`，传给 `SetTimeThresholdForRadioactiveDecay` 以允许任意长寿命核素衰变 |
@@ -257,12 +275,12 @@ G4SETUP = {
 
 ### Geant4 装置构建与坐标变换（`simulate_deposits.py`、`geant4/`）
 
-1. **合并装置与源配置（`read_g4setup`、`g4_configuration`）**：`read_g4setup`（`loader.py`）执行 `<name>.py` 获取 `G4SETUP` 字典并记录脚本 `"sha256"`（若指向 `.json` 文件则抛出 `ValueError`）；未提供装置时取 `DEVICE_ALONE`。`g4_configuration` 校验源字典中不含位置键 `par_in`、`par_out`、`par_angle`，将 `par_in` 置为世界原点 `[0, 0, 0]`、`par_out` 置为沿 $+z$ 的瞄准点（单槽位时为器件前表面中心 `[0, 0, P_z]`），并从装置可选的 `source` 字典（缺省 `{}`）取出 `angle`（缺省 `0`）写入 `par_angle`（`degree`）。几何可视化由 [`deposit`](../stages/deposit.md) 环节的 `-g4_vis` 选项控制。
+1. **合并装置与源配置（`read_g4setup`、`g4_configuration`）**：`read_g4setup`（`loader.py`）执行 `<name>.py` 获取 `G4SETUP` 字典并记录脚本 `"sha256"`（若指向 `.json` 文件则抛出 `ValueError`）；未提供装置时取 `DEVICE_ALONE`。`g4_configuration` 校验源字典中不含位置键 `par_in`、`par_out`、`par_angle`，将 `par_in` 置为世界原点 `[0, 0, 0]`、`par_out` 置为沿 $+z$ 的瞄准点（单槽位时为器件前表面中心 `[0, 0, P_z]`），并从装置的 `source` 块取出 `angle`（缺省 `0`）写入 `par_angle`（`degree`）；传入的源是 `source` 块的 `name` 指的源组件连同覆盖的键，由环节读出（见 [`deposit`](../stages/deposit.md)）。几何可视化由 [`deposit`](../stages/deposit.md) 环节的 `-g4_vis` 选项控制。
 2. **计算世界尺寸并搭建几何（`world_half_side`、`GeneralDetectorConstruction`、`GDMLDetectorConstruction`）**：
    - `world_half_side` 以 `along_beam` 一列的中点 $(0, 0, L_{\text{col}}/2)$ 为世界立方体中心，求一列总长的一半 $L_{\text{col}}/2$、所有项的横向半尺寸加 `offset` 以及源圆盘半径 `par_radius` 的最大延伸距离 `reach`（`um`）：若 $\text{reach} \le 25000\ \mu\text{m}$，世界立方体半边长取 $25000\ \mu\text{m}$，否则取 $2 \times \text{reach}$。
-   - Geant4 世界坐标系原点 $(0, 0, 0)$ 设在源上，$z$ 轴沿束流指向下游，单位 `um`。从 `"source"`（$z = 0$）起沿 `along_beam` 依次按厚度与 `gap` 累加得到每一项的前端面 $z_i$：每个槽位建一个以槽位名命名的有源层逻辑体（单器件槽位名为 `"Device"`）和灵敏层以外各层的逻辑体（见 [探测器组件](../components/device.md)，只记录有源层里的沉积），按 `facing`（`"upstream"` 朝源或 `"downstream"` 绕 $y$ 轴翻转 $180^\circ$ 朝下游）、`offset` 与 `rotation_z` 放置；多槽位装置中源不能倾斜（`angle` 须为 `0`），`toy_mip` 源的径迹从世界原点 `(0, 0, 0)` 沿 $+z$ 出发穿过全部槽位，不能给 `start`、`end`、`position_range_um`。
-   - `GeneralDetectorConstruction` 按 `along_beam` 依次在世界体中放置各槽位器件与引用的 `object["elemental"]`、`object["binary_compounds"]` 长方体；每个长方体在 $z$ 上占据 $[z_i, z_i + \text{side\_z}]$，横向中心位于 `offset`。当长方体带非空 `tub` 时，用 `G4SubtractionSolid` 从长方体中心沿 $z$ 轴减去半径 `tub_radius`、半长 `tub_depth`（`um`）的圆柱孔。若 `geant4_model == "gdml_import"`，则改由 `GDMLDetectorConstruction` 导入 `gdml.file` 指定的外部 GDML 几何（不用 `along_beam`）。
-3. **入射倾角旋转（`tilted`）**：当 `source.angle`（记为 $\theta$，单位 `degree`）非零时（仅用于单槽位装置，多槽位装置而 `angle` 非零抛 `ValueError`），`tilted` 以单槽位器件前表面中心 $(x_{\text{pivot}}, P_y, z_{\text{face}}) = (P_x, P_y, P_z)$ 为转动中心，求转角 $\theta$ 后的源起点与瞄准点：
+   - Geant4 世界坐标系原点 $(0, 0, 0)$ 设在源上（带准直孔时在准直孔出口面中心，装置里各 `gap` 从准直孔出口面算起），$z$ 轴沿束流指向下游，单位 `um`。从 `"source"`（$z = 0$）起沿 `along_beam` 依次按厚度与 `gap` 累加得到每一项的前端面 $z_i$：每个槽位建一个以槽位名命名的有源层逻辑体（单器件槽位名为 `"Device"`）和灵敏层以外各层的逻辑体（见 [探测器组件](../components/device.md)，只记录有源层里的沉积），按 `facing`（`"upstream"` 朝源或 `"downstream"` 绕 $y$ 轴翻转 $180^\circ$ 朝下游）、`offset` 与 `rotation_z` 放置；多槽位装置中源不能倾斜（`angle` 须为 `0`），`toy_mip` 源的径迹从世界原点 `(0, 0, 0)` 沿 $+z$ 出发穿过全部槽位，不能给 `start`、`end`、`position_range_um`。
+   - `GeneralDetectorConstruction` 按 `materials` 建出自定义材料（元素个数不限，按原子数份额与原子量换算为质量分数；`materials` 中定义的名字和以 `"G4_"` 开头的 NIST 材料名只用于 `objects` 的 `material`，器件的 `material` 只取 `"Si"`、`"SiC"`、`"Diamond"`），并按 `along_beam` 依次在世界体中放置各槽位器件与引用的 `objects` 物体；每个物体在 $z$ 上占据 $[z_i, z_i + d_i]$（`"box"` 取 `size[2]`，`"tube"` 取 `length`），横向中心位于 `offset`。当 `"box"` 物体给出 `hole` 时，用 `G4SubtractionSolid` 从长方体中心沿 $z$ 轴减去半径为 `hole`（`um`）的贯穿圆柱孔；`"tube"` 物体用 `G4Tubs` 按 `inner_radius`（缺省 `0`）、`outer_radius` 与 `length`（`um`）构建。若 `geant4_model == "gdml_import"`，则改由 `GDMLDetectorConstruction` 导入 `gdml.file` 指定的外部 GDML 几何（不用 `along_beam`）。
+3. **入射倾角旋转（`tilted`）**：当 `source.angle`（记为 $\theta$，单位 `degree`）非零时（仅用于单槽位装置，多槽位装置而 `angle` 非零抛 `ValueError`），`tilted` 以单槽位器件前表面中心 $(x_{\text{pivot}}, P_y, z_{\text{face}}) = (P_x, P_y, P_z)$ 为转动中心，求转角 $\theta$ 后的源起点与瞄准点（带准直孔的源连同准直孔整体转动，出射粒子的位置和方向随之按式 (2) 转动）：
    $$x_{\text{pivot}} = P_x, \qquad z_{\text{face}} = P_z \tag{1}$$
    将源的起点 `par_in` 和瞄准点 `par_out`（含 `particles` 中各粒子的起点和瞄准点）绕穿过 $(x_{\text{pivot}}, P_y, z_{\text{face}})$ 且平行于 $y$ 轴的轴旋转角 $\theta$：
    $$\begin{pmatrix} x' \\ y' \\ z' \end{pmatrix} = \begin{pmatrix} (x - x_{\text{pivot}})\cos\theta + (z - z_{\text{face}})\sin\theta + x_{\text{pivot}} \\ y \\ -(x - x_{\text{pivot}})\sin\theta + (z - z_{\text{face}})\cos\theta + z_{\text{face}} \end{pmatrix} \tag{2}$$
@@ -271,9 +289,9 @@ G4SETUP = {
 
 ### 放射源、束流与电离对转化（`nuclide_source.py`、`primary_generator_action.py`、`mip_track.py`、`ionization.py`）
 
-1. **放射性核素衰变源（`kind == "decay_source"` 且含 `nuclides`）**：`NuclideGeneratorAction` 在每个事例中等概率选取 `nuclides` 列表中的一种核素 $[Z, A]$，在以 `par_in` 为中心、垂直于发射轴 `par_out - par_in`、半径为 `par_radius`（`um`）的圆盘上均匀抽样静止衰变点，由 Geant4 `G4RadioactiveDecayPhysics` 模拟衰变。`DecayStackingAction` 将衰变留下的次级原子核直接截断（`fKill`），不继续跟踪后续衰变链，并将衰变发射产物的全局起始时刻归零（`0.0 s`）。当给定 `par_cone`（记为 $\theta_{\text{cone}}$，单位 `degree`）时，`DecayStackingAction` 从随机流 `stream("source")` 将产物动量方向重抽样到围绕发射轴半锥角 $\theta_{\text{cone}}$ 的圆锥内各向同性分布，对应的立体角占比由 `generated_fraction` 写入沉积文件属性：
-   $$f_{\text{gen}} = \frac{1 - \cos\theta_{\text{cone}}}{2} \tag{3}$$
-   其中 $f_{\text{gen}}$ 为无量纲立体角占比（例如 `Sr90.json` 中 $\theta_{\text{cone}} = 15^\circ$ 时 $f_{\text{gen}} \approx 0.017037$，生成事例数除以 $f_{\text{gen}}$ 即为全部 $4\pi$ 方向上的总衰变数）；未设 `nuclides` 或未设 `par_cone` 时 $f_{\text{gen}} = 1.0$。不含 `nuclides` 而给出 `par_type`、`par_energy` 的衰变源（如 `decay/Am241.json`）按下面粒子束流方式发射单能粒子。
+1. **放射性核素衰变源（`kind == "decay_source"` 且含 `nuclides`）**：`NuclideGeneratorAction` 在每个事例中等概率选取 `nuclides` 列表中的一种核素 $[Z, A]$，在垂直于发射轴、半径为 `par_radius`（`um`）的圆盘上均匀抽样静止衰变点，由 Geant4 `G4RadioactiveDecayPhysics` 模拟衰变；`DecayStackingAction` 将衰变留下的次级原子核直接截断（`fKill`），并将衰变发射产物的全局起始时刻归零（`0.0 s`）。不带 `collimator` 时，源在全空间 $4\pi$ 各向同性发射并直接进入实验模拟，沉积文件属性 `emission_probability = 1.0`。带 `collimator` 时，准直孔本体建在 $z \in [-L, 0]$、入口圆盘中心位于 $(0, 0, -L)$（装置中各 `gap` 从准直孔出口面 $z = 0$ 算起），程序仅发射在材料内直线长度 $\ell(\mathbf{r}_0, \hat{\mathbf{d}}) \le R_{\text{CSDA}}(E_{\max})$ 的方向（$E_{\max}$ 取源中各核素 $\beta$ 谱端点能量中最大的一个；占全空间比例写作 `emission.h5` 属性 `generated_fraction`），电子在孔壁材料中实行射程截断（见 [`core/deposit`](../core/deposit.md#放射源) 式 (23)），并在出口面 $z = 0$ 记录非中微子粒子写入按块缓存的出射分布资产 `work/<源名>/emission/<节点号>/emission.h5`（每块实际送进 Geant4 的衰变数固定为 `EMISSION_BLOCK_DECAYS = 1000000`，对应的全空间衰变数为 `decays = EMISSION_BLOCK_DECAYS / generated_fraction`；第 `0` 块另跑前半球对照检验写入 `node.json` 的 `emission_check`）。各实验的 `deposit` 从出口面 $z = 0$ 逐衰变发射出射分布里的粒子，并将出射概率写入沉积文件属性 `emission_probability`（用到多块时取所用各块的 $\sum\texttt{emitted} / \sum\texttt{decays}$）：
+   $$\varepsilon = \frac{\texttt{emitted}}{\texttt{decays}} \tag{3}$$
+   其中 $\varepsilon$ 为无量纲出射概率，`emitted` 为穿过出口面的衰变数，`decays` 为本块对应的全空间衰变数（`EMISSION_BLOCK_DECAYS / generated_fraction`；详见 [`core/deposit`](../core/deposit.md#放射源)）。不含 `nuclides` 而给出 `par_type`、`par_energy` 的衰变源（如 `decay/Am241.json`）按下面粒子束流方式发射单能粒子，不生成出射分布。
 2. **粒子束流（`kind == "beam"`）**：`GeneralPrimaryGeneratorAction` 在每个事例中同时发射 `particles` 列表中的所有粒子（未给 `particles` 时为单粒子）：对每个粒子从随机流 `stream("source")` 抽取横向均匀偏移 $\Delta x \sim \mathcal{U}(-\text{par\_randx}, \text{par\_randx})$、$\Delta y \sim \mathcal{U}(-\text{par\_randy}, \text{par\_randy})$（`um`），加到方向向量 `par_out - par_in` 的 $x$、$y$ 分量上（若 `par_type` 与 `par_energy` 为等长列表，每事例等概率抽取其中一种粒子与对应动能），从 `par_in + offset`（`um`）发射。
 3. **直线最小电离径迹（`kind == "toy_mip"`）**：`mip_deposits` 不启动 Geant4，在器件坐标系中确定径迹起点 $\mathbf{r}_{\text{start}}$（默认 $[l_x/2, l_y/2, 0.0]$ `um`；若给 `position_range_um` 则从 `stream("toy_mip")` 在区间内均匀抽样 $x_0, y_0$）和终点 $\mathbf{r}_{\text{end}}$（默认 $[l_x/2, l_y/2, l_z]$ `um`；若给 `direction_sigma_mrad` 则按 $\mathcal{N}(0, (\sigma_{\text{mrad}}\times 10^{-3})^2)$ 抽取斜率 $s_x, s_y$，并只要抽样过起点或斜率就令 $x_{\text{end}} = x_{\text{start}} + s_x(z_{\text{end}} - z_{\text{start}})$、$y_{\text{end}} = y_{\text{start}} + s_y(z_{\text{end}} - z_{\text{start}})$）。将径迹长度 $L = |\mathbf{r}_{\text{end}} - \mathbf{r}_{\text{start}}|$（`um`）等分为 $N_{\text{pkt}}$ 段（给定 `packets` 时取 `int(packets)`，否则取 $\lceil L / \text{maxstep} \rceil$），每段长 $\Delta s = L / N_{\text{pkt}}$（`um`），平均沉积能量为 $\bar{E}_{\text{seg}} = \text{PAIRS\_PER\_UM}[\text{material}] \times \varepsilon_{\text{pair}} \times 10^{-6} \times \Delta s$（`MeV`）。其中 $\varepsilon_{\text{pair}}$ 为材料平均电离能 `PAIR_ENERGY_EV[material]`（`eV`，见式 (4)）。当 `landau_sampling` 为 `true` 时，每段能量从 `stream("toy_mip")` 按 $\max(0.0,\, \text{Landau}(\bar{E}_{\text{seg}},\, w_{\text{Landau}}\Delta s))$ 抽样，$w_{\text{Landau}}$ 为单位径迹长度的 Landau 宽度 `LANDAU_WIDTH_MEV_PER_UM[material]`（`MeV/um`）；为 `false` 时固定取 $\bar{E}_{\text{seg}}$。所有沉积段的产生时刻均设为 `0.0 s`。
 4. **电离对数转化（`ionized_pairs`）**：Geant4 和 `toy_mip` 得到的每步沉积能量 $E_k$（`MeV`）在 `ionized_pairs(event, material, fano=True)` 中除以材料平均电离能转化为平均电子-空穴对数 $\bar{N}_k$：
@@ -315,11 +333,10 @@ G4SETUP = {
 
 | 组件名称 | 说明 | 出处 | 适用的器件或实验 |
 | --- | --- | --- | --- |
-| `device_alone` | 器件单独放在真空（`"G4_Galactic"`）中，源在器件前表面上游 `17 mm`，`maxstep = 2 um` | `description`：`The device alone in vacuum` | [`deposit`](../stages/deposit.md)、[`signal`](../bench/signal.md)、[`bmos`](../apps/bmos.md) 默认装置 |
-| `Sr90_collimator` | 空气（`"G4_AIR"`）中在源与器件之间放置厚 `5 mm`、中心圆孔直径 `1 mm`（`tub_radius = 500 um`）的黄铜（`"G4_BRASS"`）准直器 | `description`：`In air, a brass block 5 mm thick with a hole 1 mm across between the Sr-90 source and the device` | [`signal`](../bench/signal.md) |
-| `pcb_readout_gdml` | 导入外部 `pcb_readout.gdml` 的 PCB 读出板装置（`"geant4_model": "gdml_import"`） | 文件文档字符串：`The readout board of the PCB, imported from pcb_readout.gdml` | [`signal`](../bench/signal.md) |
+| `device_alone` | 器件单独放在真空（`"G4_Galactic"`）中，源（`decay/Sr90`，`angle = 0`）在器件前表面上游 `17 mm`，`maxstep = 2 um` | `description`：`The device alone in vacuum` | [`deposit`](../stages/deposit.md)、[`signal`](../bench/signal.md)、[`bmos`](../apps/bmos.md) 默认装置 |
+| `pcb_readout_gdml` | 导入外部 `pcb_readout.gdml` 的 PCB 读出板装置（`"geant4_model": "gdml_import"`），源 `decay/Sr90`，`angle = 0` | 文件文档字符串：`The readout board of the PCB, imported from pcb_readout.gdml` | [`signal`](../bench/signal.md) |
 | `telescope` | 真空（`"G4_Galactic"`）中沿束流排布 8 个槽位 `ref1`、`ref2`、`ref3`、`dut1`、`dut2`、`ref4`、`ref5`、`ref6`，`rotation_z` 都为 `0`，`maxstep = 2 um` | 文件文档字符串 | [`telescope`](../bench/telescope.md) 默认装置 |
-| `time_resolution` | `along_beam` 沿束流依次放置 `Al`（`10 um`）、参考硅器件（槽位 `ref`）、上层开孔板 `pcb1`（`1500 um`）、被测器件（槽位 `dut`）与下层开孔板 `pcb2`（`1500 um`），间隔依次为 `1995`、`4978.5`、`8183.5 um`（见 [`timeres`](../bench/timeres.md)） | 文件文档字符串：`The setup of the time-resolution experiment: a reference silicon device and boards` | [`timeres`](../bench/timeres.md) 默认装置 |
+| `time_resolution` | `along_beam` 沿束流依次放置 `Al`（`10 um`）、参考硅器件（槽位 `ref`）、上层开孔板 `pcb1`（`1500 um`）、被测器件（槽位 `dut`）与下层开孔板 `pcb2`（`1500 um`），间隔依次为 `1995`、`4978.5`、`8183.5 um`（见 [`timeres`](../bench/timeres.md)），源 `decay/Sr90`，`angle = 0` | 文件文档字符串：`The setup of the time-resolution experiment: a reference silicon device and boards` | [`timeres`](../bench/timeres.md) 默认装置 |
 
 ### 库中放射源和束流
 
@@ -331,7 +348,7 @@ G4SETUP = {
 | 粒子束流（`beam`） | `beam/proton` | `1000.0 MeV` 质子束（`"proton"`，`par_randx = par_randy = 0`） | 未注明 | [`signal`](../bench/signal.md) 质子束流测试 |
 | 粒子束流（`beam`） | `beam/proton_3GeV_spread` | `3000 MeV` 质子束，横向瞄准展宽半宽 `par_randx = par_randy = 728.6 um` | `description`：`3 GeV protons whose directions spread uniformly by up to 300/7000 = 0.0429 along x and along y...` | 配合 `device_alone` 的 `3 GeV` 展宽质子束测试 |
 | 放射源（`decay`） | `decay/Am241` | `5.54 MeV` 单能 $\alpha$ 粒子源（`"par_type": "alpha"`） | `description`：`Am-241 alpha source` | [`signal`](../bench/signal.md) $\alpha$ 源测试 |
-| 放射源（`decay`） | `decay/Sr90` | $^{90}\text{Sr}$（`[38, 90]`）与 $^{90}\text{Y}$（`[39, 90]`）等概率静止衰变 $\beta$ 源，圆盘半径 `2500 um`，出射半锥角 `15 degree` | `description`：`Sr-90 beta source: every event is one decay, of Sr-90 or of its daughter Y-90 with the same chance, on a disk 5 mm across; what the decay emits goes isotropically within 15 degrees of the axis` | [`deposit`](../stages/deposit.md)、[`signal`](../bench/signal.md)、[`timeres`](../bench/timeres.md) 默认源 |
+| 放射源（`decay`） | `decay/Sr90` | $^{90}\text{Sr}$（`[38, 90]`）与 $^{90}\text{Y}$（`[39, 90]`）等概率静止衰变 $\beta$ 源，`par_radius = 0`，带铜（`"G4_Cu"`）准直孔（`length = 3000 um`、`radius = 500 um`、`outer_side = 8000 um`，常用铜准直孔尺寸，实际使用的源以实物为准） | `description`：`Sr-90 beta source: every event is one decay, of Sr-90 or of its daughter Y-90 with the same chance, at the entrance of a 3 mm copper collimator with a 1 mm bore` | [`deposit`](../stages/deposit.md)、[`signal`](../bench/signal.md)、[`timeres`](../bench/timeres.md) 装置写明的源 |
 | 直线 MIP（`toy`） | `toy/MIP` | 穿过器件中心的直线最小电离径迹，`landau_sampling = true` | `description`：`Straight toy MIP through the active sensor volume with Landau and Fano fluctuations.` | 任意硅或碳化硅器件快速直线 MIP 测试 |
 | 直线 MIP（`toy`） | `toy/MIP_pixel_edge` | 从 `[600.0, 450.0, 0.0]` 到 `[600.0, 450.0, 300.0] um` 的 `50` 段直线 MIP，`landau_sampling = true` | `description`：`Straight toy MIP crossing a pixel boundary.` | `general_pixel`（$300\ \mu\text{m}$ 厚像素边界测试） |
 | 直线 MIP（`toy`） | `toy/MIP_pixel_edge_fast` | 从 `[600.0, 450.0, 0.0]` 到 `[600.0, 450.0, 300.0] um` 的 `5` 段直线 MIP，`landau_sampling = false` | `description`：`Low-statistics toy MIP crossing a pixel boundary for field-shape checks.` | `general_pixel`（快速场形检查） |

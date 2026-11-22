@@ -49,7 +49,7 @@ raser hbf
 raser hbf --scan field.voltage=400,500
 ```
 
-实验配置写在 `work/hbf/config.json` 中，按环节分段。这个情景需要三类组件：SiC AC-LGAD 像素器件（器件组件），氢硼聚变产生的 α 粒子源 `fusion/pB11_alpha` 和靶室到器件的飞行距离装置 `target_chamber`（都是能量沉积组件），在 `deposit` 段里选用。下面只摘和本页有关的段；`examples/hbf/config.json` 里八段都写全。
+实验配置写在 `work/hbf/config.json` 中，按环节分段。这个情景需要三类组件：SiC AC-LGAD 像素器件（器件组件），氢硼聚变产生的 α 粒子源 `fusion/pB11_alpha` 和靶室到器件的飞行距离装置 `target_chamber`（都是能量沉积组件），在 `deposit` 段里选装置 `target_chamber`，它的 `source` 块写 `{"name": "fusion/pB11_alpha", "angle": 0}`。下面只摘和本页有关的段；`examples/hbf/config.json` 里八段都写全。
 
 ```json
 {
@@ -59,7 +59,6 @@ raser hbf --scan field.voltage=400,500
     "irradiation_flux": null
   },
   "deposit": {
-    "source": "fusion/pB11_alpha",
     "g4setup": "target_chamber"
   },
   "readout": {
