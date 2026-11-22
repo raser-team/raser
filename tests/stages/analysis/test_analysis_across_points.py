@@ -1,6 +1,7 @@
 import json
 
 import numpy as np
+import pytest
 
 from raser.stages.analysis.across_points import write_points
 from raser.stages.analysis.collection import energy_resolution
@@ -16,6 +17,8 @@ def _result(rng, width):
     }
 
 
+# No point has a time resolution: the trend has no channel to put in a legend.
+@pytest.mark.filterwarnings("error:No artists with labels:UserWarning")
 def test_points_hold_both_resolutions_of_each_quantity_that_has_one(tmp_path) -> None:
     rng = np.random.default_rng(5)
     results = [_result(rng, 2.0), _result(rng, 4.0)]
