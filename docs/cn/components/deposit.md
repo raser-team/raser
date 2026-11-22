@@ -318,6 +318,7 @@ G4SETUP = {
 | `device_alone` | 器件单独放在真空（`"G4_Galactic"`）中，源在器件前表面上游 `17 mm`，`maxstep = 2 um` | `description`：`The device alone in vacuum` | [`deposit`](../stages/deposit.md)、[`signal`](../bench/signal.md)、[`bmos`](../apps/bmos.md) 默认装置 |
 | `Sr90_collimator` | 空气（`"G4_AIR"`）中在源与器件之间放置厚 `5 mm`、中心圆孔直径 `1 mm`（`tub_radius = 500 um`）的黄铜（`"G4_BRASS"`）准直器 | `description`：`In air, a brass block 5 mm thick with a hole 1 mm across between the Sr-90 source and the device` | [`signal`](../bench/signal.md) |
 | `pcb_readout_gdml` | 导入外部 `pcb_readout.gdml` 的 PCB 读出板装置（`"geant4_model": "gdml_import"`） | 文件文档字符串：`The readout board of the PCB, imported from pcb_readout.gdml` | [`signal`](../bench/signal.md) |
+| `mim_diamond_gold` | 真空中 Am-241 α 正入射到 MIM 金刚石，器件前后两面各 `0.2 um` 金（`"G4_Au"`），`maxstep = 2 um`；入射角由 `source.angle` 给 | peiyao 的 V8 草稿（金电极 200 nm） | `MIM-Diamond` 的 [`signal`](../bench/signal.md) |
 | `telescope` | 真空（`"G4_Galactic"`）中沿束流排布 8 个槽位 `ref1`、`ref2`、`ref3`、`dut1`、`dut2`、`ref4`、`ref5`、`ref6`，源后隔 `260 mm` 是第一层，此后每层与前一层背面相隔 `40 mm`，`rotation_z` 都为 `0`，`maxstep = 2 um` | 文件文档字符串 | [`telescope`](../bench/telescope.md) 默认装置 |
 | `time_resolution` | `along_beam` 沿束流依次放置 `Al`（`10 um`）、参考硅器件（槽位 `ref`）、上层开孔板 `pcb1`（`1500 um`）、被测器件（槽位 `dut`）与下层开孔板 `pcb2`（`1500 um`），间隔依次为 `1995`、`4978.5`、`8183.5 um`（见 [`timeres`](../bench/timeres.md)） | 文件文档字符串：`The setup of the time-resolution experiment: a reference silicon device and boards` | [`timeres`](../bench/timeres.md) 默认装置 |
 

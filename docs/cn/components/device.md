@@ -204,6 +204,7 @@ flowchart LR
 | `ITk-Si-strip` | Si `strip` 器件（$96791 \times 48000 \times 305\ \mu\text{m}$，$1282$ 条，间距 $75.5\ \mu\text{m}$，配 `"XingChen"` 辐照模型） | ATLAS ITk 硅微条探测器（组件型号 `ITk-Si-strip`） | |
 | `NJU-PiN` | SiC `planar` 器件（$5000 \times 5000 \times 100\ \mu\text{m}$，1D/2D） | 南京大学（NJU）4H-SiC PiN（组件型号 `NJU-PiN`） | [`signal`](../bench/signal.md)、[`tct`](../bench/tct.md) 碳化硅示例器件 |
 | `NJU-PiN-bmos` | SiC `planar` 器件（$5000 \times 5000 \times 100\ \mu\text{m}$，1D/2D） | 南京大学（NJU）4H-SiC PiN（组件型号 `NJU-PiN-bmos`） | [`bmos`](../apps/bmos.md) |
+| `MIM-Diamond` | Diamond `planar` 器件（$4500 \times 4500 \times 500\ \mu\text{m}$，2D，金属–本征金刚石–金属，顶电极 $+300\ \text{V}$，配 `"CommonDefect"` 本底缺陷） | peiyao 的 MIM 金刚石探测器（他的 `MIM-Diamond.json`） | [`signal`](../bench/signal.md)，装置 `mim_diamond_gold` |
 | `pixel_ayyouby` | Si `lgadpixel` 器件，3×3 阵列 Ayyoub 风格 DJ-LGAD 像素（间距 $20 \times 20\ \mu\text{m}$） | `comment`：Ayyoub 风格 3×3 DJ-LGAD 像素模型 | |
 | `SICAR-1` | SiC `lgad` 器件（$1000 \times 1000 \times 32.5\ \mu\text{m}$，1D） | SICAR-1 4H-SiC LGAD（组件型号 `SICAR-1`） | |
 | `SICAR-1-PiN` | SiC `planar` 器件（$1000 \times 1000 \times 50\ \mu\text{m}$，1D） | SICAR-1 4H-SiC PiN（组件型号 `SICAR-1-PiN`） | |

@@ -204,6 +204,7 @@ Three-region depth doping profile of `HPK-Si-PiN`: `0–1 um` at the surface is 
 | `ITk-Si-strip` | Si `strip` device ($96791 \times 48000 \times 305\ \mu\text{m}$, $1282$ strips, pitch $75.5\ \mu\text{m}$, with `"XingChen"` irradiation model) | ATLAS ITk silicon microstrip detector (component model `ITk-Si-strip`) | |
 | `NJU-PiN` | SiC `planar` device ($5000 \times 5000 \times 100\ \mu\text{m}$, 1D/2D) | Nanjing University (NJU) 4H-SiC PiN (component model `NJU-PiN`) | SiC example device for [`signal`](../bench/signal.md) and [`tct`](../bench/tct.md) |
 | `NJU-PiN-bmos` | SiC `planar` device ($5000 \times 5000 \times 100\ \mu\text{m}$, 1D/2D) | Nanjing University (NJU) 4H-SiC PiN (component model `NJU-PiN-bmos`) | [`bmos`](../apps/bmos.md) |
+| `MIM-Diamond` | Diamond `planar` device ($4500 \times 4500 \times 500\ \mu\text{m}$, 2D, metal–intrinsic diamond–metal, top electrode at $+300\ \text{V}$, with the `"CommonDefect"` background defects) | peiyao's MIM diamond detector (his `MIM-Diamond.json`) | [`signal`](../bench/signal.md), with the setup `mim_diamond_gold` |
 | `pixel_ayyouby` | Si `lgadpixel` device, 3×3 array Ayyoub-style DJ-LGAD pixel (pitch $20 \times 20\ \mu\text{m}$) | `comment`: Ayyoub-style 3×3 DJ-LGAD pixel model | |
 | `SICAR-1` | SiC `lgad` device ($1000 \times 1000 \times 32.5\ \mu\text{m}$, 1D) | SICAR-1 4H-SiC LGAD (component model `SICAR-1`) | |
 | `SICAR-1-PiN` | SiC `planar` device ($1000 \times 1000 \times 50\ \mu\text{m}$, 1D) | SICAR-1 4H-SiC PiN (component model `SICAR-1-PiN`) | |
