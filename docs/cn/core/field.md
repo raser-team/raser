@@ -88,9 +88,9 @@ $$G(z) = \frac{K(z)}{1 - I_{\text{bd}}} - 1 \tag{11}$$
 
 ### 辐照缺陷与俘获率
 
-辐照在禁带中引入深能级缺陷。缺陷按 SRH 统计占据电子，带电的缺陷进入泊松方程，空缺陷俘获电子、满缺陷俘获空穴，并贡献复合。对每个缺陷 $i$：
+辐照在禁带中引入深能级缺陷，材料本身也带有生长中留下的缺陷。缺陷按 SRH 统计占据电子，带电的缺陷进入泊松方程，空缺陷俘获电子、满缺陷俘获空穴，并贡献复合。对每个缺陷 $i$：
 
-$$N_{t,i} = g_i\,\Phi, \qquad f_i = \frac{c_{n,i}\,n + c_{p,i}\,p_{1,i}}{c_{n,i}(n + n_{1,i}) + c_{p,i}(p + p_{1,i})} \tag{12}$$
+$$N_{t,i} = N_{0,i} + g_i\,\Phi, \qquad f_i = \frac{c_{n,i}\,n + c_{p,i}\,p_{1,i}}{c_{n,i}(n + n_{1,i}) + c_{p,i}(p + p_{1,i})} \tag{12}$$
 
 $$U_r = \sum_i \frac{N_{t,i}\,c_{n,i}\,c_{p,i}\,(np - n_i^2)}{c_{n,i}(n + n_{1,i}) + c_{p,i}(p + p_{1,i})} \tag{13}$$
 
@@ -100,13 +100,13 @@ $$n_{1,i} = N_c \exp\!\Bigl(-\frac{E_g/2 - E_{t,i}}{kT}\Bigr), \qquad p_{1,i} = 
 
 其中：
 
-- $\Phi$：辐照注量，$\text{cm}^{-2}$；$g_i$：缺陷引入率（`g_int`），$\text{cm}^{-1}$；$N_{t,i}$：缺陷浓度，$\text{cm}^{-3}$；
+- $\Phi$：辐照注量，$\text{cm}^{-2}$；$g_i$：缺陷引入率（`g_int`），$\text{cm}^{-1}$；$N_{0,i}$：与注量无关的本底浓度（`N_t0`，缺陷字典没写时为 `0`），$\text{cm}^{-3}$；$N_{t,i}$：缺陷浓度，$\text{cm}^{-3}$；
 - $f_i$：缺陷被电子占据的比例（无量纲）；受主型缺陷贡献 $N_t^{-} = \sum N_{t,i} f_i$，施主型缺陷贡献 $N_t^{+} = \sum N_{t,i}(1 - f_i)$；
 - $E_{t,i}$：缺陷能级（`E_t_ev`，以禁带中央为零点、向导带为正，$\text{eV}$，乘以 $1.602176634\times10^{-19}\ \text{J/eV}$ 换成 J）；$E_g$：禁带宽度，J；$N_c$、$N_v$：导带、价带有效态密度，$\text{cm}^{-3}$；
 - $\sigma_{n,i}$、$\sigma_{p,i}$：电子、空穴俘获截面，$\text{cm}^2$；$v_{\text{th}}$ = `vel_mean` $= 10^7\ \text{cm/s}$；
 - $\Gamma_n$、$\Gamma_p$：电子、空穴俘获率（`TrappingRate_n`、`TrappingRate_p`），$\text{s}^{-1}$，存盘后由 `DevsimField.get_trap_e`、`get_trap_h` 交给 [current.md](current.md)。
 
-`physics_irradiation.CreateIrradiation` 按 `irradiation.irradiation_model` 选缺陷表；其余名字取参数 `custom_defect`，缺省为空表。有 `irradiation` 块且求解电场时建立辐照项；其余情况俘获率为 `0`。缺陷字典的 `"type"` 不是 `"donor"` 或 `"acceptor"` 时抛出 `ValueError`。`"Schwandt"` 是 Hamburg Penta Trap Model [15]，`"XingChen"` 是组里拟合质子辐照硅的结果 [16]，`"Perugia"` 是 p 型 FZ 硅的三能级模型 [17]：
+`physics_irradiation.CreateIrradiation` 按 `irradiation.irradiation_model` 选缺陷表；`"CommonDefect"` 在 `Diamond` 区域取金刚石本底缺陷表，在其他区域取 SiC 表；其余名字取参数 `custom_defect`，缺省为空表。有 `irradiation` 块且求解电场时建立辐照项；其余情况俘获率为 `0`。缺陷字典的 `"type"` 不是 `"donor"` 或 `"acceptor"` 时抛出 `ValueError`。`"Schwandt"` 是 Hamburg Penta Trap Model [15]，`"XingChen"` 是组里拟合质子辐照硅的结果 [16]，`"Perugia"` 是 p 型 FZ 硅的三能级模型 [17]：
 
 | 模型 | 缺陷 | 类型 | `E_t_ev` [eV] | `g_int` [$\text{cm}^{-1}$] | $\sigma_n$ [$\text{cm}^2$] | $\sigma_p$ [$\text{cm}^2$] |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -125,6 +125,13 @@ $$n_{1,i} = N_c \exp\!\Bigl(-\frac{E_g/2 - E_{t,i}}{kT}\Bigr), \qquad p_{1,i} = 
 | | `CiOi` | 施主 | `-0.56+0.36` | `0.3780` | `3.230e-17` | `2.036e-14` |
 | `"CommonDefect"`（SiC） | `Z12` | 受主 | `1.63-0.67` | `1` | `3e-16` | `2e-12` |
 | | `EH67` | 施主 | `1.63-1.65` | `1` | `2e-17` | `3e-17` |
+| `"CommonDefect"`（金刚石） | `BoronAcceptor` | 受主 | `-5.47/2+0.37` | `0` | `1.0e-15` | `2.0e-14` |
+| | `SubstitutionalNitrogen_P1` | 施主 | `5.47/2-1.70` | `0` | `2.0e-14` | `1.0e-15` |
+| | `VacancyRelated` | 受主 | `-5.47/2+2.00` | `0` | `1.0e-14` | `1.0e-14` |
+
+金刚石表的本底浓度 `N_t0`：硼 `2.0e14`、氮 `5.0e14`、空位 `1.0e14` $\text{cm}^{-3}$。能级取硼受主 $E_v + 0.37\ \text{eV}$ [23]、替位氮施主 $E_c - 1.70\ \text{eV}$ [24]；空位以负电荷态 $V^-$ 存在 [25]，按受主处理，能级取 $E_v + 2.00\ \text{eV}$。本底浓度、俘获截面与空位能级是待用 IV、TCT、CCE 拟合的起始值。
+
+`Diamond` 区域照 peiyao 的做法处理，以便不掺杂的金刚石能解：式 (12)–(14) 里的 $n$、$p$ 取 $\max(n, n_f)$、$\max(p, n_f)$，$n_f$ = `CARRIER_FLOOR` $= 1\ \text{cm}^{-3}$；每个缺陷都按 $N_{t,i} f_i$ 计入俘获电子、按 $N_{t,i}(1 - f_i)$ 计入俘获空穴，不分受主、施主；欧姆接触的电势等于偏压，不掺杂节点在接触处的电子、空穴浓度取 $n_f$；漂移扩散的初值取 $\max(N_{\text{net}}, n_f)$ 与 $\max(-N_{\text{net}}, n_f)$。$n_f$ 与这种计电荷的方式没有出处，是数值上能解的假设。
 
 ### 权重势
 
@@ -318,9 +325,9 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 6. **零偏压**：在 $0\ \text{V}$ 求解并存盘，写 `0V.dd`、`0V.devsim`，在 `node.json` 的 `solved.potential` 记 `0.0`。
 7. **目标与停点**：目标偏压 $V_g$ 取 `field.voltage`，为 `null` 时取 `bias.voltage`。一个场节点对应一个目标偏压；节点里存的中间偏压文件是升压到 $V_g$ 途中的存盘点。存盘点为 $\pm k\Delta_s$（$k = 1, \dots, \lfloor |V_g|/\Delta_s\rfloor$，$\Delta_s$ = `saved_voltage_interval`），末点不足 $|V_g|$ 时补上 $V_g$；曲线点同样按 `curve_voltage_interval` 生成。正负号随 $V_g$。间隔为 `0` 时抛出 `ValueError`。
 8. **步进**：初始步长 $\Delta$ = `voltage_step.initial`，符号随 $V_g$。每步试探 $V_t = V_c + \Delta$；若 $|V_t|$ 超过最近的停点（$V_g$、下一个存盘点、下一个曲线点中绝对值最小者），把 $V_t$ 截到该停点。
-9. **单步求解**（`loop_solver`）：初值取上一个解；已有两个解时电势按两点线性外推到 $V_t$。设偏压后用 `voltage_step` 的容差直流求解。
+9. **单步求解**（`loop_solver`）：初值取上一个解，电子、空穴浓度不低于最小正浮点数；已有两个解时电势按两点线性外推到 $V_t$。设偏压后用 `voltage_step` 的容差直流求解。
 10. **成功**：$\Delta \leftarrow \Delta \times$ `increase_factor`。$V_t$ 是曲线点时记录电压、电流 $(I_n + I_p)\times$ `area_factor`（A），以及下节的电容、噪声。$V_t$ 是存盘点或 $V_g$ 时存盘，写 `<V_t>V.dd`、`<V_t>V.devsim`，记入 `solved.potential`；到达 $V_g$ 即结束。
-11. **失败**：单步求解出任何 DEVSIM 错误时先写 `last_solvable.dd`。报错信息含 `"Convergence failure"` 时令 $\Delta \leftarrow (V_t - V_c)\times$ `decrease_factor` 后重试；其他 DEVSIM 错误原样抛出。$|\Delta| < 10^{-7}\ \text{V}$ 时停止并抛出 `RuntimeError("Step size too small (less than 1e-7). Exiting loop.")`。
+11. **失败**：单步求解出任何 DEVSIM 错误时先写 `last_solvable.dd`。报错信息含 `"Convergence failure"` 或 `"negative or zero value before update"` 时令 $\Delta \leftarrow (V_t - V_c)\times$ `decrease_factor` 后重试；其他 DEVSIM 错误原样抛出。$|\Delta| < 10^{-7}\ \text{V}$ 时停止并抛出 `RuntimeError("Step size too small (less than 1e-7). Exiting loop.")`。
 12. **收尾**：在 `node.json` 写 `read`，画 IV 曲线；CV 模式画 CV 与 $1/C^2$ 曲线；打开噪声开关时画噪声曲线。
 
 ### 小信号电容与噪声
@@ -559,3 +566,6 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 - [20] A. Das, S. P. Duttagupta, “TCAD simulation for alpha-particle spectroscopy using SiC Schottky diode”, Radiat. Prot. Dosim. 167 (2015) 443, doi:10.1093/rpd/ncu369
 - [21] Z. Li et al., “Mechanisms of proton irradiation-induced defects on the electrical performance of 4H-SiC PIN detectors”, JINST 21 (2026) P03010, doi:10.1088/1748-0221/21/03/P03010, arXiv:2503.09016
 - [22] S. Mägdefessel, R. Mori, N. Sorgenfrei, U. Parzefall, “Understanding the frequency dependence of capacitance measurements of irradiated silicon detectors”, arXiv:2301.09371, eqs. (2), (3)
+- [23] A. T. Collins, A. W. S. Williams, “The nature of the acceptor centre in semiconducting diamond”, J. Phys. C: Solid State Phys. 4 (1971) 1789, doi:10.1088/0022-3719/4/13/030
+- [24] R. G. Farrer, “On the substitutional nitrogen donor in diamond”, Solid State Commun. 7 (1969) 685, doi:10.1016/0038-1098(69)90593-6
+- [25] A. Mainwood, A. M. Stoneham, “Stability of electronic states of the vacancy in diamond”, J. Phys.: Condens. Matter 9 (1997) 2453, doi:10.1088/0953-8984/9/11/013

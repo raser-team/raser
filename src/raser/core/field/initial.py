@@ -11,6 +11,7 @@ import devsim
 
 from .model_create import *
 from .physics_drift_diffusion import *
+from .physics_irradiation import CARRIER_FLOOR
 
 def switch_cylindrical_coordinate(device, region):
     devsim.set_parameter(device=device, name="raxis_variable", value="x")
@@ -91,8 +92,16 @@ def DriftDiffusionInitialSolution(device, region, paras, irradiation_model=None,
     ####
     #### create initial guess from dc only solution
     ####
-    devsim.set_node_values(device=device, region=region, name="Electrons", init_from="IntrinsicElectrons")
-    devsim.set_node_values(device=device, region=region, name="Holes",     init_from="IntrinsicHoles")
+    if devsim.get_material(device=device, region=region) == "Diamond":
+        # the intrinsic densities of diamond, near 1e-27 cm^-3, are no start for Newton
+        devsim.set_parameter(device=device, region=region, name="CarrierFloor", value=CARRIER_FLOOR)
+        CreateNodeModel(device, region, "InitElectronsDD", "ifelse(NetDoping > CarrierFloor, NetDoping, CarrierFloor)")
+        CreateNodeModel(device, region, "InitHolesDD", "ifelse(NetDoping < -CarrierFloor, -NetDoping, CarrierFloor)")
+        devsim.set_node_values(device=device, region=region, name="Electrons", init_from="InitElectronsDD")
+        devsim.set_node_values(device=device, region=region, name="Holes",     init_from="InitHolesDD")
+    else:
+        devsim.set_node_values(device=device, region=region, name="Electrons", init_from="IntrinsicElectrons")
+        devsim.set_node_values(device=device, region=region, name="Holes",     init_from="IntrinsicHoles")
     #devsim.set_node_values(device=device, region=region, name="Electrons", init_from="InitialElectron")
     #devsim.set_node_values(device=device, region=region, name="Holes",     init_from="InitialHole")
 

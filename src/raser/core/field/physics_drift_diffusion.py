@@ -94,6 +94,9 @@ def CreateSiliconPotentialOnlyContact(device, region, contact, contact_type, is_
         phi_0 = "E_g/(3*ElectronCharge)"
         contact_model = "Potential - {0} + {3}*({1} - {2}) - {3}*E_g/ElectronCharge + ({3}-1)*{4} + Volt_thermal*log(N_v/n_i)".format(GetContactBiasName(contact), workfun, affinity, gamma, phi_0)
         # The units of affinity and workfun are eV, assume q=1e to get the V
+    elif get_material(device=device, region=region) == "Diamond":
+        # peiyao: the potential of an ohmic contact on diamond is its bias
+        contact_model = "Potential - {0}".format(GetContactBiasName(contact))
     else:
         contact_model = "Potential -{0} + ifelse(NetDoping >0, \
                         -Volt_thermal*log({1}/n_i), \
@@ -299,6 +302,10 @@ def CreateSiliconDriftDiffusionAtContact(device, region, contact, contact_type, 
         # The units of affinity and workfun are eV, assume q=1e to get the V
         contact_electrons_model = "Electrons - {0}".format(Equi_Electrons)
         contact_holes_model = "Holes - {0}".format(Equi_Holes)
+    elif get_material(device=device, region=region) == "Diamond":
+        # peiyao: an undoped diamond node at an ohmic contact holds CarrierFloor electrons and holes
+        contact_electrons_model = "Electrons - ifelse(abs(NetDoping) < 1, CarrierFloor, ifelse(NetDoping > 0, {0}, n_i^2/{1}))".format(celec_model, chole_model)
+        contact_holes_model = "Holes - ifelse(abs(NetDoping) < 1, CarrierFloor, ifelse(NetDoping < 0, {1}, n_i^2/{0}))".format(celec_model, chole_model)
     else:
         contact_electrons_model = ( "Electrons - ifelse(NetDoping > 0, {0}, n_i^2/{1})".format(celec_model, chole_model
             ))

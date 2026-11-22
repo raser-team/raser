@@ -71,6 +71,9 @@ class loop_section:
             slope = (last["Potential"] - before["Potential"]) / (v_last - v_before)
             start["Potential"] = last["Potential"] + (v_trial - v_last) * slope
         for name, values in start.items():
+            if name != "Potential":
+                # a density that went down to zero would stop the next solve
+                values = np.maximum(values, np.finfo(float).tiny)
             devsim.set_node_values(device=self.device, region=self.region, name=name, values=list(values))
 
     def keep_solved(self, v_trial):
