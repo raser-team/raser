@@ -146,7 +146,7 @@ flowchart LR
 
 ### `field` 环节（`stages/field`、`core/field`）
 
-1. **读取追踪与掺杂求值（`reading.py`、`create_mesh.py`）**：`solver_section.main` 用 `Reading(Detector(...))` 包装器件对象，自动记录求解期间访问的器件属性与 JSON 键并写入场节点 `<器件 project>/field/<节点号>/node.json` 的 `"read"` 字段。`DevsimMesh.setDoping` 在网格节点上对 `doping` 里的 `Acceptors`、`Donors`（以及可选的辐照附加项 `Acceptors_ir`、`Donors_ir`）求值，计算净掺杂浓度：
+1. **读取追踪与掺杂求值（`reading.py`、`create_mesh.py`）**：`solver_section.main` 用 `Reading(Detector(...))` 包装器件对象，自动记录求解期间访问的器件属性与 JSON 键并写入场节点 `<器件 project>/field/nodes/<节点号>/node.json` 的 `"read"` 字段。`DevsimMesh.setDoping` 在网格节点上对 `doping` 里的 `Acceptors`、`Donors`（以及可选的辐照附加项 `Acceptors_ir`、`Donors_ir`）求值，计算净掺杂浓度：
    $$N_{\text{net}}(x) = N_D(x) - N_A(x) \tag{1}$$
    其中：
    - $N_{\text{net}}(x)$：网格节点处的净掺杂浓度，$\text{cm}^{-3}$；

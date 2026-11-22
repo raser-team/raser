@@ -53,7 +53,7 @@ $$x = \frac{l_x}{2} - Y + (i + 0.5)\,l_x, \qquad y = \frac{l_y}{2} + Z - \bigl(1
 `cflm` 在 `src/raser_app/cflm/` 中定义，为全部 `24` 块焊盘位置 `PADS`（`I_-3_0` 至 `II_2_1`）按节点组织八个环节：每个扫描点共用 `1` 个单焊盘 `field` 场节点与 `1` 个 `analysis` 节点；每个作业有 `1` 个 `deposit` 节点（全部 `24` 块焊盘的沉积写在同一个 `deposit.h5`），以及 `current`、`readout`、`digitizer`、`trigger`、`reconstruction` 各 `1` 个节点（节点内为有沉积的焊盘各写一个带 `.<pos>` 后缀的 `.h5` 文件），按以下顺序执行：
 
 1. **模拟束团丢失电子并写出 24 块焊盘沉积（`deposit` 节点，`deposits.deposits`）**：构造单焊盘 `Detector`，读取 `src/raser_app/cflm/cflm_p1.json`，调用 `cflm_p1.simulate_bunches(g4_dic, seed, my_d)` 运行 Geant4 `FTFP_BERT` 物理列表与 `G4StepLimiterPhysics`。在 `bunch_deposits` 中遍历每个束团和全部 `24` 块焊盘，跳过 `energy <= 0` 的占位步（无沉积焊盘在 `simulate_bunches` 中填 `[[0, 0, 0]]` 和 `[0]`），对其余有效步用式 (2) 的 `pad_frame` 转为焊盘局部坐标 $(x, y, z)$，将 `detector` 记为 `<side>_<i>_<j>`、时刻 `t` 记为 `0.0` $\text{s}$，调用 `ionized_pairs(event, my_d.material)`（默认 `fano=True`）抽样电子-空穴对数 `pairs`，写入 `deposit` 节点的 `deposit.h5`。若所有束团在 24 块焊盘中均无有效沉积（`not found.events`），抛出 `Ended` 提前结束作业。
-2. **复用或补算单焊盘共享场（`field` 节点）**：复用单焊盘器件在 `work/<det_name>/field/<节点号>/` 下的电场、权重场与等效电路参数，由全部 `24` 块焊盘共用；找不到场时，所需的场在作业开始前补算，存进器件 project 的 `field/`。
+2. **复用或补算单焊盘共享场（`field` 节点）**：复用单焊盘器件在 `work/<det_name>/field/nodes/<节点号>/` 下的电场、权重场与等效电路参数，由全部 `24` 块焊盘共用；找不到场时，所需的场在作业开始前补算，存进器件 project 的 `field/`。
 3. **24 路载流子漂移（`current` 节点）**：在作业的 `current` 节点内遍历 `24` 个焊盘位置 `<pos>`（`I_-3_0` 至 `II_2_1`），先检查 `deposit.h5` 中是否存在 `detector == <pos>` 的沉积步；若该焊盘在本作业无沉积，不写对应的 `.h5` 文件；若有沉积，调用 `write_induced_currents(..., detector=position)` 仅漂移属于该焊盘的沉积步，写出 `current.<pos>.h5`（当 `current.plots > 0` 时在 `nodes/current/<节点号>/plots/<pos>/` 下绘图）。
 4. **24 路电子学读出、数字化、触发与事件重建（`readout`、`digitizer`、`trigger`、`reconstruction` 节点）**：各环节每个作业 `1` 个节点；对每个有上游 `.h5` 文件的位置 `<pos>`，依次在各自节点内执行：`readout` 调用 `ngspice` 求解前端放大器链输出电压波形并叠加频域热噪声，写出 `readout.<pos>.h5`；`digitizer` 按模拟带宽、采样率与量化位数把波形量化为码，写出 `digitizer.<pos>.h5`（格式见[`stages/digitizer`](../stages/digitizer.md)）；`trigger` 按触发条件判选被记录的事例，写出含事例号数据集 `event`（`int64`）的 `trigger.<pos>.h5`；`reconstruction` 读 `digitizer.<pos>.h5` 里被 `trigger.<pos>.h5` 记录的事例，按 `lsb_V`、`offset_V` 把量化码换回电压（$\text{V}$，采样时刻为 `t0 + k·sampling_period`），扣除前段内的基线提取幅度与定时特征，将找到团簇种子的事例记为 `selected`，写出 `reconstruction.<pos>.h5`。无上游文件的焊盘不写对应 `.h5` 文件。
 5. **统计（`analysis` 节点）**：每个扫描点 `1` 个 `analysis` 节点。局限：`analysis` 现在只统计单电极的结果，多电极、多位置的统计（例如 telescope 的残差、cflm 各焊盘的汇总）还没做。
@@ -79,7 +79,7 @@ $$x = \frac{l_x}{2} - Y + (i + 0.5)\,l_x, \qquad y = \frac{l_y}{2} + Z - \bigl(1
 ### 环节
 
 - [`deposit`](../stages/deposit.md)：由 `src/raser_app/cflm/deposits.py` 替换标准单器件沉积，每个作业 `1` 个节点，在铜束流管几何下模拟束团丢失电子簇射并把全部 `24` 块焊盘的沉积步写入同一个 `deposit.h5`。
-- [`field`](../stages/field.md)：复用单块焊盘器件在 `work/<det_name>/field/<节点号>/` 下的场节点，供全部 `24` 块焊盘共用；找不到场时在作业开始前补算，存进器件 project 的 `field/`。
+- [`field`](../stages/field.md)：复用单块焊盘器件在 `work/<det_name>/field/nodes/<节点号>/` 下的场节点，供全部 `24` 块焊盘共用；找不到场时在作业开始前补算，存进器件 project 的 `field/`。
 - [`current`](../stages/current.md)：每个作业 `1` 个节点，在节点内按 `24` 个焊盘位置 `<pos>` 分别筛选沉积步并在共享场中漂移载流子，写出各焊盘的 `current.<pos>.h5`。
 - [`readout`](../stages/readout.md)：每个作业 `1` 个节点，在节点内把有沉积焊盘的感应电流送入器件等效电路与前端放大器链，求解输出电压波形并叠加频域热噪声，写出 `readout.<pos>.h5`。
 - [`digitizer`](../stages/digitizer.md)、[`trigger`](../stages/trigger.md)：每个作业各 `1` 个节点，在节点内对各焊盘输出波形执行数字化采样量化写出 `digitizer.<pos>.h5`，再按触发条件判选被记录的事例写出 `trigger.<pos>.h5`。
@@ -150,7 +150,7 @@ raser cflm --scan field.voltage=-300,-500
 
 ## 输出
 
-结果存放在 `work/cflm/` 下（存放结构见[架构总纲](../architecture.md#结果)）：各环节节点在 `work/cflm/nodes/<环节>/<节点号>/`（各含一份 `node.json`；`deposit` 到 `reconstruction` 每个作业一个节点，`analysis` 每个扫描点一个节点），按扫描点视图为 `work/cflm/points/<点名>/<环节>/<作业号>`（软链接，`points/<点名>/field` 和 `points/<点名>/analysis` 各是一个软链接），参数表为 `work/cflm/points.json`，跨点统计与趋势图在 `work/cflm/analysis/`，单焊盘器件的场节点存放在 `work/<器件>/field/<节点号>/`。
+结果存放在 `work/cflm/` 下（存放结构见[架构总纲](../architecture.md#结果)）：各环节节点在 `work/cflm/nodes/<环节>/<节点号>/`（各含一份 `node.json`；`deposit` 到 `reconstruction` 每个作业一个节点，`analysis` 每个扫描点一个节点），按扫描点视图为 `work/cflm/points/<点名>/<环节>/<作业号>`（软链接，`points/<点名>/field` 和 `points/<点名>/analysis` 各是一个软链接），参数表为 `work/cflm/points.json`，跨点统计与趋势图在 `work/cflm/analysis/`，单焊盘器件的场节点存放在 `work/<器件>/field/nodes/<节点号>/`。
 
 ### 数据与图像文件
 

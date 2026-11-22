@@ -364,7 +364,7 @@ SRH 复合率公式见文献 [1]（第 1.5.4 节）与原始文献 [14]，Hurkx 
 
 ### 输入与输出文件
 
-`core/model` 是纯内存物理模型库，输出的数值与符号表达式在内存中直接交给 [device.md](device.md)、[field.md](field.md)（写出 `<project>/field/<节点号>/` 场节点里的 `.pkl` 与 `.json` 文件）和 [current.md](current.md)（写出 `current.h5`）。
+`core/model` 是纯内存物理模型库，输出的数值与符号表达式在内存中直接交给 [device.md](device.md)、[field.md](field.md)（写出 `<project>/field/nodes/<节点号>/` 场节点里的 `.pkl` 与 `.json` 文件）和 [current.md](current.md)（写出 `current.h5`）。
 
 ### 绘图输出
 

@@ -100,7 +100,7 @@ r_{x,j} &= \hat{x}\!\left(z_j + \frac{l_{z,j}}{2}\right) - \bar{x}_{c,j}, & r_{y
 
 `telescope` 按八环节链条依次执行：
 
-1. **求解或复用各层共享场（[`field`](../stages/field.md)）**：为器件列表中的每一层器件定位其在目标偏压 `voltage`（$\text{V}$）与辐照注量 `irradiation_flux`（$\text{cm}^{-2}$，$1\ \text{MeV}$ 中子等效注量）下的电场、权重场与等效电路参数，未就绪时在作业开始前补算。各层器件的共享场节点各自存放在对应器件 project 下的 `field/<节点号>/` 中。
+1. **求解或复用各层共享场（[`field`](../stages/field.md)）**：为器件列表中的每一层器件定位其在目标偏压 `voltage`（$\text{V}$）与辐照注量 `irradiation_flux`（$\text{cm}^{-2}$，$1\ \text{MeV}$ 中子等效注量）下的电场、权重场与等效电路参数，未就绪时在作业开始前补算。各层器件的共享场节点各自存放在对应器件 project 下的 `field/nodes/<节点号>/` 中。
 2. **全望远镜能量沉积（[`deposit`](../stages/deposit.md)）**：在 Geant4 望远镜装置中按器件列表与各层板子朝向建出前 $N_{\text{front}}$ 层参考层、中间 $N_{\text{DUT}}$ 块被测器件与后 $N_{\text{back}}$ 层参考层的实体。高能粒子束流沿 $+z$ 方向依次穿过全部 $N$ 层平面，统一记录各层内的能量沉积步并转化为初始电子-空穴对，写入 `deposit` 节点的 `deposit.h5`，按层区分归属。
 3. **逐层漂移、读出、数字化与触发（[`current`](../stages/current.md)、[`readout`](../stages/readout.md)、[`digitizer`](../stages/digitizer.md)、[`trigger`](../stages/trigger.md)）**：每一层各自在对应的求解场中漂移载流子，计算各像素电极的感应电流与净电荷，经各自的器件等效电路与前端放大器链求解模拟电压波形并按由作业种子派生的 `readout` 噪声种子叠加电路热噪声。随后各层分别按数字化器的模拟带宽、采样率与量化位数（时钟相位与孔径抖动由作业种子派生的 `digitizer` 种子抽取）生成量化码数字波形写入 `digitizer` 节点，并经触发判选将被记录事例的事例号数据集 `event`（`int64`）写入 `trigger` 节点的 `trigger.h5`。
 4. **团簇聚类（[`reconstruction`](../stages/reconstruction.md)）**：读取 `digitizer.h5` 中被 `trigger.h5` 记录的事例，按 `lsb_V`、`offset_V` 将量化码换回电压（$\text{V}$），采样时刻为 `t0 + k·sampling_period`；在每一层上提取像素信号特征，以 `amplitude_threshold` 找团簇种子并将找到种子的事例记为 `selected`，按式 (1) 对过阈击中像素做连通团簇聚类，求出该层在局部坐标系中的击中位置 $(\bar{x}_c, \bar{y}_c)$（$\mu\text{m}$）与团簇大小 $n_c$（个）。
@@ -114,7 +114,7 @@ r_{x,j} &= \hat{x}\!\left(z_j + \frac{l_{z,j}}{2}\right) - \bar{x}_{c,j}, & r_{y
 
 ### 环节
 
-- [`field`](../stages/field.md)：分别为每一层器件求解或复用目标偏压与辐照注量下的电场、权重场与等效电路参数，存放在对应器件 project 的 `field/<节点号>/` 下。
+- [`field`](../stages/field.md)：分别为每一层器件求解或复用目标偏压与辐照注量下的电场、权重场与等效电路参数，存放在对应器件 project 的 `field/nodes/<节点号>/` 下。
 - [`deposit`](../stages/deposit.md)：在束流望远镜装置中用 Geant4 模拟高能粒子束依次穿过前 $N_{\text{front}}$ 层参考层、中间 $N_{\text{DUT}}$ 块被测器件与后 $N_{\text{back}}$ 层参考层，统一记录全部层的能量沉积步并转化为初始电子-空穴对，写入 `deposit.h5`。
 - [`current`](../stages/current.md)：在每一层各自的求解场中模拟载流子漂移、扩散与收集，计算该层各电极上的感应电流与净感应电荷。
 - [`readout`](../stages/readout.md)：将每一层的电极感应电流分别送入对应器件等效电路与前端放大器链，求解输出模拟电压波形并叠加电路热噪声。
@@ -179,7 +179,7 @@ raser telescope <器件> --set deposit.source=toy/MIP_telescope --set reconstruc
 
 测试结果存放在被测器件 project 下的 `<project>/telescope/`（如 `work/<被测器件>/telescope/`），存放结构见[架构总纲](../architecture.md#结果)。各环节按输入指纹写入底层节点 `<project>/telescope/nodes/<环节>/<节点号>/`（内含该环节输出文件、本环节图像与 `node.json`；`deposit` 到 `reconstruction` 每个作业一个节点，`analysis` 每个扫描点一个节点），上层按扫描点在 `<project>/telescope/points/<点名>/<环节>/<作业号>` 生成软链接视图（`points/<点名>/field`、`points/<点名>/analysis` 各是一个软链接），并在 `<project>/telescope/points.json` 记录参数表；各扫描点的单点统计汇总与分布图存放在各自的 `analysis` 节点（视图 `<project>/telescope/points/<点名>/analysis/`）中，跨扫描点汇总与趋势图存放在 `<project>/telescope/analysis/` 下，每个环节自己的图放在该环节各自的节点输出里。
 
-望远镜各层器件的共享场节点各自存放在对应器件 project 下的 `field/<节点号>/` 中（如 `work/<被测器件>/field/<节点号>/` 与 `work/TAICHU3/field/<节点号>/`）。
+望远镜各层器件的共享场节点各自存放在对应器件 project 下的 `field/nodes/<节点号>/` 中（如 `work/<被测器件>/field/nodes/<节点号>/` 与 `work/TAICHU3/field/nodes/<节点号>/`）。
 
 各环节与统计分析写出的主要内容如下：
 

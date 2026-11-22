@@ -77,7 +77,7 @@ When plotting several curves of the same kind in one figure: ordered curves (suc
 | Figure | Location |
 | --- | --- |
 | Stage figures | `plots/` inside the stage node: `<experiment>/nodes/<stage>/<node_id>/plots/` |
-| Device field figures | `work/<device>/field/<node_id>/plots/` |
+| Device field figures | `work/<device>/field/nodes/<node_id>/plots/` |
 | Per-point statistical plots | `plots/` inside that point's `analysis` node |
 | Cross-point trend plots | `<experiment>/analysis/` |
 | Front-end circuit schematic and impulse response | Circuit asset `work/<circuit>/plots/` |

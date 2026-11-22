@@ -29,7 +29,7 @@ Components are grouped into folders by the stage that reads them: `device/` hold
 When stages and core modules construct output directories or remove old files under the active project, they validate relative path segments and deletion targets through `raser.supports.output`. If a path segment is an absolute path or contains `".."`, if the owner name is empty, or if a resolved deletion target lies outside `project_root()`, the operation aborts with `ValueError` before touching disk:
 
 ```text
-owned_path("field", "<node_id>") -> <device_project>/field/<node_id>/
+owned_path("field", "nodes", "<node_id>") -> <device_project>/field/nodes/<node_id>/
 owned_path("field", "../out")    -> ValueError: Output label must remain inside the project: ../out
 delete_file("/tmp/test.h5")      -> ValueError: File removal must remain inside the project: /tmp/test.h5
 ```

@@ -1,6 +1,6 @@
 # 场求解环节（`stages/field`）
 
-本环节由命令 `raser field [路径]`（短别名 `raser fld`，详见[命令行接口（`raser`）](../cli.md)）驱动，也在[仿真链与环节入口（`stages`）](README.md)的八环节仿真链（`field`、`deposit`、`current`、`readout`、`digitizer`、`trigger`、`reconstruction`、`analysis`）中与[能量沉积环节（`stages/deposit`）](deposit.md)同处最前端。本环节调度 DEVSIM 求解（或从 Sentaurus TDR 文件导入）器件在给定偏压与辐照注量下的电势、电场、载流子浓度、俘获率、导电区标志、读出电极权重场、IV/CV/噪声曲线，以及标上数值的器件参数电路图（结电容、耦合电容、未耗尽层），也支持通过 `raser field --draw <对象>` 绘制网格和网格节点上的掺杂。算出的场作为器件资产，按输入指纹存放在各实验共用的场节点 `work/<器件>/field/<节点号>/`（就地运行示例时为 `examples/<器件>/field/<节点号>/`）下，由实验的 `points.json` 参数表记录节点号并通过 `points/<点名>/field` 软链接视图引用（结果布局见[架构总纲](../architecture.md#结果)）。它向[载流子输运与感应电流环节（`stages/current`）](current.md)交付电场、权重场、导电区与俘获率以漂移载流子，向[电子学读出环节（`stages/readout`）](readout.md)交付器件参数电路图及结电容、条间互容和未耗尽层参数以组装器件等效电路；场节点号变化时，上述下游环节以及[数字化环节（`stages/digitizer`）](digitizer.md)、[触发环节（`stages/trigger`）](trigger.md)、[事件重建环节（`stages/reconstruction`）](reconstruction.md)和[统计分析环节（`stages/analysis`）](analysis.md)随之算出新节点。
+本环节由命令 `raser field [路径]`（短别名 `raser fld`，详见[命令行接口（`raser`）](../cli.md)）驱动，也在[仿真链与环节入口（`stages`）](README.md)的八环节仿真链（`field`、`deposit`、`current`、`readout`、`digitizer`、`trigger`、`reconstruction`、`analysis`）中与[能量沉积环节（`stages/deposit`）](deposit.md)同处最前端。本环节调度 DEVSIM 求解（或从 Sentaurus TDR 文件导入）器件在给定偏压与辐照注量下的电势、电场、载流子浓度、俘获率、导电区标志、读出电极权重场、IV/CV/噪声曲线，以及标上数值的器件参数电路图（结电容、耦合电容、未耗尽层），也支持通过 `raser field --draw <对象>` 绘制网格和网格节点上的掺杂。算出的场作为器件资产，按输入指纹存放在各实验共用的场节点 `work/<器件>/field/nodes/<节点号>/`（就地运行示例时为 `examples/<器件>/field/nodes/<节点号>/`）下，由实验的 `points.json` 参数表记录节点号并通过 `points/<点名>/field` 软链接视图引用（结果布局见[架构总纲](../architecture.md#结果)）。它向[载流子输运与感应电流环节（`stages/current`）](current.md)交付电场、权重场、导电区与俘获率以漂移载流子，向[电子学读出环节（`stages/readout`）](readout.md)交付器件参数电路图及结电容、条间互容和未耗尽层参数以组装器件等效电路；场节点号变化时，上述下游环节以及[数字化环节（`stages/digitizer`）](digitizer.md)、[触发环节（`stages/trigger`）](trigger.md)、[事件重建环节（`stages/reconstruction`）](reconstruction.md)和[统计分析环节（`stages/analysis`）](analysis.md)随之算出新节点。
 
 ## 行为
 
@@ -8,7 +8,7 @@
 
 独立运行 `raser field [路径]`（或 `raser fld [路径]`）时，不给路径即取当前文件夹，给出时取相对或绝对路径。传入 `--draw <对象>` 时只绘制网格和网格节点上的掺杂；常规求解时根据目标路径是否属于某个实验（含实验 `config.json`）区分两类目标：
 
-- **器件或工程路径**：按[器件模型（`core/device`）](../core/device.md)的规则查找器件定义（project 文件夹里有自己的器件文件就用自己的，只写名字时到内置[探测器组件（`components/device`）](../components/device.md)里找），在 `work/<器件>/field/<节点号>/`（或对应 project 根目录下的 `field/<节点号>/`）下求解或导入场节点。器件的几何写在器件文件里，网格属于 `field`：同一个器件可以有几套网格，用哪一套由 `field` 段的设置指定。IV 扫描、单点电容、权重场、噪声、UMFPACK 线性求解器、TCAD 导入及其坐标翻转这些求解开关也是 `field` 段的设置，用 `--set field.<键>=<值>` 改。配合 `--set` 或 `--scan` 时按“段.键”地址（如 `field.voltage`、`field.irradiation_flux`、`field.mode`）传入设置。
+- **器件或工程路径**：按[器件模型（`core/device`）](../core/device.md)的规则查找器件定义（project 文件夹里有自己的器件文件就用自己的，只写名字时到内置[探测器组件（`components/device`）](../components/device.md)里找），在 `work/<器件>/field/nodes/<节点号>/`（或对应 project 根目录下的 `field/nodes/<节点号>/`）下求解或导入场节点。器件的几何写在器件文件里，网格属于 `field`：同一个器件可以有几套网格，用哪一套由 `field` 段的设置指定。IV 扫描、单点电容、权重场、噪声、UMFPACK 线性求解器、TCAD 导入及其坐标翻转这些求解开关也是 `field` 段的设置，用 `--set field.<键>=<值>` 改。配合 `--set` 或 `--scan` 时按“段.键”地址（如 `field.voltage`、`field.irradiation_flux`、`field.mode`）传入设置。
 - **实验文件夹路径**：当目标下存在实验的 `config.json` 时，命令读取其中的实验类定义、器件与分段配置，切到该实验所属的工程根目录与组件路径，逐扫描点检查并补算尚未就绪的共享场节点。配合 `--scan` 或 `--set` 仅筛选本次命令要准备的点（实验的 `config.json` 保持原样）；配合 `--dry-run` 只打印各点共享场是 `ready` 还是 `to be made`。
 
 如果把共享场文件夹本身作为目标传入，命令立即中止：
@@ -91,7 +91,7 @@ RuntimeError: field was made in this process and is still not ready for a point 
 
 原因：刚跑完的场求解结果里缺少当前扫描点所需的偏压或资产。检查场求解日志与节点记录查明缺少什么。
 
-共享场节点就绪后，实验把该扫描点对应的 `field` 节点号记入 `points.json`，并将视图软链接 `points/<点名>/field` 指向 `work/<器件>/field/<节点号>/`。作业执行 `field` 环节校验时再次确认该场节点就绪；若未找到满足当前偏压与辐照注量的就绪场，作业报错中止：
+共享场节点就绪后，实验把该扫描点对应的 `field` 节点号记入 `points.json`，并将视图软链接 `points/<点名>/field` 指向 `work/<器件>/field/nodes/<节点号>/`。作业执行 `field` 环节校验时再次确认该场节点就绪；若未找到满足当前偏压与辐照注量的就绪场，作业报错中止：
 
 ```text
 FileNotFoundError: no field of <det_name> ready for this run: solve it with `raser field <det_name>`
@@ -118,6 +118,7 @@ solving the field first: raser field HPK-Si-PiN --set field.voltage=200.0
 - 两个节点合起来写出的文件有体区场 `.pkl`（`Potential`、`Electrons`、`Holes`、`TrappingRate_n`、`TrappingRate_p`、`Conductive` 及 `NetDoping_0V.pkl`）、`0V`/`100.0V`/`200.0V` 的 `.devsim` 与 `.dd` 归档、`HPK-Si-PiN.dat`、`0.0V`/`100.0V`/`200.0V.undepleted.json`（`100.0 V` 与 `200.0 V` 均已全耗尽，`undepleted_width_um` 与 `specific_resistance_ohm_cm2` 均为 `0.0`，`specific_capacitance_pF` 为 `null`）、`weightingfield/top/Potential_100V.pkl`、`Potential_200V.pkl` 和 `plots/` 里对应的权重场图，以及标上结电容、耦合电容与未耗尽层数值的器件参数电路图资产。
 - 曲线数据为 `simIV0to100.0.root`、`simIV0to200.0.root`、`simCV0to100.0.root`、`simCV0to200.0.root`；一维分布图都在 `plots/` 里，各有 `.png` 与 `.pdf`：`iv`、`cv`、`doping`，以及 `electric_field_0V`、`electric_field_100V`、`electric_field_200V`、`potential_0V`、`potential_100V`、`potential_200V`、`weighting_potential_top_100V`、`weighting_potential_top_200V`、`weighting_field_top_100V`、`weighting_field_top_200V`（未加辐照，不画俘获率图）。
 - 实验在 `points.json` 中为 `voltage_100` 和 `voltage_200` 两个扫描点记下各自的 `field` 节点号，并将 `points/voltage_100/field`、`points/voltage_200/field` 软链接指向对应的场节点（可用 `raser status` 查看参数表中各点各环节的状态和节点号）。
+- 场文件夹自己也有给人看的视图：`field/points/voltage_100`、`field/points/voltage_200` 分别链到这两个节点，`field/points.json` 记下每个点的偏压、辐照注量、场模式和节点号。
 
 ![HPK-Si-PiN IV 曲线](../../images/field/iv-HPK-Si-PiN.png)
 
@@ -137,6 +138,7 @@ solving the field first: raser field HPK-Si-PiN --set field.voltage=200.0
 
 - **输入指纹与只增不减**：`field` 节点的输入包括本环节用到的设置值（偏压、辐照注量、场模式、所选网格及其文件的 SHA-256、UMFPACK 线性求解器开关、TCAD 导入文件的 SHA-256 等）和器件组件文件里 `field` 用到的那一部分（含器件 `"field"` 段及求解期间经 `Reading` 读取的器件属性与 JSON 键）；`field` 的指纹只由这两部分输入算出。偏压在指纹里，每个偏压是一个场节点：补算一个新偏压就多一个节点，已有偏压的节点和读它们的实验照常复用。对这些输入取指纹，指纹就是节点号。指纹相同就复用已有场节点，不论它是在哪个点、哪次运行里算出来的。节点只增不减：修改设置后算出新节点，旧节点保留；把设置改回去，`points.json` 和 `points/<点名>/field` 视图重新指回旧节点。
 - **单节点加锁与 `.part` 后缀**：每个节点单独加锁。写到一半的场节点带 `.part` 后缀，写完才改成正式节点名，正式节点名下总是完整的结果。
+- **视图与点名**：节点放在 `field/nodes/<节点号>/` 下，人看的是 `field/points/<点名>`，指向这个点现在的节点；`field/points.json` 记下每个点的偏压、辐照注量、场模式和节点号。点名由这三项起，按 `irradiation_flux`、`mode`、`voltage` 的顺序写成 `<键>_<取值>`，用 `_` 连起来，取值的写法和实验的点名相同：偏压总是写；辐照注量只在不取器件文件自带的值时写；场模式只在不是 `"full"` 时写。例如 `voltage_200`、`irradiation_flux_1e+15_voltage_200`。器件文件里场读到的内容变了，同一个点名解出新节点，视图改指新节点，旧节点留在 `nodes/` 下；改回去，视图又指回旧节点。`raser field` 和实验补算场时更新视图。
 - **代码版本不一致只提示**：代码版本、运行环境和运行状态另记在 `node.json` 里，指纹只取输入。当前代码版本和 `node.json` 记录的不一致时，只给一条提示，已有场节点照常复用。
 - **下游环节联动**：下游环节把上游各节点的节点号纳入自己的输入指纹。当 `field` 节点因输入改变而切换为新节点号时，依赖它的 `current`、`readout`、`digitizer`、`trigger`、`reconstruction`、`analysis` 指纹随之改变并算出新节点；`deposit` 节点只取自己的输入，照常复用。
 
@@ -179,7 +181,7 @@ solving the field first: raser field HPK-Si-PiN --set field.voltage=200.0
 
 1. **提取求解开关的指纹项（`settings(kwargs)`）**：令 `imported = None`；若打开了 TCAD 导入（`kwargs.get("input") is not None`），读取 `Path(kwargs["input"]).read_bytes()` 的完整 64 位小写十六进制 SHA-256 摘要赋给 `imported`。返回 `{"umf": bool(kwargs.get("umf")), "imported": imported}`；UMFPACK 与 TCAD 导入都未打开时为 `{"umf": False, "imported": None}`。
 2. **核对节点指纹与复用**：将 `field` 环节用到的设置值（含 `settings`、所选网格及其文件的 SHA-256 哈希）与器件组件文件中 `field` 读取的部分（器件 `"field"` 段，以及 `Reading` 记录进 `"read"` 的器件属性、顶层与一级嵌套 JSON 键）汇总取指纹作为 `<节点号>`：
-   - 若对应场节点在 `work/<器件>/field/<节点号>/` 下已存在且已完成求解，直接复用该节点；若当前代码版本与 `node.json` 记录不一致，打印一条提示，结果照常复用。
+   - 若对应场节点在 `work/<器件>/field/nodes/<节点号>/` 下已存在且已完成求解，直接复用该节点；若当前代码版本与 `node.json` 记录不一致，打印一条提示，结果照常复用。
    - 若需要求解或补算子任务，对该节点单独加锁（写到一半的节点带 `.part` 后缀，写完才改为正式名字），并在 `node.json` 中记录输入、代码版本、运行环境与运行状态。
 3. **启动作业与构造子命令（`job_command(kwargs)`）**：
    - 单个目标、未传 `jobs` 且非 `-b` 时，在当前进程通过 `_logged` 直接调用 `_run_job`；多目标或 `jobs=1`（仿真链 `start` 传入，确保 DEVSIM 只在独立子进程或集群作业里加载）且非 `-b` 时启动独立子进程；`-b` 时提交到集群。
@@ -298,7 +300,7 @@ solving the field first: raser field HPK-Si-PiN --set field.voltage=200.0
 
 ### 读写的文件
 
-以下共享场节点文件位于 `<场节点目录>`（即 `work/<器件>/field/<节点号>/`，示例就地运行时为 `examples/<器件>/field/<节点号>/`；写入期间目录带 `.part` 后缀并单独加锁）内，实验侧通过 `<实验文件夹>/points.json` 和 `<实验文件夹>/points/<点名>/field` 引用。
+以下共享场节点文件位于 `<场节点目录>`（即 `work/<器件>/field/nodes/<节点号>/`，示例就地运行时为 `examples/<器件>/field/nodes/<节点号>/`；写入期间目录带 `.part` 后缀并单独加锁）内，实验侧通过 `<实验文件夹>/points.json` 和 `<实验文件夹>/points/<点名>/field` 引用。
 
 #### 本环节直接读写的文件
 
@@ -310,7 +312,8 @@ solving the field first: raser field HPK-Si-PiN --set field.voltage=200.0
 - **`<场节点目录>/node.json`**（写者：生命周期节点管理与场求解作业）：JSON 对象，原样记录该场节点的输入（`field` 环节用到的设置值与器件组件文件里用到的那一部分，指纹由它们算出），同时另记代码版本、运行环境和运行状态。
 - **`<场节点目录>/<voltage>V.cv.json`**（文件名保留浮点格式，如 `200.0V.cv.json`；写者：单点电容子任务 `_capacitance`）：JSON 对象，包含 `voltage_V`（`float`，$\text{V}$）、`specific_capacitance_pF`（`float`，1D $\text{pF/cm}^2$、2D $\text{pF/cm}$、3D $\text{pF}$）、`per`（`str`，`"cm^2"`/`"cm"`/`"device"`，无）、`area_factor`（`float`，1D $\text{cm}^2$、2D $\text{cm}$、3D 无量纲）、`frequency_Hz`（`float`，$\text{Hz}$）。
 - **器件参数电路图资产**（写者：`field` 环节，位于 `work/<器件>/field/` 下）：标上结电容、耦合电容与未耗尽层数值的器件参数电路图，作为器件资产供 `readout` 环节接进器件电路。
-- **`<实验文件夹>/points.json` 与 `<实验文件夹>/points/<点名>/field`**（写者：生命周期实验调度）：`points.json` 为实验参数表，一行一个扫描点，记录各扫描轴取值与包括 `field` 在内的每个环节节点号（由 `raser status` 打印）；`points/<点名>/field` 为指向 `work/<器件>/field/<节点号>/` 的软链接视图。
+- **`work/<器件>/field/points.json` 与 `work/<器件>/field/points/<点名>`**（写者：本环节）：场的参数表与视图。`points.json` 是一个对象，键是点名，每个点有 `values`（`voltage`、`irradiation_flux`、`mode` 的取值）和 `node`（节点号）；`points/<点名>` 是指向 `../nodes/<节点号>` 的软链接。
+- **`<实验文件夹>/points.json` 与 `<实验文件夹>/points/<点名>/field`**（写者：生命周期实验调度）：`points.json` 为实验参数表，一行一个扫描点，记录各扫描轴取值与包括 `field` 在内的每个环节节点号（由 `raser status` 打印）；`points/<点名>/field` 为指向 `work/<器件>/field/nodes/<节点号>/` 的软链接视图。
 
 #### `core/field` 写出的场数据、归档与图
 

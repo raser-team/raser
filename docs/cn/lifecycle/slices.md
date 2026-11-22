@@ -148,7 +148,8 @@ raser status work/my-PiN
 - `<实验>/config.json`：本模块只读。写全这次运行用的设置，按 `field`、`deposit`、`current`、`readout`、`digitizer`、`trigger`、`reconstruction`、`analysis` 八段分开，格式见 [实验、扫描点与种子](experiments.md)。
 - `<实验>/points.json`：参数表。每次运行时从 `config.json` 算出，一行一个扫描点，写着各扫描轴的取值和每个环节用的节点号。`raser status` 打印它。
 - `<实验>/nodes/<环节>/<节点号>/`：节点。内有这个环节写出的文件和 `node.json`；写到一半带 `.part` 后缀。
-- `work/<器件>/field/<节点号>/`：器件的场节点，被这块器件的各个实验引用。
+- `work/<器件>/field/nodes/<节点号>/`：器件的场节点，被这块器件的各个实验引用。
+- `work/<器件>/field/points.json` 与 `work/<器件>/field/points/<点名>`：场的参数表和视图，点名按偏压、辐照注量、场模式起，规则见[场求解环节（`stages/field`）](../stages/field.md)。
 - `<实验>/points/<点名>/<环节>/<作业号>`：视图，指向这个作业在这一环节的节点的软链接；`points/<点名>/field`、`points/<点名>/analysis` 各是一个软链接。
 
 节点里各环节写出的数据文件，格式见 [场求解与加载（`core/field`）](../core/field.md)、[能量沉积与电离（`core/deposit`）](../core/deposit.md)、[载流子漂移与感应电流（`core/current`）](../core/current.md)、[电子学读出（`core/readout`）](../core/readout.md)、[数字化器（`core/digitizer`）](../core/digitizer.md)、[触发环节（`stages/trigger`）](../stages/trigger.md) 和 [事件重建（`core/reconstruction`）](../core/reconstruction.md)。

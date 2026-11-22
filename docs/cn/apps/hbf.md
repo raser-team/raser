@@ -26,7 +26,7 @@ SiC AC-LGAD 器件中的雪崩倍增由 [`core/current`](../core/current.md) 的
 
 ### 环节
 
-- [`field`](../stages/field.md)：复用 SiC AC-LGAD 像素器件在工作偏压下的电场、增益层分布与权重场节点；找不到场时在作业开始前补算，存进 `work/<器件>/field/<节点号>/`。
+- [`field`](../stages/field.md)：复用 SiC AC-LGAD 像素器件在工作偏压下的电场、增益层分布与权重场节点；找不到场时在作业开始前补算，存进 `work/<器件>/field/nodes/<节点号>/`。
 - [`deposit`](../stages/deposit.md)：用 Geant4 模拟氢硼聚变源发出的 $\alpha$ 粒子在靶室几何与 SiC AC-LGAD 像素器件表层的能量沉积与电离对生成。
 - [`current`](../stages/current.md)：模拟电子和空穴在 SiC 倍增场中的漂移与 `"Hatakeyama"` 雪崩倍增，计算各 RC 格点的感应电流。
 - [`readout`](../stages/readout.md)：将感应电流送入 AC-LGAD 的二维阻性层与交流耦合电容网格（`device_grid`）及前端放大器链，求解各像素通道的输出电压波形。
@@ -86,7 +86,7 @@ raser hbf --scan field.voltage=400,500
 
 ## 输出
 
-结果存放在 `work/hbf/` 下（存放结构见[架构总纲](../architecture.md#结果)）：各环节节点按输入指纹存放在 `work/hbf/nodes/<环节>/<节点号>/`（各带一份 `node.json`；`deposit` 到 `reconstruction` 每个作业一个节点，`analysis` 每个扫描点一个节点），按扫描点命名的软链接视图位于 `work/hbf/points/<点名>/<环节>/<作业号>`（`points/<点名>/field` 和 `points/<点名>/analysis` 各是一个软链接），参数表为 `work/hbf/points.json`，器件场节点存放在 `work/<器件>/field/<节点号>/`，跨点统计与趋势图存放在 `work/hbf/analysis/` 下。
+结果存放在 `work/hbf/` 下（存放结构见[架构总纲](../architecture.md#结果)）：各环节节点按输入指纹存放在 `work/hbf/nodes/<环节>/<节点号>/`（各带一份 `node.json`；`deposit` 到 `reconstruction` 每个作业一个节点，`analysis` 每个扫描点一个节点），按扫描点命名的软链接视图位于 `work/hbf/points/<点名>/<环节>/<作业号>`（`points/<点名>/field` 和 `points/<点名>/analysis` 各是一个软链接），参数表为 `work/hbf/points.json`，器件场节点存放在 `work/<器件>/field/nodes/<节点号>/`，跨点统计与趋势图存放在 `work/hbf/analysis/` 下。
 
 输出的数据文件与图像如下表：
 

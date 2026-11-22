@@ -146,7 +146,7 @@ Physical models are registered by name and selected by name in device files; eac
 
 ### `field` Stage (`stages/field`, `core/field`)
 
-1. **Read tracking and doping evaluation (`reading.py`, `create_mesh.py`)**: `solver_section.main` wraps the device object in `Reading(Detector(...))` to automatically record device attributes and JSON keys accessed during solving, writing them into the `"read"` field of the field node `<device_project>/field/<node_id>/node.json`. `DevsimMesh.setDoping` evaluates `Acceptors` and `Donors` (and optional irradiation terms `Acceptors_ir` and `Donors_ir`) from `doping` at mesh nodes to obtain the net doping concentration:
+1. **Read tracking and doping evaluation (`reading.py`, `create_mesh.py`)**: `solver_section.main` wraps the device object in `Reading(Detector(...))` to automatically record device attributes and JSON keys accessed during solving, writing them into the `"read"` field of the field node `<device_project>/field/nodes/<node_id>/node.json`. `DevsimMesh.setDoping` evaluates `Acceptors` and `Donors` (and optional irradiation terms `Acceptors_ir` and `Donors_ir`) from `doping` at mesh nodes to obtain the net doping concentration:
    $$N_{\text{net}}(x) = N_D(x) - N_A(x) \tag{1}$$
    where:
    - $N_{\text{net}}(x)$: net doping concentration at the mesh node, $\text{cm}^{-3}$;

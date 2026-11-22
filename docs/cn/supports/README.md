@@ -29,7 +29,7 @@ component_file_path() -> src/raser/components/device/HPK-Si-PiN.json
 各环节与核心模块在当前项目下构造输出目录或清理旧文件时，通过 `raser.supports.output` 校验相对路径片段与删除目标。路径片段含绝对路径或 `".."`、归属者名称为空，或删除目标解析后落在 `project_root()` 之外时，操作在访问磁盘前即抛出 `ValueError` 中止：
 
 ```text
-owned_path("field", "<节点号>") -> <器件 project>/field/<节点号>/
+owned_path("field", "nodes", "<节点号>") -> <器件 project>/field/nodes/<节点号>/
 owned_path("field", "../out")   -> ValueError: Output label must remain inside the project: ../out
 delete_file("/tmp/test.h5")     -> ValueError: File removal must remain inside the project: /tmp/test.h5
 ```

@@ -148,7 +148,8 @@ Adding `--dry-run` before running prints only the scan points, stages, and job s
 - `<experiment>/config.json`: Read-only in this module. Lists all settings used by the run, separated into the eight sections `field`, `deposit`, `current`, `readout`, `digitizer`, `trigger`, `reconstruction`, and `analysis`; see [Experiments, Scan Points, and Seeds](experiments.md) for the format.
 - `<experiment>/points.json`: Parameter table. Computed from `config.json` on each run, one row per scan point, listing scan-axis values and the node ID used for each stage. Printed by `raser status`.
 - `<experiment>/nodes/<stage>/<node_id>/`: Node directory. Contains the files written by this stage and `node.json`; carries a `.part` suffix while being written.
-- `work/<device>/field/<node_id>/`: Device field node referenced by all experiments on that device.
+- `work/<device>/field/nodes/<node_id>/`: Device field node referenced by all experiments on that device.
+- `work/<device>/field/points.json` and `work/<device>/field/points/<point>`: the parameter table and the views of the fields, their points named by bias, irradiation flux and field mode, as [Field Stage (`stages/field`)](../stages/field.md) describes.
 - `<experiment>/points/<point>/<stage>/<job>`: View, a symlink pointing to that job's node at that stage; `points/<point>/field` and `points/<point>/analysis` are each a single symlink.
 
 Formats of data files written by each stage inside its node are documented in [Field Solving and Loading (`core/field`)](../core/field.md), [Energy Deposition and Ionization (`core/deposit`)](../core/deposit.md), [Carrier Drift and Induced Current (`core/current`)](../core/current.md), [Electronics Readout (`core/readout`)](../core/readout.md), [Digitizer (`core/digitizer`)](../core/digitizer.md), [Trigger Stage (`stages/trigger`)](../stages/trigger.md), and [Event Reconstruction (`core/reconstruction`)](../core/reconstruction.md).

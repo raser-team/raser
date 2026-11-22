@@ -85,7 +85,7 @@ $$\sigma_1^2 = \frac{\sigma_{12}^2 + \sigma_{13}^2 - \sigma_{23}^2}{2}, \qquad \
 
 `timeres` 的执行步骤如下：
 
-1. **求解或复用共享场（`field`）**：分别为被测器件和参考器件定位各自在目标偏压 `voltage`（$\text{V}$）与辐照注量 `irradiation_flux`（$\text{cm}^{-2}$，$1\ \text{MeV}$ 中子等效注量）下的电场、权重场与等效电路参数，未就绪时在作业开始前补算。两块器件的共享场节点各自存放在对应器件 project 的 `field/<节点号>/` 下。
+1. **求解或复用共享场（`field`）**：分别为被测器件和参考器件定位各自在目标偏压 `voltage`（$\text{V}$）与辐照注量 `irradiation_flux`（$\text{cm}^{-2}$，$1\ \text{MeV}$ 中子等效注量）下的电场、权重场与等效电路参数，未就绪时在作业开始前补算。两块器件的共享场节点各自存放在对应器件 project 的 `field/nodes/<节点号>/` 下。
 2. **在 `time_resolution` 装置下模拟双器件沉积（`deposit`）**：按各自器件文件同时建出参考器件与被测器件实体，并放置 `Al`、`pcb1`、`pcb2`。从 `decay/Sr90` 发射衰变产物，记录任一器件有沉积的事例（双器件符合由 `trigger` 判）直到录满 `events_per_job` 个事例（示例里为 `10000`；最多生成 `generated_limit` 个源事例），按 `ionized_pairs` 抽样电子-空穴对数写入 `deposit` 节点的同一份 `deposit.h5`，并以 `detector` 字段区分参考器件和被测器件的沉积步。
 3. **两块器件各自漂移、读出与数字化（`current`、`readout`、`digitizer`）**：被测器件与参考器件各自在对应求解场中漂移载流子算出感应电流（示例里 `current.plots = 0`，不画逐事例图），经各自器件等效电路与前端放大器链（默认 `SantaCruz+Gali52+Termination50`）求解输出电压波形并按由作业种子派生的 `readout` 噪声种子叠加频域热噪声，再按数字化器组件（默认 `MXR608A`）的模拟带宽、采样和量化设置（时钟相位与孔径抖动由作业种子派生的 `digitizer` 种子抽取）生成两路量化码数字波形写入 `digitizer` 节点。
 4. **双器件符合触发（`trigger`）**：检查同一事例中参考器件与被测器件的量化数字波形，按触发组件里的符合条件，要求列表里全部器件在同一事例都过幅度阈值。只有通过双器件符合的事例被记录，其事例号数据集 `event`（`int64`）写入 `trigger` 节点的 `trigger.h5`。
@@ -108,7 +108,7 @@ $$\sigma_1^2 = \frac{\sigma_{12}^2 + \sigma_{13}^2 - \sigma_{23}^2}{2}, \qquad \
 
 ### 环节
 
-- [`field`](../stages/field.md)：分别为被测器件与参考器件求解或复用目标偏压与辐照注量下的电场、权重场与等效电路参数，各自保存在对应器件 project 的 `field/<节点号>/` 下。
+- [`field`](../stages/field.md)：分别为被测器件与参考器件求解或复用目标偏压与辐照注量下的电场、权重场与等效电路参数，各自保存在对应器件 project 的 `field/nodes/<节点号>/` 下。
 - [`deposit`](../stages/deposit.md)：在 `time_resolution` 装置下用 Geant4 模拟粒子依次穿过铝片、参考器件、上层 PCB 板、被测器件和下层 PCB 板，记录任一器件有沉积的事例（示例里每作业录满 `10000` 个事例，双器件符合由 `trigger` 判）。
 - [`current`](../stages/current.md)：分别在被测器件和参考器件的求解场中漂移载流子，算出各自读出电极上的感应电流与净电荷，示例里不画单事例图（`current.plots = 0`）。
 - [`readout`](../stages/readout.md)：分别将两块器件的感应电流送入各自器件等效电路和前端放大器链，求解输出电压波形并叠加频域热噪声。
@@ -163,7 +163,7 @@ raser timeres NJU-PiN --scan field.voltage=-300,-500
 
 ## 输出
 
-结果存放在被测器件 project 下的 `<project>/timeres/`（如 `work/<被测器件>/timeres/`，`examples/` 下就地运行时为 `examples/<被测器件>/timeres/`），存放结构见 [架构总纲](../architecture.md#结果)。各环节按输入指纹写入 `<project>/timeres/nodes/<环节>/<节点号>/`（内含该环节输出文件、本环节图像与 `node.json`；`deposit` 到 `reconstruction` 每个作业一个节点，`analysis` 每个扫描点一个节点），按扫描点在 `<project>/timeres/points/<点名>/<环节>/<作业号>` 生成软链接视图（`points/<点名>/field`、`points/<点名>/analysis` 各是一个软链接）并在 `<project>/timeres/points.json` 记录参数表；各扫描点的单点统计和分布图存放在各自的 `analysis` 节点（视图 `<project>/timeres/points/<点名>/analysis/`）中，跨点统计汇总与趋势图存放在 `<project>/timeres/analysis/` 下。被测器件与参考器件的共享场节点各自存放在对应器件 project 下的 `field/<节点号>/` 中（如 `work/<被测器件>/field/<节点号>/` 与 `work/HPK-Si-LGAD/field/<节点号>/`）。
+结果存放在被测器件 project 下的 `<project>/timeres/`（如 `work/<被测器件>/timeres/`，`examples/` 下就地运行时为 `examples/<被测器件>/timeres/`），存放结构见 [架构总纲](../architecture.md#结果)。各环节按输入指纹写入 `<project>/timeres/nodes/<环节>/<节点号>/`（内含该环节输出文件、本环节图像与 `node.json`；`deposit` 到 `reconstruction` 每个作业一个节点，`analysis` 每个扫描点一个节点），按扫描点在 `<project>/timeres/points/<点名>/<环节>/<作业号>` 生成软链接视图（`points/<点名>/field`、`points/<点名>/analysis` 各是一个软链接）并在 `<project>/timeres/points.json` 记录参数表；各扫描点的单点统计和分布图存放在各自的 `analysis` 节点（视图 `<project>/timeres/points/<点名>/analysis/`）中，跨点统计汇总与趋势图存放在 `<project>/timeres/analysis/` 下。被测器件与参考器件的共享场节点各自存放在对应器件 project 下的 `field/nodes/<节点号>/` 中（如 `work/<被测器件>/field/nodes/<节点号>/` 与 `work/HPK-Si-LGAD/field/nodes/<节点号>/`）。
 
 ### 数据与图像文件
 

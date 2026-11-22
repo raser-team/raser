@@ -1,6 +1,6 @@
 # 电子学读出环节（`stages/readout`）
 
-`src/raser/stages/readout.py` 是八环节仿真链的第 4 个环节 `readout`，由 `raser readout`（短命令 `raser rdo`）或测试、应用的实验命令调度。它承接[载流子输运与感应电流环节（`stages/current`）](current.md)节点里的电极感应电流，以及[场求解环节（`stages/field`）](field.md)在 `<器件 project>/field/<节点号>/` 下的场节点给出的器件电路参数。本环节调用[场求解与加载（`core/field`）](../core/field.md)组装器件等效电路，调用[电子学读出（`core/readout`）](../core/readout.md)加载前端放大器链、判定各输出通道的脉冲方向、求解每个事例的瞬态输出电压波形并叠加电路热噪声，把波形写进自己的节点 `nodes/readout/<节点号>/`。写出的波形交给下游[数字化环节（`stages/digitizer`）](digitizer.md)按示波器或数字化板的采样和量化变成数字波形。
+`src/raser/stages/readout.py` 是八环节仿真链的第 4 个环节 `readout`，由 `raser readout`（短命令 `raser rdo`）或测试、应用的实验命令调度。它承接[载流子输运与感应电流环节（`stages/current`）](current.md)节点里的电极感应电流，以及[场求解环节（`stages/field`）](field.md)在 `<器件 project>/field/nodes/<节点号>/` 下的场节点给出的器件电路参数。本环节调用[场求解与加载（`core/field`）](../core/field.md)组装器件等效电路，调用[电子学读出（`core/readout`）](../core/readout.md)加载前端放大器链、判定各输出通道的脉冲方向、求解每个事例的瞬态输出电压波形并叠加电路热噪声，把波形写进自己的节点 `nodes/readout/<节点号>/`。写出的波形交给下游[数字化环节（`stages/digitizer`）](digitizer.md)按示波器或数字化板的采样和量化变成数字波形。
 
 ## 行为
 
@@ -269,7 +269,7 @@ FileNotFoundError: no field of <det_name> ready for this run: solve it with `ras
 
 ### 读写的文件
 
-- **读：`<器件 project>/field/<节点号>/` 场节点里的电路文件**（`<V>V.cv.json`、`<V>V.undepleted.json`、`weightingfield/<electrode>/Capacitance_<bias>V.json`）。常规器件从中取结电容、未耗尽层的 RC 参数和条形行的条间互容；格式见[场求解与加载（`core/field`）](../core/field.md)。
+- **读：`<器件 project>/field/nodes/<节点号>/` 场节点里的电路文件**（`<V>V.cv.json`、`<V>V.undepleted.json`、`weightingfield/<electrode>/Capacitance_<bias>V.json`）。常规器件从中取结电容、未耗尽层的 RC 参数和条形行的条间互容；格式见[场求解与加载（`core/field`）](../core/field.md)。
 - **读：`current` 节点里的 `current.h5`**（多位置实验里每个位置一个 `current.<位置>.h5`）。取 `electrodes`、`dt`（$\text{s}$）和逐事例感应电流；格式见[载流子漂移与感应电流（`core/current`）](../core/current.md)。
 - **写：`nodes/readout/<节点号>/readout.h5`**（多位置实验里同节点下每个位置一个文件 `readout.<位置>.h5`）。上游有记录事例、且（多位置下）该位置有电流文件时写出，先删旧文件再逐事例追加。底层读写函数见[电子学读出（`core/readout`）](../core/readout.md)，HDF5 属性与数据集如下：
 
