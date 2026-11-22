@@ -1,5 +1,5 @@
 {
-    "det_name" : "CMOS_strip",
+    "det_name" : "CMOS_strip_tcad",
     "det_model" : "strip",
     "electrodes" : "strip",
     "material" : "Si",
