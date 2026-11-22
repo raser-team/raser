@@ -51,6 +51,30 @@ where:
 
 Single-round truncated-Gaussian maximum-likelihood fitting is solved by `truncated_gaussian(values, low, high)` in `resolution.py` using the `"L-BFGS-B"` algorithm of `scipy.optimize.minimize`; multi-round window-shrinking iteration is executed by `core_width(values, window=None)`, which uses Eq. (2) as the initial window when `window=None` and shrinks the window after each round to $[\mu - 2\sigma,\, \mu + 2\sigma]$ for at most `ROUNDS = 6` rounds. For maximum-likelihood parameter estimation of doubly truncated normal distributions, see Ref. [3]; for unbinned likelihood fitting and curvature covariance estimation, see Ref. [4]; for the bound-constrained limited-memory quasi-Newton algorithm L-BFGS-B, see Ref. [5].
 
+### Straight Tracks and Residuals
+
+When several devices are arranged along a beam as a telescope (see [Beam Telescope](../bench/telescope.md)), the cluster positions of each slot (`cluster_x`, `cluster_y` of [event reconstruction](reconstruction.md)) are transformed into global coordinates according to the slot's placement (Eq. (17) of [Energy Deposition and Ionization](deposit.md#placement-of-multiple-devices), evaluated at the mid-plane $z = l_z/2$ in device coordinates):
+
+$$\begin{pmatrix} X \\ Y \end{pmatrix} = \begin{pmatrix} P_x \\ P_y \end{pmatrix} + \begin{pmatrix} \cos\phi & -\sin\phi \\ \sin\phi & \cos\phi \end{pmatrix}\begin{pmatrix} \bar{x}_c - l_x/2 \\ \bar{y}_c - l_y/2 \end{pmatrix}, \qquad Z = P_z + \frac{l_z}{2} \tag{12}$$
+
+For events in which every slot has exactly one cluster, an unweighted least-squares straight-line fit is performed separately on $(Z_j, X_j)$ and $(Z_j, Y_j)$ over the reference-layer set $\mathcal{R}$, followed by the residual at each slot and the chi-square of the reference track:
+
+$$k_x = \frac{\sum_{j \in \mathcal{R}}(Z_j - \bar{Z})(X_j - \bar{X})}{\sum_{j \in \mathcal{R}}(Z_j - \bar{Z})^2}, \qquad b_x = \bar{X} - k_x \bar{Z} \tag{13}$$
+
+$$r_{x,s} = k_x Z_s + b_x - X_s, \qquad r_{y,s} = k_y Z_s + b_y - Y_s, \qquad \chi^2 = \sum_{j \in \mathcal{R}}\left(\frac{r_{x,j}^2}{q_{x,j}^2/12} + \frac{r_{y,j}^2}{q_{y,j}^2/12}\right) \tag{14}$$
+
+where:
+
+- $(\bar{x}_c, \bar{y}_c)$: cluster position in the slot's device coordinates, $\mu\text{m}$;
+- $\mathbf{P}$, $\phi$: the slot's `position` ($\mu\text{m}$) and `rotation_z` (degrees); $l_x, l_y, l_z$: dimensions of the device in that slot, $\mu\text{m}$;
+- $(X, Y, Z)$: global coordinates of the cluster, $\mu\text{m}$; $\bar{X}, \bar{Z}$: arithmetic means of $X_j$ and $Z_j$ over the reference layers; $k_y$ and $b_y$ replace $X$ with $Y$ in Eq. (13);
+- $k_x, k_y$: track slopes (dimensionless); $b_x, b_y$: track intercepts, $\mu\text{m}$;
+- $r_{x,s}, r_{y,s}$: residual at slot $s$ (reference layer or DUT), track position minus cluster position, $\mu\text{m}$;
+- $q_{x,j}, q_{y,j}$: pixel pitch of reference layer $j$ along the global $x$ and $y$ directions, $\mu\text{m}$: $(p_x, p_y)$ when $\phi$ is $0$ or $180$, and $(p_y, p_x)$ when $\phi$ is $90$ or $270$;
+- $\chi^2$: sum of reference-layer residuals normalized by the uniform pixel variance (dimensionless).
+
+The width of the DUT residual distributions along $x$ and $y$ is obtained with the truncated-Gaussian fit of the previous section, giving the residual standard deviation $\sigma_{\text{Tol}}$. Implemented in `tracking.py`. For beam-telescope track fitting and residuals, see Ref. [9].
+
 ### Waveform Statistics and Position Calibration
 
 For multi-event feature collections produced by the single-event reconstruction class `InputWaveform` (see [reconstruction.md](reconstruction.md) for its definition and feature extraction algorithms), `core/analysis` fits binned histograms with a Gaussian for timing quantities and spatial centroid residuals, with a Landau distribution for pulse charge, amplitude, and time over threshold, and constructs the 2D $\eta$ position-calibration relation between the intra-cell offset of the true hit position relative to the electrode pitch and the intra-cell offset of the reconstructed centroid:
@@ -144,6 +168,18 @@ The table below lists all built-in physical constants and hard-coded algorithmic
    - **Update the window**: Set `low, high = new_low, new_high` and proceed to the next round.
 4. **Return and downstream exception handling**: Return `fit` after the loop ends. In `time_widths` and `write_point` of [../stages/analysis.md](../stages/analysis.md), `NaN` samples are dropped from each timing channel before calling `core_width`: if `TooFewValues` is raised, `write_point` catches it, records the reason in `timing.error` of `result.json`, and skips drawing timing distribution plots; if at least `20` samples exist but `truncated_gaussian` raises `ArithmeticError` or `ValueError`, or if the sample MAD is `0` causing `core_width` itself to raise `ValueError: the window [...] is empty`, the exception propagates upward and aborts the job. A MAD of `0` means more than half of the `time - truth` values on that channel are identical, and both bounds shown in the error message equal that value; `events.h5` and `amplitude.png` have already been written at that point, so those identical differences between that channel and `truth` can be inspected in `events.h5`, and `core_width(values, window=(low, high))` can then be called in Python with an explicit initial window.
 
+### Track Fitting and DUT Residual Widths (`tracking.py`)
+
+`track_events(hits, placements, roles)` joins the reconstruction results of all slots of one job into tracks. All three arguments are dictionaries keyed by slot name, with slot order taken from `placements`; the function uses only the passed-in data. `hits[slot]` is `SlotHits(event, clusters, cluster_x, cluster_y)`, taken from the columns of the same names in that slot's event table. `placements[slot]` is `Placement(position, rotation_z, l_x, l_y, l_z, p_x, p_y)`. `roles[slot]` is `"reference"` or `"dut"`.
+
+1. **Input validation**: if the slot names of the three dictionaries differ, raise `ValueError` (`the slots of hits, placements and roles differ`); if there are fewer than `2` reference layers, or if all reference layers have the same $Z$, raise `ValueError` (`a track needs reference layers at two or more z`); if `rotation_z` is not `0`, `90`, `180`, or `270`, raise `ValueError`.
+2. **Event alignment**: the union of event IDs across all slots, sorted in ascending order, gives the rows of the result; for an event not recorded at a slot, that slot's cluster count is `0`.
+3. **Selection**: events in which every slot has exactly `1` cluster are marked `selected = True`.
+4. **Coordinate transformation and fitting**: slots with `1` cluster compute $(X, Y)$ via Eq. (12), otherwise `NaN`. Selected events compute $k_x, b_x, k_y, b_y$ via Eq. (13) and the residuals at all slots and $\chi^2$ via Eq. (14); for unselected events these quantities are `NaN`.
+5. Return `TrackEvents`: `slots`, `roles`, `z` (the $Z$ of each slot), and the columns `event`, `selected`, `x`, `y` (`(events, slots)`), `kx`, `bx`, `ky`, `by`, `chi2` (`(events,)`), `residual_x`, `residual_y` (`(events, slots)`).
+
+`residual_widths(tracks)` reads the `TrackEvents` of all jobs at a scan point. If `slots` or `roles` differ across jobs, it raises `ValueError`. For each slot with role `"dut"`, it concatenates `residual_x` and `residual_y` of the selected events of all jobs into separate columns, calls `core_width` on each, and returns `{slot: {"x": result, "y": result}}`, where each result is the dictionary returned by `core_width`, in $\mu\text{m}$, and `"sigma"` is $\sigma_{\text{Tol}}$ along that direction. If `core_width` raises `TooFewValues`, the result for that direction becomes `{"events": number of values, "error": error text}`.
+
 ### Waveform Statistics Accumulation and ROOT Histogram Fitting
 
 `WaveformStatistics` (`waveform_stats.py`) processes single-event `InputWaveform.data` dictionaries and produces ROOT statistical plots in the following steps:
@@ -176,6 +212,7 @@ The table below lists all built-in physical constants and hard-coded algorithmic
 
 - `collection.py`: defines the elementary charge constant `ELEMENTARY_CHARGE` and implements the per-event charge collection efficiency function `collection_efficiency`.
 - `resolution.py`: defines the constants `ROUNDS`, `MINIMUM_EVENTS`, and the insufficient-sample exception class `TooFewValues`, and implements single-window unbinned truncated-Gaussian maximum-likelihood fitting `truncated_gaussian` and multi-round window-shrinking core-width estimation `core_width`.
+- `tracking.py`: implements the experiment-level statistics of the telescope. `track_events` transforms the clusters of each slot into global coordinates, fits straight tracks, and computes residuals; `residual_widths` gives the core width of each DUT's residuals; `draw_track` and `draw_residual` draw the plots.
 - `waveform_stats.py`: implements the PyROOT binned Gaussian fit `fit_data_normal`, the binned Landau fit `fit_data_landau`, and the statistical plotting class `WaveformStatistics` for single-event reconstruction dictionaries.
 
 ### Core Data Structures
@@ -216,7 +253,9 @@ When [../stages/analysis.md](../stages/analysis.md) invokes `collection_efficien
 | `reconstruction.h5` ([reconstruction.md](reconstruction.md)) | Dataset `CFD` | `(events, electrodes, fractions)`, `float64` | $\text{s}$ | Extracts `CFD<round(100*part)>` timestamps on electrode `0` for each constant fraction `part` of selected events |
 | `deposit.h5` ([deposit.md](deposit.md)) | Datasets `event`, `count`, `t` | `(recorded_events,)`, `int64` / `(sum(count),)`, `float64` | none, steps, $\text{s}$ | Takes the minimum `t` across all deposition steps of each event as the true reference time `truth` ($\text{s}$), passing `time - truth` to `core_width` |
 
-Limitation: `analysis` currently computes statistics only for single-electrode results; multi-electrode and multi-position statistics (such as telescope residuals and summaries across cflm pads) are not yet implemented.
+Limitation: for single-slot experiments, `analysis` currently computes statistics only for single-electrode results; multi-electrode statistics (such as summaries across cflm pads) are not yet implemented.
+
+A multi-slot telescope reads `reconstruction.<slot>.h5` of every slot in the `reconstruction` nodes of all jobs at the same scan point and passes the four columns `event`, `clusters`, `cluster_x`, `cluster_y` to `track_events`; the seed and the hit time of each layer are given by `reconstruction` and only read here. `events.h5` then holds one row per selected event, with datasets `job`, `event`, `kx`, `ky` (dimensionless), `bx`, `by` ($\mu\text{m}$), `chi2` (dimensionless), and for every slot `x.<slot>`, `y.<slot>`, `residual_x.<slot>`, `residual_y.<slot>` ($\mu\text{m}$); `residual.<slot>.x` and `residual.<slot>.y` in `result.json` are the results of `residual_widths` for each DUT.
 
 #### Output File `events.h5`
 
@@ -267,6 +306,8 @@ The table below lists the ROOT statistical plots generated directly by `Waveform
 | `<tag>_cluster_size_ToT.pdf`, `.C`; `..._amplitude.pdf`, `.C`; `..._charge.pdf`, `.C` | `11`-bin integer cluster-size histogram `TH1I` over `[0, 11)` drawn by `WaveformStatistics.cluster_size_fill` | Horizontal axis `<model>` (electrode count), vertical axis `Events` (count) |
 | `<tag>_gravity_center_ToT_error.pdf`, `.C`; `..._amplitude_error.pdf`, `.C`; `..._charge_error.pdf`, `.C` | `100`-bin 1D position-residual histogram over `mid ± 1` around the median and `'gaus'` fit curve drawn by `WaveformStatistics.gravity_center_error_fit` when data are non-empty | Horizontal axis `<model>` (multiples of electrode pitch, dimensionless), vertical axis `Events` (count) |
 | `<tag>_ita_calibration_ToT.pdf`, `.C`; `..._amplitude.pdf`, `.C`; `..._charge.pdf`, `.C` | `20 × 20`-bin 2D $\eta$ position-calibration plot `TH2F` (`"COLZ"`) drawn by `WaveformStatistics.ita_calibration` | Horizontal axis `Original x` (`[-0.5, 0.5]`, electrode pitches), vertical axis `Reconstructed x` (`[0.5, -0.5]`, electrode pitches) |
+| `track_<event>` | `draw_track` in `tracking.py` draws one for each of the first `analysis.plots` selected events: $X$-$Z$ on the left and $Y$-$Z$ on the right, filled markers for reference layers, open markers for DUTs, and the straight line of Eq. (13) | Horizontal axis `z [mm]`, vertical axes `x [μm]`, `y [μm]` |
+| `residual_<slot>` | `draw_residual` in `tracking.py` draws one for each DUT: `residual_x` on the left and `residual_y` on the right, a `64`-bin histogram within `mean ± 8 * sigma`, the last-round window shaded, and the truncated-Gaussian curve, with $\sigma_{\text{Tol}}$ in the legend | Horizontal axes `Residual x [μm]`, `Residual y [μm]`, vertical axis `Events` |
 | `efficiency.png` | `60`-bin charge collection efficiency histogram over all recorded events with a dashed vertical mean line, drawn by `stages/analysis` when recorded events $\ge 2$ | Horizontal axis `charge collection efficiency` (dimensionless), vertical axis `events` (count) |
 | `amplitude.png` | `60`-bin pulse amplitude histogram of selected events with a dashed vertical `amplitude_threshold` line, drawn by `stages/analysis` when recorded events $\ge 1$ | Horizontal axis `amplitude above the baseline [mV]`, vertical axis `events` (count) |
 | `time_difference.png` | `3 × 4` grid of `64`-bin time-difference histograms within `mean ± 8 * sigma` for `ToA`, `CoG`, and the first `10` `CFD*` channels, showing the final-round window shading and truncated-Gaussian curve, drawn by `stages/analysis` when timing fits succeed | Horizontal axis `<channel> - truth [ps]`, vertical axis event count |
@@ -283,3 +324,4 @@ The table below lists the ROOT statistical plots generated directly by `Waveform
 - [6] L. D. Landau, “On the energy loss of fast particles by ionisation”, in *Collected Papers of L. D. Landau*, Elsevier (1965) 417, doi:10.1016/B978-0-08-010586-4.50061-4
 - [7] E. Belau, R. Klanner, G. Lutz, E. Neugebauer, H. J. Seebrunner, A. Wylie, T. Böhringer, L. Hubbeling, P. Weilhammer, J. Kemmer, U. Kötz, M. Riebesell, “Charge collection in silicon strip detectors”, Nucl. Instrum. Methods Phys. Res. 214 (1983) 253, doi:10.1016/0167-5087(83)90591-4
 - [8] R. Brun, F. Rademakers, “ROOT — An object oriented data analysis framework”, Nucl. Instrum. Methods Phys. Res. A 389 (1997) 81, doi:10.1016/S0168-9002(97)00048-X
+- [9] H. Jansen et al., “Performance of the EUDET-type beam telescopes”, EPJ Tech. Instrum. 3 (2016) 7, doi:10.1140/epjti/s40485-016-0033-2
