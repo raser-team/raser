@@ -360,7 +360,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 
 ### 插值与缓存
 
-`DevsimField(device_name, voltage, read_out_contact, bounds, resolution, field_directory, interpolation_bins)` 构造时：
+`DevsimField(device_name, voltage, read_out_contact, bounds, resolution, field_directory, interpolation_bins, pitch)` 构造时：
 
 1. **目录**：用 `field_directory` 给出的场节点目录 `field/<节点号>/`。`node.json` 缺失时抛出 `FileNotFoundError`；`axes` 取自其中。
 2. **加载**：`NetDoping` 取目录中第一个匹配 `NetDoping_<V>V.pkl` 的文件；`Potential`、`TrappingRate_p`、`TrappingRate_n`、`Conductive` 与各读出电极的权重势取该偏压的文件。文件缺失时抛出 `FileNotFoundError`；文件的维数小于 `axes` 的长度时抛出 `ValueError`。
@@ -369,7 +369,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
    - 点恰好构成完整规则网格（各轴唯一坐标数之积等于点数且无重复）时直接填格；
    - 否则在各轴 $[\min, \max]$ 上取 `field_interpolation_bins` 个等距坐标（缺省 30，少于 2 或出现未知轴时抛出 `ValueError`；某轴无跨度时抛出 `ValueError`），每个格点取 8 个最近邻做反距离平方加权 $\hat v = \sum v_j d_j^{-2}/\sum d_j^{-2}$（$d_j$ 下限 $10^{-15}$，距离 $\le 10^{-15}$ 时取该点值）；
    - 最后用 `RegularGridInterpolator`（线性，界外报错）。
-4. **晶胞折回**（`_in_the_cell`）：只列一个读出电极时，对 `bounds` 中给出的非 `z` 轴，若器件宽度大于电势网格跨度的 $1 + 10^{-6}$ 倍，把位置折回网格中的一个晶胞：晶胞宽为权重势网格跨度除以 $2s + 1$（`x` 轴 $s$ 取权重势 `metadata.cells_either_side`，缺省 `read_out_contact[0].x_span` 或 `0`；`y` 轴取 `y_span`），多晶胞网格取中间一个。电势、掺杂、俘获率、导电标志经折回查询；权重势按原位置查询。
+4. **晶胞折回**（`_in_the_cell`）：只列一个读出电极时，对 `bounds` 中给出的非 `z` 轴，若器件宽度大于电势网格跨度的 $1 + 10^{-6}$ 倍，把位置折回网格中的一个晶胞：晶胞宽为该轴的节距（`pitch`，`x` 轴为 `p_x`，`y` 轴为 `p_y`），多晶胞网格取中间一个。电势、掺杂、俘获率、导电标志经折回查询；权重势按原位置查询。加载时核对网格与节距（`_check_mesh_against_pitch`）：电势网格沿 `x` 或 `y` 的跨度小于该轴节距时抛出 `ValueError`；要折回的轴上网格跨度不是节距的整数倍、或没有给出该轴节距时抛出 `ValueError`；报错写明器件名、偏压、轴、网格跨度与节距。
 5. **电场**：`get_e_field` 取 $\mathbf{E} = -\nabla\psi$，`gradient` 在每个轴上以 `STEP` 为宽做中心差分；跨出网格端点时截到端点成为单侧差分；点在网格坐标范围外时抛出 `ValueError`。返回 $(E_x, E_y, E_z)$（V/cm），不在 `axes` 中的分量为 $0$。
 6. **权重势**：`get_w_p` 的结果 $< 0$ 或 `NaN` 时返回 $0$，$> 1$ 时返回 $1$。
 7. **导电标志**：`get_conductive` 在 1D 找位置所在区间，两端点都导电才为真；多维在 Delaunay 剖分中找所在单纯形，所有顶点都导电才为真；位置在网格外时取最近节点的值。
