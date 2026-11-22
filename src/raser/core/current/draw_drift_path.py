@@ -9,15 +9,21 @@
 from array import array
 
 import ROOT
+
+from raser.supports import figures
+
 ROOT.gROOT.SetBatch(True)
 
-def draw_drift_path(my_d, particle_track, my_f, my_current, path):
-    ROOT.gStyle.SetOptStat(0)
-    c1 = ROOT.TCanvas("c", "canvas1", 200, 10, 1500, 2000)
-    c1.Divide(1,2)
+def draw_drift_path(my_d, deposits, my_f, my_current, path, event):
+    c1 = figures.canvas(columns=1, rows=2)
+    hole_color = figures.root_color(figures.HOLE)
+    electron_color = figures.root_color(figures.ELECTRON)
+    gain_hole_color = figures.root_color(figures.GAIN_HOLE)
+    gain_electron_color = figures.root_color(figures.GAIN_ELECTRON)
+    deposit_color = figures.root_color(figures.DEPOSIT)
 
     c1.cd(1)
-    ROOT.gPad.SetMargin(0.15, 0.1, 0.1, 0.1)
+    ROOT.gPad.SetMargin(0.15, 0.1, 0.15, 0.05)
     # an empty histogram that only draws the box of the device: one bin
     # each way, since a bin of every 50 um of a row of strips 10 cm wide
     # makes it too large for ROOT to write
@@ -26,21 +32,9 @@ def draw_drift_path(my_d, particle_track, my_f, my_current, path):
                                 1,0,my_d.l_z)
         
     structure.SetFillColor(1)
-    structure.GetXaxis().SetTitle("x axis [\mum]")
-    structure.GetYaxis().SetTitle("y axis [\mum]")
-    structure.GetZaxis().SetTitle("z axis [\mum]")
-    structure.GetXaxis().CenterTitle()
-    structure.GetYaxis().CenterTitle() 
-    structure.GetZaxis().CenterTitle() 
-    structure.GetXaxis().SetTitleOffset(1.2)
-    structure.GetYaxis().SetTitleOffset(1.4)
-    structure.GetZaxis().SetTitleOffset(1.0)
-    structure.GetXaxis().SetLabelSize(0.08)
-    structure.GetYaxis().SetLabelSize(0.08)
-    structure.GetZaxis().SetLabelSize(0.08)
-    structure.GetXaxis().SetTitleSize(0.08)
-    structure.GetYaxis().SetTitleSize(0.08)
-    structure.GetZaxis().SetTitleSize(0.08)
+    structure.GetXaxis().SetTitle(figures.label("x", "um", root=True))
+    structure.GetYaxis().SetTitle(figures.label("y", "um", root=True))
+    structure.GetZaxis().SetTitle(figures.label("z", "um", root=True))
     structure.GetXaxis().SetNdivisions(5)
     structure.GetYaxis().SetNdivisions(5)
     structure.GetZaxis().SetNdivisions(5)
@@ -62,12 +56,12 @@ def draw_drift_path(my_d, particle_track, my_f, my_current, path):
                 y_array.extend([step[1] for step in path_data]) 
                 z_array.extend([step[2] for step in path_data])              
                 gr_p = ROOT.TPolyLine3D(len(path_data), x_array, y_array, z_array)
-                gr_p.SetLineColor(2)  # 红色
+                gr_p.SetLineColor(hole_color)
                 gr_p.SetLineStyle(1)
                 gr_p.Draw("SAME")
                 gr_2D_p = ROOT.TGraph(len(path_data), x_array, z_array)
-                gr_2D_p.SetMarkerColor(2)
-                gr_2D_p.SetLineColor(2)
+                gr_2D_p.SetMarkerColor(hole_color)
+                gr_2D_p.SetLineColor(hole_color)
                 gr_2D_p.SetLineStyle(1)
                 mg.Add(gr_2D_p)
                 del x_array[:]
@@ -83,12 +77,12 @@ def draw_drift_path(my_d, particle_track, my_f, my_current, path):
                 y_array.extend([step[1] for step in path_data])
                 z_array.extend([step[2] for step in path_data])                
                 gr_n = ROOT.TPolyLine3D(len(path_data), x_array, y_array, z_array)
-                gr_n.SetLineColor(4)  # 蓝色
+                gr_n.SetLineColor(electron_color)
                 gr_n.SetLineStyle(1)
                 gr_n.Draw("SAME")
                 gr_2D_n = ROOT.TGraph(len(path_data), x_array, z_array)
-                gr_2D_n.SetMarkerColor(4)
-                gr_2D_n.SetLineColor(4)
+                gr_2D_n.SetMarkerColor(electron_color)
+                gr_2D_n.SetLineColor(electron_color)
                 gr_2D_n.SetLineStyle(1)
                 mg.Add(gr_2D_n)
                 del x_array[:]
@@ -106,12 +100,12 @@ def draw_drift_path(my_d, particle_track, my_f, my_current, path):
                     y_array.extend([step[1] for step in path_data]) 
                     z_array.extend([step[2] for step in path_data])              
                     gr_p = ROOT.TPolyLine3D(len(path_data), x_array, y_array, z_array)
-                    gr_p.SetLineColor(617)  # kMagneta+1
+                    gr_p.SetLineColor(gain_hole_color)
                     gr_p.SetLineStyle(1)
                     gr_p.Draw("SAME")
                     gr_2D_p = ROOT.TGraph(len(path_data), x_array, z_array)
-                    gr_2D_p.SetMarkerColor(617)
-                    gr_2D_p.SetLineColor(617)
+                    gr_2D_p.SetMarkerColor(gain_hole_color)
+                    gr_2D_p.SetLineColor(gain_hole_color)
                     gr_2D_p.SetLineStyle(1)
                     mg.Add(gr_2D_p)
                     del x_array[:]
@@ -127,12 +121,12 @@ def draw_drift_path(my_d, particle_track, my_f, my_current, path):
                     y_array.extend([step[1] for step in path_data])
                     z_array.extend([step[2] for step in path_data])                
                     gr_n = ROOT.TPolyLine3D(len(path_data), x_array, y_array, z_array)
-                    gr_n.SetLineColor(867)  # kAzure+7
+                    gr_n.SetLineColor(gain_electron_color)
                     gr_n.SetLineStyle(1)
                     gr_n.Draw("SAME")
                     gr_2D_n = ROOT.TGraph(len(path_data), x_array, z_array)
-                    gr_2D_n.SetMarkerColor(867)
-                    gr_2D_n.SetLineColor(867)
+                    gr_2D_n.SetMarkerColor(gain_electron_color)
+                    gr_2D_n.SetLineColor(gain_electron_color)
                     gr_2D_n.SetLineStyle(1)
                     mg.Add(gr_2D_n)
                     del x_array[:]
@@ -141,20 +135,20 @@ def draw_drift_path(my_d, particle_track, my_f, my_current, path):
     
     # the deposits, as points: the deposits do not tell which particle made
     # each, so a line through them would join different particles
-    n = len(particle_track)
+    n = len(deposits)
     if n > 0:
-        x_array.extend([step[0] for step in particle_track])
-        y_array.extend([step[1] for step in particle_track])
-        z_array.extend([step[2] for step in particle_track])
+        x_array.extend([step[0] for step in deposits])
+        y_array.extend([step[1] for step in deposits])
+        z_array.extend([step[2] for step in deposits])
         gr = ROOT.TPolyMarker3D(n)
         for index, (x, y, z) in enumerate(zip(x_array, y_array, z_array)):
             gr.SetPoint(index, x, y, z)
-        gr.SetMarkerColor(1)
+        gr.SetMarkerColor(deposit_color)
         gr.SetMarkerStyle(20)
         gr.SetMarkerSize(0.6)
         gr.Draw("SAME")
         gr_2D = ROOT.TGraph(n, x_array, z_array)
-        gr_2D.SetMarkerColor(1)
+        gr_2D.SetMarkerColor(deposit_color)
         gr_2D.SetMarkerStyle(20)
         gr_2D.SetMarkerSize(0.6)
         mg.Add(gr_2D, "P")
@@ -163,51 +157,40 @@ def draw_drift_path(my_d, particle_track, my_f, my_current, path):
         del z_array[:]
     
     c1.cd(2)
-    ROOT.gPad.SetMargin(0.15, 0.1, 0.2, 0.1)
-    mg.GetXaxis().SetTitle("x axis [\mum]")
-    mg.GetYaxis().SetTitle("z axis [\mum]")
-    mg.GetXaxis().CenterTitle()
-    mg.GetYaxis().CenterTitle() 
-    mg.GetXaxis().SetTitleOffset(1.2)
-    mg.GetYaxis().SetTitleOffset(0.8)
-    mg.GetXaxis().SetLabelSize(0.08)
-    mg.GetYaxis().SetLabelSize(0.08)
-    mg.GetXaxis().SetTitleSize(0.08)
-    mg.GetYaxis().SetTitleSize(0.08)
+    ROOT.gPad.SetMargin(0.15, 0.1, 0.15, 0.05)
+    mg.GetXaxis().SetTitle(figures.label("x", "um", root=True))
+    mg.GetYaxis().SetTitle(figures.label("z", "um", root=True))
     mg.GetXaxis().SetNdivisions(5)
     mg.GetYaxis().SetNdivisions(5)
     mg.Draw("APL")
     c1.Update()
     
     # 添加图例
-    legend = ROOT.TLegend(0.7, 0.7, 0.9, 0.9)
-    legend.SetBorderSize(0)
-    legend.SetTextSize(0.03)
+    legend = ROOT.TLegend(0.74, 0.76, 0.9, 0.92)
     
     # 创建临时图形用于图例
     dummy_hole = ROOT.TGraph()
-    dummy_hole.SetLineColor(2)
+    dummy_hole.SetLineColor(hole_color)
     dummy_electron = ROOT.TGraph()
-    dummy_electron.SetLineColor(4)
+    dummy_electron.SetLineColor(electron_color)
     dummy_particle = ROOT.TGraph()
-    dummy_particle.SetMarkerColor(1)
+    dummy_particle.SetMarkerColor(deposit_color)
     dummy_particle.SetMarkerStyle(20)
 
-    legend.AddEntry(dummy_particle, "Deposits", "p")
-    legend.AddEntry(dummy_hole, "Holes", "l")
-    legend.AddEntry(dummy_electron, "Electrons", "l")
+    legend.AddEntry(dummy_particle, "deposits", "p")
+    legend.AddEntry(dummy_hole, "holes", "l")
+    legend.AddEntry(dummy_electron, "electrons", "l")
     
     if hasattr(my_current, 'gain_current') and my_current.gain_current:
         dummy_gain_hole = ROOT.TGraph()
-        dummy_gain_hole.SetLineColor(617)
+        dummy_gain_hole.SetLineColor(gain_hole_color)
         dummy_gain_electron = ROOT.TGraph()
-        dummy_gain_electron.SetLineColor(867)
-        legend.AddEntry(dummy_gain_hole, "Gain Holes", "l")
-        legend.AddEntry(dummy_gain_electron, "Gain Electrons", "l")
+        dummy_gain_electron.SetLineColor(gain_electron_color)
+        legend.AddEntry(dummy_gain_hole, "gain holes", "l")
+        legend.AddEntry(dummy_gain_electron, "gain electrons", "l")
     
     legend.Draw()
     c1.Update()
     
-    c1.SaveAs(path+'/'+my_d.det_model+"_drift_path.pdf")
-    c1.SaveAs(path+'/'+my_d.det_model+"_drift_path.root")
+    figures.save_canvas(c1, path, "drift_path", event)
     del c1

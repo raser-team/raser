@@ -95,6 +95,7 @@ def canvas(columns: int = 1, rows: int = 1) -> ROOT.TCanvas:
     style.SetTextFont(43)
     style.SetLegendFont(43)
     style.SetLegendBorderSize(0)
+    style.SetLegendTextSize(20)
     style.SetLabelFont(43, "XYZ")
     style.SetTitleFont(43, "XYZ")
     style.SetTitleSize(24, "XYZ")

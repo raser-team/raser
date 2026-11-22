@@ -260,7 +260,7 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
 - `cal_current.py`：实现事例级输运调度、分箱、雪崩倍增、激光卷积与批处理写出。`CalCurrent` 完成时间窗设定、空间筛选、载流子漂移与分箱；`CalCurrentGain` 继承 `CalCurrent`，按 `gain_algorithm` 执行 `"planar_integral"` 或 `"local_path"` 倍增；`CalCurrentG4P` 封装 `CarrierListFromG4P` 输入；`CalCurrentLaser` 结合 `pulse_in_bins` 执行激光脉冲卷积；`spread_over_bins`、`fill_histogram`、`electrode_names`、`split_at_conductor_edges`、`deposits_in` 与 `log_ends` 为支撑函数；`write_induced_currents` 与 `write_laser_currents` 负责将事例结果写出到 HDF5 文件并触发绘图。
 - `diffusion.py`：提供 `time_bin` 与 `collect_by_diffusion`，实现无场像素传感器的二维纯扩散收集。
 - `currents.py`：定义 `EventCurrents`、`Currents` 以及 `append_currents`、`read_currents`，负责 `current.h5` 的稀疏追加写入与全电极还原读取。
-- `draw.py` 与 `draw_drift_path.py`：使用 PyROOT 绘制感应电流波形（`draw_currents`）、条形/像素收集电荷（`charge_collection_strip`、`charge_collection_pixel`）与三维/$x$-$z$ 漂移路径（`draw_drift_path`）。
+- `draw.py` 与 `draw_drift_path.py`：使用 PyROOT 并经[出图（`supports/figures`）](../supports/figures.md)取样式、存图，绘制感应电流波形（`draw_currents`）、条形/像素收集电荷（`charge_collection_strip`、`charge_collection_pixel`）与三维/$x$-$z$ 漂移路径（`draw_drift_path`）。
 
 ### 核心数据结构
 
@@ -322,13 +322,13 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
 
 ### 绘图输出
 
-`write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, plot_path=None, detector=None)` 读 `deposits_path` 的沉积文件，把电流写进 `currents_path`；缺省 `plots=0` 时不画图，`plot_path` 不用给。`plots > 0` 时为前 `plots` 个事例在 `<plot_path>/event_<event>/` 下生成漂移路径图、电流波形图及（条形/像素布局下的）收集电荷图，环节传入的 `plots` 是 `current.plots`，`plot_path` 在 `current` 自己的节点里；`write_laser_currents` 在提供 `plot_path` 时仅生成电流波形图。
+`write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, plot_path=None, detector=None)` 读 `deposits_path` 的沉积文件，把电流写进 `currents_path`；缺省 `plots=0` 时不画图，`plot_path` 不用给。`plots > 0` 时先删掉 `<plot_path>` 里以 `current_`、`drift_path_`、`charge_per_electrode_` 开头的旧图，再为前 `plots` 个事例在 `<plot_path>` 下生成漂移路径图、电流波形图及（条形/像素布局下的）收集电荷图，图名后接事例号 `<event>`，环节传入的 `plots` 是 `current.plots`，`plot_path` 在 `current` 自己的节点里；`write_laser_currents` 在提供 `plot_path` 时仅生成电流波形图，事例号为 `0`。
 
 | 文件名 | 内容 | 单位 |
 | --- | --- | --- |
-| `<det_model>_drift_path.pdf`, `.root` | 上半图为三维器件边界框与沉积点（黑）、空穴（红）、电子（蓝）、增益空穴（洋红）、增益电子（浅蓝）路径；下半图为 $x$-$z$ 平面投影 | 空间轴 $\mu\text{m}$ |
-| `<tag>No_<k>electrode_basic_infor.pdf`, `.root` | 仅对存在非零电流分量的第 $k$ 号电极（从 `1` 起）绘制 `electron`、`hole`、`total`（开启雪崩时含 `electron gain`、`hole gain`）波形；`tag` 默认为空 | `Time [s]`, `Current [A]` |
-| `cce.pdf`, `.root` | `is_strip` 为真时绘各条收集电荷折线图（`TGraph`）；`is_pixel` 为真时绘二维像素分布（`TH2I`）；数值为收集电子数（按 `charge / 1.602176634e-19` 换算），纵轴（二维像素图为色轴）标题为“收集电子数” | 电子数 |
+| `drift_path_<event>.png`, `.pdf`, `.root` | 上半图为三维器件边界框与沉积点（灰）、空穴（红）、电子（蓝）、增益空穴（橙）、增益电子（浅蓝）路径；下半图为 $x$-$z$ 平面投影 | 空间轴 $\mu\text{m}$ |
+| `current_<event>.png`, `.pdf`, `.root`（多个读出电极时为 `current_<event>_electrode_<k>`） | 仅对存在非零电流分量的第 $k$ 号电极（从 `1` 起）绘制 `electrons`、`holes`、`total`（开启雪崩时含 `gain electrons`、`gain holes`）波形 | `Time [ns]`, `Current [μA]` |
+| `charge_per_electrode_<event>.png`, `.pdf`, `.root` | `is_strip` 为真时绘各条收集电荷折线图（`TGraph`）；`is_pixel` 为真时绘二维像素分布（`TH2D`）；数值为各电极的净电荷，纵轴（二维像素图为色轴）标题为 `Charge [fC]` | $\text{fC}$ |
 
 ## 参考文献
 
