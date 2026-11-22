@@ -2,53 +2,62 @@
 
 import math
 
-import matplotlib.pyplot as plt
 import numpy as np
 
-PICOSECOND = 1.0e-12  # s
-MILLIVOLT = 1.0e-3  # V
+from raser.supports import figures
 
 
-def draw_efficiencies(efficiencies, path):
+def draw_efficiencies(efficiencies, folder):
     """Distribution of the charge collection efficiency of the events."""
-    figure, axis = plt.subplots(figsize=(6, 4))
-    axis.hist(efficiencies, bins=60, histtype="stepfilled", alpha=0.6)
-    axis.axvline(np.mean(efficiencies), color="k", linestyle="--")
-    axis.set_xlabel("charge collection efficiency")
-    axis.set_ylabel("events")
-    axis.set_title(f"{len(efficiencies)} events, mean {np.mean(efficiencies):.4f}")
-    figure.tight_layout()
-    figure.savefig(path, dpi=150)
-    plt.close(figure)
+    figure, axis = figures.new()
+    axis.hist(
+        efficiencies, bins=60, histtype="stepfilled", color=figures.HISTOGRAM,
+        label=f"{len(efficiencies)} events",
+    )
+    axis.axvline(
+        np.mean(efficiencies), color="black", linestyle="--",
+        label=f"mean {np.mean(efficiencies):.4f}",
+    )
+    axis.set_xlabel(figures.label("Charge collection efficiency"))
+    axis.set_ylabel("Events")
+    axis.legend()
+    figures.save(figure, folder, "efficiency")
 
 
-def draw_amplitudes(amplitudes, amplitude_threshold, events, path):
+def draw_amplitudes(amplitudes, amplitude_threshold, events, folder):
     """Distribution of the amplitude of the events above the amplitude
     threshold [V], out of `events` events."""
-    figure, axis = plt.subplots(figsize=(6, 4))
-    axis.hist(np.asarray(amplitudes) / MILLIVOLT, bins=60, histtype="stepfilled", alpha=0.6)
-    axis.axvline(amplitude_threshold / MILLIVOLT, color="k", linestyle="--")
-    axis.set_xlabel("amplitude above the baseline [mV]")
-    axis.set_ylabel("events")
-    axis.set_title(f"{len(amplitudes)} of {events} events above {amplitude_threshold / MILLIVOLT:g} mV")
-    figure.tight_layout()
-    figure.savefig(path, dpi=150)
-    plt.close(figure)
+    figure, axis = figures.new()
+    axis.hist(
+        np.asarray(amplitudes) / figures.UNIT["mV"], bins=60, histtype="stepfilled",
+        color=figures.HISTOGRAM, label=f"{len(amplitudes)} of {events} events",
+    )
+    axis.axvline(
+        amplitude_threshold / figures.UNIT["mV"], color="black", linestyle="--",
+        label=f"threshold {amplitude_threshold / figures.UNIT['mV']:g} mV",
+    )
+    axis.set_xlabel(figures.label("Amplitude", "mV"))
+    axis.set_ylabel("Events")
+    axis.legend()
+    figures.save(figure, folder, "amplitude")
 
 
-def draw_differences(times, widths, path):
+def draw_differences(times, widths, folder):
     """One panel per time of `event_times`: the distribution of time - truth
     around its core, the last window of the fit and the fitted Gaussian."""
     names = list(widths)
-    figure, axes = plt.subplots(3, 4, figsize=(16, 10))
+    figure, axes = figures.new(3, 4)
+    picosecond = figures.UNIT["ps"]
     for axis, name in zip(axes.flat, names):
         width = widths[name]
         difference = times[name] - times["truth"]
-        difference = difference[~np.isnan(difference)] / PICOSECOND
-        mean, sigma = width["mean"] / PICOSECOND, width["sigma"] / PICOSECOND
-        low, high = (edge / PICOSECOND for edge in width["window"])
+        difference = difference[~np.isnan(difference)] / picosecond
+        mean, sigma = width["mean"] / picosecond, width["sigma"] / picosecond
+        low, high = (edge / picosecond for edge in width["window"])
         edges = np.linspace(mean - 8 * sigma, mean + 8 * sigma, 65)
-        axis.hist(difference, bins=edges, histtype="stepfilled", alpha=0.5)
+        counts, _, _ = axis.hist(difference, bins=edges, histtype="stepfilled", color=figures.HISTOGRAM)
+        # room above the bars for the two lines of text
+        axis.set_ylim(0, 1.35 * max(counts.max(), 1))
         axis.axvspan(low, high, color="0.85", zorder=0)
         # the Gaussian that has the events of the window inside the window
         inside = 0.5 * (
@@ -57,39 +66,44 @@ def draw_differences(times, widths, path):
         )
         x = np.linspace(low, high, 200)
         density = np.exp(-0.5 * ((x - mean) / sigma) ** 2) / (sigma * math.sqrt(2 * math.pi))
-        axis.plot(x, width["window_events"] * (edges[1] - edges[0]) * density / inside, "r")
-        axis.set_title(
-            f"{name}: sigma68 {width['sigma68'] / PICOSECOND:.1f} ps, "
-            f"sigma {sigma:.1f} +- {width['sigma_error'] / PICOSECOND:.1f} ps\n"
+        axis.plot(
+            x, width["window_events"] * (edges[1] - edges[0]) * density / inside,
+            color="black",
+        )
+        axis.set_title(name)
+        axis.text(
+            0.03, 0.97,
+            f"sigma68 {width['sigma68'] / picosecond:.1f} ps, "
+            f"sigma {sigma:.1f} +- {width['sigma_error'] / picosecond:.1f} ps\n"
             f"{width['window_events']} of {width['events']} events in the window",
-            fontsize=9,
+            fontsize=9, transform=axis.transAxes, va="top",
         )
         axis.set_xlabel(f"{name} - truth [ps]")
+        axis.set_ylabel("Events")
     for axis in axes.flat[len(names):]:
         axis.set_visible(False)
-    figure.tight_layout()
-    figure.savefig(path, dpi=130)
-    plt.close(figure)
+    figures.save(figure, folder, "time_difference")
 
 
-def draw_fractions(widths, path):
+def draw_fractions(widths, folder):
     """Width of the core of CFD - truth against the fraction of the CFD."""
     names = [name for name in widths if name.startswith("CFD")]
     fractions = np.array([int(name[3:]) / 100 for name in names])
     chosen = [widths[name] for name in names]
-    figure, axis = plt.subplots(figsize=(6, 4))
+    picosecond = figures.UNIT["ps"]
+    figure, axis = figures.new()
     axis.errorbar(
         fractions,
-        [width["sigma"] / PICOSECOND for width in chosen],
-        [width["sigma_error"] / PICOSECOND for width in chosen],
-        fmt="o", capsize=3, label="sigma of the Gaussian",
+        [width["sigma"] / picosecond for width in chosen],
+        [width["sigma_error"] / picosecond for width in chosen],
+        fmt="o", color="black", capsize=3, label="sigma of the Gaussian",
     )
-    axis.plot(fractions, [width["sigma68"] / PICOSECOND for width in chosen], "s", mfc="none", label="sigma68")
-    axis.set_xlabel("fraction of the CFD")
-    axis.set_ylabel("width of time - truth [ps]")
+    axis.plot(
+        fractions, [width["sigma68"] / picosecond for width in chosen],
+        linestyle="none", marker="s", color="black", mfc="none", label="sigma68",
+    )
+    axis.set_xlabel("CFD fraction")
+    axis.set_ylabel(figures.label("Time resolution", "ps"))
     axis.set_ylim(bottom=0)
-    axis.grid(alpha=0.3)
     axis.legend()
-    figure.tight_layout()
-    figure.savefig(path, dpi=150)
-    plt.close(figure)
+    figures.save(figure, folder, "resolution_of_fraction")

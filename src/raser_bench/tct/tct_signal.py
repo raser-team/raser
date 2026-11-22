@@ -22,6 +22,11 @@ def currents(kwargs):
     files = kwargs["_files"]
     my_d = bdv.Detector(kwargs["det_name"], files["device"])
     my_l = LaserInjection(my_d, dict(files["laser"]))
+    print(
+        f"laser {kwargs['laser']}: {my_l.direction}, {my_l.wavelength * 1e3:.0f} nm, "
+        f"focus at x, y, z = {my_l.fx_abs:.6g}, {my_l.fy_abs:.6g}, {my_l.fz_abs:.6g} um "
+        f"(fx_rel, fy_rel, fz_rel = {my_l.fx_rel:.6g}, {my_l.fy_rel:.6g}, {my_l.fz_rel:.6g})"
+    )
     path = plots(kwargs, "current")
     write_laser_currents(
         output(kwargs, "current"),

@@ -10,7 +10,6 @@ Description:
 
 import math
 import os
-import shutil
 import csv
 import logging
 import numpy as np
@@ -23,7 +22,6 @@ from . import draw
 from .draw_drift_path import draw_drift_path
 from .currents import EventCurrents, append_currents
 
-from ..deposit.carrier_list import CarrierListFromG4P
 from ..deposit.deposits import EventDeposits, read_deposits
 from raser.supports.output import output
 
@@ -420,21 +418,20 @@ class CalCurrent:
             self.sum_cu.append(ROOT.TH1F("charge"+str(i+1),"Total Current"+" No."+str(i+1)+"electrode",
                                     self.n_bin, self.t_start, self.t_end))
             
-    def draw_currents(self, path, tag=""):
+    def draw_currents(self, path, event):
         gain = getattr(self, "gain_current", None)
         draw.draw_currents(
-            path, self.t_start, (self.t_end - self.t_start) / self.n_bin,
+            path, event, self.t_start, (self.t_end - self.t_start) / self.n_bin,
             self.current, self.hole_current, self.electron_current,
             None if gain is None else gain.hole_bins[:, 1:-1],
             None if gain is None else gain.electron_bins[:, 1:-1],
-            tag=tag,
         )
 
-    def charge_collection_strip(self, path):
-        draw.charge_collection_strip(path, self.charge)
+    def charge_collection_strip(self, path, event):
+        draw.charge_collection_strip(path, event, self.charge)
 
-    def charge_collection_pixel(self, path):
-        draw.charge_collection_pixel(path, self.charge, self.x_ele_num, self.y_ele_num)
+    def charge_collection_pixel(self, path, event):
+        draw.charge_collection_pixel(path, event, self.charge, self.x_ele_num, self.y_ele_num)
 
 class CalCurrentGain(CalCurrent):
     '''Calculation of gain carriers and gain current, simplified version'''
@@ -659,25 +656,6 @@ class CalCurrentGain(CalCurrent):
             self.negative_cu.append(ROOT.TH1F("gain_charge_tmp-"+str(i+1)," No."+str(i+1)+"Gain Negative Current",
                                         self.n_bin, self.t_start, self.t_end))
 
-class CalCurrentG4P(CalCurrent):
-    def __init__(self, my_d, my_f, my_g4, batch, keep_drift_paths=True):
-        G4P_carrier_list = CarrierListFromG4P(
-            my_d.material,
-            my_g4,
-            batch,
-            fano_sampling=getattr(my_d, "fano_sampling", False),
-            fano_factor=getattr(my_d, "fano_factor", 0.0),
-        )
-        self.generated_pairs = sum(G4P_carrier_list.ionized_pairs)
-        super().__init__(
-            my_d,
-            my_f,
-            G4P_carrier_list.ionized_pairs,
-            G4P_carrier_list.track_position,
-            keep_drift_paths=keep_drift_paths,
-        )
-
-
 def pulse_in_bins(time_pulse, fwhm, n_bin, bin_width):
     """Share of a laser pulse in a time bin, for each offset of the bin.
 
@@ -766,7 +744,7 @@ def write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, pl
     are drifted, and an event without any of them writes no row.
 
     A currents file an earlier start left there is replaced. The first `plots`
-    events are also drawn, each in plot_path/event_<number>: the drift paths
+    events are also drawn into plot_path, named by the event: the drift paths
     with the deposits, and the currents.
     """
     deposits = read_deposits(deposits_path)
@@ -781,6 +759,11 @@ def write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, pl
             )
     if os.path.exists(currents_path):
         os.remove(currents_path)
+    if plots > 0 and os.path.isdir(plot_path):
+        # the pictures of this run only: those an earlier run left go
+        for name in os.listdir(plot_path):
+            if name.startswith(("current_", "drift_path_", "charge_per_electrode_")):
+                os.remove(os.path.join(plot_path, name))
     ends = {}
     without_field = None
     for count, record in enumerate(events):
@@ -808,16 +791,13 @@ def write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, pl
             ),
         )
         if drawn:
-            # the pictures of this event only: those an earlier run left go
-            path = os.path.join(plot_path, "event_%s" % (record.event))
-            shutil.rmtree(path, ignore_errors=True)
-            os.makedirs(path)
-            draw_drift_path(my_d, list(zip(record.x, record.y, record.z)), my_f, my_current, path)
-            my_current.draw_currents(path)
+            os.makedirs(plot_path, exist_ok=True)
+            draw_drift_path(my_d, list(zip(record.x, record.y, record.z)), my_f, my_current, plot_path, record.event)
+            my_current.draw_currents(plot_path, record.event)
             if my_d.is_strip:
-                my_current.charge_collection_strip(path)
+                my_current.charge_collection_strip(plot_path, record.event)
             if my_d.is_pixel:
-                my_current.charge_collection_pixel(path)
+                my_current.charge_collection_pixel(plot_path, record.event)
     log_ends(ends, without_field)
 
 
@@ -843,4 +823,4 @@ def write_laser_currents(currents_path, my_d, my_f, my_l, plot_path=None):
     )
     if plot_path is not None:
         os.makedirs(plot_path, exist_ok=True)
-        my_current.draw_currents(plot_path)
+        my_current.draw_currents(plot_path, 0)

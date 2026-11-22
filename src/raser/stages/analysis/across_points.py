@@ -3,9 +3,7 @@
 import json
 from pathlib import Path
 
-import matplotlib.pyplot as plt
-
-PICOSECOND = 1.0e-12  # s
+from raser.supports import figures
 
 
 def scanned_options(points):
@@ -24,7 +22,7 @@ def write_points(points, results, folder):
     sigma68, sigma and sigma_error [s]. A point without a time resolution has
     no times in its row, one without an efficiency None for it and its error.
 
-    With one scanned option that is a number, also points.png: the
+    With one scanned option that is a number, also trend.png and trend.pdf: the
     efficiency and the sigma of each CFD fraction against it.
 
     points  : (folder name, options) of each point
@@ -55,30 +53,27 @@ def write_points(points, results, folder):
         return
     key = scanned[0]
     rows = sorted(rows, key=lambda row: row[key])
-    figure, (left, right) = plt.subplots(1, 2, figsize=(11, 4))
+    figure, (left, right) = figures.new(1, 2)
     collected = [row for row in rows if row["efficiency"] is not None]
     left.errorbar(
         [row[key] for row in collected],
         [row["efficiency"] for row in collected],
         [row["efficiency_error"] for row in collected],
-        fmt="o-", capsize=3,
+        fmt="o-", color="black", capsize=3,
     )
     left.set_xlabel(key)
-    left.set_ylabel("charge collection efficiency")
-    left.grid(alpha=0.3)
+    left.set_ylabel(figures.label("Charge collection efficiency"))
     timed = [row for row in rows if "ToA" in row]
-    for name in [name for name in timed[0] if name.startswith("CFD")] if timed else []:
+    names = [name for name in timed[0] if name.startswith("CFD")] if timed else []
+    for name, color in zip(names, figures.series(len(names), True)):
         right.errorbar(
             [row[key] for row in timed],
-            [row[name]["sigma"] / PICOSECOND for row in timed],
-            [row[name]["sigma_error"] / PICOSECOND for row in timed],
-            fmt="o-", capsize=2, label=name,
+            [row[name]["sigma"] / figures.UNIT["ps"] for row in timed],
+            [row[name]["sigma_error"] / figures.UNIT["ps"] for row in timed],
+            fmt="o-", color=color, capsize=2, label=name,
         )
     right.set_xlabel(key)
-    right.set_ylabel("sigma of time - truth [ps]")
+    right.set_ylabel(figures.label("Time resolution", "ps"))
     right.set_ylim(bottom=0)
-    right.grid(alpha=0.3)
-    right.legend(ncol=3, fontsize=8)
-    figure.tight_layout()
-    figure.savefig(folder / "points.png", dpi=150)
-    plt.close(figure)
+    right.legend(ncol=3)
+    figures.save(figure, folder, "trend")

@@ -112,6 +112,21 @@ $$\Delta x_{\text{clu}} = x_{\text{clu}} - \frac{x_{\text{true}}}{p_x} \tag{14}$
 
 作业级事件表中的成簇由 `event_table.py` 的 `cluster(amplitudes, threshold, amplitude_threshold)` 计算，只输出 $N_{\text{clu}}$ 与幅度加权的 $x_{\text{clu}}$，示例 `config.json` 里 `reconstruction.amplitude_threshold` 与 `reconstruction.threshold` 都写 `10.0` $\text{mV}$（见 [../stages/reconstruction.md](../stages/reconstruction.md)）。单事例类 `InputWaveform` 则调用 `event.py` 的 `get_total_amp` 与 `get_gravity_center_and_cluster_size` 计算式 (13)，在 `get_total_data` 中按式 (14) 计算位置误差，并用 `get_conjoined_time` 取 `ToA` 与 `CFD50`；其 `data` 字典交给 [统计分析](analysis.md) 的 `WaveformStatistics.fill_data`，键与 `fill_data`、`draw` 读取的键相同。微条探测器电荷共享与重心位置重建见文献 [4]。
 
+### 像素团簇
+
+像素器件的团簇在二维像素阵列上找：过阈像素按八邻域连通成簇，含有种子像素（幅度达到种子阈值 $V_{\text{amp}}$）的才算团簇；团簇位置取成员像素几何中心的算术平均，这一层的击中时刻取团簇里幅度最大的像素（种子）的定时量：
+
+$$(x_p, y_p) = \bigl((i_x + 0.5)\,p_x,\ (i_y + 0.5)\,p_y\bigr), \qquad (\bar{x}_c, \bar{y}_c) = \frac{1}{n_c}\sum_{m=1}^{n_c}(x_{p,m}, y_{p,m}) \tag{15}$$
+
+其中：
+
+- $i_x, i_y$：像素的列、行下标（从 $0$ 起）；电极列表下标 $k = i_x\,n_y + i_y$，$n_y$ 为器件的 `y_ele_num`；
+- $p_x, p_y$：器件的像素间距 `p_x`、`p_y`，$\mu\text{m}$；
+- $n_c$：团簇的像素数，个；
+- $(\bar{x}_c, \bar{y}_c)$：团簇在器件坐标中的位置，$\mu\text{m}$。
+
+由 `pixel_clusters.py` 实现。种子、团簇位置和击中时刻都是这块器件自己的量；把几块器件的团簇拼成径迹在 [统计分析](analysis.md) 里做。
+
 ## 算法
 
 ### 内置常数
@@ -210,12 +225,26 @@ $$\Delta x_{\text{clu}} = x_{\text{clu}} - \frac{x_{\text{true}}}{p_x} \tag{14}$
 
 `InputWaveform` 面向一维空间分辨的条形探测器（代码注释 `only available for strip detector`、`assume strip, one dimensional spacial resolution`）；多电极的 `ToA` 与 `CFD50` 由 `get_conjoined_time` 取最大幅度通道的定时；`ToT` 与 `charge` 成簇的种子阈值写死为 `10e-9` $\text{s}$ 与 `0.0` $\text{V}$；`threshold`、`amplitude_threshold` 与 `CFD` 由构造参数给出。
 
+### 像素成簇（`pixel_clusters.py`）
+
+器件的 `electrodes` 为 `"pixel"` 时，事件表另有五列像素团簇量，由 `pixel_cluster_columns(fired, weight, seed_threshold, p_x, p_y)` 给出：`fired` 是每个事例过阈像素的布尔数组，`weight` 是各像素用来找种子的量，形状都是 `(events, n_x, n_y)`；`seed_threshold` 是种子阈值：
+
+1. **取过阈像素与找种子的量**，有两种来源：
+   - `fired_from_table(table, n_x, n_y)`：`fired` 取事件表的 `above`，`weight` 取 `amplitude`（$\text{V}$），按 $k = i_x\,n_y + i_y$ 重排成 `(events, n_x, n_y)`，`seed_threshold` 取 `amplitude_threshold`；电极数不等于 $n_x n_y$ 时抛 `ValueError`。
+   - `fired_from_deposits(deposits, slot, device)`：对沉积文件里探测器名等于 `slot` 的沉积步，`pairs > 0` 且位置在器件内的步所在的像素 $(\lfloor x/p_x \rfloor, \lfloor y/p_y \rfloor)$ 记为过阈，`weight` 取该像素内的电子-空穴对数之和，`seed_threshold` 取 `0`；每个记录事例一行，该槽位没有沉积的事例整行为假。
+2. **成簇与找种子**（`pixel_clusters(fired_event, weight_event, seed_threshold, p_x, p_y)`）：对一个事例的 `(n_x, n_y)` 布尔数组按八邻域找连通分量，只留下含有 `weight >= seed_threshold` 的像素的分量；每个分量按式 (15) 给出 $(\bar{x}_c, \bar{y}_c, n_c)$，种子取分量里 `weight` 最大的像素（并列时取电极下标小的），按种子的电极下标 $k$ 升序排列。
+3. **写列**：`clusters` 为团簇数；恰有 `1` 个团簇时 `cluster_x`、`cluster_y`、`cluster_pixels`、`cluster_seed` 取这个团簇的 $\bar{x}_c$、$\bar{y}_c$、$n_c$ 与种子的电极下标 $k$，否则为 `NaN`、`NaN`、`0`、`-1`。这一层的击中时刻是种子那一列的定时量：`ToA[:, cluster_seed]`、`CFD[:, cluster_seed, :]` 等。
+
+`table_from_deposits(deposits, slot, device)` 用 `fired_from_deposits` 给出只含 `event`、`selected`（`clusters > 0`）与这五列的事件表，没有波形量和定时量。
+
 ## 软件实现
 
 ### 模块与函数分工
 
 - `event.py`：实现单电极脉冲基线扣除、阈值过零线性插值、恒比定时、时间重心计算以及单事例独立重建类。`net_pulse` 计算并扣除脉冲前 200 点基线、给出基线噪声；`get_amplitude`、`crossing`、`get_ToA`、`get_ToT`、`get_CFD50`、`get_CoG` 与 `get_charge` 提取单条正向波形的特征量；`InputWaveform` 配合 `get_conjoined_time`、`get_total_amp`、`get_gravity_center_and_cluster_size` 与 `remove_none` 汇总单事例多条形通道特征。
+- `pixel_clusters.py`：实现像素器件的二维成簇。`pixel_clusters` 按八邻域成簇；`fired_from_table`、`fired_from_deposits` 给出过阈像素；`pixel_cluster_columns` 给出事件表的五列；`table_from_deposits` 由沉积文件直接给出事件表；`draw_hitmap` 画击中图。
 - `event_table.py`：实现作业级多事例特征提取、跨电极成簇与 `reconstruction.h5` 文件读写。`lobe_area` 计算包含峰值的正向主瓣积分面积；`electrode_row` 汇总单电极的过阈判定与全部特征列；`cluster` 执行跨电极一维成簇并计算幅度加权中心；`chosen_edges` 解析并校验各电极触发边沿；`event_table` 将整个作业的 `Waveforms` 重建为 `EventTable`；`write_event_table` 与 `read_event_table` 负责 HDF5 事件表文件的一次性写出与读取。
+- `draw.py`：提供 `draw_features`，调用 `raser.supports.figures` 在数字波形的上升沿一段上标出基线、幅度、阈值线上的 `ToA` 与 `reconstruction.fractions` 各比例的 `CFD` 时刻，并存为 `.png` 与 `.pdf`。
 
 ### 核心数据结构
 
@@ -304,6 +333,10 @@ $$\Delta x_{\text{clu}} = x_{\text{clu}} - \frac{x_{\text{true}}}{p_x} \tag{14}$
 | `selected` | `(events,)`, `bool` | 无 | 被 `trigger` 记录的事例里是否找到团簇种子（即 `cluster_size > 0`，至少一个电极 `amplitude >= amplitude_threshold`） |
 | `cluster_size` | `(events,)`, `int64` | 个 | 团簇包含的电极数（无团簇时为 `0`） |
 | `cluster_center` | `(events,)`, `float64` | 电极下标（从 `0` 起） | 团簇的幅度加权电极下标中心（无团簇时为 `NaN`） |
+| `clusters` | `(events,)`, `int64` | 个 | 像素器件才有：二维团簇数（式 (15)） |
+| `cluster_x`, `cluster_y` | `(events,)`, `float64` | $\mu\text{m}$ | 像素器件才有：团簇在器件坐标中的位置；团簇数不是 `1` 时为 `NaN` |
+| `cluster_pixels` | `(events,)`, `int64` | 个 | 像素器件才有：团簇的像素数；团簇数不是 `1` 时为 `0` |
+| `cluster_seed` | `(events,)`, `int64` | 无 | 像素器件才有：团簇里幅度最大的像素的电极下标，这一层的击中时刻取该电极的 `ToA`、`CFD` 等列；团簇数不是 `1` 时为 `-1` |
 | `traced` | `(events, len(electrodes))`, `bool` | 无 | 输入 `digitizer.h5` 在该事例中是否存有该电极波形；为 `False` 时该电极所有数值列为 `NaN`、`above` 为 `False` |
 | `baseline` | `(events, len(electrodes))`, `float64` | $\text{V}$ | 原始波形开头 `200` 个采样点的算术平均值 |
 | `noise` | `(events, len(electrodes))`, `float64` | $\text{V}$ | 原始波形开头 `200` 个采样点的总体标准差 |
@@ -318,6 +351,21 @@ $$\Delta x_{\text{clu}} = x_{\text{clu}} - \frac{x_{\text{true}}}{p_x} \tag{14}$
 第 $k$ 号电极（按属性 `electrodes` 的顺序，从 `0` 起）比例 $f$ 的恒比时刻是 `CFD[:, k, j]`，$j$ 为 $f$ 在属性 `fractions` 中的下标。`ToA`、`CoG`、`CFD` 与输入事例的 `t0` 在同一时间轴上（式 (1)），`t0` 留在输入波形文件里。
 
 ### 绘图输出
+
+`event_table` 有两个必给参数 `plots`（`int`，每个作业最多绘制特征图的事例数，单位为个）和 `plot_path`（`str | Path`，输出图片目录路径，无单位；由[事件重建环节](../stages/reconstruction.md)传入 `reconstruction.plots` 与该节点下的 `plots/` 目录）。当 `plots <= 0` 时不画图，也不使用 `plot_path`；当 `plots > 0` 时，程序为每个作业的前 `plots` 个事例调用 `core/reconstruction/draw.py` 中的 `draw_features`，按该事例存了数字波形的电极逐个绘图，并经 `raser.supports.figures` 在 `plot_path` 下同时存为 `.png`（200 dpi）和 `.pdf` 两份文件：单个存波形电极时文件名为 `features_<事例号>`（`<事例号>` 为 `record.event`，无单位）；有多个存波形电极时每个电极画一张，文件名后接 `_electrode_<编号>`（`<编号>` 为该电极在 `waveforms.electrodes` 中从 `1` 起的序号，无量纲）。
+
+每张图以采样时刻 `Time [ns]` 为横轴（按式 (1) 由 $t_0$ [$\text{s}$] 与采样间隔 $\Delta t$ [$\text{s}$] 算出并换算为 $\text{ns}$），以电压 `Amplitude [mV]` 为纵轴（由 $\text{V}$ 换算为 $\text{mV}$）。图上只画脉冲的上升沿一段：从过阈时刻之前到峰值之后，画的是由 `digitizer` 量化码换回的电压，保持原来的极性，不翻正、不扣基线（黑色实线）。在这段波形上标出以下重建量（未算出而取 `NaN` 的量不画）：
+
+- **基线**：基线均值（式 (2) 的 `baseline`）画为灰色点线水平线，图例写 `baseline`；
+- **幅度**：峰值所在的电压（基线加上按原极性的 `amplitude`，式 (4)）画为灰色虚线水平线，图例写 `amplitude`；
+- **阈值与 `ToA`**：定时阈值 `threshold`（见[峰值幅度与固定阈值过零定时（ToA 与 ToT）](#峰值幅度与固定阈值过零定时toa-与-tot)）画为红色虚线水平线；前沿过阈时刻 $t_{\text{ToA}}$（式 (6) 的 `ToA`）在阈值线上画一个红色方块，图例写 `ToA`；
+- **恒比定时 `CFD`**：设置 `reconstruction.fractions` 里的每个比例 $f$ 各画一个点，位于上升沿上时刻 $t_{\text{CFD}}(f)$（式 (8)–(9) 的 `CFD`，见[恒比定时（CFD）](#恒比定时cfd)）、电压为基线加 $f$ 倍幅度处；点旁写比例（如 `30%`），不画竖线，图例写 `CFD` 和比例的范围。
+
+| 文件名 | 内容 | 单位 |
+| --- | --- | --- |
+| `features_<事例号>.png`, `.pdf`（或带 `_electrode_<编号>`） | 数字波形的上升沿一段（原极性），标出基线、幅度、阈值线上的 `ToA` 方块和 `reconstruction.fractions` 各比例的 `CFD` 点（`NaN` 不画）；多个存波形电极时每个电极一张，`<编号>` 从 `1` 起 | `Time [ns]`, `Amplitude [mV]` |
+
+`pixel_clusters.py` 的 `draw_hitmap(table, device, path)` 画 `hitmap`（多槽位实验为 `hitmap_<槽位>`）：团簇数为 `1` 的全部事例的 $(\bar{x}_c, \bar{y}_c)$ 二维分布，每个像素一格。
 
 `InputWaveform.data` 汇总后由 [统计分析](analysis.md) 的 `WaveformStatistics.draw` 画图：时间分辨高斯拟合图、幅度与电荷朗道拟合图、团簇大小分布图、空间重心误差图及 $\eta$ 校准图。
 

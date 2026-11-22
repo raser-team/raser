@@ -37,6 +37,7 @@ The eight stages are ordered along the simulation chain with equal standing; see
 - [core/current.md](core/current.md): Carrier drift, diffusion, trapping, avalanche multiplication, and Shockley-Ramo induced current calculation.
 - [core/readout.md](core/readout.md): SPICE front-end circuit transient solving and noise superposition.
 - [core/digitizer.md](core/digitizer.md): Waveform sampling, quantization, and digital circuit simulation.
+- [core/trigger.md](core/trigger.md): Edge trigger, pattern trigger, and coincidence between slots.
 - [core/reconstruction.md](core/reconstruction.md): Baseline subtraction, timing quantities (`ToA`, `ToT`, `CoG`, `CFD`), pulse area, and cluster reconstruction algorithms.
 - [core/analysis.md](core/analysis.md): Charge collection efficiency statistics and truncated Gaussian fitting for time resolution.
 

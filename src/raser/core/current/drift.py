@@ -7,8 +7,8 @@ import numpy as np
 
 from raser.core.seeding import stream
 
-kboltz = 8.617385e-5  # eV/K
-e0 = 1.60217733e-19  # C
+kboltz = 8.617333262e-5  # eV/K
+e0 = 1.602176634e-19  # C
 min_intensity = 1  # V/cm, a carrier in a field not above this stops
 max_drift_time = 100e-9  # s, a carrier still drifting after this stops
 

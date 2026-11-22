@@ -241,6 +241,7 @@ The short-circuit current netlist `write_short_circuit_netlist` contains only th
 - `job.py`: coordinates single-job batch processing from induced-current files to readout waveform files. `_solve` and `_solve_part` run full-circuit or adaptively expanded strip-row local solving per event; `noise_spectra` reuses symmetric-channel noise spectra according to `circuit.alike`; `write_waveforms` runs event-by-event solving, channel filtering, independent-stream noise addition, and file writing.
 - `waveforms.py`: defines the `EventWaveforms` and `Waveforms` dataclasses along with `_check_layout`, `append_waveforms`, `read_waveforms`, and `read_circuit_values` for sparse append writing and reading of `readout.h5`.
 - `schematic.py`: provides `read_hints`, `arrange`, `layout`, `value_text`, and `draw` to render `.cir` subcircuit files into schematic images.
+- `draw.py`: provides `draw_waveform`, using `raser.supports.figures` to plot single-event input induced-current and amplifier output-voltage waveforms and save them as `.png` and `.pdf`.
 
 ### Core Data Structures
 
@@ -300,11 +301,11 @@ Element values support scientific notation and case-insensitive SPICE prefixes: 
 | `SantaCruz` | 2 (amplifier stage: `in`, `out`) | UC Santa Cruz single-channel LGAD readout board, inverting transimpedance stage with `475 Ohm` feedback based on `BFR840L3RHESD` |
 | `Termination50` | 1 (termination load: `in`) | `50 Ohm` termination resistor to ground |
 
-![BroadBandCividec schematic](../images/afe-schematic-BroadBandCividec.png)
+![BroadBandCividec schematic](../../images/readout/schematic-BroadBandCividec.png)
 
 CIVIDEC C2 broadband current amplifier with bandwidth `1 MHz - 2 GHz` and gain `40 dB`. `Rbias` provides the `1 MΩ` input DC bias and `Cin` is a `1 nF` AC coupling capacitor; the `50 Ohm` input impedance is split into two parallel resistors—a noisy `Rn` (`325.4 Ohm`) and a noiseless `Rq` (`59.08 Ohm`, `noisy=0`)—so that the input current noise integrated over the `2 GHz` single-pole bandwidth matches the manufacturer's `0.4 uA rms` specification. `E1` has a gain of `200`, which becomes `100` (`40 dB`) after the voltage divider formed by the `50 Ohm` output resistor `Rout` and the `50 Ohm` load; `Rp` (`1 Ohm`) and `Cp` (`79.58 pF`) set the `2 GHz` single pole.
 
-![ChargeSensitiveCremat schematic](../images/afe-schematic-ChargeSensitiveCremat.png)
+![ChargeSensitiveCremat schematic](../../images/readout/schematic-ChargeSensitiveCremat.png)
 
 Cremat CR-110-R2.2 charge-sensitive preamplifier with unloaded gain `1.4 V/pC` and decay time `140 us`. Input capacitance `Cin` (`12.24 pF`) and equivalent input voltage-noise resistance `Rs` (`43.1 Ohm`) precede the first stage `E1` of inverting gain `-3000`, bridged by the parallel feedback network `Cf` (`1.4 pF`) and `Rf` (`100 MOhm`) and followed by the noiseless pole `Rp` (`1 kOhm`, `noisy=0`) and `Cp` (`401.3 pF`), before driving the output through the second stage `E3` of gain `+2` and the `50 Ohm` output resistor `Rout`.
 
@@ -336,10 +337,13 @@ The output file `readout.h5` is written event by event via `append_waveforms`, s
 
 ### Plot Output
 
-`draw(path, figure_path)` in `schematic.py` renders a single `.cir` subcircuit file into a schematic image file:
+`write_waveforms` takes two required arguments `plots` (`int`, maximum number of current-bearing events to plot per job, count) and `plot_path` (`str | Path`, output image directory path, unitless; passed by the [electronics readout stage](../stages/readout.md) as `readout.plots` and the node's `plots/` directory). When `plots <= 0`, no single-event waveform plots are drawn and `plot_path` is unused; when `plots > 0`, the program draws one `waveform_<event>` plot (`<event>` is `event.event`, unitless) for each of the first `plots` events in each job that have nonzero induced current and stored channel waveforms: drawn by `draw_waveform` in `core/readout/draw.py` and saved via `raser.supports.figures` under `plot_path` as both `.png` (200 dpi) and `.pdf` files. Each single-event waveform plot has two vertically stacked panels sharing the time axis `Time [ns]`, whose horizontal coordinate is the bin-center time `t0 + (m + 0.5) dt` (where `t0` is the left edge time of the event's first time bin [$\text{s}$], `dt` is the time-bin width [$\text{s}$], `m` is the bin index from `0` to `n_bin - 1`, and `n_bin` is the number of time bins [bins], converted to $\text{ns}$): the upper panel shows the input electrode induced current `Current [μA]` (converted from $\text{A}$ to $\mu\text{A}$), and the lower panel shows the amplifier output voltage `Amplitude [mV]` (including time-domain noise superposed according to `noise_seed`, converted from $\text{V}$ to $\text{mV}$). One curve is plotted for each channel with a stored waveform in that event; when multiple channels are stored, colors are assigned sequentially from the Okabe–Ito palette and channel names are shown in the legend.
+
+In addition, `draw(path, figure_path)` in `schematic.py` renders a single `.cir` subcircuit file into a schematic image file:
 
 | Filename | Content | Units |
 | --- | --- | --- |
+| `waveform_<event>.png`, `.pdf` | Two-panel single-event waveform plot sharing a time axis: upper panel shows input induced current on the electrode of each stored channel in the event, lower panel shows amplifier output voltage with noise; multiple channels take colors sequentially from Okabe–Ito and list channel names in the legend | `Time [ns]`, `Current [μA]`, `Amplitude [mV]` |
 | `figure_path` passed to `draw` (documentation images are `afe-schematic-<component_name>.png`) | Subcircuit schematic containing the title `<filename_stem>`, port circles (`in`, `out`), element symbols, designator and formatted value labels (`value_text`, with `no noise` on noiseless resistors), ground symbols, and orthogonal connecting wires (axes hidden, `dpi=160`) | Internal layout coordinates are dimensionless grid steps (input port `in` at `(0.0, 0.0)`); figure size is `(0.75 * width + 1, 0.75 * height + 1)` $\text{in}$ |
 
 ## References

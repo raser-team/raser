@@ -136,7 +136,7 @@ def test_a_pair_collected_between_two_electrodes_induces_its_charge_on_each() ->
     electron, _ = drift(
         50.0, 50.0, 25.0, 0.0, -100.0, _device(), _Field(), _mobility, 3.0e-11, diffusion=False
     )
-    e0 = 1.60217733e-19  # the charges are compared in units of it
+    e0 = 1.602176634e-19  # the charges are compared in units of it
 
     on_front = induced_charges(hole, 100.0, _Field(), 0) / e0
     assert on_front[0] == pytest.approx(100.0 * -3.0 / 50.0)
@@ -187,7 +187,7 @@ def test_a_hole_under_the_next_strip_induces_on_that_strip_not_on_the_one_of_the
     hole, _ = drift(
         80.0, 50.0, 25.0, 0.0, 100.0, _device(), _Strips(), _mobility, 3.0e-11, diffusion=False
     )
-    e0 = 1.60217733e-19  # the charges are compared in units of it
+    e0 = 1.602176634e-19  # the charges are compared in units of it
 
     assert induced_charges(hole, 100.0, _Strips(), 0).sum() / e0 == pytest.approx(0.0)
     assert induced_charges(hole, 100.0, _Strips(), 0, offset=(30.0, 0.0)).sum() / e0 == (

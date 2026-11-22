@@ -257,10 +257,10 @@ Limitation: this model omits junction electric fields and drift, $z$-direction m
 ### Module and Function Responsibilities
 
 - `drift.py`: implements single-cluster transport and per-step physics. `advance` performs one step advance and stop checks, and `drift` loops a cluster until stopped; `induced_charges` computes Shockley-Ramo induced charges per step on a specified electrode; `surviving` and `surviving_at` compute surviving carrier counts under trapping.
-- `cal_current.py`: implements event-level transport orchestration, binning, avalanche multiplication, laser convolution, and batch output. `CalCurrent` handles time-window setup, spatial filtering, carrier drift, and binning; `CalCurrentGain` subclasses `CalCurrent` to execute `"planar_integral"` or `"local_path"` multiplication selected by `gain_algorithm`; `CalCurrentG4P` wraps `CarrierListFromG4P` inputs; `CalCurrentLaser` performs laser pulse convolution using `pulse_in_bins`; `spread_over_bins`, `fill_histogram`, `electrode_names`, `split_at_conductor_edges`, `deposits_in`, and `log_ends` are helper functions; `write_induced_currents` and `write_laser_currents` write event results to HDF5 files and trigger plotting.
+- `cal_current.py`: implements event-level transport orchestration, binning, avalanche multiplication, laser convolution, and batch output. `CalCurrent` handles time-window setup, spatial filtering, carrier drift, and binning; `CalCurrentGain` subclasses `CalCurrent` to execute `"planar_integral"` or `"local_path"` multiplication selected by `gain_algorithm`; `CalCurrentLaser` performs laser pulse convolution using `pulse_in_bins`; `spread_over_bins`, `fill_histogram`, `electrode_names`, `split_at_conductor_edges`, `deposits_in`, and `log_ends` are helper functions; `write_induced_currents` and `write_laser_currents` write event results to HDF5 files and trigger plotting.
 - `diffusion.py`: provides `time_bin` and `collect_by_diffusion` for 2D diffusion-only collection in field-free pixel sensors.
 - `currents.py`: defines `EventCurrents`, `Currents`, `append_currents`, and `read_currents` for sparse per-event appending to `current.h5` and full-electrode restoration on read.
-- `draw.py` and `draw_drift_path.py`: use PyROOT to plot induced-current waveforms (`draw_currents`), strip/pixel collected charge (`charge_collection_strip`, `charge_collection_pixel`), and 3D/$x$-$z$ drift paths (`draw_drift_path`).
+- `draw.py` and `draw_drift_path.py`: use PyROOT, with the style and saving of [Figures (`supports/figures`)](../supports/figures.md), to plot induced-current waveforms (`draw_currents`), strip/pixel collected charge (`charge_collection_strip`, `charge_collection_pixel`), and 3D/$x$-$z$ drift paths (`draw_drift_path`).
 
 ### Core Data Structures
 
@@ -290,7 +290,6 @@ Users can configure only the keys listed in the table below; the mobility model 
 | `gain_max_carriers` | `50000` | clusters | Maximum gain clusters allowed per event in `"local_path"` mode; unlimited when $\le 0$ |
 | `local_gain_emit_slices` | `1` | clusters | Number of sub-clusters evenly split along the step per emission in `"local_path"` mode (at least `1`) |
 | `local_gain_integration_steps` | `3` | steps | Number of sampling points integrating the ionization coefficient within one drift step in `"local_path"` mode (at least `1`) |
-| `fano_sampling`, `fano_factor` | `False`, `0.0` | None | Fano sampling switch and factor passed only by `CalCurrentG4P` to `CarrierListFromG4P` |
 | `e_width_x`, `e_width_y` | None (required for `collect_by_diffusion`) | $\mu\text{m}$ | Dimensions of the central rectangular collection zone in each pixel for diffusion-only collection |
 | `doping.Donors`, `doping.Acceptors` | None (required for `collect_by_diffusion`) | $\text{cm}^{-3}$ | Numeric donor and acceptor concentrations used to compute zero-field electron mobility in diffusion-only collection |
 
@@ -322,13 +321,13 @@ Written event by event via `append_currents`, storing only electrodes whose curr
 
 ### Plot Outputs
 
-`write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, plot_path=None, detector=None)` reads the deposit file at `deposits_path` and writes currents to `currents_path`; with the default `plots=0`, no plots are drawn and `plot_path` need not be given. When `plots > 0`, drift-path plots, current-waveform plots, and (for strip/pixel layouts) collected-charge plots are generated under `<plot_path>/event_<event>/` for the first `plots` events, where the stage passes `current.plots` as `plots` and places `plot_path` inside the `current` node itself; `write_laser_currents` draws only current-waveform plots when `plot_path` is provided.
+`write_induced_currents(deposits_path, currents_path, my_d, my_f, plots=0, plot_path=None, detector=None)` reads the deposit file at `deposits_path` and writes currents to `currents_path`; with the default `plots=0`, no plots are drawn and `plot_path` need not be given. When `plots > 0`, the old figures in `<plot_path>` whose names start with `current_`, `drift_path_`, or `charge_per_electrode_` are removed first, then drift-path plots, current-waveform plots, and (for strip/pixel layouts) collected-charge plots are generated under `<plot_path>` for the first `plots` events, each name followed by the event number `<event>`, where the stage passes `current.plots` as `plots` and places `plot_path` inside the `current` node itself; `write_laser_currents` draws only current-waveform plots when `plot_path` is provided, with event number `0`.
 
 | Filename | Content | Unit |
 | --- | --- | --- |
-| `<det_model>_drift_path.pdf`, `.root` | Top panel: 3D device bounding box with deposition points (black), hole (red), electron (blue), gain hole (magenta), and gain electron (light blue) paths; bottom panel: $x$-$z$ plane projection | spatial axes $\mu\text{m}$ |
-| `<tag>No_<k>electrode_basic_infor.pdf`, `.root` | Drawn only for the $k$-th electrode (`1`-based) having non-zero current components, showing `electron`, `hole`, `total` (plus `electron gain` and `hole gain` when avalanche is enabled); `tag` defaults to empty | `Time [s]`, `Current [A]` |
-| `cce.pdf`, `.root` | Line graph of collected charge per strip (`TGraph`) when `is_strip` is true; 2D pixel distribution (`TH2I`) when `is_pixel` is true; values are collected electron counts (converted by `charge / 1.602176634e-19`), with the vertical axis (color axis for 2D pixel plots) titled "Collected electrons" | electron count |
+| `drift_path_<event>.png`, `.pdf`, `.root` | Top panel: 3D device bounding box with deposition points (grey), hole (red), electron (blue), gain hole (orange), and gain electron (light blue) paths; bottom panel: $x$-$z$ plane projection | spatial axes $\mu\text{m}$ |
+| `current_<event>.png`, `.pdf`, `.root` (`current_<event>_electrode_<k>` with several readout electrodes) | Drawn only for the $k$-th electrode (`1`-based) having non-zero current components, showing `electrons`, `holes`, `total` (plus `gain electrons` and `gain holes` when avalanche is enabled) | `Time [ns]`, `Current [μA]` |
+| `charge_per_electrode_<event>.png`, `.pdf`, `.root` | Line graph of collected charge per strip (`TGraph`) when `is_strip` is true; 2D pixel distribution (`TH2D`) when `is_pixel` is true; values are the net charge of each electrode, with the vertical axis (color axis for 2D pixel plots) titled `Charge [fC]` | $\text{fC}$ |
 
 ## References
 

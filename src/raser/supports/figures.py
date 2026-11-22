@@ -5,18 +5,25 @@ from __future__ import annotations
 import itertools
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import matplotlib
 import matplotlib.colors
 import matplotlib.pyplot as plt
 import numpy as np
-import ROOT
+
+if TYPE_CHECKING:
+    import ROOT
 
 WIDTH_INCHES = 6.0
 HEIGHT_INCHES = 4.0
 DPI = 200
 CANVAS_WIDTH = 1200
 CANVAS_HEIGHT = 800
+# the 12 pt titles and 10 pt labels of the matplotlib figures at DPI, in the
+# pixels in which font 43 of ROOT counts
+TITLE_PIXELS = round(12 * DPI / 72)
+LABEL_PIXELS = round(10 * DPI / 72)
 
 STYLE = {
     "savefig.dpi": DPI,
@@ -48,10 +55,11 @@ UNIT: dict[str, float] = {
     "pF": 1e-12,
     "fC": 1e-15,
     "keV": 1.602176634e-16,
+    "cm-1": 100.0,
 }
 
-_DISPLAY = {"cm-3": "cm⁻³", "s-1": "s⁻¹"}
-_ROOT_DISPLAY = {"cm-3": "cm^{-3}", "s-1": "s^{-1}"}
+_DISPLAY = {"cm-3": "cm⁻³", "s-1": "s⁻¹", "cm-1": "cm⁻¹"}
+_ROOT_DISPLAY = {"cm-3": "cm^{-3}", "s-1": "s^{-1}", "cm-1": "cm^{-1}"}
 
 ELECTRON = "#1f6fb4"
 HOLE = "#d1352b"
@@ -84,21 +92,27 @@ def new(rows: int = 1, columns: int = 1):
         rows,
         columns,
         figsize=(WIDTH_INCHES * columns, HEIGHT_INCHES * rows),
+        layout="constrained",
     )
 
 
 def canvas(columns: int = 1, rows: int = 1) -> ROOT.TCanvas:
     """Set gStyle and return a ROOT canvas of 1200 x 800 pixels per pad."""
+    # ROOT is loaded only to draw with it: a command that only prints its
+    # help or draws with matplotlib does not start it
+    import ROOT
+
     style = ROOT.gStyle
     style.SetOptStat(0)
     style.SetOptTitle(0)
     style.SetTextFont(43)
     style.SetLegendFont(43)
     style.SetLegendBorderSize(0)
+    style.SetLegendTextSize(LABEL_PIXELS)
     style.SetLabelFont(43, "XYZ")
     style.SetTitleFont(43, "XYZ")
-    style.SetTitleSize(24, "XYZ")
-    style.SetLabelSize(20, "XYZ")
+    style.SetTitleSize(TITLE_PIXELS, "XYZ")
+    style.SetLabelSize(LABEL_PIXELS, "XYZ")
     style.SetPadTickX(1)
     style.SetPadTickY(1)
     style.SetPalette(ROOT.kViridis)
@@ -176,6 +190,10 @@ def series(count: int, ordered: bool) -> list[str]:
 
 def root_color(color: str) -> int:
     """Return the ROOT colour index of a matplotlib colour."""
+    # ROOT is loaded only to draw with it: a command that only prints its
+    # help or draws with matplotlib does not start it
+    import ROOT
+
     return ROOT.TColor.GetColor(matplotlib.colors.to_hex(color))
 
 
