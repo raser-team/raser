@@ -3,6 +3,7 @@
 from array import array
 import logging
 
+import numpy as np
 import ROOT
 
 from raser.supports import figures
@@ -60,6 +61,9 @@ def draw_currents(path, event, t0, dt, current, hole_current, electron_current,
         if margin > 0:
             sum_cu.SetMinimum(low - margin)
             sum_cu.SetMaximum(high + margin)
+        time = t0 + (np.arange(len(current[electrode])) + 0.5) * dt
+        start, stop = figures.signal_window(time, np.array(values))
+        sum_cu.GetXaxis().SetRangeUser(start, stop)
         # the total first and wide, the parts over it: where a part is the
         # whole current, as the holes after the electrons are collected,
         # both stay in sight

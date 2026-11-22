@@ -326,7 +326,7 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
 | 文件名 | 内容 | 单位 |
 | --- | --- | --- |
 | `drift_path_<event>.png`, `.pdf`, `.root` | 上半图为三维器件边界框与沉积点（灰）、空穴（红）、电子（蓝）、增益空穴（橙）、增益电子（浅蓝）路径；下半图为 $x$-$z$ 平面投影 | 空间轴 $\mu\text{m}$ |
-| `current_<event>.png`, `.pdf`, `.root`（多个读出电极时为 `current_<event>_electrode_<k>`） | 仅对存在非零电流分量的第 $k$ 号电极（从 `1` 起）绘制 `electrons`、`holes`、`total`（开启雪崩时含 `gain electrons`、`gain holes`）波形 | `Time [ns]`, `Current [μA]` |
+| `current_<event>.png`, `.pdf`, `.root`（多个读出电极时为 `current_<event>_electrode_<k>`） | 仅对存在非零电流分量的第 $k$ 号电极（从 `1` 起）绘制 `electrons`、`holes`、`total`（开启雪崩时含 `gain electrons`、`gain holes`）波形 | `Time [ns]`, `Current [μA]`；时间轴只画信号所在的一段（见[出图](../supports/figures.md#坐标轴与单位)） |
 | `charge_per_electrode_<event>.png`, `.pdf`, `.root` | `is_strip` 为真时绘各条收集电荷折线图（`TGraph`）；`is_pixel` 为真时绘二维像素分布（`TH2D`）；数值为各电极的净电荷，纵轴（二维像素图为色轴）标题为 `Charge [fC]` | $\text{fC}$ |
 
 ## 参考文献
