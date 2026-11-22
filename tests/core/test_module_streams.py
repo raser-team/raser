@@ -23,7 +23,7 @@ def _drift() -> object:
         get_doping_cached=lambda x, y, z: 0.0,
         get_conductive=lambda x, y, z: False,
     )
-    path, _ = drift(50.0, 50.0, 25.0, 0.0, 1.0, sensor, field, lambda *_: 1000.0, 1.0e-12)
+    path, _ = drift(50.0, 50.0, 25.0, 0.0, 1.0, sensor, field, lambda *_: 1000.0, 1.0e-12, 100e-9)
     return path[1].tolist()
 
 

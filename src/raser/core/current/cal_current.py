@@ -17,7 +17,7 @@ import ROOT
 ROOT.gROOT.SetBatch(True)
 
 from ..model.material import Material
-from .drift import Cluster, Drifted, advance, induced_charges, surviving, surviving_at
+from .drift import Cluster, Drifted, advance, induced_charges, max_drift_time_of, surviving, surviving_at
 from . import draw
 from .draw_drift_path import draw_drift_path
 from .currents import EventCurrents, append_currents
@@ -32,16 +32,6 @@ t_bin = {
     1: 5e-12,
     2: 10e-12,
     3: 10e-12
-}
-
-t_end = {
-    1: 5e-9,
-    2: 50e-9,
-    3: 50e-9
-}
-
-t_start = {
-    dimension: -0.25 * end_time for dimension, end_time in t_end.items()
 }
 
 delta_t = {
@@ -189,23 +179,12 @@ class CalCurrent:
 
     def _run_current_calculation(self, my_d, my_f, ionized_pairs, track_position):
         logger.info("current calculation start...")
-        self.t_bin = t_bin[my_d.dimension]
-        relative_end = t_end[my_d.dimension]
-        relative_start = t_start[my_d.dimension]
-        if my_d.is_plugin():
-            self.t_bin = t_bin[1]
-            relative_end = t_end[1]
-            relative_start = t_start[1]
+        self.t_bin = t_bin[1] if my_d.is_plugin() else t_bin[my_d.dimension]
         self.delta_t = delta_t[1] if my_d.is_plugin() else delta_t[my_d.dimension]
+        self.max_drift_time = max_drift_time_of(my_d, my_f, Material(my_d.material).cal_mobility)
         creation_times = [float(position[3]) for position in track_position]
-        first_creation = min(creation_times, default=0.0)
-        last_creation = max(creation_times, default=0.0)
-        self.t_start = first_creation + relative_start
-        # whole bins of t_bin, the fewest that reach last_creation + relative_end
-        self.n_bin = math.ceil((last_creation + relative_end - self.t_start) / self.t_bin)
-        while self.t_start + self.n_bin * self.t_bin < last_creation + relative_end:
-            self.n_bin += 1  # the quotient rounded down
-        self.t_end = self.t_start + self.n_bin * self.t_bin
+        # the window opens at the first creation; where it ends waits for the drift
+        self.t_start = min(creation_times, default=0.0)
 
         self.read_ele_num = my_d.read_ele_num
         if hasattr(my_d, "x_ele_num") and hasattr(my_d, "y_ele_num"):
@@ -238,21 +217,33 @@ class CalCurrent:
         self.ends = self.count_ends()
         self.without_field = self.first_without_field()
 
-        # the currents: arrays (read_ele_num, n_bin + 2) in A; the first and last columns hold the parts before and after the time window
+        # the clusters of the gain drift before the window is known
+        self.det_model = my_d.det_model
+        gain = CalCurrentGain(my_d, my_f, self) if my_d.has_avalanche else None
+        if gain is not None:
+            self.gain_current = gain
+
+        # the window reaches the stop of the last cluster, those of the gain included
+        self.set_window(
+            [self.electron_system, self.hole_system]
+            + ([] if gain is None else [gain.electron_system, gain.hole_system]),
+            self.window_padding(),
+        )
+
+        # the currents: arrays (read_ele_num, n_bin + 2) in A; the first and last columns hold the parts before and after the time window, which stay empty
         hole_bins = self.binned(my_d, my_f, self.hole_system)
         electron_bins = self.binned(my_d, my_f, self.electron_system)
         sum_bins = hole_bins + electron_bins
 
-        self.det_model = my_d.det_model
-        if my_d.has_avalanche:
-            self.gain_current = CalCurrentGain(my_d, my_f, self)
-            sum_bins += self.gain_current.hole_bins + self.gain_current.electron_bins
-            for reason, (clusters, carriers) in self.gain_current.count_ends().items():
+        if gain is not None:
+            gain.fill(my_d, my_f, self)
+            sum_bins += gain.hole_bins + gain.electron_bins
+            for reason, (clusters, carriers) in gain.count_ends().items():
                 ends = self.ends.setdefault(reason, [0, 0.0])
                 ends[0] += clusters
                 ends[1] += carriers
             if self.without_field is None:
-                self.without_field = self.gain_current.first_without_field()
+                self.without_field = gain.first_without_field()
 
         # current of each electrode inside the time window, (read_ele_num, n_bin), in A
         self.hole_current = hole_bins[:, 1:-1]
@@ -260,7 +251,7 @@ class CalCurrent:
         self.current = sum_bins[:, 1:-1]
         # carriers of the clusters that stopped where the field has no value
         self.carriers_without_field = float(self.ends.get("no_field", [0, 0.0])[1])
-        # signed net charge of each electrode in C: all the induced charge, the part outside the time window included
+        # signed net charge of each electrode in C: the window holds all the induced charge
         self.charge = sum_bins.sum(axis=1) * self.t_bin
 
         # fill the histograms for the callers that still read them
@@ -278,6 +269,26 @@ class CalCurrent:
                 if carrier_system is not None:
                     carrier_system.paths = []
                     carrier_system.remaining = []
+
+    def window_padding(self):
+        """Time [s] the window reaches before the first creation and beyond
+        the stop of the last cluster."""
+        return 0.0
+
+    def set_window(self, systems, padding=0.0):
+        """Set t_start, n_bin and t_end so that the window, in whole bins of
+        t_bin, opens `padding` [s] before the first creation and reaches
+        `padding` beyond the stop of the last cluster of `systems` (Drifted
+        or None); one bin at least."""
+        self.t_start -= padding
+        t_stop = max(
+            (path[-1][3] for system in systems if system is not None for path in system.paths),
+            default=self.t_start,
+        ) + padding
+        self.n_bin = max(1, math.ceil((t_stop - self.t_start) / self.t_bin))
+        while self.t_start + self.n_bin * self.t_bin < t_stop:
+            self.n_bin += 1  # the quotient rounded down
+        self.t_end = self.t_start + self.n_bin * self.t_bin
 
     def _is_in_sensor(self, x, y, z, my_d):
         """Whether the position is inside the detector."""
@@ -316,7 +327,7 @@ class CalCurrent:
         # one cluster after another, each to its end: the order of the random draws
         for cluster in clusters:
             while cluster.reason is None:
-                advance(cluster, my_d, my_f, mobility, self.delta_t, self.diffusion)
+                advance(cluster, my_d, my_f, mobility, self.delta_t, self.max_drift_time, self.diffusion)
             # an array as soon as it stops: the list of points takes about
             # six times the memory, too much to keep for every cluster at once
             cluster.path = np.array(cluster.path)
@@ -451,10 +462,8 @@ class CalCurrentGain(CalCurrent):
         self.keep_drift_paths = getattr(my_current, "keep_drift_paths", True)
         self.diffusion = my_current.diffusion
         self.t_bin = my_current.t_bin
-        self.t_end = my_current.t_end
-        self.t_start = my_current.t_start
         self.delta_t = my_current.delta_t
-        self.n_bin = my_current.n_bin
+        self.max_drift_time = my_current.max_drift_time
 
         self.read_ele_num = my_current.read_ele_num
         self.read_out_contact = my_current.read_out_contact
@@ -472,7 +481,12 @@ class CalCurrentGain(CalCurrent):
         self.electron_system = self.drift_all(my_d, my_f, gain_starts, [-pairs for pairs in gain_pairs])
         self.hole_system = self.drift_all(my_d, my_f, gain_starts, gain_pairs)
 
-        # the currents
+    def fill(self, my_d, my_f, my_current):
+        """Bin the gain currents in the window of `my_current`, which is set
+        once the clusters of the gain have stopped."""
+        self.t_start = my_current.t_start
+        self.t_end = my_current.t_end
+        self.n_bin = my_current.n_bin
         self.hole_bins = self.binned(my_d, my_f, self.hole_system)
         self.electron_bins = self.binned(my_d, my_f, self.electron_system)
 
@@ -668,6 +682,27 @@ class CalCurrentGain(CalCurrent):
             self.negative_cu.append(ROOT.TH1F("gain_charge_tmp-"+str(i+1)," No."+str(i+1)+"Gain Negative Current",
                                         self.n_bin, self.t_start, self.t_end))
 
+# the window takes in all but this share of a laser pulse
+PULSE_LEFT_OUT = 1e-9
+
+
+def pulse_reach(time_pulse, fwhm, bin_width):
+    """The smallest bin offset k such that the shares `pulse_in_bins` gives
+    beyond k bins from the middle of the pulse, on both sides, add up to
+    less than PULSE_LEFT_OUT of the pulse."""
+    n_bin = 16
+    while n_bin <= 1 << 24:
+        shares = pulse_in_bins(time_pulse, fwhm, n_bin, bin_width)
+        # within[k]: the shares at most k bins from the middle
+        within_k = np.cumsum(np.bincount(np.abs(np.arange(-(n_bin - 1), n_bin)), weights=shares))
+        beyond = shares.sum() - within_k
+        enough = np.flatnonzero(beyond < PULSE_LEFT_OUT * shares.sum())
+        if len(enough) and enough[0] < n_bin - 1:
+            return int(enough[0])
+        n_bin *= 2
+    raise ValueError("the laser pulse has a share beyond {} bins of {} s".format(n_bin, bin_width))
+
+
 def pulse_in_bins(time_pulse, fwhm, n_bin, bin_width):
     """Share of a laser pulse in a time bin, for each offset of the bin.
 
@@ -687,7 +722,13 @@ def pulse_in_bins(time_pulse, fwhm, n_bin, bin_width):
 
 
 class CalCurrentLaser(CalCurrent):
+    def window_padding(self):
+        """The reach of the convolution kernel, k_max bins of t_bin, added
+        before and after the window."""
+        return pulse_reach(self.my_l.timePulse, self.my_l.temporal_FWHM, self.t_bin) * self.t_bin
+
     def __init__(self, my_d, my_f, my_l, keep_drift_paths=True, diffusion=True):
+        self.my_l = my_l
         super().__init__(
             my_d,
             my_f,

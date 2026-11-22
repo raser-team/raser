@@ -11,6 +11,7 @@ from raser.core.current.drift import surviving
 
 MOBILITY = 1000.0  # cm^2/V/s
 FIELD = 1.0e4  # V/cm, so carriers move at 1e7 cm/s = 100 um/ns
+MAX_TIME = 100e-9  # s
 
 
 class _Field:
@@ -46,7 +47,7 @@ def _um_ps(point):
 def test_hole_drifts_along_the_field_and_stops_on_the_surface() -> None:
     # 100 um/ns from z = 25 um: the surface at 50 um is reached after 250 ps
     path, reason = drift(
-        50.0, 50.0, 25.0, 1.0e-9, 100.0, _device(), _Field(), _mobility, 3.0e-11, diffusion=False
+        50.0, 50.0, 25.0, 1.0e-9, 100.0, _device(), _Field(), _mobility, 3.0e-11, MAX_TIME, diffusion=False
     )
 
     assert reason == "left_device"
@@ -55,10 +56,20 @@ def test_hole_drifts_along_the_field_and_stops_on_the_surface() -> None:
     assert len(path) == 10
 
 
+def test_a_carrier_stops_by_time_after_the_longest_drift_it_is_given() -> None:
+    # 100 um/ns in steps of 30 ps: 100 ps passed after the fourth step, at 37 um
+    path, reason = drift(
+        50.0, 50.0, 25.0, 1.0e-9, 100.0, _device(), _Field(), _mobility, 3.0e-11, 1.0e-10, diffusion=False
+    )
+
+    assert reason == "time_out"
+    assert _um_ps(path[-1]) == pytest.approx([50.0, 50.0, 37.0, 1120.0])
+
+
 def test_electron_drifts_against_the_field_and_stops_where_it_is_low() -> None:
     # 100 um/ns from z = 25 um: 15 um to the field-free layer below 10 um
     path, reason = drift(
-        50.0, 50.0, 25.0, 0.0, -100.0, _device(), _Field(), _mobility, 3.0e-11, diffusion=False
+        50.0, 50.0, 25.0, 0.0, -100.0, _device(), _Field(), _mobility, 3.0e-11, MAX_TIME, diffusion=False
     )
 
     assert reason == "low_field"
@@ -72,7 +83,7 @@ def test_diffusion_spreads_a_carrier_by_2_d_t_on_each_axis() -> None:
     seeding.seed_generators(3)
     ends = []
     for _ in range(600):
-        path, _ = drift(50.0, 50.0, 30.0, 0.0, 1.0, _device(), _Field(), _mobility, 1.0e-12)
+        path, _ = drift(50.0, 50.0, 30.0, 0.0, 1.0, _device(), _Field(), _mobility, 1.0e-12, MAX_TIME)
         ends.append(path[100])
 
     x = np.array(ends)[:, 0]
@@ -88,7 +99,7 @@ def test_drift_without_diffusion_does_not_ask_the_random_stream(monkeypatch) -> 
     monkeypatch.setattr(drift_module, "stream", no_stream)
 
     path, _ = drift(
-        50.0, 50.0, 25.0, 0.0, 100.0, _device(), _Field(), _mobility, 3.0e-11, diffusion=False
+        50.0, 50.0, 25.0, 0.0, 100.0, _device(), _Field(), _mobility, 3.0e-11, MAX_TIME, diffusion=False
     )
 
     assert set(path[:, 0]) == {50.0}
@@ -109,7 +120,7 @@ class _Layer(_Field):
 
 def test_electron_is_collected_where_the_device_conducts() -> None:
     path, reason = drift(
-        50.0, 50.0, 25.0, 0.0, -100.0, _device(), _Layer(True), _mobility, 3.0e-11,
+        50.0, 50.0, 25.0, 0.0, -100.0, _device(), _Layer(True), _mobility, 3.0e-11, MAX_TIME,
         diffusion=False,
     )
 
@@ -120,7 +131,7 @@ def test_electron_is_collected_where_the_device_conducts() -> None:
 def test_electron_drifts_on_through_a_low_field_where_the_device_does_not_conduct() -> None:
     # 100 V/cm moves it 1 um/ns
     path, reason = drift(
-        50.0, 50.0, 25.0, 0.0, -100.0, _device(), _Layer(False), _mobility, 3.0e-11,
+        50.0, 50.0, 25.0, 0.0, -100.0, _device(), _Layer(False), _mobility, 3.0e-11, MAX_TIME,
         diffusion=False,
     )
 
@@ -131,10 +142,10 @@ def test_electron_drifts_on_through_a_low_field_where_the_device_does_not_conduc
 def test_a_pair_collected_between_two_electrodes_induces_its_charge_on_each() -> None:
     # hole from z = 25 to the electrode at 50 um, electron to the low field below 10 um
     hole, _ = drift(
-        50.0, 50.0, 25.0, 0.0, 100.0, _device(), _Field(), _mobility, 3.0e-11, diffusion=False
+        50.0, 50.0, 25.0, 0.0, 100.0, _device(), _Field(), _mobility, 3.0e-11, MAX_TIME, diffusion=False
     )
     electron, _ = drift(
-        50.0, 50.0, 25.0, 0.0, -100.0, _device(), _Field(), _mobility, 3.0e-11, diffusion=False
+        50.0, 50.0, 25.0, 0.0, -100.0, _device(), _Field(), _mobility, 3.0e-11, MAX_TIME, diffusion=False
     )
     e0 = 1.602176634e-19  # the charges are compared in units of it
 
@@ -167,7 +178,7 @@ class _Hole(_Field):
 def test_drift_stops_with_an_error_naming_the_place_where_the_field_is_not_finite(axis, value) -> None:
     with pytest.raises(ValueError, match=r"x, y, z = 50.0000, 50.0000, 19.0000 um"):
         drift(
-            50.0, 50.0, 25.0, 0.0, -100.0, _device(), _Hole(axis, value), _mobility, 3.0e-11,
+            50.0, 50.0, 25.0, 0.0, -100.0, _device(), _Hole(axis, value), _mobility, 3.0e-11, MAX_TIME,
             diffusion=False,
         )
 
@@ -185,7 +196,7 @@ class _Strips(_Field):
 
 def test_a_hole_under_the_next_strip_induces_on_that_strip_not_on_the_one_of_the_field() -> None:
     hole, _ = drift(
-        80.0, 50.0, 25.0, 0.0, 100.0, _device(), _Strips(), _mobility, 3.0e-11, diffusion=False
+        80.0, 50.0, 25.0, 0.0, 100.0, _device(), _Strips(), _mobility, 3.0e-11, MAX_TIME, diffusion=False
     )
     e0 = 1.602176634e-19  # the charges are compared in units of it
 
@@ -211,10 +222,10 @@ class _Irradiated(_Field):
 def test_trapping_leaves_the_exponential_of_rate_times_time() -> None:
     # steps of 30 ps: the middles of the first and the sixth are at 15 and 165 ps
     hole, _ = drift(
-        50.0, 50.0, 25.0, 1.0e-9, 100.0, _device(), _Field(), _mobility, 3.0e-11, diffusion=False
+        50.0, 50.0, 25.0, 1.0e-9, 100.0, _device(), _Field(), _mobility, 3.0e-11, MAX_TIME, diffusion=False
     )
     electron, _ = drift(
-        50.0, 50.0, 25.0, 1.0e-9, -100.0, _device(), _Field(), _mobility, 3.0e-11, diffusion=False
+        50.0, 50.0, 25.0, 1.0e-9, -100.0, _device(), _Field(), _mobility, 3.0e-11, MAX_TIME, diffusion=False
     )
 
     holes = surviving(hole, 100.0, _Irradiated())

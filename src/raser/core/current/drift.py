@@ -1,5 +1,6 @@
 """Drift of a cluster of charge carriers through a detector."""
 
+import logging
 import math
 from dataclasses import dataclass
 
@@ -10,7 +11,10 @@ from raser.core.seeding import stream
 kboltz = 8.617333262e-5  # eV/K
 e0 = 1.602176634e-19  # C
 min_intensity = 1  # V/cm, a carrier in a field not above this stops
-max_drift_time = 100e-9  # s, a carrier still drifting after this stops
+depth_step = 0.1  # um, the spacing of the points along the depth the estimate of max_drift_time sums over
+margin = 10  # the estimate of max_drift_time is this times the longer drift through the thickness
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -43,7 +47,7 @@ class Cluster:
         return cls(carriers, [x, y, z], t, t, [(x, y, z, t)])
 
 
-def drift(x, y, z, t, carriers, my_d, my_f, mobility, delta_t, diffusion=True):
+def drift(x, y, z, t, carriers, my_d, my_f, mobility, delta_t, max_drift_time, diffusion=True):
     """Path of one cluster of carriers and why it stopped.
 
     The cluster starts at x, y, z [um] and time t [s]; the sign of `carriers`,
@@ -61,18 +65,74 @@ def drift(x, y, z, t, carriers, my_d, my_f, mobility, delta_t, diffusion=True):
         collected    the cluster is where `my_f` says the device conducts
         low_field    the field is not above min_intensity
         no_field     the field has no value at the position
-        time_out     max_drift_time has passed
+        time_out     `max_drift_time` [s] has passed since it set off
 
     A field that is not finite where the cluster is raises ValueError,
     which names the position.
     """
     cluster = Cluster.starting(x, y, z, t, carriers)
     while cluster.reason is None:
-        advance(cluster, my_d, my_f, mobility, delta_t, diffusion)
+        advance(cluster, my_d, my_f, mobility, delta_t, max_drift_time, diffusion)
     return np.array(cluster.path), cluster.reason
 
 
-def advance(cluster, my_d, my_f, mobility, delta_t, diffusion=True):
+def max_drift_time_of(my_d, my_f, mobility):
+    """How long [s] a cluster may drift before it stops as "time_out".
+
+    The key `max_drift_time_ns` [ns] of the device file if it has one, which
+    must be a positive finite number. Otherwise `margin` times the longer of
+    the times electrons and holes take to drift through the thickness along
+    the depth line at the middle of the device: the sum over points `depth_step`
+    [um] apart of dz / (mobility |E|), the points where |E| is above
+    min_intensity only. The estimate is made once for a field, kept on it,
+    and logged.
+    """
+    given = getattr(my_d, "max_drift_time_ns", None)
+    if given is not None:
+        if isinstance(given, bool) or not isinstance(given, (int, float)) or not math.isfinite(given) or given <= 0:
+            raise ValueError(
+                "max_drift_time_ns of {} must be a positive finite number in ns, not {}".format(
+                    my_d.det_name, given
+                )
+            )
+        return float(given) * 1e-9
+    kept = getattr(my_f, "estimated_max_drift_time", None)
+    if kept is not None:
+        return kept
+    count = math.ceil(my_d.l_z / depth_step)
+    dz = my_d.l_z / count
+    x, y = my_d.l_x / 2, my_d.l_y / 2
+    fields, dopings = [], []
+    for k in range(count):
+        z = (k + 0.5) * dz
+        try:
+            field = math.hypot(*my_f.get_e_field_cached(x, y, z))
+        except ValueError:
+            continue
+        if field > min_intensity:  # false for a field that is not a number
+            fields.append(field)
+            dopings.append(float(my_f.get_doping_cached(x, y, z)))
+    if not fields:
+        raise ValueError(
+            "{} has no field above {} V/cm along its depth at the bias {} V: "
+            "give max_drift_time_ns in the device file".format(my_d.det_name, min_intensity, my_d.voltage)
+        )
+    times = {}
+    for name, charge in (("electrons", -1), ("holes", 1)):
+        times[name] = 1e-4 * dz * sum(
+            1.0 / (mobility(my_d.temperature, doping, charge, field) * field)
+            for field, doping in zip(fields, dopings)
+        )
+    estimate = margin * max(times.values())
+    logger.info(
+        "max_drift_time estimated: electrons %.4g s, holes %.4g s through the thickness, taken %.4g s",
+        times["electrons"], times["holes"], estimate,
+    )
+    my_f.estimated_max_drift_time = estimate
+    return estimate
+
+
+def advance(cluster, my_d, my_f, mobility, delta_t, max_drift_time, diffusion=True):
     """One step of `drift` for a cluster that has not stopped.
 
     Either the cluster moves by one step, of `delta_t` or less where it

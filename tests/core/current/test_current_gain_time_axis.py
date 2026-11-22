@@ -98,9 +98,17 @@ def test_gain_current_adds_to_a_current_whose_deposits_are_spread_in_time():
     assert _charge(gain.positive_cu[0]) != 0.0
 
 
+def _last_stop(current):
+    """When the last cluster of a current stopped, the gain clusters included."""
+    systems = [current.electron_system, current.hole_system]
+    if hasattr(current, "gain_current"):
+        systems += [current.gain_current.electron_system, current.gain_current.hole_system]
+    return max(path[-1][3] for system in systems if system is not None for path in system.paths)
+
+
 def test_bins_are_as_wide_as_the_written_bin_width_when_deposits_are_spread_in_time():
-    # 3.3 ps apart: the window of 6.25 ns after the first is not a whole
-    # number of 5 ps bins; it is lengthened to one, not spread over them
+    # 3.3 ps apart: the window opens at the first deposit and ends within one
+    # bin after the last stop, in whole bins of 5 ps, not spread over them
     current = CalCurrent(
         _lgad(),
         _UniformField(),
@@ -108,14 +116,16 @@ def test_bins_are_as_wide_as_the_written_bin_width_when_deposits_are_spread_in_t
         [[50.0, 50.0, 25.0, 0.0], [50.0, 50.0, 25.0, 3.3e-12]],
     )
 
+    stop = _last_stop(current)
     assert current.t_bin == 5e-12
+    assert current.t_start == 0.0
     assert (current.t_end - current.t_start) / current.n_bin == pytest.approx(5e-12, rel=1e-12, abs=0)
-    assert current.n_bin == 1251
-    assert current.t_end >= 3.3e-12 + 5e-9
+    assert 0.0 <= current.t_end - stop < current.t_bin
 
 
-def test_the_window_reaches_5_ns_after_a_deposit_a_hair_later_than_the_first():
-    # 2 attoseconds apart: 1250 bins would end 2 as short of 5 ns after the last
+def test_the_window_reaches_the_last_stop_when_a_deposit_is_a_hair_later_than_the_first():
+    # 2 attoseconds apart: the fewest whole bins that reach the last stop is
+    # one more than the quotient rounded down gives where that falls short
     current = CalCurrent(
         SimpleNamespace(**{**vars(_lgad()), "has_avalanche": False}),
         _UniformField(),
@@ -123,8 +133,9 @@ def test_the_window_reaches_5_ns_after_a_deposit_a_hair_later_than_the_first():
         [[50.0, 50.0, 25.0, 0.0], [50.0, 50.0, 25.0, 2e-18]],
     )
 
-    assert current.t_end >= 2e-18 + 5e-9
-    assert current.t_end - current.t_bin < 2e-18 + 5e-9
+    stop = _last_stop(current)
+    assert current.t_end >= stop
+    assert current.t_end - current.t_bin < stop
 
 
 class _ConductingBelow10um(_UniformField):
@@ -213,8 +224,10 @@ class _NoFieldAtAll(_UniformField):
 
 
 def test_a_cluster_that_never_moved_makes_no_gain():
+    # no field anywhere: the device file gives the longest drift
     current = CalCurrent(
-        SimpleNamespace(**{**vars(_lgad())}), _NoFieldAtAll(), [100.0], [[50.0, 50.0, 25.0, 0.0]], diffusion=False
+        SimpleNamespace(**{**vars(_lgad()), "max_drift_time_ns": 100.0}),
+        _NoFieldAtAll(), [100.0], [[50.0, 50.0, 25.0, 0.0]], diffusion=False,
     )
 
     assert current.gain_current.hole_system is None
