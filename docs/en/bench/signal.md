@@ -202,7 +202,7 @@ Results are stored under `<project>/signal/` inside the device project (the exam
 
 | Path | Writer Stage | Content | Coordinate and Physical Quantity Units |
 | --- | --- | --- | --- |
-| `nodes/deposit/<node>/g4_geometry.png` | [`deposit`](../stages/deposit.md) | Offscreen-rendered setup geometry and tracks for the first `deposit.plots` recorded events when `deposit.plots > 0` and a Geant4 source is used | Spatial dimensions $\mu\text{m}$ |
+| `nodes/deposit/<node>/plots/g4_geometry.png` | [`deposit`](../stages/deposit.md) | Offscreen-rendered setup geometry and tracks for the first `deposit.plots` recorded events when `deposit.plots > 0` and a Geant4 source is used | Spatial dimensions $\mu\text{m}$ |
 | `nodes/current/<node>/plots/drift_path_<event>.png`, `.pdf`, `.root` | [`current`](../stages/current.md) | 3D device boundaries and carrier drift trajectories (top) and $x$-$z$ plane projection (bottom) for the first `current.plots` recorded events | Spatial axes $\mu\text{m}$ |
 | `nodes/current/<node>/plots/current_<event>.png`, `.pdf`, `.root` (`current_<event>_electrode_<k>` with several readout electrodes) | [`current`](../stages/current.md) | `electrons`, `holes`, and `total` (plus avalanche gain) induced-current waveforms on each nonzero-current electrode $k$ for the first `current.plots` recorded events | Horizontal axis `Time [ns]`, vertical axis `Current [μA]` |
 | `nodes/current/<node>/plots/charge_per_electrode_<event>.png`, `.pdf`, `.root` | [`current`](../stages/current.md) | Distribution of charge collected per electrode for `strip` or `pixel` devices over the first `current.plots` recorded events | Electrode index (dimensionless), charge `Charge [fC]` |

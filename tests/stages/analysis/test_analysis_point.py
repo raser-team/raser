@@ -1,3 +1,4 @@
+import hashlib
 import json
 
 import h5py
@@ -24,14 +25,25 @@ DT = 1.0e-9
 BEFORE = 200  # bins before the triangle
 
 
+def _slice(folder, index, name):
+    """The file of the slice `name` of a job of the seed folder `folder`: in a
+    node of its own, which the mark of the slice names."""
+    node = hashlib.sha1(f"{folder}/{index}/{name}".encode()).hexdigest()[:12]
+    mark = folder / "batch" / f"{name}_{index}.done"
+    mark.parent.mkdir(parents=True, exist_ok=True)
+    mark.write_text(json.dumps({"node": node}))
+    path = folder.parent / "nodes" / name / node / f"{name}.h5"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def _job(folder, index, scale, count, seed, amplitude_threshold=5, jitter=3.0e-11, spread=1.0e-9):
     """A job of `count` events in a seed folder that holds its slices. Each
     event has 1000 pairs, collects 90 % of them and gives the triangle times
     `scale`; the pulse starts within 30 ps of the deposit, and the deposits
     are spread over 1 ns. Its reconstruction has the thresholds 3 mV and
     `amplitude_threshold` mV, on the falling edge."""
-    batch = folder / "batch"
-    batch.mkdir(parents=True, exist_ok=True)
+    folder.mkdir(parents=True, exist_ok=True)
     held = {"deposit": "", "current": "", "readout": "", "reconstruction": ""}
     (folder / "run.json").write_text(json.dumps({"point": "", "held_in": held}))
     rng = np.random.default_rng(seed)
@@ -43,24 +55,27 @@ def _job(folder, index, scale, count, seed, amplitude_threshold=5, jitter=3.0e-1
             EventDeposits(number, ["Device"], [0.0], [0.0], [1.0], [truths[number]], [0.1], [1000.0])
         )
         append_currents(
-            batch / f"current_{index}.h5",
+            _slice(folder, index, "current"),
             ["top"],
             1.0e-11,
             EventCurrents(number, 0.0, np.zeros((1, 2)), np.array([-900 * E]), 1000.0),
         )
         samples = np.concatenate([np.zeros(BEFORE), scale * TRIANGLE])
         append_waveforms(
-            batch / f"readout_{index}.h5",
+            _slice(folder, index, "readout"),
             ["top"],
             DT,
             EventWaveforms(number, starts[number] - BEFORE * DT, np.array([samples])),
             pulse_edge=["falling"],
         )
-    write_deposits(str(batch / f"deposit_{index}.h5"), Deposits(50, None, None, deposits))
+    write_deposits(str(_slice(folder, index, "deposit")), Deposits(50, None, None, deposits))
     if count:
         reconstruct(
-            batch / f"readout_{index}.h5", batch / f"reconstruction_{index}.h5", 3, amplitude_threshold, (0.2, 0.5, 0.8), "falling"
+            _slice(folder, index, "readout"), _slice(folder, index, "reconstruction"), 3, amplitude_threshold, (0.2, 0.5, 0.8), "falling"
         )
+    else:  # the marks of the slices after the deposits, which left no file
+        for name in ("current", "readout", "reconstruction"):
+            _slice(folder, index, name)
 
 
 def test_point_takes_its_events_from_the_reconstruction_tables(tmp_path) -> None:
@@ -69,7 +84,7 @@ def test_point_takes_its_events_from_the_reconstruction_tables(tmp_path) -> None
     _job(seed, 1, 0.4, 300, seed=5)  # 4 mV, below the amplitude threshold
     # the waveforms are not read again: only the tables hold the times
     for index in (0, 1):
-        (seed / "batch" / f"readout_{index}.h5").unlink()
+        _slice(seed, index, "readout").unlink()
 
     error = write_point([(seed, 0), (seed, 1)], tmp_path / "out")
 
@@ -150,7 +165,7 @@ def test_currents_and_reconstruction_of_other_events_are_refused(tmp_path) -> No
     other = tmp_path / "other"
     _job(other, 0, 1.0, 31, seed=4)
     # the currents of events 0 ... 30 next to the reconstruction of 0 ... 29
-    (seed / "batch" / "current_0.h5").write_bytes((other / "batch" / "current_0.h5").read_bytes())
+    _slice(seed, 0, "current").write_bytes(_slice(other, 0, "current").read_bytes())
 
     with pytest.raises(ValueError, match=r"events \[30\] are in the currents or in the reconstruction of the job, not in both"):
         write_point([(seed, 0)], tmp_path / "out")

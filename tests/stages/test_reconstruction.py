@@ -18,26 +18,26 @@ def _job(folder, scales, count, seed):
     electrodes carry the triangle times `scales`, whose sign gives the edge
     the readout derives for each. Returns the start of the triangle of each
     event."""
-    batch = folder / "batch"
-    batch.mkdir(parents=True, exist_ok=True)
+    node = folder / "node"
+    node.mkdir(parents=True, exist_ok=True)
     names = [f"strip_{k}" for k in range(len(scales[0]))]
     starts = np.random.default_rng(seed).normal(0.0, 1.0e-9, count)
     for number in range(count):
         samples = [np.concatenate([np.zeros(BEFORE), scale * TRIANGLE]) for scale in scales[number % len(scales)]]
-        append_waveforms(batch / "readout_0.h5", names, DT,
+        append_waveforms(node / "readout.h5", names, DT,
                          EventWaveforms(number, starts[number] - BEFORE * DT, np.array(samples)),
                          pulse_edge=["falling" if scale > 0 else "rising" for scale in scales[0]])
     return starts
 
 
 def _run(folder, threshold, amplitude_threshold, edge="falling"):
-    batch = str(folder / "batch")
+    node = str(folder / "node")
     kwargs = {
-        "_slice_batch_paths": {name: batch for name in ("readout", "reconstruction")},
+        "_node_paths": {name: node for name in ("readout", "reconstruction")},
         "threshold": threshold, "amplitude_threshold": amplitude_threshold, "fractions": FRACTIONS, "edge": edge,
     }
     reconstruction.run(kwargs)
-    return read_event_table(folder / "batch" / "reconstruction_0.h5")
+    return read_event_table(folder / "node" / "reconstruction.h5")
 
 
 def test_every_event_has_a_row_and_the_large_ones_are_selected(tmp_path) -> None:
@@ -101,18 +101,18 @@ def test_thresholds_on_the_other_edge_see_no_pulse(tmp_path) -> None:
 
 
 def test_position_reads_and_writes_the_files_of_its_own_slices(tmp_path) -> None:
-    batch = tmp_path / "batch"
-    batch.mkdir()
-    names = {name: str(batch) for name in ("readout.left", "reconstruction.left", "readout.right", "reconstruction.right")}
+    node = tmp_path / "node"
+    node.mkdir()
+    names = {name: str(node) for name in ("readout.left", "reconstruction.left", "readout.right", "reconstruction.right")}
     samples = np.concatenate([np.zeros(BEFORE), TRIANGLE])
-    append_waveforms(batch / "readout.left_0.h5", ["top"], DT, EventWaveforms(7, 0.0, np.array([samples])), pulse_edge=["falling"])
-    kwargs = {"_slice_batch_paths": names, "threshold": 3, "amplitude_threshold": 5, "fractions": FRACTIONS, "edge": "falling"}
+    append_waveforms(node / "readout.left.h5", ["top"], DT, EventWaveforms(7, 0.0, np.array([samples])), pulse_edge=["falling"])
+    kwargs = {"_node_paths": names, "threshold": 3, "amplitude_threshold": 5, "fractions": FRACTIONS, "edge": "falling"}
 
     assert reconstruction.run(kwargs, "left") is None
     assert reconstruction.run(kwargs, "right") == {"events": 0}  # no currents, no readout there
 
-    assert list(read_event_table(batch / "reconstruction.left_0.h5").columns["event"]) == [7]
-    assert not (batch / "reconstruction.right_0.h5").exists()
+    assert list(read_event_table(node / "reconstruction.left.h5").columns["event"]) == [7]
+    assert not (node / "reconstruction.right.h5").exists()
 
 
 def test_event_at_the_amplitude_threshold_is_selected_with_its_cluster(tmp_path) -> None:
@@ -140,12 +140,12 @@ def test_event_above_the_amplitude_cut_but_below_the_timing_threshold_is_selecte
 def test_area_is_of_the_lobe_that_holds_the_peak(tmp_path) -> None:
     # -120 mV for one ns, then an undershoot of +120 mV for one ns, on noise
     # far below them; the undershoot of a falling pulse is not its area
-    batch = tmp_path / "batch"
-    batch.mkdir()
+    node = tmp_path / "node"
+    node.mkdir()
     rng = np.random.default_rng(10)
     samples = np.concatenate([rng.normal(0.0, 1.0e-4, BEFORE), [0.0, -120.0e-3, 120.0e-3, 0.0], rng.normal(0.0, 1.0e-4, 50)])
     samples[BEFORE] = samples[BEFORE + 3] = 1.0e-3  # above the baseline on the far sides
-    append_waveforms(batch / "readout_0.h5", ["top"], DT, EventWaveforms(0, 0.0, np.array([samples])), pulse_edge=["falling"])
+    append_waveforms(node / "readout.h5", ["top"], DT, EventWaveforms(0, 0.0, np.array([samples])), pulse_edge=["falling"])
 
     rows = _run(tmp_path, 50, 100).columns
 
@@ -155,13 +155,13 @@ def test_area_is_of_the_lobe_that_holds_the_peak(tmp_path) -> None:
 def test_fraction_outside_zero_to_one_is_refused(tmp_path) -> None:
     _job(tmp_path, [[1.0]], 1, seed=11)
     kwargs = {
-        "_slice_batch_paths": {"readout": str(tmp_path / "batch"), "reconstruction": str(tmp_path / "batch")},
+        "_node_paths": {"readout": str(tmp_path / "node"), "reconstruction": str(tmp_path / "node")},
         "threshold": 3, "amplitude_threshold": 5, "fractions": (0.5, 1.2), "edge": "falling",
     }
 
     with pytest.raises(ValueError, match=r"fractions \[1.2\]: a constant fraction lies between 0 and 1"):
         reconstruction.run(kwargs)
-    assert not (tmp_path / "batch" / "reconstruction_0.h5").exists()
+    assert not (tmp_path / "node" / "reconstruction.h5").exists()
 
 
 def test_rising_edge_takes_a_positive_pulse(tmp_path) -> None:
@@ -175,11 +175,11 @@ def test_rising_edge_takes_a_positive_pulse(tmp_path) -> None:
 
 
 def test_centre_of_gravity_of_a_lopsided_pulse_is_not_its_peak(tmp_path) -> None:
-    batch = tmp_path / "batch"
-    batch.mkdir()
+    node = tmp_path / "node"
+    node.mkdir()
     # 4, 10, 6, 4 mV above the 3 mV threshold in bins 1 ... 4 after the 200 before
     samples = np.concatenate([np.zeros(BEFORE), -1.0e-3 * np.array([0.0, 4, 10, 6, 4, 2, 0, 0])])
-    append_waveforms(batch / "readout_0.h5", ["top"], DT, EventWaveforms(0, 0.0, np.array([samples])), pulse_edge=["falling"])
+    append_waveforms(node / "readout.h5", ["top"], DT, EventWaveforms(0, 0.0, np.array([samples])), pulse_edge=["falling"])
 
     rows = _run(tmp_path, 3, 5).columns
 
@@ -211,8 +211,8 @@ def test_given_edge_that_is_not_the_pulse_is_told_and_taken(tmp_path, capsys) ->
 
 
 def test_event_holds_only_the_strips_it_has_a_signal_on(tmp_path) -> None:
-    batch = tmp_path / "batch"
-    batch.mkdir()
+    node = tmp_path / "node"
+    node.mkdir()
     names = ["strip_0", "strip_1", "strip_2"]
     samples = np.concatenate([np.zeros(BEFORE), TRIANGLE])
     events = [
@@ -220,7 +220,7 @@ def test_event_holds_only_the_strips_it_has_a_signal_on(tmp_path) -> None:
         EventWaveforms(1, 0.0, np.zeros((0, len(samples))), []),  # no current, no waveform
     ]
     for event in events:
-        append_waveforms(batch / "readout_0.h5", names, DT, event, pulse_edge=["falling"] * 3)
+        append_waveforms(node / "readout.h5", names, DT, event, pulse_edge=["falling"] * 3)
 
     rows = _run(tmp_path, 3, 4, None).columns
 
