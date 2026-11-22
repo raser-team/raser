@@ -18,6 +18,7 @@ WORKFLOW = Workflow(
     slices=chain.SLICES,
     exclusive=chain.EXCLUSIVE,
     command=chain.job_command,
+    analysis=chain.analyse,
 )
 
 

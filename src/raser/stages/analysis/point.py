@@ -18,7 +18,7 @@ from .timing import time_widths
 
 def write_point(jobs, folder):
     """Write the results of a point into `folder`: result.json, events.h5 and
-    the plots.
+    the plots, in plots/ there.
 
     jobs : (experiment folder, slice -> node) pairs, as lifecycle hands them out.
 
@@ -43,6 +43,7 @@ def write_point(jobs, folder):
     """
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
+    pictures = folder / "plots"
     tables = point_tables(jobs)
     efficiencies = event_efficiencies(tables)
     result = {}
@@ -58,7 +59,7 @@ def write_point(jobs, folder):
         result["collection"] = {"events": len(efficiencies), "error": str(too_few)}
         missing.append(f"no efficiency: {too_few}")
     else:
-        plots.draw_efficiencies(efficiencies, folder)
+        plots.draw_efficiencies(efficiencies, pictures)
     if not len(efficiencies):
         result["timing"] = {"events": 0, "selected": 0, "error": "the jobs recorded no event"}
         missing.append("no time resolution: the jobs recorded no event")
@@ -70,7 +71,7 @@ def write_point(jobs, folder):
         for name, values in times.items():
             file[name] = values.astype("int64") if name in ("job", "event") else values
     result["timing"] = {"events": count, "selected": len(times["truth"]), "polarity": polarity}
-    plots.draw_amplitudes(times["amplitude"], tables[0][3].amplitude_threshold, count, folder)
+    plots.draw_amplitudes(times["amplitude"], tables[0][3].amplitude_threshold, count, pictures)
     try:
         widths = time_widths(times)
     except TooFewValues as too_few:
@@ -78,7 +79,7 @@ def write_point(jobs, folder):
         missing.append(f"no time resolution: {too_few}")
     else:
         result["timing"]["times"] = widths
-        plots.draw_differences(times, widths, folder)
-        plots.draw_fractions(widths, folder)
+        plots.draw_differences(times, widths, pictures)
+        plots.draw_fractions(widths, pictures)
     (folder / "result.json").write_text(json.dumps(result, indent=2) + "\n")
     return "; ".join(missing) or None

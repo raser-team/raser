@@ -1,4 +1,4 @@
-"""raser deposit|current|readout|reconstruction <experiment folder or device>: the chain of
+"""raser deposit|current|readout|reconstruction|analysis <experiment folder or device>: the chain of
 an experiment run up to that stage, with what it lacks before it, the field
 among it. raser field is the stage command of the field.
 
@@ -26,6 +26,7 @@ STAGES = {
     "current": ("cur", "the induced currents, after the deposits and the field", (chain.deposit_arguments, chain.current_arguments)),
     "readout": ("rdo", "the waveforms of the electronics, after all before them", (chain.deposit_arguments, chain.current_arguments, chain.readout_arguments)),
     "reconstruction": ("reco", "every event of the waveforms as a row of its table, after all before them", (chain.deposit_arguments, chain.current_arguments, chain.readout_arguments, chain.reconstruction_arguments)),
+    "analysis": ("ana", "the results of the points, after all before them", (chain.deposit_arguments, chain.current_arguments, chain.readout_arguments, chain.reconstruction_arguments)),
 }
 
 
@@ -50,7 +51,8 @@ def run(stage, kwargs):
     folder, words, device = _experiment(kwargs["target"])
     workflow = WORKFLOWS[" ".join(words)]
     names = [piece.name for piece in workflow.slices]
-    if stage not in {name.split(".")[0] for name in names}:
+    stages = {name.split(".")[0] for name in names} | ({"analysis"} if workflow.analysis else set())
+    if stage not in stages:
         raise SystemExit(
             f"{folder}: the experiment {' '.join(words)} has no {stage} slice; its slices: {names}"
         )
