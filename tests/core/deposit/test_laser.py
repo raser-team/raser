@@ -262,3 +262,33 @@ def test_sic_laser_takes_the_absorption_of_its_device_temperature() -> None:
 
     assert alpha == absorption_coefficient("SiC", 0.375, 300.0)
     assert 900.0 < alpha < 910.0
+
+
+def test_pair_density_over_the_cross_section_is_the_pairs_made_per_length() -> None:
+    # α N_γ exp(-α s) pairs per metre of path, N_γ = E λ / (h c)
+    laser = _laser("LA01R_top_Si", alpha=1e6)
+    s = 0.5
+    w = math.sqrt(laser._w_squared(s))
+    r = np.linspace(0, 6 * w, 4000)
+    per_um = np.trapezoid(laser.pair_density(s, r) * 2 * np.pi * r, r)
+    photons = laser.pulse_energy * 660e-9 / H_C
+
+    assert per_um == pytest.approx(1e6 * photons * math.exp(-1e6 * s * 1e-6) * 1e-6, rel=1e-3)
+
+
+def test_pair_density_of_two_photons_falls_to_a_quarter_one_rayleigh_length_from_the_focus() -> None:
+    # the pairs per length go as 1/w² and the area as w²: w² doubles one
+    # Rayleigh length from the focus and is five times as large at two
+    laser = _tpa()
+    focus = laser._beam_frame()[1]
+    at_focus = laser.pair_density(focus, 0.0)
+
+    assert laser.pair_density(focus + laser.l_Rayleigh, 0.0) == pytest.approx(at_focus / 4, rel=1e-6)
+    assert laser.pair_density(focus + 2 * laser.l_Rayleigh, 0.0) == pytest.approx(at_focus / 25, rel=1e-6)
+
+
+def test_picture_of_absorbed_light_stops_where_99_percent_of_the_pairs_are_made() -> None:
+    # absorption length 1 um in 50 um: 1 - exp(-s / 1 um) = 0.99 (1 - exp(-50))
+    laser = _laser("LA01R_top_Si", alpha=1e6)
+
+    assert laser._drawn_path() == pytest.approx(-math.log(1 - 0.99 * (1 - math.exp(-50))) / 1e6 * 1e6, rel=2e-2)

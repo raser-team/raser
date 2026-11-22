@@ -187,6 +187,8 @@ class LaserInjection:
         # around central_time: one photon follows the pulse I(t), two photons
         # follow I(t)², a Gaussian narrower by sqrt(2)
         self.time_FWHM = []
+        # (pairs_per_metre, radial_exponent) of every absorption that acts
+        self._absorptions = []
         photon_energy = 6.626e-34 * 2.998e8 / (self.wavelength * 1e-6) # J
         photons = self.pulse_energy / photon_energy
         if self.alpha != 0:
@@ -228,6 +230,41 @@ class LaserInjection:
                     lambda s, u, v: (s, u, v))
         raise NameError(self.direction)
 
+    def _w_squared(self, s):
+        """Squared radius w² [um²] of the beam at the path s [um]."""
+        w_0 = self.spacial_FWHM / (2 * np.log(2))**0.5
+        focus = self._beam_frame()[1]
+        return w_0 ** 2 * (1 + ((s - focus) / self.l_Rayleigh) ** 2)
+
+    def _path_samples(self):
+        """The points of the path [um] at which the pairs made per length are summed."""
+        length = self._beam_frame()[0]
+        finest = min(length, self.l_Rayleigh, 1e6 / self.alpha if self.alpha != 0 else length)
+        return np.linspace(0, length, int(np.ceil(50 * length / finest)) + 1)
+
+    def pair_density(self, s, r):
+        """Electron-hole pairs per um³ at the path s [um] from the entrance
+        face and the distance r [um] from the axis (arrays that broadcast):
+        the pairs made per metre of path of every absorption, spread over the
+        cross section as k/(π w²) exp(-k r²/w²)."""
+        s, r = np.asarray(s, dtype=float), np.asarray(r, dtype=float)
+        w2 = self._w_squared(s)
+        density = 0.0
+        for pairs_per_metre, k in self._absorptions:
+            density = density + pairs_per_metre(s, w2) * 1e-6 * k / (np.pi * w2) * np.exp(-k * r ** 2 / w2)
+        return density
+
+    def _drawn_path(self):
+        """Length [um] of the path the picture shows: where the pairs made so
+        far, of all absorptions together, reach 99 % of their total."""
+        path = self._path_samples()
+        w2 = self._w_squared(path)
+        per_metre = sum(pairs_per_metre(path, w2) for pairs_per_metre, _ in self._absorptions)
+        made = np.concatenate(([0.0], np.cumsum(
+            (per_metre[1:] + per_metre[:-1]) / 2 * np.diff(path) * 1e-6
+        )))
+        return float(np.interp(0.99 * made[-1], made, path))
+
     def _add_groups(self, pairs_per_metre, radial_exponent, time_FWHM):
         """Groups of carriers that hold the same number of pairs each.
 
@@ -242,14 +279,11 @@ class LaserInjection:
         at the middle share of its cell. Groups outside the detector are left
         out: that light does not pass through it.
         """
+        self._absorptions.append((pairs_per_metre, radial_exponent))
         length, focus, centre, limits, place = self._beam_frame()
-        w_0 = self.spacial_FWHM / (2 * np.log(2))**0.5
+        w_squared = self._w_squared
 
-        def w_squared(s):
-            return w_0 ** 2 * (1 + ((s - focus) / self.l_Rayleigh) ** 2)
-
-        finest = min(length, self.l_Rayleigh, 1e6 / self.alpha if self.alpha != 0 else length)
-        path = np.linspace(0, length, int(np.ceil(50 * length / finest)) + 1)
+        path = self._path_samples()
         per_metre = pairs_per_metre(path, w_squared(path))
         made = np.concatenate(([0.0], np.cumsum(
             (per_metre[1:] + per_metre[:-1]) / 2 * np.diff(path) * 1e-6
@@ -318,12 +352,32 @@ class LaserInjection:
     def draw_nocarrier2D(self, path):
         ROOT.gStyle.SetOptStat(0)
         c1 = ROOT.TCanvas("c1","canvas2",200,10,1400,1000)
-        low, high = self._extent()
+        # the x-z plane through the axis at y = fy_abs: the coordinate along the
+        # path s and the distance r from the axis follow from x and z
+        reach = self._drawn_path()
+        along = np.linspace(0, reach, 400)
+        w_max = np.sqrt(self._w_squared(along).max())
+        if self.direction == "edge":
+            x_low, x_high = 0.0, reach
+            z_low, z_high = max(self.fz_abs - 2 * w_max, 0.0), min(self.fz_abs + 2 * w_max, self.l_z)
+        else:
+            x_low, x_high = max(self.fx_abs - 2 * w_max, 0.0), min(self.fx_abs + 2 * w_max, self.l_x)
+            z_low, z_high = (0.0, reach) if self.direction == "top" else (self.l_z - reach, self.l_z)
         h = ROOT.TH2D("h","",\
-            50, low[0], high[0],\
-            50, low[2], high[2],)
-        for i in range(len(self.track_position)):
-            h.Fill(self.track_position[i][0], self.track_position[i][2], self.ionized_pairs[i],)
+            200, x_low, x_high,\
+            200, z_low, z_high,)
+        x_centres = x_low + (np.arange(200) + 0.5) * (x_high - x_low) / 200
+        z_centres = z_low + (np.arange(200) + 0.5) * (z_high - z_low) / 200
+        x, z = x_centres[:, None], z_centres[None, :]
+        if self.direction == "edge":
+            grid = self.pair_density(x, np.abs(z - self.fz_abs))
+        elif self.direction == "top":
+            grid = self.pair_density(z, np.abs(x - self.fx_abs))
+        else:
+            grid = self.pair_density(self.l_z - z, np.abs(x - self.fx_abs))
+        for i in range(200):
+            for j in range(200):
+                h.SetBinContent(i + 1, j + 1, float(grid[i, j]))
         h.Draw("COLZ")
         h.GetXaxis().SetTitle("x axis [\mum]")#[μm]
         h.GetXaxis().SetTitleSize(0.08)
@@ -332,7 +386,7 @@ class LaserInjection:
         h.GetYaxis().SetTitleSize(0.08)
         h.GetYaxis().SetLabelSize(0.08)
         h.GetYaxis().SetTitleOffset(0.9)
-        h.GetZaxis().SetTitle("Carriers")
+        h.GetZaxis().SetTitle("Pairs [\mum^{-3}]")
         h.GetZaxis().SetTitleSize(0.08)
         h.GetZaxis().SetLabelSize(0.08)
         h.GetZaxis().SetTitleOffset(1.2)

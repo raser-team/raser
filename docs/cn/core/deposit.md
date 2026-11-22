@@ -492,7 +492,7 @@ GDML 文件中含字符串 `RASER_GDML_WRAPPER_WORLD` 时，GDML 的世界体直
 | `<output>.png` | `view_geometry`（TSG 驱动） | 几何与生成事例的径迹 | Geant4 坐标 |
 | `<output>` 矢量图 | `view_geometry`（OGL 驱动） | 同上，`2000 × 2000`，白底 | Geant4 坐标 |
 | `nocarrier_<fx>_<fy>_<fz>.pdf` | `LaserInjection.draw_nocarrier3D` | 载流子群按对数加权的 `TH3D`，$50^3$ 箱，范围为各群的包围盒；轴标题 `Depth`、`Width`、`Thick`（即 $x$、$y$、$z$）；文件名中的相对坐标保留 5 位小数 | $\mu\text{m}$ |
-| `nocarrier2D_<fx>_<fy>_<fz>.pdf` | `LaserInjection.draw_nocarrier2D` | $x$-$z$ 平面的 `TH2D`（`COLZ`），$50 \times 50$ 箱，颜色为对数（`Carriers`） | $\mu\text{m}$ |
+| `nocarrier2D_<fx>_<fy>_<fz>.pdf` | `LaserInjection.draw_nocarrier2D` | $y = f_y l_y$ 的 $x$-$z$ 面上（三种入射方向下这个面都过光轴）电子-空穴对的体密度，`TH2D`（`COLZ`），由式 (10)、(11) 的 $dN/ds$ 乘横向分布 $\frac{k}{\pi w^2}\exp(-k r^2/w^2)$ 在 $200 \times 200$ 的网格上直接算出，颜色为对每 $\mu\text{m}^3$（`Pairs [μm⁻³]`）；沿光路从入射面画到累积对数 $M(s)$ 达到 $0.99\,N_{\text{tot}}$ 处，横向画到光轴两侧 $2 w_{\max}$（$w_{\max}$ 为这段光路上光斑半径的最大值，超出器件处截掉） | $\mu\text{m}$ |
 
 ## 参考文献
 
