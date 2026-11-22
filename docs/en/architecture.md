@@ -191,4 +191,5 @@ Some results do not belong to a single experiment, but are referenced repeatedly
 | --- | --- | --- | --- | --- |
 | Device parameter circuit diagram: junction capacitance, coupling capacitance, and undepleted layer, labeled with values | field | Device and bias voltage | `work/<device>/field/` | readout, connected into the device circuit |
 | Front-end circuit schematic and impulse response | readout | Circuit and its parameters | `work/<circuit_name>/` | readout of each experiment |
+| Response of the network of a device with a resistive layer: the waveforms of the read-out electrodes for an impulse on a point of the device | readout | Device, sheet resistance and amplifier chain | `work/<device>/network/<node>/` | Checking the charge sharing of the resistive layer |
 | Phase-space file from the radioactive source to the plane just before the first device | deposit | Source and geometry up to that plane | `work/<setup_name>/` | deposit of each experiment, launching particles from that plane |

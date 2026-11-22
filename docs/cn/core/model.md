@@ -24,7 +24,7 @@ $$\varepsilon = \varepsilon_r \varepsilon_0, \qquad m_n^* = \left(\frac{m_n^*}{m
 | --- | --- | --- | --- | --- | --- |
 | `"Si"` | `11.9` | `0.26 * m_e` | `0.386 * m_e` | `"Selberherr"` | `"vanOverstraeten"` |
 | `"SiC"` | `9.76` | `0.29 * m_e` | `1.0 * m_e` | `"Das"` | `"Hatakeyama"` |
-| `"Diamond"` | `5.7` | 未设置 | 未设置 | `"Reggiani_diamond"` | `None` |
+| `"Diamond"` | `5.7` | 未设置 | 未设置 | `"Pernegger"` | `None` |
 
 相对介电常数定义在 `material.py` 的全局字典 `RELATIVE_PERMITTIVITY` 中，并在 `Material(mat_name).mat_database()` 中赋给 `self.permittivity`；有效质量在 `Material.mat_database()` 中赋给 `self.electron_mass` 与 `self.hole_mass`（`"SiC"` 取 4H-SiC 纵向有效质量，`"Diamond"` 未设置）。在调用关系上，[device.md](device.md) 的 `Detector.capacitance`（`src/raser/core/device/build_device.py`）读取 `Material(self.material).permittivity` 估算平行板结电容；[field.md](field.md) 的 `CreateSiliconConstant`、`CreateSiliconCarbideConstant`、`CreateDiamondConstant`（`src/raser/core/field/create_parameter.py`）读取 `RELATIVE_PERMITTIVITY` 设置 DEVSIM 区域参数 `eps` 与 `Permittivity`；[field.md](field.md) 的 `capacitances`（`src/raser/core/field/solver_section.py`）读取 `Material(MyDetector.material).permittivity`，将真空介电常数下求得的权重场接触电荷换算为周期性条形电极的单位长度互容（$\text{F/cm}$）。硅的相对介电常数见文献 [1]（附录 G）。
 
@@ -42,7 +42,7 @@ $$\mu_p(T, N_{\text{eff}}, E) = \frac{\mu_{LI,p}}{1 + \mu_{LI,p} E / v_{\text{sa
 
 $$\mu_n(T, N_{\text{eff}}, E) = \frac{2\mu_{LI,n}}{1 + \Bigl[1 + \bigl(2\mu_{LI,n} E / v_{\text{sat},n}\bigr)^{\beta_n}\Bigr]^{1/\beta_n}} \tag{5}$$
 
-对于 4H 碳化硅（`"SiC"`）的缺省 `"Das"` 模型与金刚石（`"Diamond"`）的缺省 `"Reggiani_diamond"` 模型，低场杂质散射项分子直接取 $\mu_L$（不减 $\mu_{\min}$），高场饱和采用统一的 Canali 形式：
+对于 4H 碳化硅（`"SiC"`）的缺省 `"Das"` 模型，低场杂质散射项分子直接取 $\mu_L$（不减 $\mu_{\min}$），高场饱和采用 Canali 形式；金刚石（`"Diamond"`）的缺省 `"Pernegger"` 模型取 $\mu_{LI} = \mu_L$，与温度和掺杂无关，高场饱和是式 (7) 取 $\beta = 1$：
 
 $$\mu_{LI} = \mu_{\min} + \frac{\mu_L}{1 + \bigl(|N_{\text{eff}}| / C_{\text{ref}}\bigr)^{\alpha}} \tag{6}$$
 
@@ -69,7 +69,7 @@ $$\mu_p(T, N_{\text{eff}}, E) = \frac{\mu_{LI,p}}{\Bigl[1 + \bigl(\mu_{LI,p} E /
 - $\beta, \beta_{p,1}, \beta_{p,2}$：高场速度饱和过渡区无量纲幂指数；
 - $\mu_{LI}, \mu$：低场掺杂修正迁移率与含高场饱和的总迁移率，$\text{cm}^2/(\text{V}\cdot\text{s})$。
 
-三种材料缺省选用的模型（`"Selberherr"`、`"Das"`、`"Reggiani_diamond"`，对应式 (3)–(7)）的全部参数取值如下表：
+三种材料缺省选用的模型（`"Selberherr"`、`"Das"`、`"Pernegger"`，对应式 (3)–(7)）的全部参数取值如下表：
 
 | 材料与模型 | 载流子（`charge`） | $\mu_L$（$\text{cm}^2/(\text{V}\cdot\text{s})$） | $\mu_{\min}$（$\text{cm}^2/(\text{V}\cdot\text{s})$） | $C_{\text{ref}}$（$\text{cm}^{-3}$） | $\alpha$（无量纲） | $\beta$（无量纲） | $v_{\text{sat}}$（$\text{cm/s}$） |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -77,8 +77,8 @@ $$\mu_p(T, N_{\text{eff}}, E) = \frac{\mu_{LI,p}}{\Bigl[1 + \bigl(\mu_{LI,p} E /
 | `"Si"` / `"Selberherr"` | 电子（`<= 0`） | $1430.0\,t^{-2.0}$ | $80.0\,t^{-0.45}$ | $1.12\times 10^{17}\,t^{3.2}$ | $0.72\,t^{0.065}$ | $2$ | $1.45\times 10^7\sqrt{\tanh(155.0/T)}$ |
 | `"SiC"` / `"Das"` | 空穴（`> 0`） | $124\,t^{-2}$ | $15.9$ | $1.76\times 10^{19}$ | $0.34$ | $1.213\,t^{0.17}$ | $2\times 10^7\,t^{0.52}$ |
 | `"SiC"` / `"Das"` | 电子（`<= 0`） | $947\,t^{-2}$ | $0$ | $1.94\times 10^{17}$ | $0.61$ | $1\cdot t^{0.66}$ | $2\times 10^7\,t^{0.87}$ |
-| `"Diamond"` / `"Reggiani_diamond"` | 空穴（`> 0`） | $1200\,t^{-2.5}$ | $50 / t$ | $1.0\times 10^{17}$ | $0.5$ | $1.5\,t^{0.2}$ | $1.0\times 10^7\,t^{-0.5}$ |
-| `"Diamond"` / `"Reggiani_diamond"` | 电子（`<= 0`） | $1800\,t^{-2.5}$ | $100 / t$ | $2.0\times 10^{17}$ | $0.5$ | $1.0\,t^{0.3}$ | $2.7\times 10^7\,t^{-0.5}$ |
+| `"Diamond"` / `"Pernegger"` | 空穴（`> 0`） | $2064$ | $0$ | — | — | $1$ | $1.41\times 10^7$ |
+| `"Diamond"` / `"Pernegger"` | 电子（`<= 0`） | $1714$ | $0$ | — | — | $1$ | $0.96\times 10^7$ |
 
 硅的备选 `"Reggiani"` 模型（对应式 (8)–(10)）的全部参数取值如下表：
 
@@ -94,7 +94,7 @@ $$\mu_p(T, N_{\text{eff}}, E) = \frac{\mu_{LI,p}}{\Bigl[1 + \bigl(\mu_{LI,p} E /
 | $\beta_{p,2}$ | $0.15\,t + \dfrac{0.8 N_A^2}{N_A^2 + (8\times 10^{17})^2} + \dfrac{0.8 N_D^2}{N_D^2 + (10^{19})^2}$ | 无 | 无量纲 |
 | $v_{\text{sat}}$ | $9.1\times 10^6\,t^{-0.4}$ | $\dfrac{2.4\times 10^7}{1 + 0.8\exp(t/2)}$ | $\text{cm/s}$ |
 
-迁移率计算由 `material.py` 中的 `Material.cal_mobility(temperature, input_doping, charge, electric_field)` 实现。迁移率模型按名字注册，器件文件按名字选用；每种材料有缺省选用的模型：`"Si"` 为 `"Selberherr"`，`"SiC"` 为 `"Das"`，`"Diamond"` 为 `"Reggiani_diamond"`。在调用关系上：
+迁移率计算由 `material.py` 中的 `Material.cal_mobility(temperature, input_doping, charge, electric_field)` 实现。迁移率模型按名字注册，器件文件按名字选用；每种材料有缺省选用的模型：`"Si"` 为 `"Selberherr"`，`"SiC"` 为 `"Das"`，`"Diamond"` 为 `"Pernegger"`。在调用关系上：
 
 - [current.md](current.md) 的 `CalCurrent.drift_all`（`src/raser/core/current/cal_current.py`）将 `Material(my_d.material).cal_mobility` 传给 `advance`（`src/raser/core/current/drift.py`），在每个时间步用器件选用的迁移率模型求取局部迁移率，用于计算漂移位移与 Einstein 热扩散标准差；
 - [current.md](current.md) 的 `collect_by_diffusion`（`src/raser/core/current/diffusion.py`）调用 `Material(my_d.material).cal_mobility(my_d.temperature, neff, -1, 0)` 计算无场像素传感器中电子的零场迁移率；
@@ -102,7 +102,7 @@ $$\mu_p(T, N_{\text{eff}}, E) = \frac{\mu_{LI,p}}{\Bigl[1 + \bigl(\mu_{LI,p} E /
 - `Material.draw_velocity`（`material.py`）调用 `self.cal_mobility` 绘制电子与空穴漂移速度随电场的变化曲线；
 - 硅器件的器件文件选用 `"Reggiani"` 时，构造 `Material("Si", mobility_model="Reggiani")`。
 
-硅的 `"Selberherr"` 模型见文献 [2]，硅的 `"Reggiani"` 模型见文献 [3]；4H-SiC 的 `"Das"` 模型见文献 [19]，其掺杂参数源于文献 [20]，电子的 $C_{\text{ref}}$ 取文献 [20] 的原值 $1.94\times 10^{17}\ \text{cm}^{-3}$（文献 [19] 中的 $1.94\times 10^{19}$ 是笔误），空穴取 $1.76\times 10^{19}\ \text{cm}^{-3}$。
+硅的 `"Selberherr"` 模型见文献 [2]，硅的 `"Reggiani"` 模型见文献 [3]；4H-SiC 的 `"Das"` 模型见文献 [19]，其掺杂参数源于文献 [20]，电子的 $C_{\text{ref}}$ 取文献 [20] 的原值 $1.94\times 10^{17}\ \text{cm}^{-3}$（文献 [19] 中的 $1.94\times 10^{19}$ 是笔误），空穴取 $1.76\times 10^{19}\ \text{cm}^{-3}$。金刚石的 `"Pernegger"` 模型见文献 [22]：$470\ \mu\text{m}$ 厚单晶 CVD 金刚石在室温下对 Am-241 α 粒子的瞬态电流测量，场强 $0.2$–$1.5\ \text{V}/\mu\text{m}$，$\mu_L$ 与 $v_{\text{sat}}$ 是原文式 (7) 的拟合值。
 
 ### 碰撞电离系数
 
@@ -148,7 +148,7 @@ $$\alpha(E, T) = \begin{cases} 0, & E \le 10^4\ \text{V/cm} \\ \gamma(T)\,a\exp\
 | `"Hatakeyama"` | $E_{\text{th}} = 10^4\ \text{V/cm}$，$\theta = 4.0^\circ$（`OFF_AXIS_DEG`），$\hbar\omega = 0.19\ \text{eV}$，$T_0 = 300.0\ \text{K}$ | 电子（`charges < 0`） | $a_{0001} = 1.76\times 10^8\ \text{cm}^{-1}$，$a_{1120} = 2.10\times 10^7\ \text{cm}^{-1}$，$b_{0001} = 3.30\times 10^7\ \text{V/cm}$，$b_{1120} = 1.70\times 10^7\ \text{V/cm}$ |
 | `"Hatakeyama"` | 同上 | 空穴（`charges > 0`） | $a_{0001} = 3.41\times 10^8\ \text{cm}^{-1}$，$a_{1120} = 2.96\times 10^7\ \text{cm}^{-1}$，$b_{0001} = 2.50\times 10^7\ \text{V/cm}$，$b_{1120} = 1.60\times 10^7\ \text{V/cm}$ |
 
-`VAN_OVERSTRAETEN` 字典与 `hatakeyama(carrier, angle_deg=OFF_AXIS_DEG)` 函数定义在 `impact_ionization.py` 中（返回自变量为 `["E", "T"]` 的 `Formula`），统一的 Python 求值入口为 `material.py` 中的 `Material.cal_coefficient(electric_field, charges, temperature)`。`Material` 的缺省 `avalanche_model` 在 `"Si"` 下为 `"vanOverstraeten"`，在 `"SiC"` 下为 `"Hatakeyama"`，在 `"Diamond"` 下为 `None`（代码注释指明非掺杂 MIM 金刚石器件无增益）。在调用关系上：
+`VAN_OVERSTRAETEN` 字典与 `hatakeyama(carrier, angle_deg=OFF_AXIS_DEG)` 函数定义在 `impact_ionization.py` 中（返回自变量为 `["E", "T"]` 的 `Formula`），统一的 Python 求值入口为 `material.py` 中的 `Material.cal_coefficient(electric_field, charges, temperature)`。`Material` 的缺省 `avalanche_model` 在 `"Si"` 下为 `"vanOverstraeten"`，在 `"SiC"` 下为 `"Hatakeyama"`，在 `"Diamond"` 下为 `None`（代码注释指明非掺杂 MIM 金刚石器件无增益）。每种材料能选的模型列在 `material.py` 的 `AVALANCHE_MODELS` 中：`"Si"` 为 `"vanOverstraeten"`、`"Okuto"`，`"SiC"` 为 `"Hatakeyama"`，`"Diamond"` 没有。在调用关系上：
 
 - [field.md](field.md) 的 `CreateImpactModel_vanOvenstraeten` 与 `CreateImpactModel_Hatakeyama`（`src/raser/core/field/physics_avalanche.py`）分别调用 `VAN_OVERSTRAETEN[...].devsim(EDGE_FIELD_IN_THRESHOLDS, E=EDGE_FIELD, T="T")` 与 `hatakeyama(...).devsim(EDGE_FIELD_IN_THRESHOLDS, E=EDGE_FIELD, T="T")`（取缺省 `OFF_AXIS_DEG = 4.0` 度），在 DEVSIM 连续性方程中生成硅和碳化硅的碰撞电离边模型 `Ion_coeff_n`、`Ion_coeff_p`；器件文件 `avalanche_model` 为 `"Okuto"` 时，`Silicon` 区域的边模型仍是 `VAN_OVERSTRAETEN`（该模块中的 `"Fine_exponential_models"`、`"Tunnel"`、`"sze"`、`"chynoweth"`、`"bologna"`、`"sic_custom"` 直接写在 `physics_avalanche.py` 内，见 [field.md](field.md)）；
 - [field.md](field.md) 的 `DevsimField._integrate_planar_gain`（`src/raser/core/field/devsim_field.py`）调用 `Material(my_d.material, avalanche_model=my_d.avalanche_model).cal_coefficient(abs(E), ±1, my_d.temperature)`，沿一维中心深度剖面积分求取平板稳态倍增因子（供 [current.md](current.md) 的 `CalCurrentGain._build_planar_gain_carriers` 使用）；
@@ -304,10 +304,10 @@ SRH 复合率公式见文献 [1]（第 1.5.4 节）与原始文献 [14]，Hurkx 
 1. **构造 `Material` 实例（`Material.__init__` 与 `mat_database`）**：记录 `self.mat_name = mat_name`，调用 `self.mat_database()` 按 `"Si"`、`"SiC"`、`"Diamond"` 三个 `if` 分支写入 `permittivity`、`hole_mass`、`electron_mass`、默认 `avalanche_model` 与默认 `mobility_model`。若构造参数 `mobility_model != None`，覆盖 `self.mobility_model`；若 `avalanche_model != None`，覆盖 `self.avalanche_model`。`mat_name` 取 `"Si"`、`"SiC"`、`"Diamond"` 之一。
 2. **求取载流子迁移率（`Material.cal_mobility(temperature, input_doping, charge, electric_field)`）**：
    - 设 $T = \text{temperature}$，$t = T / 300$，$E = \text{electric\_field}$，$N_{\text{eff}} = \text{input\_doping}$。
-   - 若 `mat_name == 'SiC'` 且 `mobility_model == "Das"`、或 `mat_name == 'Diamond'` 且 `mobility_model == "Reggiani_diamond"`、或 `mat_name == 'Si'` 且 `mobility_model == "Selberherr"`：先取 `Neff = abs(Neff)`，再按 `charge > 0`（空穴）与 `charge <= 0`（电子）代入式 (3)–(7) 及对应参数算出 `mu` 并返回。
+   - 若 `mat_name == 'SiC'` 且 `mobility_model == "Das"`、或 `mat_name == 'Diamond'` 且 `mobility_model == "Pernegger"`、或 `mat_name == 'Si'` 且 `mobility_model == "Selberherr"`：先取 `Neff = abs(Neff)`，再按 `charge > 0`（空穴）与 `charge <= 0`（电子）代入式 (3)–(7) 及对应参数算出 `mu` 并返回。
    - 若 `mat_name == 'Si'` 且 `mobility_model == "Reggiani"`：当 `Neff >= 0` 时设 `N_D = Neff, N_A = 0`，否则设 `N_A = -Neff, N_D = 0`；再按 `charge > 0` 与 `charge <= 0` 代入式 (8)–(10) 算出 `mu` 并返回。
 3. **求取碰撞电离系数（`Material.cal_coefficient(electric_field, charges, temperature)` 与 `hatakeyama`）**：
-   - 检查 `self.avalanche_model not in ('vanOverstraeten', 'Okuto', 'Hatakeyama')`；若条件为真（包括 `"Diamond"` 缺省的 `None`），抛出 `ValueError: Unsupported avalanche model: <self.avalanche_model>`。
+   - 检查 `self.avalanche_model not in AVALANCHE_MODELS[self.mat_name]`；若条件为真（包括 `"Diamond"` 缺省的 `None`，以及为 `"Diamond"` 或 `"SiC"` 选了 `"vanOverstraeten"` 这类别的材料的模型），抛出 `ValueError: Avalanche model <self.avalanche_model> is not defined for <self.mat_name>`。
    - 初始化 `coefficient = 0.0`，设 $E = \text{electric\_field}$，$T = \text{temperature}$。`charges` 取 `-1`（电子）或 `+1`（空穴）；`charges` 为 `0` 时 `coefficient` 为 `0.0`。
    - 当 `avalanche_model == 'vanOverstraeten'` 时：按 `charges` 符号调用 `VAN_OVERSTRAETEN["electron"].value(E=E, T=T)` 或 `VAN_OVERSTRAETEN["hole"].value(E=E, T=T)`，由式 (11)–(12) 返回结果。
    - 当 `avalanche_model == 'Okuto'` 时：按 `charges` 符号设置电子或空穴的 $a, b, c, d$ 参数；若 $E > 1.0\times 10^5\ \text{V/cm}$，按式 (13) 计算 `coefficient`，否则置 `coefficient = 0.0`。
@@ -397,3 +397,4 @@ SRH 复合率公式见文献 [1]（第 1.5.4 节）与原始文献 [14]，Hurkx 
 - [19] A. Das, S. P. Duttagupta, “TCAD simulation for alpha-particle spectroscopy using SiC Schottky diode”, Radiat. Prot. Dosim. 167 (2015) 443, doi:10.1093/rpd/ncu369
 - [20] W. J. Schaffer, G. H. Negley, K. G. Irvine, J. W. Palmour, “Conductivity anisotropy in epitaxial 6H and 4H SiC”, MRS Proc. 339 (1994) 595, doi:10.1557/PROC-339-595
 - [21] Z. Li et al., “Mechanisms of proton irradiation-induced defects on the electrical performance of 4H-SiC PIN detectors”, JINST 21 (2026) P03010, doi:10.1088/1748-0221/21/03/P03010, arXiv:2503.09016
+- [22] H. Pernegger et al., “Charge-carrier properties in synthetic single-crystal diamond measured with the transient-current technique”, J. Appl. Phys. 97 (2005) 073704, doi:10.1063/1.1863417

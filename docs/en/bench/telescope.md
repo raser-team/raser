@@ -62,6 +62,21 @@ The telescope consists of $N$ detector planes arranged sequentially along $+z$: 
 
 Reference layers default to `TAICHU3` (`TAICHU3.json`): a silicon (`"Si"`) pixel detector with full dimensions $l_x = 1500\ \mu\text{m}$, $l_y = 1500\ \mu\text{m}$, $l_z = 20\ \mu\text{m}$, an array of $60 \times 60$ pixels (`3600` total), pixel pitch $p_x = p_y = 25.0\ \mu\text{m}$, a centered rectangular collection zone of $10.0 \times 10.0\ \mu\text{m}$ per pixel, operating temperature $300.0\ \text{K}$, default bias `-1.8` $\text{V}$, acceptor concentration `1e12` $\text{cm}^{-3}$, and donor concentration `0` $\text{cm}^{-3}$.
 
+The setup used in the example configuration is `telescope` from [energy deposition components](../components/deposit.md#built-in-geant4-setups): 8 slots arranged along $+z$ in vacuum at equal $40\ \text{mm}$ spacing, with every slot's front-surface center on the beam axis and `rotation_z` set to `0`.
+
+| Slot | Role | Default Device | Front-Surface $z$ ($\text{mm}$) | `rotation_z` (degrees) |
+| --- | --- | --- | --- | --- |
+| `ref1` | Reference layer | `TAICHU3` | `-140` | `0` |
+| `ref2` | Reference layer | `TAICHU3` | `-100` | `0` |
+| `ref3` | Reference layer | `TAICHU3` | `-60` | `0` |
+| `dut1` | Device under test (DUT) | Device given on the command line | `-20` | `0` |
+| `dut2` | Device under test (DUT) | Device given on the command line | `20` | `0` |
+| `ref4` | Reference layer | `TAICHU3` | `60` | `0` |
+| `ref5` | Reference layer | `TAICHU3` | `100` | `0` |
+| `ref6` | Reference layer | `TAICHU3` | `140` | `0` |
+
+The beam used in the example configuration is `beam/electron_5GeV_spread`: $5\ \text{GeV}$ electrons are emitted from $z = -400\ \text{mm}$ along $+z$ with a uniform aiming spread of $\pm 750\ \mu\text{m}$ in both $x$ and $y$ (aiming point at $z = 100\ \text{mm}$), covering the $1.5 \times 1.5\ \text{mm}$ sensitive area of the reference layers.
+
 Each layer's detector board is mounted perpendicular to the beam axis $z$ and may be oriented in one of four directions in the $x$-$y$ plane (rotated by $0^\circ$, $90^\circ$, $180^\circ$, or $270^\circ$ around the $z$ axis). Following standard beam-telescope practice, this degree of freedom serves two needs:
 
 - **Measuring spatial resolution in both $x$ and $y$**: strip detectors or non-square pixel detectors ($p_x \ne p_y$) have high position resolution only along a single sensitive coordinate or short pitch axis. Rotating a board by $90^\circ$ (for example, mounting the two DUTs orthogonally at $0^\circ$ and $90^\circ$, or rotating selected reference layers by $90^\circ$) allows measuring spatial resolution in both $x$ and $y$ within the same telescope coordinate frame, or providing high-precision track constraints along both orthogonal coordinates simultaneously.
@@ -76,6 +91,10 @@ Each layer's detector board is mounted perpendicular to the beam axis $z$ and ma
 3. **Per-layer drift, readout, digitization, and triggering ([`current`](../stages/current.md), [`readout`](../stages/readout.md), [`digitizer`](../stages/digitizer.md), [`trigger`](../stages/trigger.md))**: each layer independently drifts carriers in its solved field, computes induced currents and net charge on its pixel electrodes, and solves analog voltage waveforms through its device equivalent circuit and front-end amplifier chain, adding circuit thermal noise using the `readout` noise seed derived from the job seed. Each layer then generates quantized-code digital waveforms in the `digitizer` node according to the digitizer's analog bandwidth, sampling rate, and quantization bit depth (with clock phase and aperture jitter drawn from the `digitizer` seed derived from the job seed), and writes the `event` (`int64`) dataset of recorded event IDs via trigger selection to `trigger.h5` in the `trigger` node.
 4. **Clustering and track fitting ([`reconstruction`](../stages/reconstruction.md))**: reads the events in `digitizer.h5` recorded by `trigger.h5`, converts quantized codes back to voltage ($\text{V}$) using `lsb_V` and `offset_V` with sampling times `t0 + k·sampling_period`; on each layer, extracts pixel signal features, finds cluster seeds using `amplitude_threshold` and marks events with a found seed as `selected`, and performs connected-component clustering on hit pixels above threshold via Eq. (1) to obtain the local hit position $(\bar{x}_c, \bar{y}_c)$ ($\mu\text{m}$) and cluster size $n_c$ (count); transforms hit positions into the global telescope frame according to each layer's orientation, fits a straight track to all $N_{\text{ref}}$ reference layers via Eq. (2), and extrapolates it to each DUT plane.
 5. **Statistics ([`analysis`](../stages/analysis.md))**: Limitation: `analysis` currently only computes statistics for single-electrode results; multi-electrode and multi-position statistics (such as telescope residuals and per-pad aggregation for cflm) have not been implemented yet.
+
+### Fast Run
+
+When `reconstruction.hits = "deposit"`, `telescope` skips `field`, `current`, `readout`, `digitizer`, and `trigger`, and [`reconstruction`](../stages/reconstruction.md) reads the `deposit` node directly: pixels on a layer with deposited electron-hole pairs are recorded as hit pixels above threshold, while everything else follows step 4. Paired with the straight-line MIP source `toy/MIP_telescope` (without launching Geant4 and without multiple scattering), residuals come solely from pixel discretization, allowing quick scans of the DUT pixel pitch, layer spacing, and orientation to inspect the resolution given by geometry alone.
 
 ## Stages and Components Used
 
@@ -105,7 +124,11 @@ Pass the name of the DUT placed in the middle of the telescope on the command li
 ```bash
 raser telescope <device>
 raser telescope <device> --scan field.voltage=-100,-200
+raser telescope <device> --set deposit.g4setup.devices.dut2.rotation_z=90
+raser telescope <device> --set deposit.source=toy/MIP_telescope --set reconstruction.hits=deposit
 ```
+
+The third line rotates the second DUT by $90^\circ$, and the fourth line is the fast run.
 
 The experiment directory `<project>/telescope/config.json` records settings sectioned by stage (see [Architecture Overview](../architecture.md#project) for the format). The telescope device list is defined in the `telescope` experiment class, with 3 `TAICHU3` layers upstream and 3 downstream by default and two DUTs in the middle; the device given on the command line replaces the DUTs. The device list, per-layer orientations, and per-layer settings such as bias voltage are configured individually.
 
@@ -131,6 +154,10 @@ The table below lists the stage configuration keys shared between `telescope` an
 | `reconstruction.amplitude_threshold` | `10.0` | $\text{mV}$ | Pulse amplitude threshold for cluster seed pixels; events recorded by `trigger` in which a seed is found are marked `selected` (whether an event is recorded is decided by `trigger` according to the trigger conditions) |
 | `reconstruction.fractions` | `[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]` | dimensionless | List of amplitude fractions for constant-fraction timing (`CFD`); each entry must lie in the open interval `(0, 1)` |
 | `reconstruction.edge` | `null` (inherits `pulse_edge` written by the corresponding layer's `readout`) | None | Pulse edge direction on which thresholds act, `"rising"` or `"falling"` |
+| `reconstruction.hits` | `"signal"` | None | Source of hit pixels: `"signal"` takes digital waveforms recorded by `trigger` crossing `reconstruction.threshold`; `"deposit"` takes pixels with deposited electron-hole pairs (fast run) |
+| `reconstruction.plots` | `10` | events | Number of leading selected events per job for which track-fit plots are drawn |
+
+The position and orientation of each slot in the setup `deposit.g4setup` are component-internal keys addressed as `deposit.g4setup.devices.<slot>.position` ($\mu\text{m}$) and `deposit.g4setup.devices.<slot>.rotation_z` (degrees).
 
 ## Outputs
 
@@ -142,6 +169,15 @@ The main outputs written by each stage and by statistical analysis are:
 
 - **Upstream stage nodes ([`deposit`](../stages/deposit.md) through [`reconstruction`](../stages/reconstruction.md))**: `deposit.h5` in the `deposit` node records energy deposition steps and ionized pairs across all $N$ planes (coordinates $\mu\text{m}$, time $\text{s}$, energy $\text{MeV}$, ionized pairs in pairs). In the job nodes, each layer separately stores its corresponding induced currents and net collected charge (`current.<position>.h5`, time $\text{s}$, current $\text{A}$, charge $\text{C}$), front-end readout analog voltage waveforms (`readout.<position>.h5`, time $\text{s}$, voltage $\text{V}$), digitized quantized-code waveforms (`digitizer.<position>.h5`, quantized integer codes `code` [`int16`, dimensionless] and conversion attributes `lsb_V` [$\text{V}$], `offset_V` [$\text{V}$], `sampling_period` [$\text{s}$], `bits` [bits]; see [`stages/digitizer.md`](../stages/digitizer.md) for the format), triggered recorded events (`trigger.h5`, dataset `event` [`int64`] of recorded event IDs), and per-event clustered hit positions ($\mu\text{m}$), cluster sizes (count), and straight-track fit results (`reconstruction.<position>.h5`).
 - **Spatial resolution statistics and plots ([`analysis`](../stages/analysis.md))**: Limitation: `analysis` currently only computes statistics for single-electrode results; multi-electrode and multi-position statistics (such as telescope residuals and per-pad aggregation for cflm) have not been implemented yet.
+
+The `plots/` directory of each stage node contains the following plots (see [Plotting](../supports/figures.md) for conventions):
+
+| Stage | Plot Name | Content | Count |
+| --- | --- | --- | --- |
+| deposit | `geometry` | Geant4 geometry of the telescope and tracks of the first `deposit.plots` events | One per node |
+| reconstruction | `hitmap_<slot>` | 2D distribution of cluster centroids in layer-local coordinates across all recorded events on that layer (`x [μm]`, `y [μm]`, color scale for cluster count) | One per layer |
+| reconstruction | `track_<event>` | Left: $x$-$z$; right: $y$-$z$. Cluster centroids of each layer (filled for reference layers, open for DUTs) and the fitted straight line from Eq. (2) (`z [mm]`, `x [μm]`, `y [μm]`) | First `reconstruction.plots` selected events |
+| analysis | `residual_<slot>` | Left: $r_x$; right: $r_y$. DUT residual distributions (`Residual x [μm]`, `Events`) with Gaussian fit curves and $\sigma_{\text{Tol}}$ labeled | One per DUT |
 
 ![Electrons collected per pixel on one TAICHU3 layer](../images/telescope-pixel-charge.png)
 

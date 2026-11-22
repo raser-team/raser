@@ -3,7 +3,6 @@
     "tech" : "SPA",
     "direction" : "top",
     
-    "alpha": 1000,
     "refractionIndex" : 3.124,
     
     "wavelength" : 375,

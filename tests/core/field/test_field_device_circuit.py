@@ -1,3 +1,5 @@
+import dataclasses
+
 import numpy as np
 import pytest
 
@@ -31,10 +33,18 @@ def test_short_circuit_current_of_a_sensor_that_is_not_fully_depleted():
         AREA_M2, THICKNESS_M, DEPLETED_M, PERMITTIVITY_F_PER_M, RESISTIVITY_OHM_M
     )
     times, step = _step()
-
-    into_short = short_circuit_currents(
-        ["top"], DT_S, [step], planar_circuit("top", depleted_f, undepleted)
+    resistance_ohm, capacitance_f = undepleted
+    circuit = planar_circuit("top", depleted_f, back="undepleted")
+    circuit = dataclasses.replace(
+        circuit,
+        lines=circuit.lines
+        + (
+            f"R_undepleted undepleted 0 {resistance_ohm:.9g}",
+            f"C_undepleted undepleted 0 {capacitance_f:.9g}",
+        ),
     )
+
+    into_short = short_circuit_currents(["top"], DT_S, [step], circuit)
 
     tau = PERMITTIVITY_F_PER_M * RESISTIVITY_OHM_M * THICKNESS_M / DEPLETED_M
     assert tau == pytest.approx(7.9e-9, rel=0.01)
@@ -112,7 +122,9 @@ def test_electrodes_side_by_side_each_answer_with_their_own_sensor():
     times, step = _step()
     circuit = side_by_side(
         [
-            planar_circuit("near", 10e-12, None, 1e6, 1e-9),
+            planar_circuit(
+                "near", 10e-12, bias_resistance_ohm=1e6, coupling_capacitance_f=1e-9
+            ),
             planar_circuit("far", 40e-12),
         ]
     )

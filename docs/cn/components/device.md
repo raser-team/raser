@@ -117,7 +117,7 @@ flowchart LR
 | 常数名或固定项 | 值 | 单位 | 定义位置与含义 |
 | --- | --- | --- | --- |
 | `EPSILON_0_F_PER_M` / `VACUUM_PERMITTIVITY_F_M` | `8.8541878128e-12` | `F/m` | `src/raser/core/device/build_device.py:20`、`src/raser/core/field/circuit_parameters.py:17`，平行板结电容与阻性层介电耦合电容计算使用的真空介电常数 |
-| 缺省迁移率模型 | `"Si"`: `"Selberherr"`；`"SiC"`: `"Das"`；`"Diamond"`: `"Reggiani_diamond"` | 无 | `src/raser/core/model/material.py:46`、`:53`、`:59`、`src/raser/core/current/cal_current.py:313`，各材料缺省选用的迁移率模型 |
+| 缺省迁移率模型 | `"Si"`: `"Selberherr"`；`"SiC"`: `"Das"`；`"Diamond"`: `"Pernegger"` | 无 | `src/raser/core/model/material.py:46`、`:53`、`:59`、`src/raser/core/current/cal_current.py:313`，各材料缺省选用的迁移率模型 |
 | `ELEMENTARY_CHARGE` / `ELEMENTARY_CHARGE_C` | `1.602176634e-19` | `C` | `src/raser/core/field/conductive.py:9`、`src/raser/core/field/implanted_aluminium.py:15`，电导率与阻性层方阻换算使用的元电荷 |
 | `RESISTIVITY` | `10.0` | `Ohm cm` | `src/raser/core/field/conductive.py:10`，判定网格节点为高导电区的电阻率上限 |
 | `UNDEPLETED` | `0.5` | 无量纲 | `src/raser/core/field/conductive.py:11`，判定有净掺杂节点尚未耗尽的载流子浓度与净掺杂浓度之比下限 |
@@ -177,7 +177,7 @@ flowchart LR
      - $\varepsilon_r$：`Material(material).permittivity` 给出的材料相对介电常数（无量纲）；
      - $A$：单电极读出面积，`um^2`，`"strip"` 或 `"pixel"` 布局取 $p_x p_y$，`"pad"` 布局取 $l_x l_y$；
      - $d$：耗尽层深度 `depletion_depth`（缺省取 `l_z`），`um`。
-2. **未耗尽层与附加器件电路（`circuit_parameters.py`、`device_circuit.py`、`pulse_edge.py`）**：未耗尽层并联电阻与电容优先取器件文件成对给出的 `undepleted_resistance_ohm`（`Ohm`）和 `undepleted_capacitance_pF`（`pF`）；未给定时取一维 `field` 解出的 `<V>V.undepleted.json`（比电阻除以 `area_factor`、比电容乘以 `area_factor`，参见 W. Riegler, *Nucl. Instrum. Methods Phys. Res. A* 940 (2019) 453, doi:10.1016/j.nima.2019.06.056），全耗尽或多维场无此层。若器件文件还配置了 `bias_resistance_ohm`、`coupling_capacitance_pF` 或 `resistive_layer`（由 `device_row` 或 `device_grid` 构建阻性网格电路，铝注入碳化硅方阻模型来自 M. Spera et al., *Materials* 12 (2019) 3468, doi:10.3390/ma12213468 / `arXiv:2001.08021`），一并接在放大器链前面（网表结构见 [`readout.md`](readout.md#读进程序以后怎么用)）。`pulse_edges` 根据 `bias.electrode`、`bias.voltage` 与 `read_out_contact` 判定读出电极收集电子还是空穴，确定输出脉冲边沿是 `"rising"` 还是 `"falling"`。
+2. **未耗尽层与附加器件电路（`circuit_parameters.py`、`device_circuit.py`、`pulse_edge.py`）**：未耗尽层并联电阻与电容优先取器件文件成对给出的 `undepleted_resistance_ohm`（`Ohm`）和 `undepleted_capacitance_pF`（`pF`）；未给定时取 `field` 解出的 `<V>V.undepleted.json`（比电阻除以器件面积、比电容乘以器件面积，一维取 `area_factor`，二维、三维取 `l_x`×`l_y`；参见 W. Riegler, *Nucl. Instrum. Methods Phys. Res. A* 940 (2019) 453, doi:10.1016/j.nima.2019.06.056），全耗尽时无此层。若器件文件还配置了 `bias_resistance_ohm`、`coupling_capacitance_pF` 或 `resistive_layer`（由 `device_row` 或 `device_grid` 构建阻性网格电路，铝注入碳化硅方阻模型来自 M. Spera et al., *Materials* 12 (2019) 3468, doi:10.3390/ma12213468 / `arXiv:2001.08021`），一并接在放大器链前面（网表结构见 [`readout.md`](readout.md#读进程序以后怎么用)）。`pulse_edges` 根据 `bias.electrode`、`bias.voltage` 与 `read_out_contact` 判定读出电极收集电子还是空穴，确定输出脉冲边沿是 `"rising"` 还是 `"falling"`。
 
 `bias.electrode` 和 `read_out_contact` 里的 `name` 须与 `field` 网格中的接触名一致；示例文件中保留的 `field_source`、`field_shift_x`、`field_shift_y` 键现不被代码读取，编写新器件文件时可省略。
 

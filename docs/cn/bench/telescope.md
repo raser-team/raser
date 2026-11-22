@@ -62,6 +62,21 @@ r_{x,j} &= \hat{x}\!\left(z_j + \frac{l_{z,j}}{2}\right) - \bar{x}_{c,j}, & r_{y
 
 参考层默认使用 `TAICHU3`（`TAICHU3.json`）：硅（`"Si"`）像素探测器，全尺寸 $l_x = 1500\ \mu\text{m}$、$l_y = 1500\ \mu\text{m}$、$l_z = 20\ \mu\text{m}$，阵列 $60 \times 60$ 像素（共 `3600` 个），像素间距 $p_x = p_y = 25.0\ \mu\text{m}$，单像素中心矩形收集区 $10.0 \times 10.0\ \mu\text{m}$，工作温度 $300.0\ \text{K}$，默认偏压 `-1.8` $\text{V}$，受主浓度 `1e12` $\text{cm}^{-3}$、施主浓度 `0` $\text{cm}^{-3}$。
 
+示例配置用的装置是 [能量沉积组件](../components/deposit.md#库中-geant4-装置) 里的 `telescope`：真空中沿 $+z$ 等间距 $40\ \text{mm}$ 排布 8 个槽位，槽位前表面中心都在束流轴上，`rotation_z` 都为 `0`。
+
+| 槽位 | 角色 | 默认器件 | 前表面 $z$（$\text{mm}$） | `rotation_z`（度） |
+| --- | --- | --- | --- | --- |
+| `ref1` | 参考层 | `TAICHU3` | `-140` | `0` |
+| `ref2` | 参考层 | `TAICHU3` | `-100` | `0` |
+| `ref3` | 参考层 | `TAICHU3` | `-60` | `0` |
+| `dut1` | 被测器件 | 命令行给定的器件 | `-20` | `0` |
+| `dut2` | 被测器件 | 命令行给定的器件 | `20` | `0` |
+| `ref4` | 参考层 | `TAICHU3` | `60` | `0` |
+| `ref5` | 参考层 | `TAICHU3` | `100` | `0` |
+| `ref6` | 参考层 | `TAICHU3` | `140` | `0` |
+
+示例配置用的束流是 `beam/electron_5GeV_spread`：$5\ \text{GeV}$ 电子从 $z = -400\ \text{mm}$ 沿 $+z$ 射出，方向在 $x$、$y$ 上各有 $\pm 750\ \mu\text{m}$ 的均匀瞄准展宽（瞄准点在 $z = 100\ \text{mm}$），覆盖参考层 $1.5 \times 1.5\ \text{mm}$ 的灵敏面。
+
 每一层的探测器板子都垂直于束流轴 $z$ 摆放，并可在 $x$-$y$ 平面内朝四个方向之一摆放（绕 $z$ 轴旋转 $0^\circ$、$90^\circ$、$180^\circ$ 或 $270^\circ$）。按学术界束流望远镜的通用做法，这一自由度用于两类需求：
 
 - **测量 $x$、$y$ 两个方向的空间分辨**：条形（strip）探测器或非方形像素探测器（$p_x \ne p_y$）只在单一敏感方向或短边方向具备高位置分辨。将板子旋转 $90^\circ$（例如把两块被测器件分别按 $0^\circ$ 与 $90^\circ$ 正交摆放，或将部分参考层旋转 $90^\circ$），即可在同一望远镜坐标系下测出 $x$、$y$ 两个方向的空间分辨，或为两个正交坐标同时提供高精度径迹约束。
@@ -76,6 +91,10 @@ r_{x,j} &= \hat{x}\!\left(z_j + \frac{l_{z,j}}{2}\right) - \bar{x}_{c,j}, & r_{y
 3. **逐层漂移、读出、数字化与触发（[`current`](../stages/current.md)、[`readout`](../stages/readout.md)、[`digitizer`](../stages/digitizer.md)、[`trigger`](../stages/trigger.md)）**：每一层各自在对应的求解场中漂移载流子，计算各像素电极的感应电流与净电荷，经各自的器件等效电路与前端放大器链求解模拟电压波形并按由作业种子派生的 `readout` 噪声种子叠加电路热噪声。随后各层分别按数字化器的模拟带宽、采样率与量化位数（时钟相位与孔径抖动由作业种子派生的 `digitizer` 种子抽取）生成量化码数字波形写入 `digitizer` 节点，并经触发判选将被记录事例的事例号数据集 `event`（`int64`）写入 `trigger` 节点的 `trigger.h5`。
 4. **团簇聚类与径迹拟合（[`reconstruction`](../stages/reconstruction.md)）**：读取 `digitizer.h5` 中被 `trigger.h5` 记录的事例，按 `lsb_V`、`offset_V` 将量化码换回电压（$\text{V}$），采样时刻为 `t0 + k·sampling_period`；在每一层上提取像素信号特征，以 `amplitude_threshold` 找团簇种子并将找到种子的事例记为 `selected`，按式 (1) 对过阈击中像素做连通团簇聚类，求出该层在局部坐标系中的击中位置 $(\bar{x}_c, \bar{y}_c)$（$\mu\text{m}$）与团簇大小 $n_c$（个）；再按各层朝向把击中位置变换到望远镜全局坐标系，用全部 $N_{\text{ref}}$ 层参考层的击中位置按式 (2) 拟合直线径迹并外推到各块被测器件所在平面。
 5. **统计（[`analysis`](../stages/analysis.md)）**：局限：`analysis` 现在只统计单电极的结果，多电极、多位置的统计（例如 telescope 的残差、cflm 各焊盘的汇总）还没做。
+
+### 快速跑法
+
+`reconstruction.hits = "deposit"` 时，`telescope` 不跑 `field`、`current`、`readout`、`digitizer`、`trigger`，[`reconstruction`](../stages/reconstruction.md) 直接读 `deposit` 节点：一层上沉积了电子-空穴对的像素记为过阈击中像素，其余照第 4 步。配合直线 MIP 源 `toy/MIP_telescope`（不启动 Geant4，无多次散射），残差只来自像素的离散化，可以很快地扫被测器件的像素间距、层间距和朝向，看几何本身给出的分辨。
 
 ## 用到的环节和组件
 
@@ -105,7 +124,11 @@ r_{x,j} &= \hat{x}\!\left(z_j + \frac{l_{z,j}}{2}\right) - \bar{x}_{c,j}, & r_{y
 ```bash
 raser telescope <器件>
 raser telescope <器件> --scan field.voltage=-100,-200
+raser telescope <器件> --set deposit.g4setup.devices.dut2.rotation_z=90
+raser telescope <器件> --set deposit.source=toy/MIP_telescope --set reconstruction.hits=deposit
 ```
+
+第三行把第二块被测器件转 $90^\circ$，第四行是快速跑法。
 
 实验文件夹 `<project>/telescope/config.json` 按环节分段记录配置（格式见[架构总纲](../architecture.md#project)）。望远镜的器件列表写在 `telescope` 实验类里，前后各 3 层默认取 `TAICHU3`，中间默认放两块被测器件，命令行给定的器件替换被测器件。器件列表、每层朝向和每层器件各自的偏压等设置分别设。
 
@@ -131,6 +154,10 @@ raser telescope <器件> --scan field.voltage=-100,-200
 | `reconstruction.amplitude_threshold` | `10.0` | $\text{mV}$ | 团簇种子像素的脉冲幅度阈值；在 `trigger` 记录的事例里找到种子的记为 `selected`（事例记不记录由 `trigger` 按触发条件决定） |
 | `reconstruction.fractions` | `[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]` | 无量纲 | 恒比定时（`CFD`）的幅度比例列表，每项须位于 `(0, 1)` 开区间内 |
 | `reconstruction.edge` | `null`（沿用对应层 `readout` 写出的 `pulse_edge`） | 无 | 阈值作用的脉冲边沿方向，可选 `"rising"` 或 `"falling"` |
+| `reconstruction.hits` | `"signal"` | 无 | 击中像素从哪里来：`"signal"` 为 `trigger` 记录的数字波形过 `reconstruction.threshold`，`"deposit"` 为沉积了电子-空穴对的像素（快速跑法） |
+| `reconstruction.plots` | `10` | 事例 | 每作业画径迹拟合图的前若干个选中事例数 |
+
+装置槽位 `deposit.g4setup` 里各槽位的位置和朝向是组件内部键，地址为 `deposit.g4setup.devices.<槽位>.position`（$\mu\text{m}$）与 `deposit.g4setup.devices.<槽位>.rotation_z`（度）。
 
 ## 输出
 
@@ -142,6 +169,15 @@ raser telescope <器件> --scan field.voltage=-100,-200
 
 - **上游各环节节点（[`deposit`](../stages/deposit.md) 至 [`reconstruction`](../stages/reconstruction.md)）**：`deposit` 节点的 `deposit.h5` 记录全部 $N$ 层平面的能量沉积步与电离对（坐标 $\mu\text{m}$、时间 $\text{s}$、能量 $\text{MeV}$、电离对数 对）。各层在作业节点里分别保存对应的感应电流与净收集电荷（`current.<位置>.h5`，时间 $\text{s}$、电流 $\text{A}$、电荷 $\text{C}$）、前端读出模拟电压波形（`readout.<位置>.h5`，时间 $\text{s}$、电压 $\text{V}$）、数字化量化码波形（`digitizer.<位置>.h5`，量化整型码 `code`［`int16`，无量纲］与换算属性 `lsb_V`［$\text{V}$］、`offset_V`［$\text{V}$］、`sampling_period`［$\text{s}$］、`bits`［位］，格式见 [`stages/digitizer.md`](../stages/digitizer.md)）、触发记录事例（`trigger.h5`，被记录事例的事例号数据集 `event`［`int64`］），以及逐事例团簇聚类得到的击中位置（$\mu\text{m}$）、团簇大小（个）与直线径迹拟合结果（`reconstruction.<位置>.h5`）。
 - **空间分辨统计与图像（[`analysis`](../stages/analysis.md)）**：局限：`analysis` 现在只统计单电极的结果，多电极、多位置的统计（例如 telescope 的残差、cflm 各焊盘的汇总）还没做。
+
+各环节节点的 `plots/` 里画下面这些图（规矩见[出图](../supports/figures.md)）：
+
+| 环节 | 图名 | 画的是 | 张数 |
+| --- | --- | --- | --- |
+| deposit | `geometry` | 望远镜的 Geant4 几何和前 `deposit.plots` 个事例的径迹 | 每个节点一张 |
+| reconstruction | `hitmap_<槽位>` | 该层全部记录事例的团簇重心在层局部坐标中的二维分布（`x [μm]`、`y [μm]`，色标为团簇数） | 每层一张 |
+| reconstruction | `track_<事例号>` | 左：$x$-$z$；右：$y$-$z$。各层团簇重心（参考层实心、被测器件空心）与式 (2) 的拟合直线（`z [mm]`、`x [μm]`、`y [μm]`） | 前 `reconstruction.plots` 个选中事例 |
+| analysis | `residual_<槽位>` | 左：$r_x$；右：$r_y$。被测器件残差分布（`Residual x [μm]`、`Events`）与高斯拟合曲线，标出 $\sigma_{\text{Tol}}$ | 每块被测器件一张 |
 
 ![一层 TAICHU3 的像素收集电子数](../images/telescope-pixel-charge.png)
 

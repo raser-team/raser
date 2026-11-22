@@ -19,7 +19,7 @@ $$\mathbf{v}(\mathbf{r}) = \pm \mu\bigl(T,\, N_{\text{eff}}(\mathbf{r}),\, E(\ma
 - $N_{\text{eff}}(\mathbf{r})$：位置 $\mathbf{r}$ 处的有效净掺杂浓度，$\text{cm}^{-3}$；
 - $\mu$：载流子迁移率，$\text{cm}^2/(\text{V}\cdot\text{s})$。
 
-迁移率由 `Material(material).cal_mobility` 计算，具体参数化见 [model.md](model.md)。迁移率模型按名字注册，器件文件按名字选用；每种材料有缺省选用的模型：Si 为 `"Selberherr"`，SiC（4H-SiC）为 `"Das"`，Diamond 为 `"Reggiani_diamond"`。`core/current` 用器件选用的模型求迁移率。半导体载流子漂移输运见文献 [1]。
+迁移率由 `Material(material).cal_mobility` 计算，具体参数化见 [model.md](model.md)。迁移率模型按名字注册，器件文件按名字选用；每种材料有缺省选用的模型：Si 为 `"Selberherr"`，SiC（4H-SiC）为 `"Das"`，Diamond 为 `"Pernegger"`。`core/current` 用器件选用的模型求迁移率。半导体载流子漂移输运见文献 [1]。
 
 ### 扩散
 
