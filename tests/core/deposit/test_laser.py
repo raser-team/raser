@@ -270,7 +270,8 @@ def test_pair_density_over_the_cross_section_is_the_pairs_made_per_length() -> N
     s = 0.5
     w = math.sqrt(laser._w_squared(s))
     r = np.linspace(0, 6 * w, 4000)
-    per_um = np.trapezoid(laser.pair_density(s, r) * 2 * np.pi * r, r)
+    ring = laser.pair_density(s, r) * 2 * np.pi * r  # pairs per um of path and of radius
+    per_um = float(np.sum((ring[1:] + ring[:-1]) / 2 * np.diff(r)))
     photons = laser.pulse_energy * 660e-9 / H_C
 
     assert per_um == pytest.approx(1e6 * photons * math.exp(-1e6 * s * 1e-6) * 1e-6, rel=1e-3)
