@@ -73,19 +73,34 @@ If the impulse point lies outside the RC node array (`not first_edge <= here_um 
 
 RC-node share calculation and multi-point impulse-response injection are implemented by `shares` in `resistive_layer.py` of `core/field` and `impulse_response` in `network.py`, respectively.
 
+### Admittance between the read-outs
+
+The admittance matrix between the read-out ports of the device circuit (`circuit.outputs`) is given per frequency: a small AC voltage of $1\ \text{V}$ is applied to the $j$-th read-out port, the other read-out ports are AC-grounded, and all induced current sources are open; the current that flows into the $i$-th read-out port from outside is $Y_{ij}$:
+
+$$Y_{ij}(f) = \left.\frac{I_i}{V_j}\right|_{V_{k \ne j} = 0} \tag{8}$$
+
+where:
+
+- $Y_{ij}$: admittance of the $i$-th read-out port to the $j$-th read-out port, $\text{S}$;
+- $I_i$: AC current flowing into the $i$-th read-out port, $\text{A}$;
+- $V_j$: AC voltage on the $j$-th read-out port, $\text{V}$;
+- $f$: frequency, $\text{Hz}$.
+
+`admittance(circuit, frequencies_hz)` of `network.py` obtains it column by column with the AC small-signal analysis of `ngspice`: for each $j$, a voltage source `Vport<k> <node> 0 dc 0 ac <1 or 0>` is attached to each read-out port $k$ of the device-circuit netlist, only the $j$-th with AC magnitude $1$, and the complex current of each voltage source is read at each given frequency, its negative being the current into the device. It returns a complex array of shape `(frequencies, outputs, outputs)` with the read-out ports in the order of `circuit.outputs`; `frequencies_hz` that is empty, holds a non-positive value, or does not increase raises `ValueError`.
+
 ### Frequency-Domain Thermal Noise from a Given Spectrum and Time-Domain Synthesis
 
 Noisy resistors and active device models in the device circuit and front-end amplifier chain generate stationary Gaussian electronic noise at the operating temperature. The code first computes the single-sided output voltage noise amplitude spectral density $S_V(f)$ at discrete frequencies using `ngspice` small-signal frequency-domain noise analysis, then integrates the noise power in each frequency band via the trapezoidal rule on an extended-record frequency grid of length $M_{\text{rec}}$ times the waveform bin count, draws independent complex Gaussian Fourier coefficients, and takes the inverse real discrete Fourier transform (`np.fft.irfft`), truncating to the first $n_{\text{bin}}$ samples to synthesize the time-domain noise:
 
-$$P(f_l) = \sum_{j=0}^{l-1} \frac{S_V^2(f_{j+1}) + S_V^2(f_j)}{2}\,(f_{j+1} - f_j) \quad (l = 0, 1, \dots, L - 1) \tag{8}$$
+$$P(f_l) = \sum_{j=0}^{l-1} \frac{S_V^2(f_{j+1}) + S_V^2(f_j)}{2}\,(f_{j+1} - f_j) \quad (l = 0, 1, \dots, L - 1) \tag{9}$$
 
-$$\Delta P_k = P\!\left(f_k + \frac{1}{2}\Delta f\right) - P\!\left(\max\!\left(f_k - \frac{1}{2}\Delta f,\, 0\right)\right) \quad \left(k = 0, 1, \dots, \left\lfloor \frac{N_{\text{rec}}}{2} \right\rfloor\right) \tag{9}$$
+$$\Delta P_k = P\!\left(f_k + \frac{1}{2}\Delta f\right) - P\!\left(\max\!\left(f_k - \frac{1}{2}\Delta f,\, 0\right)\right) \quad \left(k = 0, 1, \dots, \left\lfloor \frac{N_{\text{rec}}}{2} \right\rfloor\right) \tag{10}$$
 
-$$\sigma_k = \frac{1}{2}\,N_{\text{rec}}\sqrt{\Delta P_k} \tag{10}$$
+$$\sigma_k = \frac{1}{2}\,N_{\text{rec}}\sqrt{\Delta P_k} \tag{11}$$
 
-$$X_k = \begin{cases} \mathcal{N}\!\left(0,\, N_{\text{rec}}^2 \Delta P_0\right), & k = 0 \\[4pt] \mathcal{N}(0, \sigma_k^2) + \mathrm{i}\,\mathcal{N}(0, \sigma_k^2), & 0 < k < \dfrac{N_{\text{rec}}}{2} \\[4pt] \mathcal{N}\!\left(0,\, N_{\text{rec}}^2 \Delta P_{N_{\text{rec}}/2}\right), & k = \dfrac{N_{\text{rec}}}{2}\ (\text{when } N_{\text{rec}}\ \text{is even}) \end{cases} \tag{11}$$
+$$X_k = \begin{cases} \mathcal{N}\!\left(0,\, N_{\text{rec}}^2 \Delta P_0\right), & k = 0 \\[4pt] \mathcal{N}(0, \sigma_k^2) + \mathrm{i}\,\mathcal{N}(0, \sigma_k^2), & 0 < k < \dfrac{N_{\text{rec}}}{2} \\[4pt] \mathcal{N}\!\left(0,\, N_{\text{rec}}^2 \Delta P_{N_{\text{rec}}/2}\right), & k = \dfrac{N_{\text{rec}}}{2}\ (\text{when } N_{\text{rec}}\ \text{is even}) \end{cases} \tag{12}$$
 
-$$v_{\text{noise}}[m] = \frac{1}{N_{\text{rec}}} \sum_{n=0}^{N_{\text{rec}}-1} \widetilde{X}_n\,\mathrm{e}^{\mathrm{i} 2\pi n m / N_{\text{rec}}} \quad (m = 0, 1, \dots, n_{\text{bin}} - 1) \tag{12}$$
+$$v_{\text{noise}}[m] = \frac{1}{N_{\text{rec}}} \sum_{n=0}^{N_{\text{rec}}-1} \widetilde{X}_n\,\mathrm{e}^{\mathrm{i} 2\pi n m / N_{\text{rec}}} \quad (m = 0, 1, \dots, n_{\text{bin}} - 1) \tag{13}$$
 
 where:
 
@@ -105,11 +120,11 @@ The frequency-domain noise spectrum is solved by `output_noise_spectrum` in `spi
 
 The direction in which a readout channel's output voltage pulse departs from its quiescent baseline (upward for positive pulses `"rising"`, downward for negative pulses `"falling"`) is jointly determined by the sign of the carriers collected by the readout electrode and the net transfer polarity of the front-end amplifier chain. A readout electrode at a higher potential than the opposite electrode collects electrons (negative charge), whereas one at a lower potential collects holes (positive charge); the amplifier chain responds to a positive input charge with either a non-inverting positive swing or an inverting negative swing, and the product of the two signs gives the output pulse polarity:
 
-$$V_{\text{above}} = \begin{cases} V_{\text{bias}}, & \text{if the readout electrode is } \text{bias.electrode} \\ -V_{\text{bias}}, & \text{other readout electrodes (non-bias electrodes grounded)} \end{cases} \tag{13}$$
+$$V_{\text{above}} = \begin{cases} V_{\text{bias}}, & \text{if the readout electrode is } \text{bias.electrode} \\ -V_{\text{bias}}, & \text{other readout electrodes (non-bias electrodes grounded)} \end{cases} \tag{14}$$
 
-$$s_q = \begin{cases} -1, & V_{\text{above}} > 0\ (\text{collecting electrons}) \\ +1, & V_{\text{above}} < 0\ (\text{collecting holes}) \end{cases}, \qquad s_{\text{chain}} = \operatorname{sgn}\!\bigl(V_{\text{probe}}(t^*) - V_{\text{probe}}(t_0)\bigr) \tag{14}$$
+$$s_q = \begin{cases} -1, & V_{\text{above}} > 0\ (\text{collecting electrons}) \\ +1, & V_{\text{above}} < 0\ (\text{collecting holes}) \end{cases}, \qquad s_{\text{chain}} = \operatorname{sgn}\!\bigl(V_{\text{probe}}(t^*) - V_{\text{probe}}(t_0)\bigr) \tag{15}$$
 
-$$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 \\ \text{"falling"}, & s_q \cdot s_{\text{chain}} < 0 \end{cases} \tag{15}$$
+$$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 \\ \text{"falling"}, & s_q \cdot s_{\text{chain}} < 0 \end{cases} \tag{16}$$
 
 where:
 
@@ -214,10 +229,10 @@ The short-circuit current netlist `write_short_circuit_netlist` contains only th
    - Execute the noise netlist with `ngspice -b`, read the frequency column ($\text{Hz}$) and single-sided output voltage noise amplitude spectral density column ($\text{V}/\sqrt{\text{Hz}}$) for each analyzed channel, and expand back via the symmetry mapping into an array `densities` of shape `(len(circuit.outputs), frequencies)`.
    - The `ngspice` frequency-domain noise analysis runs at $27\ ^\circ\text{C}$, covering `LOWEST_NOISE_HZ = 1e3` $\text{Hz}$ to $0.5 / \Delta t$; each output channel provides its own total output noise spectrum.
 2. **Band-power integration and inverse transform of complex Gaussian spectra (`band_power`, `noise_from_spectrum`)**:
-   - `band_power(frequencies_hz, density)` computes `steps = np.diff(frequencies_hz)`: if `frequencies_hz.size < 2` or `np.any(steps <= 0)`, raise `ValueError("A noise spectrum needs at least two increasing frequencies")`. Compute trapezoidal cumulative power by Eq. (8) and return the `np.interp` interpolator.
-   - `noise_from_spectrum(frequencies_hz, density, bins, dt, generator)` creates the frequency grid `centres = np.fft.rfftfreq(record, d=dt)` of length $N_{\text{rec}} = 256\,n_{\text{bin}}$, and computes band powers `in_band` and `sigma` via Eqs. (9) and (10).
-   - Following Eq. (11), draw the real parts `generator.normal(0.0, sigma)` and imaginary parts `generator.normal(0.0, sigma)` across all frequency bins using `generator`, overwrite the DC bin `spectrum[0]` with `generator.normal(0.0, record * np.sqrt(in_band[0]))`, and when `record % 2 == 0` overwrite the Nyquist bin `spectrum[-1]` with `generator.normal(0.0, record * np.sqrt(in_band[-1]))`.
-   - Return `np.fft.irfft(spectrum, n=record)[:bins]` per Eq. (12).
+   - `band_power(frequencies_hz, density)` computes `steps = np.diff(frequencies_hz)`: if `frequencies_hz.size < 2` or `np.any(steps <= 0)`, raise `ValueError("A noise spectrum needs at least two increasing frequencies")`. Compute trapezoidal cumulative power by Eq. (9) and return the `np.interp` interpolator.
+   - `noise_from_spectrum(frequencies_hz, density, bins, dt, generator)` creates the frequency grid `centres = np.fft.rfftfreq(record, d=dt)` of length $N_{\text{rec}} = 256\,n_{\text{bin}}$, and computes band powers `in_band` and `sigma` via Eqs. (10) and (11).
+   - Following Eq. (12), draw the real parts `generator.normal(0.0, sigma)` and imaginary parts `generator.normal(0.0, sigma)` across all frequency bins using `generator`, overwrite the DC bin `spectrum[0]` with `generator.normal(0.0, record * np.sqrt(in_band[0]))`, and when `record % 2 == 0` overwrite the Nyquist bin `spectrum[-1]` with `generator.normal(0.0, record * np.sqrt(in_band[-1]))`.
+   - Return `np.fft.irfft(spectrum, n=record)[:bins]` per Eq. (13).
 3. **Independent random stream per event and per channel (`write_waveforms`)**:
    - For each retained output channel `name` in event `event`, construct an independent NumPy random generator from a three-integer seed list:
      $$\text{generator} = \text{np.random.default\_rng}\bigl([\text{noise\_seed},\, \text{event.event},\, \text{place}[\text{name}]]\bigr)$$
@@ -229,7 +244,7 @@ The short-circuit current netlist `write_short_circuit_netlist` contains only th
 1. **Pulse-edge polarity determination (`pulse_edges`, `collected_charge_sign`, `chain_sign`)**:
    - Extract the list of readout contact names `contacts = [contact["name"] for contact in my_d.read_out_contact]`. If `len(contacts) == 1`, replicate it as `contacts * len(outputs)`; if after expansion `len(contacts) != len(outputs)`, raise `ValueError("<det_name> lists the read-out electrodes <contacts>, not one for each of the outputs <outputs>")`.
    - `chain_sign(chain)` constructs an all-zero current array of shape `(1, 2000)` with $\Delta t = 10^{-11}\ \text{s}$, sets `current[0, 5] = 1e-15 / dt` ($10^{-4}\ \text{A}$), and calls `solve` on `planar_circuit("probe", 1e-12)` to obtain `voltage`. Compute the deviation from the first bin `swing = voltage - voltage[0]` and take the signed value at maximum absolute deviation `largest = swing[np.argmax(np.abs(swing))]`: if `abs(largest) < NO_ANSWER_V` ($10^{-9}\ \text{V}$), raise `ValueError("The chain moves its output by <largest:.3g> V for 1 fC: it does not answer, so the way its pulses go is not known")`; otherwise return `+1` for `largest > 0` and `-1` for `largest < 0`. When this error occurs, check that the signal in any custom amplifier stage can propagate from the `in` port through its elements to the `out` port (whether node names match, whether the sensing nodes of a voltage-controlled source `E` are connected to signal nodes, whether the gain is `0`, or whether the output is shorted to ground), and whether the output can swing by at least $10^{-9}\ \text{V}$ within the probe's $2000 \times 10\ \text{ps} = 20\ \text{ns}$ window.
-   - For each `contact`, `collected_charge_sign(my_d, contact)` computes `above` via Eq. (13): if `above == 0`, raise `ValueError("<electrode> of <det_name> and its other electrode are at one potential")`; return `-1` for `above > 0` and `+1` for `above < 0`. By Eq. (15), a positive product yields `"rising"` and a negative product yields `"falling"`.
+   - For each `contact`, `collected_charge_sign(my_d, contact)` computes `above` via Eq. (14): if `above == 0`, raise `ValueError("<electrode> of <det_name> and its other electrode are at one potential")`; return `-1` for `above > 0` and `+1` for `above < 0`. By Eq. (16), a positive product yields `"rising"` and a negative product yields `"falling"`.
 2. **Event loop, channel swing filtering, and noise addition (`write_waveforms`)**:
    - Read the entire batch of induced currents with `read_currents(currents_path)`; if the target `waveforms_path` already exists, remove it first with `os.remove(waveforms_path)`.
    - Iterate over each event `event` in `currents.events`:
@@ -274,7 +289,7 @@ The short-circuit current netlist `write_short_circuit_netlist` contains only th
 - `waveforms.py`: defines the `EventWaveforms` and `Waveforms` dataclasses along with `_check_layout`, `append_waveforms`, `read_waveforms`, and `read_circuit_values` for sparse append writing and reading of `readout.h5`.
 - `schematic.py`: provides `read_hints`, `arrange`, `layout`, `value_text`, and `draw` to render `.cir` subcircuit files into schematic images.
 - `draw.py`: provides `draw_waveform`, using `raser.supports.figures` to plot single-event input induced-current and amplifier output-voltage waveforms and save them as `.png` and `.pdf`.
-- `network.py`: computes the response of a resistive-layer network to a point impulse. `impulse_response(my_d, circuit, chain, points_um, dt=10e-12, bins=2000, charge=1e-15)` converts each point's RC node shares into first-bin rectangular current pulses and calls `spice.solve` point by point, returning output voltages ($\text{V}$) of shape `(points, outputs, bins)` in the order of `circuit.outputs`.
+- `network.py`: computes the response of a resistive-layer network to a point impulse. `impulse_response(my_d, circuit, chain, points_um, dt=10e-12, bins=2000, charge=1e-15)` converts each point's RC node shares into first-bin rectangular current pulses and calls `spice.solve` point by point, returning output voltages ($\text{V}$) of shape `(points, outputs, bins)` in the order of `circuit.outputs`; `admittance(circuit, frequencies_hz)` applies a $1\ \text{V}$ AC small signal to each read-out port in turn with the other ports AC-grounded and the induced current sources open, and returns by Eq. (8) the complex admittance matrix ($\text{S}$) of shape `(frequencies, outputs, outputs)`.
 - `draw_network.py`: plots resistive-layer network impulse responses and the device network circuit. `sharing` plots each readout electrode's maximum absolute waveform amplitude and waveform integral against the impulse $x$ coordinate and saves `network_sharing.png` and `.pdf` in `folder` via `raser.supports.figures.save`; `waveforms` plots the output waveforms of all readout electrodes for one impulse and saves `network_waveforms.png` and `.pdf` via `raser.supports.figures.save`; `schematic` takes the first two readout nodes of `circuit.outputs` as subcircuit ports in a temporary `.cir` file, appends layout hints by element-name prefix (`; right` for `Rxlayer_` and `Rlayer_`, `; up` for `Rylayer_` and `Cpad_`, `; down` for `Clayer_`), and calls `schematic.draw` to draw `network_schematic.png`.
 
 ### Core Data Structures

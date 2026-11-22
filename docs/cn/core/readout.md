@@ -73,19 +73,34 @@ $$s_{ij} = s_i^{(x)} s_j^{(y)}, \qquad n = i N_y + j, \qquad \bar{I}_{n,m} = \be
 
 多点脉冲响应注入与 RC 格点份额分配分别由 `core/field` 的 `resistive_layer.py` 中的 `shares` 与 `network.py` 的 `impulse_response` 实现。
 
+### 读出端口之间的导纳
+
+器件电路各读出端口（`circuit.outputs`）之间的导纳矩阵按频率给出：第 $j$ 个读出端口加 $1\ \text{V}$ 的交流小信号电压，其余读出端口交流接地，所有感应电流源开路，由此从外面流进第 $i$ 个读出端口的电流即 $Y_{ij}$：
+
+$$Y_{ij}(f) = \left.\frac{I_i}{V_j}\right|_{V_{k \ne j} = 0} \tag{8}$$
+
+其中：
+
+- $Y_{ij}$：第 $i$ 个读出端口对第 $j$ 个读出端口的导纳，$\text{S}$；
+- $I_i$：流进第 $i$ 个读出端口的交流电流，$\text{A}$；
+- $V_j$：第 $j$ 个读出端口上的交流电压，$\text{V}$；
+- $f$：频率，$\text{Hz}$。
+
+`network.py` 的 `admittance(circuit, frequencies_hz)` 用 `ngspice` 的交流小信号分析逐列求得：对每个 $j$，在器件电路网表上给每个读出端口 $k$ 接一个电压源 `Vport<k> <节点> 0 dc 0 ac <1 或 0>`，仅第 $j$ 个的交流幅度为 $1$，在每个给定频率上读各电压源电流的复数值，其相反数即流进器件的电流。返回形状 `(frequencies, outputs, outputs)` 的复数数组，读出端口次序同 `circuit.outputs`；`frequencies_hz` 为空、含非正数或不递增时抛出 `ValueError`。
+
 ### 给定谱的频域热噪声与时域合成
 
 器件电路与前端放大器链中的有噪电阻及有源器件模型在工作温度下产生平稳高斯电子学噪声。代码先由 `ngspice` 小信号频域噪声分析求得输出节点在离散频率点上的单边电压噪声幅度谱密度 $S_V(f)$，再在长度为波形箱数 $M_{\text{rec}}$ 倍的扩展记录频域网格上由梯形法则积分各频带功率、独立抽取复高斯傅里叶系数，经实序列逆离散傅里叶变换（`np.fft.irfft`）截取前 $n_{\text{bin}}$ 个点合成时域噪声：
 
-$$P(f_l) = \sum_{j=0}^{l-1} \frac{S_V^2(f_{j+1}) + S_V^2(f_j)}{2}\,(f_{j+1} - f_j) \quad (l = 0, 1, \dots, L - 1) \tag{8}$$
+$$P(f_l) = \sum_{j=0}^{l-1} \frac{S_V^2(f_{j+1}) + S_V^2(f_j)}{2}\,(f_{j+1} - f_j) \quad (l = 0, 1, \dots, L - 1) \tag{9}$$
 
-$$\Delta P_k = P\!\left(f_k + \frac{1}{2}\Delta f\right) - P\!\left(\max\!\left(f_k - \frac{1}{2}\Delta f,\, 0\right)\right) \quad \left(k = 0, 1, \dots, \left\lfloor \frac{N_{\text{rec}}}{2} \right\rfloor\right) \tag{9}$$
+$$\Delta P_k = P\!\left(f_k + \frac{1}{2}\Delta f\right) - P\!\left(\max\!\left(f_k - \frac{1}{2}\Delta f,\, 0\right)\right) \quad \left(k = 0, 1, \dots, \left\lfloor \frac{N_{\text{rec}}}{2} \right\rfloor\right) \tag{10}$$
 
-$$\sigma_k = \frac{1}{2}\,N_{\text{rec}}\sqrt{\Delta P_k} \tag{10}$$
+$$\sigma_k = \frac{1}{2}\,N_{\text{rec}}\sqrt{\Delta P_k} \tag{11}$$
 
-$$X_k = \begin{cases} \mathcal{N}\!\left(0,\, N_{\text{rec}}^2 \Delta P_0\right), & k = 0 \\[4pt] \mathcal{N}(0, \sigma_k^2) + \mathrm{i}\,\mathcal{N}(0, \sigma_k^2), & 0 < k < \dfrac{N_{\text{rec}}}{2} \\[4pt] \mathcal{N}\!\left(0,\, N_{\text{rec}}^2 \Delta P_{N_{\text{rec}}/2}\right), & k = \dfrac{N_{\text{rec}}}{2}\ (\text{当 } N_{\text{rec}}\ \text{为偶数}) \end{cases} \tag{11}$$
+$$X_k = \begin{cases} \mathcal{N}\!\left(0,\, N_{\text{rec}}^2 \Delta P_0\right), & k = 0 \\[4pt] \mathcal{N}(0, \sigma_k^2) + \mathrm{i}\,\mathcal{N}(0, \sigma_k^2), & 0 < k < \dfrac{N_{\text{rec}}}{2} \\[4pt] \mathcal{N}\!\left(0,\, N_{\text{rec}}^2 \Delta P_{N_{\text{rec}}/2}\right), & k = \dfrac{N_{\text{rec}}}{2}\ (\text{当 } N_{\text{rec}}\ \text{为偶数}) \end{cases} \tag{12}$$
 
-$$v_{\text{noise}}[m] = \frac{1}{N_{\text{rec}}} \sum_{n=0}^{N_{\text{rec}}-1} \widetilde{X}_n\,\mathrm{e}^{\mathrm{i} 2\pi n m / N_{\text{rec}}} \quad (m = 0, 1, \dots, n_{\text{bin}} - 1) \tag{12}$$
+$$v_{\text{noise}}[m] = \frac{1}{N_{\text{rec}}} \sum_{n=0}^{N_{\text{rec}}-1} \widetilde{X}_n\,\mathrm{e}^{\mathrm{i} 2\pi n m / N_{\text{rec}}} \quad (m = 0, 1, \dots, n_{\text{bin}} - 1) \tag{13}$$
 
 其中：
 
@@ -105,11 +120,11 @@ $$v_{\text{noise}}[m] = \frac{1}{N_{\text{rec}}} \sum_{n=0}^{N_{\text{rec}}-1} \
 
 读出通道输出电压脉冲相对静态基线的偏离方向（向上为正脉冲 `"rising"`，向下为负脉冲 `"falling"`）由读出电极收集的载流子电荷符号与前端放大器链的净传递极性共同决定。相对背电极处于高电势的读出电极收集电子（负电荷），处于低电势的读出电极收集空穴（正电荷）；放大器链对正输入电荷产生正响应或反相产生负响应，两者符号相乘给出输出脉冲极性：
 
-$$V_{\text{above}} = \begin{cases} V_{\text{bias}}, & \text{若读出电极为偏置电极 } \text{bias.electrode} \\ -V_{\text{bias}}, & \text{其余读出电极（非偏置电极接地）} \end{cases} \tag{13}$$
+$$V_{\text{above}} = \begin{cases} V_{\text{bias}}, & \text{若读出电极为偏置电极 } \text{bias.electrode} \\ -V_{\text{bias}}, & \text{其余读出电极（非偏置电极接地）} \end{cases} \tag{14}$$
 
-$$s_q = \begin{cases} -1, & V_{\text{above}} > 0\ (\text{收集电子}) \\ +1, & V_{\text{above}} < 0\ (\text{收集空穴}) \end{cases}, \qquad s_{\text{chain}} = \operatorname{sgn}\!\bigl(V_{\text{probe}}(t^*) - V_{\text{probe}}(t_0)\bigr) \tag{14}$$
+$$s_q = \begin{cases} -1, & V_{\text{above}} > 0\ (\text{收集电子}) \\ +1, & V_{\text{above}} < 0\ (\text{收集空穴}) \end{cases}, \qquad s_{\text{chain}} = \operatorname{sgn}\!\bigl(V_{\text{probe}}(t^*) - V_{\text{probe}}(t_0)\bigr) \tag{15}$$
 
-$$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 \\ \text{"falling"}, & s_q \cdot s_{\text{chain}} < 0 \end{cases} \tag{15}$$
+$$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 \\ \text{"falling"}, & s_q \cdot s_{\text{chain}} < 0 \end{cases} \tag{16}$$
 
 其中：
 
@@ -214,10 +229,10 @@ $$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 
    - 调用 `ngspice -b` 执行噪声网表，读取各通道的频率列（$\text{Hz}$）与单边输出电压噪声幅度谱密度列（$\text{V}/\sqrt{\text{Hz}}$），按对称映射还原为形状 `(len(circuit.outputs), frequencies)` 的谱密度数组 `densities`。
    - `ngspice` 频域噪声分析在 $27\ ^\circ\text{C}$ 下执行，噪声谱覆盖 `LOWEST_NOISE_HZ = 1e3` $\text{Hz}$ 至 $0.5 / \Delta t$；每个输出通道给出其自身的总输出噪声谱。
 2. **频带功率积分与复高斯谱逆变换（`band_power`、`noise_from_spectrum`）**：
-   - `band_power(frequencies_hz, density)` 计算频率步长 `steps = np.diff(frequencies_hz)`：若 `frequencies_hz.size < 2` 或 `np.any(steps <= 0)`，抛出 `ValueError("A noise spectrum needs at least two increasing frequencies")`。按式 (8) 计算梯形累积功率并返回 `np.interp` 插值函数。
-   - `noise_from_spectrum(frequencies_hz, density, bins, dt, generator)` 在长度 $N_{\text{rec}} = 256\,n_{\text{bin}}$ 上生成频率网格 `centres = np.fft.rfftfreq(record, d=dt)`，按式 (9)、式 (10) 求各频带功率 `in_band` 与 `sigma`。
-   - 按式 (11) 用传入的 `generator` 先对全部频率点抽取实部 `generator.normal(0.0, sigma)` 与虚部 `generator.normal(0.0, sigma)`，再用 `generator.normal(0.0, record * np.sqrt(in_band[0]))` 覆写直流项 `spectrum[0]`，且当 `record % 2 == 0` 时用 `generator.normal(0.0, record * np.sqrt(in_band[-1]))` 覆写奈奎斯特项 `spectrum[-1]`。
-   - 按式 (12) 返回 `np.fft.irfft(spectrum, n=record)[:bins]`。
+   - `band_power(frequencies_hz, density)` 计算频率步长 `steps = np.diff(frequencies_hz)`：若 `frequencies_hz.size < 2` 或 `np.any(steps <= 0)`，抛出 `ValueError("A noise spectrum needs at least two increasing frequencies")`。按式 (9) 计算梯形累积功率并返回 `np.interp` 插值函数。
+   - `noise_from_spectrum(frequencies_hz, density, bins, dt, generator)` 在长度 $N_{\text{rec}} = 256\,n_{\text{bin}}$ 上生成频率网格 `centres = np.fft.rfftfreq(record, d=dt)`，按式 (10)、式 (11) 求各频带功率 `in_band` 与 `sigma`。
+   - 按式 (12) 用传入的 `generator` 先对全部频率点抽取实部 `generator.normal(0.0, sigma)` 与虚部 `generator.normal(0.0, sigma)`，再用 `generator.normal(0.0, record * np.sqrt(in_band[0]))` 覆写直流项 `spectrum[0]`，且当 `record % 2 == 0` 时用 `generator.normal(0.0, record * np.sqrt(in_band[-1]))` 覆写奈奎斯特项 `spectrum[-1]`。
+   - 按式 (13) 返回 `np.fft.irfft(spectrum, n=record)[:bins]`。
 3. **每事例每通道独立随机流（`write_waveforms`）**：
    - 对事例 `event` 中被保留的第 `name` 号输出通道，使用三维整数种子列表构造独立的 NumPy 随机数生成器：
      $$\text{generator} = \text{np.random.default\_rng}\bigl([\text{noise\_seed},\, \text{event.event},\, \text{place}[\text{name}]]\bigr)$$
@@ -229,7 +244,7 @@ $$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 
 1. **脉冲边沿极性判定（`pulse_edges`、`collected_charge_sign`、`chain_sign`）**：
    - 提取器件读出接触名称列表 `contacts = [contact["name"] for contact in my_d.read_out_contact]`。若 `len(contacts) == 1`，将其重复扩展为 `contacts * len(outputs)`；若扩展后 `len(contacts) != len(outputs)`，抛出 `ValueError("<det_name> lists the read-out electrodes <contacts>, not one for each of the outputs <outputs>")`。
    - `chain_sign(chain)` 构造 $\Delta t = 10^{-11}\ \text{s}$、形状 `(1, 2000)` 的全零电流数组，置 `current[0, 5] = 1e-15 / dt`（$10^{-4}\ \text{A}$），在 `planar_circuit("probe", 1e-12)` 上调用 `solve` 求输出电压 `voltage`。计算相对首箱的摆动 `swing = voltage - voltage[0]`，取最大绝对偏离处的带符号值 `largest = swing[np.argmax(np.abs(swing))]`：若 `abs(largest) < NO_ANSWER_V`（$10^{-9}\ \text{V}$），抛出 `ValueError("The chain moves its output by <largest:.3g> V for 1 fC: it does not answer, so the way its pulses go is not known")`；否则 `largest > 0` 返回 `+1`，`largest < 0` 返回 `-1`。报这条错时，检查自定义放大级的信号能否从 `in` 端口经各元件到达 `out` 端口（节点名是否接对、压控源 `E` 的跟随节点是否接在信号节点上、增益是否为 `0`、输出是否被接到地），以及输出在探针的 $2000 \times 10\ \text{ps} = 20\ \text{ns}$ 窗口内能否摆动 $10^{-9}\ \text{V}$ 以上。
-   - 对每个 `contact`，`collected_charge_sign(my_d, contact)` 按式 (13) 计算 `above`：若 `above == 0`，抛出 `ValueError("<electrode> of <det_name> and its other electrode are at one potential")`；`above > 0` 返回 `-1`，`above < 0` 返回 `+1`。按式 (15) 将两者乘积大于 `0` 记为 `"rising"`、小于 `0` 记为 `"falling"`。
+   - 对每个 `contact`，`collected_charge_sign(my_d, contact)` 按式 (14) 计算 `above`：若 `above == 0`，抛出 `ValueError("<electrode> of <det_name> and its other electrode are at one potential")`；`above > 0` 返回 `-1`，`above < 0` 返回 `+1`。按式 (16) 将两者乘积大于 `0` 记为 `"rising"`、小于 `0` 记为 `"falling"`。
 2. **事例循环、通道摆幅筛选与叠加噪声（`write_waveforms`）**：
    - 调用 `read_currents(currents_path)` 读入整批感应电流；若目标 `waveforms_path` 已存在，先调用 `os.remove(waveforms_path)` 删除旧文件。
    - 遍历 `currents.events` 中的每个事例 `event`：
@@ -274,7 +289,7 @@ $$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 
 - `waveforms.py`：定义 `EventWaveforms`、`Waveforms` 数据类及 `_check_layout`、`append_waveforms`、`read_waveforms`、`read_circuit_values`，负责 `readout.h5` 的稀疏追加写入与读取。
 - `schematic.py`：提供 `read_hints`、`arrange`、`layout`、`value_text` 与 `draw`，将 `.cir` 子电路文件绘制为原理图图像。
 - `draw.py`：提供 `draw_waveform`，使用 `raser.supports.figures` 绘制单事例的输入感应电流与放大器输出电压波形图并保存为 `.png` 与 `.pdf`。
-- `network.py`：计算阻性层网络对点冲击的响应。`impulse_response(my_d, circuit, chain, points_um, dt=10e-12, bins=2000, charge=1e-15)` 逐点将各 RC 格点份额作为首箱矩形脉冲电流调用 `spice.solve`，按 `circuit.outputs` 顺序返回形状 `(points, outputs, bins)` 的输出电压（$\text{V}$）。
+- `network.py`：计算阻性层网络对点冲击的响应。`impulse_response(my_d, circuit, chain, points_um, dt=10e-12, bins=2000, charge=1e-15)` 逐点将各 RC 格点份额作为首箱矩形脉冲电流调用 `spice.solve`，按 `circuit.outputs` 顺序返回形状 `(points, outputs, bins)` 的输出电压（$\text{V}$）；`admittance(circuit, frequencies_hz)` 对每个读出端口加 $1\ \text{V}$ 交流小信号、其余端口交流接地、感应电流源开路，按式 (8) 返回形状 `(frequencies, outputs, outputs)` 的复数导纳矩阵（$\text{S}$）。
 - `draw_network.py`：绘制阻性层网络冲击响应图与器件网络电路图。`sharing` 绘制各读出电极波形最大绝对值及积分随冲击点 $x$ 的变化，经 `raser.supports.figures.save` 在 `folder` 下存为 `network_sharing.png` 与 `.pdf`；`waveforms` 绘制单个冲击点上各读出电极的输出波形，经 `raser.supports.figures.save` 存为 `network_waveforms.png` 与 `.pdf`；`schematic` 以 `circuit.outputs` 前两个读出节点为端口生成临时 `.cir` 子电路，按元件名前缀添加布局提示（`Rxlayer_`、`Rlayer_` 标 `; right`，`Rylayer_`、`Cpad_` 标 `; up`，`Clayer_` 标 `; down`），调用 `schematic.draw` 绘成 `network_schematic.png`。
 
 ### 核心数据结构
