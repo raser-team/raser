@@ -803,6 +803,8 @@ def jobs_of_points(root) -> list[tuple[str, dict, list[tuple[Path, dict]], list[
         for chain in elsewhere:
             theirs = settings(chain)
             differ = {name: theirs.get(name) for name in sorted(set(theirs) | set(here)) if theirs.get(name) != here.get(name)}
+            if mine and any(key in row["values"] for key in differ):
+                continue  # measured at other values of the scan: set apart under the point of those values, if any
             apart.setdefault(json.dumps(differ if mine else {}, sort_keys=True, default=str), set()).add(roots(chain))
         jobs = [(root, chain) for _, chain in sorted(mine.items())]
         result.append((point, row["values"], jobs, [(len(found), json.loads(text)) for text, found in apart.items()]))
@@ -1012,6 +1014,8 @@ def _point(workflow, kwargs, options) -> tuple[dict, dict]:
     elif workflow.device:
         files["device"] = device_json(kwargs["det_name"])
     for kind, key in workflow.components.items():
+        if options.get(key) is None:
+            raise ValueError(f"config.json has no {key}: it names the {kind} of the experiment")
         read = workflow.readers.get(kind)
         files[kind] = read(options[key]) if read else load_component(kind, options[key])[1]
 
