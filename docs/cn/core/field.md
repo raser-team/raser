@@ -306,7 +306,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 网格属于 `field`：器件文件里没有 `mesh` 段，几何（各层厚度、材料、电极在哪一面）是器件的固有性质；用哪一套网格由 `field` 段的设置指定。
 
 1. **取坐标轴**：`mesh_axes` 给出存盘坐标对应的器件轴：1D 为 `("z",)`；2D 为 `("x", "y")`（所选网格在横向 $x$-$y$ 平面）或 `("z", "x")`；3D 为 `("x", "y", "z")`（所选网格由 `sde` 生成）或 `("z", "x", "y")`。DEVSIM 内部长度单位为 cm。
-2. **建网格**（`DevsimMesh.mesh_define`）：求单晶胞拼接的权重场时（$s > 0$）调用 `createRowOfCells`；否则 1D 用所选一维网格的 `mesh_line`、`region`、`contact`；2D 用所选的 Gmsh 网格文件或内置二维网格（`mesh_line`、`region`、`contact`）；3D 一律读 Gmsh 网格文件。`dimension` 不是 1、2、3 时抛出 `ValueError`。网格里放半导体的区域是主区域：`main_region(mesh)` 取所选网格 `region` 列表中 `material` 为 `"Silicon"`、`"SiliconCarbide"` 或 `"Diamond"` 的一项，返回它的 `region` 名；这样的项不是恰好一项时抛出 `ValueError`，写明器件名和各项的名字、材料。区域的名字由网格自己起，与器件名无关，库里的网格写 `"bulk"`；Gmsh 网格文件里物理组的名字写在 `gmsh_name`，不随之改。参数、方程、掺杂、存盘时读的模型都建在主区域上。`<V>V.devsim` 存点里记着区域名，区域改名之前解出的存点不能用来求单点电容，要重解。
+2. **建网格**（`DevsimMesh.mesh_define`）：求单晶胞拼接的权重场时（$s > 0$）调用 `createRowOfCells`；否则 1D 用所选一维网格的 `mesh_line`、`region`、`contact`；2D 用所选的 Gmsh 网格文件或内置二维网格（`mesh_line`、`region`、`contact`）；3D 一律读 Gmsh 网格文件。`dimension` 不是 1、2、3 时抛出 `ValueError`。各区域的名字由网格自己起，与器件名无关；Gmsh 网格文件里物理组的名字写在 `gmsh_name`。代码里没有“主区域”：参数、掺杂、方程、存盘都按区域逐个建，见[分区域求解](#分区域求解)。
 3. **权重场的材料与掺杂**：求权重场时 `_regions` 把每个区域材料换成 `"gas"`（内置 2D 网格里的 `"air"` 区域保留；Gmsh 网格不保留），`setDoping` 把掺杂换成 `Acceptors = "0"`、`Donors = "1"`。
 4. **掺杂**：`Acceptors` 取 `doping.Acceptors`，有 `doping.Acceptors_ir` 时以 `+` 相接；`Donors` 同理；`NetDoping = Donors - Acceptors`。不求权重场的 1D 器件画 `plots/doping`。最后写出 `<det_name>.dat`（Tecplot）。
 5. **HEMT 界面**：`hemt_physics.transport_model == "drift_diffusion_v1"` 时 2D 网格还加所选二维网格的 `interface`，没有界面时抛出 `ValueError`。
@@ -315,6 +315,24 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
    - 先建一个晶胞，读出其节点坐标（深度、横向）；晶胞宽度与 `p_x` 之差超过 $10^{-6}\,p_x$ 时抛出 `ValueError`；
    - 把晶胞沿横向复制 $2s + 1$ 份，坐标按 $10^{-9}$ 倍晶胞宽度取整后合并重合节点；合并后的节点数不等于 $(2s+1)N - 2s\,N_{\text{face}}$（$N_{\text{face}}$ 为一个侧面上的节点数）时抛出 `ValueError`，即两个侧面的节点必须一一对应；
    - 中间晶胞的读出电极保留原名；距中间 $k$ 个晶胞的两份读出电极合为 `neighbour<k>`；不读出的电极在所有晶胞上合为一个；整行一个区域，材料 `"gas"`，电极材料 `"metal"`。
+
+### 分区域求解
+
+网格里有几个区域就解几个区域，每个区域按自己的 `material` 处理，求解器不挑出其中一个。
+
+1. **区域的类别**：`material` 为 `"Silicon"`、`"SiliconCarbide"`、`"Diamond"` 的是半导体区域；`"air"`、`"gas"`、`"SiO2"` 的是绝缘区域。别的材料名在建网格后抛出 `ValueError`，写明器件名、区域名和材料名。
+2. **参数**：`create_parameter` 对每个区域各调用一次，按该区域的材料写常数。
+3. **掺杂**：`doping` 的表达式是坐标的函数，建在每个半导体区域上；绝缘区域没有掺杂。
+4. **方程**：半导体区域解电势、电子、空穴，即式 (1)–(6)，辐照项、雪崩项、缺陷参数各区域各建一份；绝缘区域只解电势，$\nabla\cdot(\varepsilon\nabla\psi) = 0$。
+5. **界面**：两个区域相接处由网格的 `interface` 列表（内置网格）或物理组（Gmsh 网格）给出。每个界面上电势连续、电位移法向分量连续。半导体与绝缘区域的界面上载流子没有通量；两个半导体区域的界面上电子、空穴浓度连续（同一种材料）。两种不同半导体之间的界面本页不处理，建方程时抛出 `ValueError`。
+6. **电极**：电极属于它的 `region` 键所写的区域。半导体区域上的电极按接触类型（欧姆、肖特基）设电势和载流子；绝缘区域上的电极只设电势 $\psi = V$。
+7. **不与任何东西相连的绝缘区域**：既没有界面也没有电极的绝缘区域，电势没有定解，建方程时抛出 `ValueError`，写明区域名。
+8. **权重场**：每个区域都换成电介质，介电常数取该区域材料自己的值，界面条件同第 5 条；电极一律设 $\psi_w$ 为 $1$ 或 $0$。
+9. **存盘与读取**：存盘遍历所有区域；未耗尽层、导电节点只在半导体区域里找。读回 `<V>V.devsim` 后对每个区域重建参数。
+
+只有一个半导体区域、没有别的区域的网格，结果与此前逐点相同。带 `"air"` 区域的二维网格（`ITk-Si-strip`、`strip_ayyouby`、`SiC_LGAD_strip`、`NJU-PiN` 的二维网格、`MIM-Diamond`）此前不解空气里的电势，空气区域只用来放电极；现在空气里也解，表面附近的电场会变，这些网格要补上 `interface`。
+
+HEMT 器件仍由 `run_hemt_transport` 自己处理它的区域和异质结界面。
 
 ### 偏压扫描与收敛
 
