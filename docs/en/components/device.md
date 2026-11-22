@@ -183,7 +183,7 @@ Three-region depth doping profile of `HPK-Si-PiN`: `0–1 um` at the surface is 
 
 ## Built-in Components
 
-`components/device/` contains the following 23 detector components:
+`components/device/` contains the following 24 detector components:
 
 | Component Name | Description | Source | Applicable Devices or Experiments |
 | --- | --- | --- | --- |
@@ -202,6 +202,7 @@ Three-region depth doping profile of `HPK-Si-PiN`: `0–1 um` at the surface is 
 | `iLGAD` | Si `ilgad_planar` device ($10000 \times 10000 \times 285\ \mu\text{m}$, 1D) | Unspecified | |
 | `ITk-md8` | Si `planar` device ($8000 \times 8000 \times 50\ \mu\text{m}$, 1D, with `"Schwandt"` irradiation model) | ATLAS ITk MD8 silicon planar diode (component model `ITk-md8`) | |
 | `ITk-Si-strip` | Si `strip` device ($96791 \times 48000 \times 305\ \mu\text{m}$, $1282$ strips, pitch $75.5\ \mu\text{m}$, with `"XingChen"` irradiation model) | ATLAS ITk silicon microstrip detector (component model `ITk-Si-strip`) | |
+| `LBNL-SiC-AC-LGAD` | SiC `lgad_pixel` device ($1000 \times 1000 \times 75.8\ \mu\text{m}$, 1D field; the resistive layer cut into $20 \times 20$ cells of $50\ \mu\text{m}$, 4 electrodes of $100\ \mu\text{m}$ AC-coupled through $0.3\ \mu\text{m}$ of oxide at a pitch of $500\ \mu\text{m}$, grounded around the edge) | T. Yang et al., `arXiv:2610.27535`; layers from IEEE Electron Device Lett. 46 (2025) 845, doi:10.1109/LED.2025.3548509; the sheet resistance of $630\ \Omega$ is estimated from the doping, not measured | |
 | `NJU-PiN` | SiC `planar` device ($5000 \times 5000 \times 100\ \mu\text{m}$, 1D/2D) | Nanjing University (NJU) 4H-SiC PiN (component model `NJU-PiN`) | SiC example device for [`signal`](../bench/signal.md) and [`tct`](../bench/tct.md) |
 | `NJU-PiN-bmos` | SiC `planar` device ($5000 \times 5000 \times 100\ \mu\text{m}$, 1D/2D) | Nanjing University (NJU) 4H-SiC PiN (component model `NJU-PiN-bmos`) | [`bmos`](../apps/bmos.md) |
 | `pixel_ayyouby` | Si `lgadpixel` device, 3×3 array Ayyoub-style DJ-LGAD pixel (pitch $20 \times 20\ \mu\text{m}$) | `comment`: Ayyoub-style 3×3 DJ-LGAD pixel model | |
