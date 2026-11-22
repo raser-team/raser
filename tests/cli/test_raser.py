@@ -146,7 +146,7 @@ def test_inside_an_experiment_folder_the_command_and_device_come_from_its_config
         for name in ("deposit", "field", "current", "readout", "reconstruction")
     ]
     assert capsys.readouterr().out.splitlines() == [
-        f"{experiment / 'seed_2'}: jobs [0, 1]",
+        f"{experiment / 'voltage_200' / 'seed_2'}: jobs [0, 1]",
         *slices,
         f"{experiment / 'voltage_300' / 'seed_2'}: jobs [0, 1]",
         *slices,
