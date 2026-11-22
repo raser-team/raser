@@ -149,6 +149,9 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
 | `delta_t` | `2e-12` | `5e-12` | $\text{s}$ | 载流子单步漂移时间步长 $\Delta t$ |
 | `min_intensity` | `1` | `1` | $\text{V/cm}$ | 停止漂移的最低场强阈值（`"low_field"`） |
 | `max_drift_time` | 由键或估计给出 | 由键或估计给出 | $\text{s}$ | 单团簇最大漂移时长上限（`"time_out"`），取自器件文件的 `max_drift_time_ns`，未给时按器件估计，见“单步推进与停止条件”第 1 步 |
+| `depth_step` | `0.1` | `0.1` | $\mu\text{m}$ | `drift.py` 中估计 `max_drift_time` 时沿深度线取场的步长 |
+| `margin` | `10` | `10` | 无量纲 | `drift.py` 中估计 `max_drift_time` 的放大系数，即式 (13) 的 $10$ |
+| `PULSE_LEFT_OUT` | `1e-9` | `1e-9` | 无量纲 | `cal_current.py` 中激光脉冲卷积核截取的伸展之外允许留下的脉冲份额 |
 | `kboltz` | `8.617333262e-5` | `8.617333262e-5` | $\text{eV/K}$ | `drift.py` 中热扩散使用的 CODATA 2018 玻尔兹曼常数（数值等于 $k_B/e$ [$\text{V/K}$]） |
 | `e0` | `1.602176634e-19` | `1.602176634e-19` | $\text{C}$ | `drift.py` 中 Shockley-Ramo 感应电荷使用的 CODATA 2018 元电荷 |
 | `edge_sampling` | `0.05` | `0.05` | $\mu\text{m}$ | `split_at_conductor_edges` 探测导电边界的默认采样间距 |
@@ -180,7 +183,7 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
 
    $$T_{\text{est}} = 10\,\max(T_e,\, T_h) \tag{13}$$
 
-   其中 $T_c$（$\text{s}$）是载流子 $c$（电子记 $e$，空穴记 $h$）走完整个厚度的漂移时间；积分沿器件横向中心 $(l_x/2,\, l_y/2)$ 的深度方向，$z$（$\mu\text{m}$）从 $0$ 到 $l_z$，$10^{-4}$ 为 $\text{cm}/\mu\text{m}$ 换算因子；$E(z)$ 为该线上的场强模长（$\text{V/cm}$），$N_{\text{eff}}(z)$ 为局部净掺杂（$\text{cm}^{-3}$）；$E_{\min}$ 为上表的 `min_intensity`，只积 $E(z) > E_{\min}$ 的部分，低于它载流子本来就停下；$\mu_c$（$\text{cm}^2/(\text{V}\cdot\text{s})$）为该载流子在本器件迁移率模型、温度和局部掺杂下的迁移率；$T_{\text{est}}$（$\text{s}$）为估计值。系数 $10$ 用来覆盖扩散、横向路径和增益载流子的额外路程，这个系数是提议，待审。整条深度线上都没有 $E(z) > E_{\min}$ 的点时抛出 `ValueError`：`"<det_name> has no field above <min_intensity> V/cm along its depth at the bias <V> V: give max_drift_time_ns in the device file"`。估计值在每次构造 `current` 时按所用的场算一次，写进日志（`INFO` 一行，给出 $T_e$、$T_h$ 和取用值）。
+   其中 $T_c$（$\text{s}$）是载流子 $c$（电子记 $e$，空穴记 $h$）走完整个厚度的漂移时间；积分沿器件横向中心 $(l_x/2,\, l_y/2)$ 的深度方向，$z$（$\mu\text{m}$）从 $0$ 到 $l_z$，$10^{-4}$ 为 $\text{cm}/\mu\text{m}$ 换算因子；$E(z)$ 为该线上的场强模长（$\text{V/cm}$），$N_{\text{eff}}(z)$ 为局部净掺杂（$\text{cm}^{-3}$）；$E_{\min}$ 为上表的 `min_intensity`，只积 $E(z) > E_{\min}$ 的部分，低于它载流子本来就停下；$\mu_c$（$\text{cm}^2/(\text{V}\cdot\text{s})$）为该载流子在本器件迁移率模型、温度和局部掺杂下的迁移率；$T_{\text{est}}$（$\text{s}$）为估计值。系数 $10$ 用来覆盖扩散、横向路径和增益载流子的额外路程，整条深度线上都没有 $E(z) > E_{\min}$ 的点时抛出 `ValueError`：`"<det_name> has no field above <min_intensity> V/cm along its depth at the bias <V> V: give max_drift_time_ns in the device file"`。估计值对每个场只算一次，记在场对象上，同一作业的各事例共用，并写进日志（`INFO` 一行，给出 $T_e$、$T_h$ 和取用值）。
 2. **导电区判定（`"collected"`）**：若 `my_f.get_conductive(x, y, z)` 为真，立即停止并记 `reason = "collected"`。哪里算导电区由场模块在该偏压下划分：所在网格单元的节点全都导电才算，见 [field.md](field.md)。
 3. **无场判定（`"no_field"`）**：调用 `my_f.get_e_field_cached(x, y, z)` 获取 $\mathbf{E} = (E_x, E_y, E_z)$（$\text{V/cm}$）。若抛出 `ValueError`，立即停止并记 `reason = "no_field"`；若任一分量非有限数（`NaN` 或 `Inf`），抛出 `ValueError`。
 4. **低场判定（`"low_field"`）**：计算场强模长 $E = \sqrt{E_x^2 + E_y^2 + E_z^2}$。若 $E \le \text{min\_intensity}$，立即停止并记 `reason = "low_field"`。
@@ -275,7 +278,7 @@ $$t_{\text{end}} = t_{\text{start}} + n_{\text{bin}}\,t_{\text{bin}} \tag{11}$$
 
 `CalCurrentLaser` 将瞬时产生假设下算出的时域感应电流与激光时间脉冲形状 $P(t)$（$\text{s}^{-1}$，满足 $\int P(t)\,dt = 1$）卷积：
 
-1. 调用父类 `CalCurrent` 对激光注入 `my_l` 生成的初始电子-空穴对完成漂移、倍增与分箱（`CalCurrentLaser` 默认 `diffusion=True`，而 `write_laser_currents` 显式传入 `diffusion=False`）。定窗时，式 (10) 中的 $t_{\text{stop}}$ 换成 $t_{\text{stop}} + T_{\text{ker}}$，其中 $T_{\text{ker}} = k_{\max} t_{\text{bin}}$（$\text{s}$）是卷积核的长度，$k_{\max}$ 为下一步中权重 $p_k$ 非零的最大箱偏移，使卷积后的尾部留在窗内。
+1. 调用父类 `CalCurrent` 对激光注入 `my_l` 生成的初始电子-空穴对完成漂移、倍增与分箱（`CalCurrentLaser` 默认 `diffusion=True`，而 `write_laser_currents` 显式传入 `diffusion=False`）。定窗时，式 (10) 中的 $t_{\text{start}}$ 换成 $t_{\text{start}} - T_{\text{ker}}$、$t_{\text{stop}}$ 换成 $t_{\text{stop}} + T_{\text{ker}}$，其中 $T_{\text{ker}} = k_{\max} t_{\text{bin}}$（$\text{s}$）是卷积核的伸展，$k_{\max}$ 取使下一步中偏移超过 $k_{\max}$ 个箱的权重 $p_k$ 之和（两侧合计）小于脉冲的 $10^{-9}$（`PULSE_LEFT_OUT`）的最小箱偏移。脉冲对称，卷积把电流向前、向后都推开，所以窗前后各留 $T_{\text{ker}}$，卷积后的电荷留在窗内。
 2. 调用 `pulse_in_bins(my_l.timePulse, my_l.temporal_FWHM, n_bin, bin_width)` 计算脉冲在各整数箱偏移 $k \in [-(n_{\text{bin}} - 1),\, n_{\text{bin}} - 1]$ 处的离散权重：
    - 确定单箱中点采样数 $S = \max\!\left(1,\, \lceil 20\,\Delta t_{\text{bin}} / \text{FWHM} \rceil\right)$（采样间距不大于 $\text{FWHM}/20$）；
    - 按中点矩形法则积分得：

@@ -79,6 +79,7 @@ def _job(folder, index, events, electrodes=("top",), truths=None):
             _slice(folder, index, "readout"),
             list(electrodes),
             DT,
+            BEFORE * DT,
             EventWaveforms(1000 * index + number, t0 - BEFORE * DT, voltage),
             pulse_edge=["falling"] * len(electrodes),
         )
@@ -162,6 +163,7 @@ def test_selected_event_without_a_time_is_counted_as_missing(tmp_path) -> None:
         _slice(tmp_path, 0, "readout"),
         ["top"],
         DT,
+        BEFORE * DT,
         EventWaveforms(0, 0.0, np.array([samples])),
         pulse_edge=["falling"],
     )

@@ -1,11 +1,14 @@
 """The electronics stage of one job: from its currents file to its waveforms file."""
 
+import dataclasses
+import math
 import os
 
 import numpy as np
 
 from raser.core.current.currents import read_currents
 
+from .cable import through_cable
 from .spectral_noise import noise_from_spectrum
 from .spice import output_noise_spectrum
 from .spice import solve
@@ -23,9 +26,10 @@ LOWEST_NOISE_HZ = 1e3
 PART_EDGE = 1e-3
 
 
-def _solve(chain, currents, event, circuit):
+def _solve(chain, currents, event, circuit, cable=None):
     """The voltages of the outputs of a circuit for an event, by the names
-    of the outputs; the electrodes of the circuit are some of the currents."""
+    of the outputs; the electrodes of the circuit are some of the currents.
+    The cable is that of spice.solve."""
     row_of = {name: k for k, name in enumerate(currents.electrodes)}
     electrodes = list(circuit.sources)
     solved = solve(
@@ -34,11 +38,12 @@ def _solve(chain, currents, event, circuit):
         currents.dt,
         event.current[[row_of[name] for name in electrodes]],
         circuit,
+        cable,
     )
     return dict(zip(circuit.outputs, solved, strict=True))
 
 
-def _solve_part(chain, currents, event, part_of, hit):
+def _solve_part(chain, currents, event, part_of, hit, cable=None):
     """The voltages of the outputs of the part of the circuit around the
     electrodes `hit` that is wide enough, by their names: the part with a
     margin of one is widened, its margin doubled each time, until widening
@@ -46,13 +51,13 @@ def _solve_part(chain, currents, event, part_of, hit):
     new one counting as moved from zero, or it grows no more."""
     margin = 1
     part = part_of(hit, margin)
-    before = _solve(chain, currents, event, part)
+    before = _solve(chain, currents, event, part, cable)
     while True:
         margin *= 2
         wider = part_of(hit, margin)
         if list(wider.outputs) == list(part.outputs):
             return before
-        after = _solve(chain, currents, event, wider)
+        after = _solve(chain, currents, event, wider, cable)
         swing = {name: np.abs(voltage).max() for name, voltage in after.items()}
         largest = max(swing.values())
         moved = max(
@@ -92,9 +97,13 @@ def write_waveforms(
     chain,
     circuit,
     noise_seed,
+    cable,
     circuit_values=None,
     pulse_edge=None,
     part_of=None,
+    *,
+    pre_window_s,
+    post_window_s,
 ):
     """Solve the chain for every event of the currents file and write the
     output voltages to the waveforms file, event by event.
@@ -111,6 +120,20 @@ def write_waveforms(
         the place of the output among all outputs alone, whatever else is
         stored. The noise of two outputs has nothing in common. Spectra are
         as noise_spectra gives them.
+    cable : None for a read-out without cable. Otherwise the cable.Cable
+        behind the outputs, with a length for each output of the circuit. The
+        window of each event is lengthened by the greatest delay of the
+        outputs stored, its currents zero there, so that the pulse the
+        longest cable delays is whole in it; the file counts those bins. Each output stored has the losses of its cable applied
+        (cable.through_cable) and its noise spectrum is that of the circuit
+        times the modulus of the transfer factor of its cable.
+    pre_window_s, post_window_s : the lengths [s] of the stretches added
+        before and after the window of the currents of each event, their
+        currents zero: n_pre = ceil(pre_window_s / dt) bins in front, which
+        t0 of the file moves back by, and n_post = ceil(post_window_s / dt)
+        bins behind. The cable's lengthening comes after them. The circuit
+        is solved and the noise drawn over the whole of it, and the file
+        counts all its bins.
     circuit_values : None, or the values the circuit is made of and where each
         is from, as device_circuit gives them: they are written to the file.
     pulse_edge : None, or the way the pulse of each output goes, as
@@ -135,19 +158,42 @@ def write_waveforms(
             chain, circuit, LOWEST_NOISE_HZ, 0.5 / currents.dt
         )
     outputs = list(circuit.outputs)
+    if cable is not None:
+        unknown = [name for name in outputs if name not in cable.length_m]
+        if unknown:
+            raise ValueError(f"The cable has no length for the outputs {unknown}")
     place = {name: k for k, name in enumerate(outputs)}
+    before = math.ceil(round(pre_window_s / currents.dt, 9))
+    after = math.ceil(round(post_window_s / currents.dt, 9))
+
+    def extra_bins(names):
+        """Bins that the greatest delay of the outputs takes."""
+        if cable is None:
+            return 0
+        delay = max((cable.delay_s(name) for name in names), default=0.0)
+        return math.ceil(round(delay / currents.dt, 9))
+
     for event in currents.events:
+        bins = event.current.shape[1]
         hit = [
             name
             for name, current in zip(currents.electrodes, event.current, strict=True)
             if np.any(current)
         ]
+        # the window is solved as long as the greatest delay of any output
+        # asks, and cut to that of the outputs stored
+        longer = dataclasses.replace(
+            event,
+            current=np.pad(
+                event.current, ((0, 0), (before, after + extra_bins(outputs)))
+            ),
+        )
         if not hit:
             solved = {}
         elif part_of is None:
-            solved = _solve(chain, currents, event, circuit)
+            solved = _solve(chain, currents, longer, circuit, cable)
         else:
-            solved = _solve_part(chain, currents, event, part_of, hit)
+            solved = _solve_part(chain, currents, longer, part_of, hit, cable)
         swing = {name: np.abs(voltage).max() for name, voltage in solved.items()}
         largest = max(swing.values(), default=0.0)
         names = [
@@ -155,16 +201,31 @@ def write_waveforms(
             for name in outputs
             if name in solved and largest > 0 and swing[name] >= PART_EDGE * largest
         ]
-        voltage = np.array([solved[name] for name in names]).reshape(
-            len(names), event.current.shape[1]
+        count = before + bins + after + extra_bins(names)
+        voltage = np.array([solved[name][:count] for name in names]).reshape(
+            len(names), count
         )
+        if cable is not None:
+            voltage = np.array(
+                [
+                    through_cable(
+                        cable.component, cable.length_m[name], trace, currents.dt
+                    )
+                    for name, trace in zip(names, voltage)
+                ]
+            ).reshape(len(names), count)
         if noise_seed is not None and names:
             voltage = voltage + np.array(
                 [
                     noise_from_spectrum(
                         frequencies,
-                        densities[place[name]],
-                        voltage.shape[1],
+                        densities[place[name]]
+                        * (
+                            1.0
+                            if cable is None
+                            else np.abs(cable.transfer(name, frequencies))
+                        ),
+                        count,
                         currents.dt,
                         np.random.default_rng([noise_seed, event.event, place[name]]),
                     )
@@ -175,7 +236,10 @@ def write_waveforms(
             waveforms_path,
             outputs,
             currents.dt,
-            EventWaveforms(event.event, event.t0, voltage, names),
+            before * currents.dt,
+            EventWaveforms(
+                event.event, event.t0 - before * currents.dt, voltage, names
+            ),
             circuit_values,
             pulse_edge,
         )

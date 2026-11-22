@@ -10,6 +10,9 @@ of its event in ``voltage``, one stored electrode after another.
 Attributes of the file:
     electrodes  names of all the electrodes it may hold traces of
     dt          width of a time bin [s]
+    pre_window  length of the part before the current window, n_pre * dt
+                [s]: no induced current there, only noise; the
+                reconstruction takes the baseline from it
     pulse_edge  for each electrode, in their order, "rising" or "falling":
                 which way its pulse goes, as the device and the chain make
                 it; the readout writes it, and a file without it is not read
@@ -52,6 +55,7 @@ class Waveforms:
     dt: float
     events: list[EventWaveforms]
     pulse_edge: list[str]
+    pre_window: float  # [s]
 
 
 # the datasets of a file of this layout
@@ -69,11 +73,12 @@ def _check_layout(file, path):
 
 
 def append_waveforms(
-    path, electrodes, dt, record, circuit_values=None, pulse_edge=None
+    path, electrodes, dt, pre_window, record, circuit_values=None, pulse_edge=None
 ):
     """Add one event to the file, which is created with the first event.
 
     electrodes : all the electrodes the file may hold traces of.
+    pre_window : length of the part before the current window [s].
     record : EventWaveforms; its electrodes, some of electrodes or None for
         all of them, name the rows of its voltage.
     pulse_edge : what is written as ``pulse_edge`` when the file is created,
@@ -108,6 +113,7 @@ def append_waveforms(
         if new:
             file.attrs.create("electrodes", electrodes, dtype=h5py.string_dtype())
             file.attrs["dt"] = float(dt)
+            file.attrs["pre_window"] = float(pre_window)
             if circuit_values is not None:
                 file.attrs["device_circuit"] = json.dumps(circuit_values)
             if pulse_edge is not None:
@@ -132,11 +138,17 @@ def append_waveforms(
         else:
             _check_layout(file, path)
             in_file = file.attrs["electrodes"].tolist()
-            if in_file != electrodes or float(file.attrs["dt"]) != float(dt):
+            if (
+                in_file != electrodes
+                or float(file.attrs["dt"]) != float(dt)
+                or "pre_window" not in file.attrs
+                or float(file.attrs["pre_window"]) != float(pre_window)
+            ):
                 raise ValueError(
                     f"{path} holds waveforms of electrodes {in_file} with dt "
-                    f"{float(file.attrs['dt'])} s, not of {electrodes} with "
-                    f"dt {dt} s"
+                    f"{float(file.attrs['dt'])} s and pre_window "
+                    f"{float(file.attrs.get('pre_window', float('nan')))} s, not of "
+                    f"{electrodes} with dt {dt} s and pre_window {pre_window} s"
                 )
         rows = {
             "event": np.array([int(record.event)]),
@@ -167,6 +179,12 @@ def read_waveforms(path):
                 "not write it; run the readout again"
             )
         pulse_edge = file.attrs["pulse_edge"].tolist()
+        if "pre_window" not in file.attrs:
+            raise ValueError(
+                f"{path} has no pre_window: the readout of this version did "
+                "not write it; run the readout again"
+            )
+        pre_window = float(file.attrs["pre_window"])
         numbers = file["event"][()]
         starts = file["t0"][()]
         counts = file["count"][()]
@@ -186,7 +204,7 @@ def read_waveforms(path):
             )
         )
         trace, sample = trace + int(many), sample + size
-    return Waveforms(electrodes, dt, events, pulse_edge)
+    return Waveforms(electrodes, dt, events, pulse_edge, pre_window)
 
 
 def read_circuit_values(path):

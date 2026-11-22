@@ -326,12 +326,12 @@ INFO: readout: the amplifier chain settles in at least <T_settle> ns; the post-w
      - 按 `circuit.outputs` 的顺序筛选满足 `name in solved and largest > 0 and swing[name] >= PART_EDGE * largest` 的通道列表 `names`，组装形状为 `(len(names), bins)` 的电压矩阵 `voltage`（无信号事例时 `names = []`，`voltage` 形状为 `(0, bins)`）；
      - 若配置了读出线缆且 `names` 非空，对每个存储通道以第一个时间箱的电压 $V_{r,0}$ 为参照，将 $V_r - V_{r,0}$ 在两倍长度上补零后做实傅里叶变换，乘以式 (15) 的传递因子 $H_r(f)$，逆变换回时域取前 $n_{\text{tot}}$ 个点，再加回 $V_{r,0}$（因 $H_r(0) = 1$，参照电平不变；补零到两倍长度使色散不绕回窗口开头）；
      - 若 `noise_seed is not None` 且 `names` 非空，逐通道生成 `noise_from_spectrum` 并加到 `voltage` 上（接有线缆时，各通道的输出噪声谱密度先乘对应 $|H_r(f)|$ 再合成，各通道线长不同时各用各的谱）；
-     - 调用 `append_waveforms` 将当事例写入 HDF5 文件；`t0` 为 `current` 的 `t0` 减 $n_{\text{pre}}\,\Delta t$，`count` 为 $n_{\text{tot}}$（式 (22)），`readout.h5` 的格式不变，没有新属性。
+     - 调用 `append_waveforms` 将当事例写入 HDF5 文件；`t0` 为 `current` 的 `t0` 减 $n_{\text{pre}}\,\Delta t$，`count` 为 $n_{\text{tot}}$（式 (22)），`readout.h5` 新增属性 `pre_window`（$n_{\text{pre}}\Delta t$，式 (21)）。
 3. **波形文件校验与追加写入（`append_waveforms`、`read_waveforms`、`read_circuit_values`）**：
    - **输入参数校验**：`append_waveforms` 取 `names = electrodes if record.electrodes is None else list(record.electrodes)`。若 `names` 含有不在 `electrodes` 中的名字或存在重复名字，抛出 `ValueError("the event <event> has traces of <names>, not each once of the electrodes <electrodes>")`。将 `record.voltage` 转为 `float64` 数组：若 `voltage.ndim != 2 or voltage.shape[0] != len(names)`，抛出 `ValueError("voltage has shape <shape>, expected (<len(names)>, bins)")`。若 `pulse_edge is not None` 且（`len(pulse_edge) != len(electrodes)` 或元素不全属于 `{"rising", "falling"}`），抛出 `ValueError("pulse_edge <pulse_edge> is not one of rising and falling for each of the electrodes <electrodes>")`。
-   - **建表或校验已有文件结构**：若文件尚不存在，创建 HDF5 文件，写入属性 `electrodes`、`dt`、可选 `device_circuit`（`json.dumps(circuit_values)`）和可选 `pulse_edge`，并创建一维可扩展数据集 `event`、`t0`、`count`、`stored`、`index` 与启用 `compression="gzip"` 的 `voltage`。若文件已存在，先调用 `_check_layout` 检查 `DATASETS = ("event", "t0", "count", "stored", "index", "voltage")` 是否齐全且 `file["voltage"].ndim == 1`，不满足时抛出 `ValueError("<path> is a readout file of an older layout (no ...): run the readout again")`；再核对文件属性 `electrodes` 与 `dt` 是否与本次传入一致，不一致时抛出 `ValueError("<path> holds waveforms of electrodes <in_file> with dt <dt_file> s, not of <electrodes> with dt <dt> s")`。
+   - **建表或校验已有文件结构**：若文件尚不存在，创建 HDF5 文件，写入属性 `electrodes`、`dt`、`pre_window`（$n_{\text{pre}}\Delta t$）、可选 `device_circuit`（`json.dumps(circuit_values)`）和可选 `pulse_edge`，并创建一维可扩展数据集 `event`、`t0`、`count`、`stored`、`index` 与启用 `compression="gzip"` 的 `voltage`。若文件已存在，先调用 `_check_layout` 检查 `DATASETS = ("event", "t0", "count", "stored", "index", "voltage")` 是否齐全且 `file["voltage"].ndim == 1`，不满足时抛出 `ValueError("<path> is a readout file of an older layout (no ...): run the readout again")`；再核对文件属性 `electrodes`、`dt` 与 `pre_window` 是否与本次传入一致，不一致时抛出 `ValueError("<path> holds waveforms of electrodes <in_file> with dt <dt_file> s and pre_window <pre_window_file> s, not of <electrodes> with dt <dt> s and pre_window <pre_window> s")`。
    - **追加数据行**：将当事例的 `event`、`t0`、`count = voltage.shape[1]`、`stored = len(names)` 追加到对应数据集末尾，将 `[electrodes.index(name) for name in names]` 追加到 `index`，将 `voltage.reshape(-1)` 展平追加到 `voltage`。
-   - **读取还原（`read_waveforms`）**：先执行 `_check_layout`，若文件属性缺少 `"pulse_edge"`，抛出 `ValueError("<path> has no pulse_edge: the readout of this version did not write it; run the readout again")`。遇到这条或旧布局的报错，按[片与重跑](../lifecycle/slices.md)让 `readout` 片重算，新文件替换同路径的旧文件。随后按每个事例的 `stored` 与 `count` 游标切分一维 `index` 与 `voltage`，还原各事例的 `EventWaveforms` 列表并返回 `Waveforms`。
+   - **读取还原（`read_waveforms`）**：先执行 `_check_layout`，若文件属性缺少 `"pulse_edge"`，抛出 `ValueError("<path> has no pulse_edge: the readout of this version did not write it; run the readout again")`；缺少 `"pre_window"` 时抛出 `ValueError("<path> has no pre_window: the readout of this version did not write it; run the readout again")`。遇到这几条或旧布局的报错，按[片与重跑](../lifecycle/slices.md)让 `readout` 片重算，新文件替换同路径的旧文件。随后按每个事例的 `stored` 与 `count` 游标切分一维 `index` 与 `voltage`，还原各事例的 `EventWaveforms` 列表并返回 `Waveforms`。
 
 ### 放大级原理图网格排布与绘制
 
@@ -370,7 +370,7 @@ INFO: readout: the amplifier chain settles in at least <T_settle> ns; the post-w
 - 子电路与放大器链字典（`circuit.py`）：`read_subcircuit` 返回 `{"ports": {"in": <str>, Optional["out"]: <str>}, "elements": {<designator>: <dict>}, Optional["models"]: list[str]}`，其中电阻值键 `"ohm"` 单位为 $\Omega$、电容值键 `"farad"` 单位为 $\text{F}$、电感值键 `"henry"` 单位为 $\text{H}$、直流电压源键 `"volt"` 单位为 $\text{V}$、压控电压源键 `"gain"` 无量纲；`read_chain` 与 `named_chain` 返回 `{"stages": {<name>: <stage_dict>}, "load": <load_dict>}`。
 - `DeviceCircuit`（定义于 `src/raser/core/field/device_circuit.py`，见 [field.md](field.md)）：冻结数据类，包含器件 SPICE 元件行元组 `lines: tuple[str, ...]`、感应电流源节点对映射 `sources: dict[str, tuple[str, str]]`、读出通道输出节点映射 `outputs: dict[str, str]` 以及共享噪声谱的对称输出通道分组 `alike: tuple[tuple[str, ...], ...]`。
 - `EventWaveforms`（`waveforms.py`）：单事例读出波形记录，包含事例编号 `event: int`（无量纲）、首个时间箱左边界时刻 `t0: float`（$\text{s}$）、存储通道的时间箱中心输出电压矩阵 `voltage: np.ndarray`（形状 `(stored_electrodes, bins)`，`float64`，$\text{V}$）以及与 `voltage` 各行对应的通道名称列表 `electrodes: list[str] | None`（写入时若为 `None` 表示包含文件的全部 `electrodes`）。
-- `Waveforms`（`waveforms.py`）：`read_waveforms` 返回的整文件波形容器，包含全部输出通道名称列表 `electrodes: list[str]`、时间箱宽度 `dt: float`（$\text{s}$）、事例波形列表 `events: list[EventWaveforms]` 以及与 `electrodes` 顺序对应的脉冲边沿方向列表 `pulse_edge: list[str]`（每项为 `"rising"` 或 `"falling"`）。
+- `Waveforms`（`waveforms.py`）：`read_waveforms` 返回的整文件波形容器，包含全部输出通道名称列表 `electrodes: list[str]`、时间箱宽度 `dt: float`（$\text{s}$）、事例波形列表 `events: list[EventWaveforms]` 与 `electrodes` 顺序对应的脉冲边沿方向列表 `pulse_edge: list[str]`（每项为 `"rising"` 或 `"falling"`），以及前段长度 `pre_window: float`（$\text{s}$）。
 
 ## 接口
 
@@ -443,6 +443,7 @@ Cremat CR-110-R2.2 电荷灵敏前放，空载增益 `1.4 V/pC`，衰减时间 `
 | --- | --- | --- | --- |
 | `electrodes` | 字符串数组 | 无 | `circuit.outputs` 定义的全部读出输出通道名称列表 |
 | `dt` | `float64` | $\text{s}$ | 时间箱宽度（与输入 `current.h5` 的 `dt` 相同） |
+| `pre_window` | `float64` | $\text{s}$ | 前段长度 $n_{\text{pre}}\Delta t$（式 (21)）；这一段没有感应电流，重建用它估基线 |
 | `pulse_edge` | 字符串数组（写入时可选，读取时必选） | 无 | 与 `electrodes` 顺序一一对应的输出脉冲极性，每项为 `"rising"` 或 `"falling"` |
 | `device_circuit` | JSON 字符串（可选） | $\text{F}$, $\Omega$, $\text{F/m}^2$ | 器件等效电路各元件取值及来源字典，由 `read_circuit_values` 解析返回（`write_waveforms` 收到 `circuit_values` 时写入；文件无此属性时 `read_circuit_values` 返回 `None`） |
 

@@ -63,7 +63,7 @@ $$\Delta t = t_{\text{reco}} - t_{\text{truth}}, \qquad t_{\text{truth}} = \min_
 3. **载流子漂移与感应电流分箱（`current`）**：`stages/current.py` 加载 `DevsimField`，调用 `write_induced_currents`（默认开启热扩散 `diffusion=True`）对每个记录事例在器件与电极阵列边界内推进电子、空穴漂移（含辐照俘获与雪崩倍增），按 Shockley-Ramo 定理在时间箱宽 `t_bin`（1D 为 $5\ \text{ps}$，2D/3D 为 $50\ \text{ps}$）上分箱累加感应电流并写出 `current` 节点的 `current.h5`，同时在节点内为前 `current.plots` 个事例绘制漂移路径与电流图。
 4. **等效电路与前端放大器读出（`readout`）**：`stages/readout.py` 构建器件等效电路 `DeviceCircuit` 并按 `+` 拆分加载 `amplifier` 指定的 SPICE 子电路链，调用 `ngspice` 求解瞬态响应与频域热噪声谱（以由作业种子派生的 `readout` 噪声种子独立合成时域高斯热噪声叠入波形），仅保存最大电压摆幅 $\ge 10^{-3} V_{\max}$ 的通道写入 `readout` 节点的 `readout.h5`。
 5. **数字化与触发（`digitizer`、`trigger`）**：`digitizer` 按数字化器组件（默认 `MXR608A`）的模拟带宽、采样和量化（时钟相位与孔径抖动由作业种子派生的 `digitizer` 种子抽取）把模拟波形转为量化码写入 `digitizer` 节点的 `digitizer.h5`；`trigger` 按触发条件判定记录哪些事例，将被记录事例的事例号数据集 `event`（`int64`）写入 `trigger` 节点的 `trigger.h5`。
-6. **波形特征提取与成簇（`reconstruction`）**：`stages/reconstruction.py` 读取 `digitizer.h5` 中被 `trigger.h5` 记录的事例，按 `lsb_V`、`offset_V` 把量化码换回电压（$\text{V}$），采样时刻为 `t0 + k·sampling_period`；将 `threshold` 与 `amplitude_threshold` 从 $\text{mV}$ 乘以 $10^{-3}$ 换为 $\text{V}$，扣除波形开头 `BASELINE_POINTS = 200` 个采样点的均值基线并按脉冲边沿 `edge` 翻正，提取幅度、`ToA`、`ToT`、`CoG`、`area` 及各 `fractions` 对应的 `CFD` 时刻，以幅度不低于 `amplitude_threshold` 的电极为种子跨电极成簇并将找到种子的事例记为 `selected`，写入 `reconstruction` 节点的 `reconstruction.h5`。
+6. **波形特征提取与成簇（`reconstruction`）**：`stages/reconstruction.py` 读取 `digitizer.h5` 中被 `trigger.h5` 记录的事例，按 `lsb_V`、`offset_V` 把量化码换回电压（$\text{V}$），采样时刻为 `t0 + k·sampling_period`；将 `threshold` 与 `amplitude_threshold` 从 $\text{mV}$ 乘以 $10^{-3}$ 换为 $\text{V}$，扣除前段内 [$N_{\text{base}}$](../core/reconstruction.md#基线扣除与极性翻转) 个采样点的均值基线并按脉冲边沿 `edge` 翻正，提取幅度、`ToA`、`ToT`、`CoG`、`area` 及各 `fractions` 对应的 `CFD` 时刻，以幅度不低于 `amplitude_threshold` 的电极为种子跨电极成簇并将找到种子的事例记为 `selected`，写入 `reconstruction` 节点的 `reconstruction.h5`。
 7. **收集效率与时间分辨统计（`analysis`）**：`stages/analysis` 汇总各扫描点所有已完成作业，用 `current` 节点里的全部事例按式 (1) 计算收集效率分布，用 `selected` 事例按式 (2) 计算时间分辨，在各扫描点的 `analysis` 节点（`nodes/analysis/<节点号>/`，视图 `points/<点名>/analysis/`）写出单点 `result.json`、`events.h5` 与分布图，并在 `<实验>/analysis/` 下写出多扫描点对比文件 `points.json`、`trend.png`、`trend.pdf`。
 
 全链路涉及的内置常数如下表：
@@ -76,7 +76,6 @@ $$\Delta t = t_{\text{reco}} - t_{\text{truth}}, \qquad t_{\text{truth}} = \min_
 | `t_bin`, `delta_t` | 1D: `5e-12`, `2e-12`；2D/3D: `50e-12`, `20e-12` | $\text{s}$ | `src/raser/core/current/cal_current.py`，感应电流时间箱宽与单步漂移时间步长 |
 | `PART_EDGE` | `1e-3` | 无量纲 | `src/raser/core/readout/job.py`，保存输出波形通道所需的最小电压摆幅占最大通道摆幅比例 |
 | `MILLIVOLT` | `1.0e-3` | $\text{V/mV}$ | `src/raser/stages/reconstruction.py`，将 `threshold` 与 `amplitude_threshold` 从 $\text{mV}$ 换算为 $\text{V}$ 的系数 |
-| `BASELINE_POINTS` | `200` | 采样点 | `src/raser/core/reconstruction/event.py`，波形开头用于计算基线均值与噪声标准差的固定采样点数 |
 | `ELEMENTARY_CHARGE` | `1.602176634e-19` | $\text{C}$ | `src/raser/core/analysis/collection.py`，式 (1) 计算电荷收集效率使用的元电荷 |
 | `MINIMUM_EVENTS`, `ROUNDS` | `20`, `6` | 事例, 轮 | `src/raser/core/analysis/resolution.py`，截断高斯时间分辨拟合所需最少样本数与最大窗口收缩迭代轮数 |
 | `PICOSECOND` | `1.0e-12` | $\text{s/ps}$ | `src/raser/stages/analysis/plots.py`，时间差与时间分辨作图的秒到皮秒换算系数 |
@@ -91,7 +90,7 @@ $$\Delta t = t_{\text{reco}} - t_{\text{truth}}, \qquad t_{\text{truth}} = \min_
 - [`readout`](../stages/readout.md)：把感应电流送入器件等效电路与 SPICE 前端放大器链，求解输出电压波形并叠加电路热噪声，写入 `readout.h5`。
 - [`digitizer`](../stages/digitizer.md)：按数字化器模拟带宽、采样率与量化位数把模拟输出波形转换为量化码数字波形，写入 `digitizer.h5`。
 - [`trigger`](../stages/trigger.md)：按触发设备判选条件筛选记录事例，将被记录事例的事例号写入 `trigger.h5`。
-- [`reconstruction`](../stages/reconstruction.md)：读取 `digitizer.h5` 中被 `trigger` 记录的事例，按 `lsb_V`、`offset_V` 把量化码换回电压（$\text{V}$），扣除前 `200` 点基线，提取脉冲幅度、`ToA`、`ToT`、`CoG`、`area`、`CFD` 与多电极团簇特征，将找到种子的事例记为 `selected`，写入 `reconstruction.h5`。
+- [`reconstruction`](../stages/reconstruction.md)：读取 `digitizer.h5` 中被 `trigger` 记录的事例，按 `lsb_V`、`offset_V` 把量化码换回电压（$\text{V}$），扣除前段内的基线，提取脉冲幅度、`ToA`、`ToT`、`CoG`、`area`、`CFD` 与多电极团簇特征，将找到种子的事例记为 `selected`，写入 `reconstruction.h5`。
 - [`analysis`](../stages/analysis.md)：汇总各扫描点的已完成作业，拟合电荷收集效率与相对真实沉积时刻的时间分辨，在各扫描点的 `analysis` 节点写出单点结果和分布图，并在 `<实验>/analysis/` 下写出跨点统计和趋势图。
 
 ### 组件
@@ -177,7 +176,7 @@ raser signal HPK-Si-PiN --scan field.voltage=100,200
 | `reconstruction.fractions` | `[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]` | 无量纲 | 恒比定时（`CFD`）的幅度比例列表，每项须位于 `(0, 1)` 开区间内 |
 | `reconstruction.edge` | `null`（沿用 `readout` 写出的 `pulse_edge`） | 无 | 阈值作用的脉冲边沿方向，可选 `"rising"` 或 `"falling"` |
 
-其余参数（Geant4 世界默认半边长 `WORLD_HALF_SIDE = 25000 um`、材料平均电离能 `PAIR_ENERGY_EV` 与 Fano 因子 `FANO_FACTOR`、漂移时间窗与时间步长档位 `t_bin`/`delta_t`、热扩散开关 `diffusion = True`、`ngspice` 频域噪声起始频率 `1e3 Hz` 与温度 `27 °C`、保存波形通道最小摆幅比 `PART_EDGE = 1e-3`、重建基线点数 `BASELINE_POINTS = 200`、截断高斯拟合初窗 `median ± 8 * MAD`、最少样本数 `MINIMUM_EVENTS = 20` 与最大迭代轮数 `ROUNDS = 6`）全部写死在代码里。
+其余参数（Geant4 世界默认半边长 `WORLD_HALF_SIDE = 25000 um`、材料平均电离能 `PAIR_ENERGY_EV` 与 Fano 因子 `FANO_FACTOR`、漂移时间窗与时间步长档位 `t_bin`/`delta_t`、热扩散开关 `diffusion = True`、`ngspice` 频域噪声起始频率 `1e3 Hz` 与温度 `27 °C`、保存波形通道最小摆幅比 `PART_EDGE = 1e-3`、截断高斯拟合初窗 `median ± 8 * MAD`、最少样本数 `MINIMUM_EVENTS = 20` 与最大迭代轮数 `ROUNDS = 6`）全部写死在代码里。
 
 ## 输出
 

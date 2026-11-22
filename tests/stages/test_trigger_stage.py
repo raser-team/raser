@@ -27,6 +27,7 @@ def write_readout(path: Path, amplitudes_V: dict[int, float]) -> None:
             path,
             ["a"],
             DT_S,
+            10 * DT_S,
             EventWaveforms(number, 0.0, volts),
             pulse_edge=["falling"],
         )

@@ -43,7 +43,7 @@ $$N_{\text{bunch}} = \sum_{m=1}^{M}\sum_{k \in \mathcal{S}_m} N_{\text{pairs}, k
 
 1. **共享场检查与求解（`field`）**：复用监测器件在目标偏压 `field.voltage`（$\text{V}$）与辐照注量 `field.irradiation_flux`（$\text{cm}^{-2}$，$1\ \text{MeV}$ 中子等效注量）下的场节点；找不到场时，所需的场在作业开始前补算，存进器件 project 的 `field/`。
 2. **单束团多粒子 Geant4 沉积（`deposit`）**：`GeneralPrimaryGeneratorAction` 在每个 Geant4 事例中循环遍历 `bunch.json` 的 `particles` 列表，对每个粒子调用 `beam.GeneratePrimaryVertex(event)`（`beam` 取自 `shot["guns"]`），同时发射 `3` 个 `80 MeV` 质子；汇总整个束团在 `"Device"` 内的全部沉积步，当束团总沉积能量满足能量窗时记为 `1` 个有效束团事例，直至录满 `deposit.events_per_job`（示例里为 `1`）个束团并写入 `deposit` 节点的 `deposit.h5`。
-3. **漂移、读出、数字化、触发、重建与统计（`current`、`readout`、`digitizer`、`trigger`、`reconstruction`、`analysis`）**：将同一束团的全部电子-空穴对团簇在求解场中漂移并累加为单条束团感应电流写入 `current` 节点的 `current.h5`（示例里 `current.plots = 0`，不画单束团漂移图）；随后经 [`readout`](../stages/readout.md) 写出模拟电压波形 `readout.h5`，经 [`digitizer`](../stages/digitizer.md) 按采样率与量化位数把波形量化为码写入 `digitizer.h5`，经 [`trigger`](../stages/trigger.md) 按触发条件挑出被记录事例写入 `trigger.h5`（含事例号数据集 `event`，`int64`）；[`reconstruction`](../stages/reconstruction.md) 读 `digitizer.h5` 里被 `trigger` 记录的事例，按 `lsb_V`、`offset_V` 把量化码换回电压（$\text{V}$，采样时刻为 `t0 + k·sampling_period`），提取脉冲特征并将找到团簇种子的事例记为 `selected` 写入 `reconstruction.h5`；最后 [`analysis`](../stages/analysis.md) 用 `current` 节点的全部事例算电荷收集效率、用 `selected` 事例算时间分辨，步骤及内置常数（`WORLD_HALF_SIDE = 25000 um`、`t_bin`/`delta_t`、`PART_EDGE = 1e-3`、`BASELINE_POINTS = 200`、`ELEMENTARY_CHARGE = 1.602176634e-19 C`、`MINIMUM_EVENTS = 20`、`ROUNDS = 6`）与 [`signal`](../bench/signal.md#代码执行步骤与内置常数) 完全相同。
+3. **漂移、读出、数字化、触发、重建与统计（`current`、`readout`、`digitizer`、`trigger`、`reconstruction`、`analysis`）**：将同一束团的全部电子-空穴对团簇在求解场中漂移并累加为单条束团感应电流写入 `current` 节点的 `current.h5`（示例里 `current.plots = 0`，不画单束团漂移图）；随后经 [`readout`](../stages/readout.md) 写出模拟电压波形 `readout.h5`，经 [`digitizer`](../stages/digitizer.md) 按采样率与量化位数把波形量化为码写入 `digitizer.h5`，经 [`trigger`](../stages/trigger.md) 按触发条件挑出被记录事例写入 `trigger.h5`（含事例号数据集 `event`，`int64`）；[`reconstruction`](../stages/reconstruction.md) 读 `digitizer.h5` 里被 `trigger` 记录的事例，按 `lsb_V`、`offset_V` 把量化码换回电压（$\text{V}$，采样时刻为 `t0 + k·sampling_period`），提取脉冲特征并将找到团簇种子的事例记为 `selected` 写入 `reconstruction.h5`；最后 [`analysis`](../stages/analysis.md) 用 `current` 节点的全部事例算电荷收集效率、用 `selected` 事例算时间分辨，步骤及内置常数（`WORLD_HALF_SIDE = 25000 um`、`t_bin`/`delta_t`、`PART_EDGE = 1e-3`、`ELEMENTARY_CHARGE = 1.602176634e-19 C`、`MINIMUM_EVENTS = 20`、`ROUNDS = 6`）与 [`signal`](../bench/signal.md#代码执行步骤与内置常数) 完全相同。
 
 ## 用到的环节和组件
 
@@ -121,7 +121,7 @@ raser bmos --scan field.voltage=-300,-500
 | `reconstruction.fractions` | `[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]` | 无量纲 | 恒比定时（`CFD`）的幅度比例列表，每项须位于 `(0, 1)` 开区间内 |
 | `reconstruction.edge` | `null`（沿用 `readout` 写出的 `pulse_edge`） | 无 | 阈值作用的脉冲边沿方向，可选 `"rising"` 或 `"falling"` |
 
-其余参数（Geant4 世界默认半边长 `25000 um`、材料平均电离能与 Fano 因子、漂移时间窗与时间步长档位、热扩散开关 `diffusion = True`、`ngspice` 噪声分析频率范围与 `27 °C` 温度、重建基线点数 `200`、截断高斯拟合最少样本数 `20` 与最大迭代轮数 `6`）全部写死在代码里。
+其余参数（Geant4 世界默认半边长 `25000 um`、材料平均电离能与 Fano 因子、漂移时间窗与时间步长档位、热扩散开关 `diffusion = True`、`ngspice` 噪声分析频率范围与 `27 °C` 温度、截断高斯拟合最少样本数 `20` 与最大迭代轮数 `6`）全部写死在代码里。
 
 ## 输出
 

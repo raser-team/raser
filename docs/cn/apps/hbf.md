@@ -82,7 +82,7 @@ raser hbf --scan field.voltage=400,500
 | `readout.sheet_resistance` | `null`（取器件文件里阻性层的方块电阻） | $\Omega$ | 覆盖 AC-LGAD 阻性电荷共享层的方块电阻 |
 | `reconstruction.threshold`, `reconstruction.amplitude_threshold` | `10.0`, `10.0` | $\text{mV}$ | 像素波形过阈定时阈值与团簇种子通道幅度阈值（在被 `trigger` 记录的事例里找到种子的记为 `selected`） |
 
-其余底层物理与数值参数（4H-SiC 电子-空穴对产生能 `7.83 eV`（A. Gsponer et al., NIM A 1064 (2024) 169412, doi:10.1016/j.nima.2024.169412）与 Fano 因子 `0.128`（S. K. Chaudhuri, K. J. Zavalla, K. C. Mandal, Appl. Phys. Lett. 102 (2013) 031109, doi:10.1063/1.4776703）、漂移时间窗与时间步长档位、`ngspice` 噪声分析频率下限 `1e3 Hz` 与温度 `27 °C`、重建基线采样点数 `200`）写死在 `core` 各模块代码里。迁移率模型按名字注册，器件文件按名字选用；4H-SiC 缺省选用 `"Das"`。
+其余底层物理与数值参数（4H-SiC 电子-空穴对产生能 `7.83 eV`（A. Gsponer et al., NIM A 1064 (2024) 169412, doi:10.1016/j.nima.2024.169412）与 Fano 因子 `0.128`（S. K. Chaudhuri, K. J. Zavalla, K. C. Mandal, Appl. Phys. Lett. 102 (2013) 031109, doi:10.1063/1.4776703）、漂移时间窗与时间步长档位、`ngspice` 噪声分析频率下限 `1e3 Hz` 与温度 `27 °C`）写死在 `core` 各模块代码里。迁移率模型按名字注册，器件文件按名字选用；4H-SiC 缺省选用 `"Das"`。
 
 ## 输出
 

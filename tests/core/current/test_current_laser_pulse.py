@@ -47,9 +47,11 @@ def test_a_pulse_wider_than_a_bin_shares_as_the_integral_of_its_gaussian() -> No
 
 def test_the_current_of_a_laser_pulse_is_spread_over_the_pulse_and_keeps_its_charge() -> None:
     # pairs made by a pulse of 100 ps FWHM centred on t = 0: each part of the
-    # current of pairs made at once comes early by as much as the pulse is
-    # wide, so the share before -50 ps is the sum of each bin's charge times
-    # the chance that the pulse made its pairs 50 ps or more before it
+    # current of pairs made at once comes earlier or later by the width of the
+    # pulse. The window opens and closes the reach of the pulse beyond the
+    # drift, so the whole charge stays in it, and the charge before 50 ps is
+    # that of each bin of the current made at once times the chance that the
+    # pulse moved it to before 50 ps
     pulse, sigma = _gaussian(100e-12)
     laser = SimpleNamespace(
         ionized_pairs=[100.0], track_position=[[50.0, 50.0, 25.0, 0.0]],
@@ -62,9 +64,15 @@ def test_the_current_of_a_laser_pulse_is_spread_over_the_pulse_and_keeps_its_cha
 
     times = spread.t_start + (np.arange(spread.n_bin) + 0.5) * spread.t_bin
     collected = spread.current[0].sum() * spread.t_bin
-    early = spread.current[0][times < -50e-12].sum() * spread.t_bin
-    chance = np.array([0.5 * (1 + math.erf((-50e-12 - t) / (math.sqrt(2) * sigma))) for t in times])
+    early = spread.current[0][times < 50e-12].sum() * spread.t_bin
+
+    def below(t):
+        return 0.5 * (1 + math.erf(t / (math.sqrt(2) * sigma)))
+
+    at_once_times = at_once.t_start + (np.arange(at_once.n_bin) + 0.5) * at_once.t_bin
+    chance = np.array([below(50e-12 - t) for t in at_once_times])
     expected = (at_once.current[0] * chance).sum() * at_once.t_bin
-    assert collected == pytest.approx(spread.charge[0], rel=1e-3)
-    assert early == pytest.approx(expected, rel=0.03)
+    assert spread.t_start < at_once.t_start
+    assert collected == pytest.approx(at_once.current[0].sum() * at_once.t_bin, rel=1e-6, abs=0)
+    assert early == pytest.approx(expected, rel=0.03, abs=0)
     assert early / collected > 1e-3

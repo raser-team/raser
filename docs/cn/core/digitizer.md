@@ -125,7 +125,7 @@ $\varphi$、$\delta_k$ 和纯噪声由 `digitizer` 自己的种子抽取。这�
 
 ### 输入
 
-`readout` 节点的 `readout.h5`（多位置实验为同节点下的 `readout.<位置>.h5`），由[电子学读出环节（`stages/readout`）](../stages/readout.md)写出：本模块用到属性 `electrodes`、`dt`（$\text{s}$）、`pulse_edge`，数据集 `event`、`t0`（$\text{s}$）、`count`、`stored`、`index`、`voltage`（$\text{V}$）。
+`readout` 节点的 `readout.h5`（多位置实验为同节点下的 `readout.<位置>.h5`），由[电子学读出环节（`stages/readout`）](../stages/readout.md)写出：本模块用到属性 `electrodes`、`dt`（$\text{s}$）、`pulse_edge`、`pre_window`（$\text{s}$），数据集 `event`、`t0`（$\text{s}$）、`count`、`stored`、`index`、`voltage`（$\text{V}$）。
 
 纯噪声道另需：
 
@@ -147,6 +147,7 @@ $\varphi$、$\delta_k$ 和纯噪声由 `digitizer` 自己的种子抽取。这�
 | `offset_V` | `float64` | $\text{V}$ | 量程中心 $V_{\text{off}}$ |
 | `bits` | 整数 | 位 | ADC 位数 $N$ |
 | `channels` | 整数 | 个 | 一台设备的通道数 |
+| `pre_window` | `float64` | $\text{s}$ | 前段长度，照抄 `readout` 文件 |
 | `pulse_edge` | 变长字符串数组 | 无 | 与 `electrodes` 一一对应的脉冲方向，照抄 `readout` 文件 |
 | `device` | 字符串 | 无 | 所用的数字化器组件名 |
 

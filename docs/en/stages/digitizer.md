@@ -85,6 +85,7 @@ Instrument settings are defined in the component file and addressed as `"section
   | Attribute (`attrs`) | `bits` | scalar, integer | bits | ADC resolution $N$ |
   | Attribute (`attrs`) | `channels` | scalar, integer | count | Number of channels per unit |
   | Attribute (`attrs`) | `pulse_edge` | `(outputs,)`, variable-length string array | None | Pulse edge direction matching `electrodes` one-to-one, copied verbatim from `readout.h5` |
+  | Attribute (`attrs`) | `pre_window` | scalar, `float64` | $\text{s}$ | Pre-window length, copied verbatim from `readout.h5` |
   | Attribute (`attrs`) | `device` | scalar, string | None | Name of the digitizer component used |
   | Dataset (`datasets`) | `event` | `(events,)`, `int64` | None | Event ID |
   | Dataset (`datasets`) | `count` | `(events,)`, `int64` | samples | Number of sample points per electrode for the event |

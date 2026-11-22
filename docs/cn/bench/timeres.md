@@ -89,7 +89,7 @@ $$\sigma_1^2 = \frac{\sigma_{12}^2 + \sigma_{13}^2 - \sigma_{23}^2}{2}, \qquad \
 2. **在 `time_resolution` 装置下模拟双器件沉积（`deposit`）**：按各自器件文件同时建出参考器件与被测器件实体，并放置 `Al`、`pcb1`、`pcb2`。从 `decay/Sr90` 发射衰变产物，记录任一器件有沉积的事例（双器件符合由 `trigger` 判）直到录满 `events_per_job` 个事例（示例里为 `10000`；最多生成 `generated_limit` 个源事例），按 `ionized_pairs` 抽样电子-空穴对数写入 `deposit` 节点的同一份 `deposit.h5`，并以 `detector` 字段区分参考器件和被测器件的沉积步。
 3. **两块器件各自漂移、读出与数字化（`current`、`readout`、`digitizer`）**：被测器件与参考器件各自在对应求解场中漂移载流子算出感应电流（示例里 `current.plots = 0`，不画逐事例图），经各自器件等效电路与前端放大器链（默认 `SantaCruz+Gali52+Termination50`）求解输出电压波形并按由作业种子派生的 `readout` 噪声种子叠加频域热噪声，再按数字化器组件（默认 `MXR608A`）的模拟带宽、采样和量化设置（时钟相位与孔径抖动由作业种子派生的 `digitizer` 种子抽取）生成两路量化码数字波形写入 `digitizer` 节点。
 4. **双器件符合触发（`trigger`）**：检查同一事例中参考器件与被测器件的量化数字波形，按触发组件里的符合条件，要求列表里全部器件在同一事例都过幅度阈值。只有通过双器件符合的事例被记录，其事例号数据集 `event`（`int64`）写入 `trigger` 节点的 `trigger.h5`。
-5. **两块器件各自提取脉冲定时（`reconstruction`）**：读取 `digitizer.h5` 中被 `trigger.h5` 记录的符合事例，按 `lsb_V`、`offset_V` 将量化码换回电压（$\text{V}$），采样时刻为 `t0 + k·sampling_period`；分别对被测器件与参考器件的波形扣除前 `BASELINE_POINTS = 200` 点基线并按脉冲边沿翻正，在相邻采样点间线性插值求出过阈到达时间 `ToA`、过阈时长 `ToT`、过阈区间时间重心 `CoG` 以及越过 `fractions`（示例里 `0.1` 至 `0.9` 共 `9` 档）乘以峰值幅度 `amplitude` 的恒比定时时刻 `CFD10`–`CFD90`，找到团簇种子的事例记为 `selected` 并写入 `reconstruction` 节点。
+5. **两块器件各自提取脉冲定时（`reconstruction`）**：读取 `digitizer.h5` 中被 `trigger.h5` 记录的符合事例，按 `lsb_V`、`offset_V` 将量化码换回电压（$\text{V}$），采样时刻为 `t0 + k·sampling_period`；分别对被测器件与参考器件的波形扣除前段内 [$N_{\text{base}}$](../core/reconstruction.md#基线扣除与极性翻转) 个采样点的均值基线并按脉冲边沿翻正，在相邻采样点间线性插值求出过阈到达时间 `ToA`、过阈时长 `ToT`、过阈区间时间重心 `CoG` 以及越过 `fractions`（示例里 `0.1` 至 `0.9` 共 `9` 档）乘以峰值幅度 `amplitude` 的恒比定时时刻 `CFD10`–`CFD90`，找到团簇种子的事例记为 `selected` 并写入 `reconstruction` 节点。
 6. **截断高斯迭代拟合（`analysis`）**：汇总全部已完成作业的 `selected` 符合事例，对每个定时通道（`ToA`、`CoG`、`CFD10`–`CFD90`）分别构造式 (1) 的三套样本（三块器件时是上面列的六套）（滤除 `NaN`，样本总数少于 `MINIMUM_EVENTS = 20` 时记入 `timing.error`）。三套样本各自以中位数加减 $8$ 倍中位绝对偏差 $\text{median} \pm 8\,\text{MAD}$ 作为首轮窗口 $[a, b]$，在最多 `ROUNDS = 6` 轮迭代中执行 `core_width`：筛选窗口内样本（首轮少于 `20` 个则抛出 `TooFewValues`，后续轮次少于 `20` 个则终止并返回上一轮结果），用 `L-BFGS-B`（均值约束于 $[a, b]$）最小化式 (2) 求出 $(\mu, \sigma)$ 并由步长 `step = 1e-4` 的二阶中心差分海森矩阵求逆得到标准误；当相邻两轮 $|\sigma - \sigma_{\text{prev}}| \le 5\times 10^{-3}\,\sigma_{\text{prev}}$、新窗口 $[\mu - 2\sigma, \mu + 2\sigma]$ 超出旧窗口或窗口宽度缩减量 $\le 10^{-3}(b - a)$ 时收敛停止。三套样本各得一个核心宽度，在各扫描点的 `analysis` 节点写出单点 `result.json`、`events.h5` 与分布图，并在 `<project>/timeres/analysis/` 下写出跨点 `points.json`、`trend.png`、`trend.pdf`。
 
 `timeres` 涉及的内置常数如下表：
@@ -98,7 +98,6 @@ $$\sigma_1^2 = \frac{\sigma_{12}^2 + \sigma_{13}^2 - \sigma_{23}^2}{2}, \qquad \
 | --- | --- | --- | --- |
 | `WORLD_HALF_SIDE` | `25000` | $\mu\text{m}$ | Geant4 世界立方体默认最小半边长 |
 | `maxstep` | `2` | $\mu\text{m}$ | 被测器件与参考器件逻辑体内的最大步长限制 |
-| `BASELINE_POINTS` | `200` | 采样点 | 重建扣除基线与计算噪声的前导采样点数 |
 | `MINIMUM_EVENTS` | `20` | 事例 | `core_width` 进行截断高斯拟合所需的最少有效样本数 |
 | `ROUNDS` | `6` | 轮 | `core_width` 将拟合窗口更新为 $\mu \pm 2\sigma$ 的最大迭代轮数 |
 | 初窗 MAD 倍数 | `8` | 无量纲 | 首轮拟合窗口取 $\text{median} \pm 8\,\text{MAD}$ |
@@ -160,7 +159,7 @@ raser timeres NJU-PiN --scan field.voltage=-300,-500
 | `reconstruction.fractions` | `[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]` | 无量纲 | 恒比定时（`CFD`）的幅度比例列表，每项须位于 `(0, 1)` 开区间内 |
 | `reconstruction.edge` | `null`（各自沿用对应器件 `readout` 写出的 `pulse_edge`） | 无 | 阈值作用的脉冲边沿方向，可选 `"rising"` 或 `"falling"` |
 
-其余参数（`time_resolution.py` 中 `Al`、`pcb1`、`pcb2` 的尺寸、材料与间隔，世界默认半边长 `25000 um`，两器件内最大步长 `2 um`，材料平均电离能与 Fano 因子，漂移时间窗与时间步长档位，`ngspice` 噪声分析频率范围与 `27 °C` 温度，重建基线点数 `200`，截断高斯拟合初窗 `median ± 8 * MAD`，最少样本数 `20` 与最大迭代轮数 `6`）固定在代码与默认装置脚本中。
+其余参数（`time_resolution.py` 中 `Al`、`pcb1`、`pcb2` 的尺寸、材料与间隔，世界默认半边长 `25000 um`，两器件内最大步长 `2 um`，材料平均电离能与 Fano 因子，漂移时间窗与时间步长档位，`ngspice` 噪声分析频率范围与 `27 °C` 温度，截断高斯拟合初窗 `median ± 8 * MAD`，最少样本数 `20` 与最大迭代轮数 `6`）固定在代码与默认装置脚本中。
 
 ## 输出
 

@@ -10,7 +10,7 @@ from raser.core.field.assets import field_pickle_path
 from raser.core.readout.waveforms import read_circuit_values
 from raser.core.readout.waveforms import read_waveforms
 from raser.stages import readout
-from raser.stages.readout import waveforms
+from raser.stages.readout import waveforms, window_lengths
 
 pytestmark = pytest.mark.ngspice
 
@@ -50,6 +50,8 @@ def _resistive_strips(tmp_path):
         "_files": {"device": device},
         "_node_paths": {"current": tmp_path, "readout": tmp_path},
         "amplifier": "Termination50",
+        "pre_window_ns": 0.0,
+        "max_post_window_ns": 100.0,
     }
 
 
@@ -205,6 +207,8 @@ def test_a_planar_device_not_fully_depleted_is_read_out_through_its_undepleted_b
             "_files": {"device": device},
             "_node_paths": {"current": tmp_path, "readout": tmp_path},
             "amplifier": "Termination50",
+            "pre_window_ns": 0.0,
+            "max_post_window_ns": 100.0,
         }
     )
 
@@ -272,6 +276,8 @@ def test_a_row_of_strips_is_read_out_through_the_capacitances_its_field_stored(
             "_files": {"device": device},
             "_node_paths": {"current": tmp_path, "readout": tmp_path},
             "amplifier": "Termination50",
+            "pre_window_ns": 0.0,
+            "max_post_window_ns": 100.0,
         }
     )
 
@@ -331,8 +337,33 @@ def test_a_device_without_a_measured_capacitance_takes_the_one_its_field_solved(
             "_files": {"device": device},
             "_node_paths": {"current": tmp_path, "readout": tmp_path},
             "amplifier": "Termination50",
+            "pre_window_ns": 0.0,
+            "max_post_window_ns": 100.0,
         }
     )
 
     voltage = read_waveforms(tmp_path / "readout.h5").events[0].voltage[0]
     assert -voltage.min() == pytest.approx(1e-15 / 16.9e-12, rel=0.1)
+
+
+@pytest.mark.parametrize(
+    "key, value, message",
+    [
+        ("pre_window_ns", None, "readout.pre_window_ns is missing"),
+        ("max_post_window_ns", None, "readout.max_post_window_ns is missing"),
+        ("pre_window_ns", -1.0, "readout.pre_window_ns must be a finite non-negative number in ns, not -1.0"),
+        ("pre_window_ns", float("nan"), "readout.pre_window_ns must be a finite non-negative number in ns, not nan"),
+        ("pre_window_ns", "15", "readout.pre_window_ns must be a finite non-negative number in ns, not 15"),
+        ("max_post_window_ns", 0.0, "readout.max_post_window_ns must be a positive finite number in ns, not 0.0"),
+        ("max_post_window_ns", float("inf"), "readout.max_post_window_ns must be a positive finite number in ns, not inf"),
+    ],
+)
+def test_window_keys_outside_their_range_are_refused(key, value, message):
+    kwargs = {"pre_window_ns": 15.0, "max_post_window_ns": 1000.0, key: value}
+
+    with pytest.raises(ValueError, match=message):
+        window_lengths(kwargs)
+
+
+def test_window_keys_in_their_range_are_taken_in_ns():
+    assert window_lengths({"pre_window_ns": 0, "max_post_window_ns": 5}) == (0.0, 5.0)

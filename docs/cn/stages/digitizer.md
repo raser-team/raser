@@ -85,6 +85,7 @@ raser digi --set digitizer.device.full_scale_V=0.08
   | 属性（`attrs`） | `bits` | 标量，整数 | 位 | ADC 位数 $N$ |
   | 属性（`attrs`） | `channels` | 标量，整数 | 个 | 一台设备的通道数 |
   | 属性（`attrs`） | `pulse_edge` | `(outputs,)`，变长字符串数组 | 无 | 与 `electrodes` 一一对应的脉冲方向，照抄 `readout.h5` |
+  | 属性（`attrs`） | `pre_window` | 标量，`float64` | $\text{s}$ | 前段长度，照抄 `readout.h5` |
   | 属性（`attrs`） | `device` | 标量，字符串 | 无 | 所用的数字化器组件名 |
   | 数据集（`datasets`） | `event` | `(events,)`，`int64` | 无 | 事例编号 |
   | 数据集（`datasets`） | `count` | `(events,)`，`int64` | 点 | 该事例每个电极的采样点数 |

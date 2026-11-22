@@ -300,8 +300,8 @@ When the total number of recorded events at a scan point is $\ge 1$, `points/<po
 | `ToA` | `(selected,)`, `float64` | $\text{s}$ | Arrival time at which the pulse crosses `threshold` (`NaN` if not found) |
 | `ToT` | `(selected,)`, `float64` | $\text{s}$ | Duration of the pulse above `threshold` |
 | `amplitude` | `(selected,)`, `float64` | $\text{V}$ | Maximum pulse amplitude above baseline |
-| `baseline` | `(selected,)`, `float64` | $\text{V}$ | Arithmetic mean of the leading `200` samples of the waveform |
-| `noise` | `(selected,)`, `float64` | $\text{V}$ | Population standard deviation of the leading `200` samples of the waveform |
+| `baseline` | `(selected,)`, `float64` | $\text{V}$ | Arithmetic mean of the [$N_{\text{base}}$](../core/reconstruction.md#baseline-subtraction-and-polarity-inversion) samples in the pre-window |
+| `noise` | `(selected,)`, `float64` | $\text{V}$ | Population standard deviation of the [$N_{\text{base}}$](../core/reconstruction.md#baseline-subtraction-and-polarity-inversion) samples in the pre-window |
 | `truth` | `(selected,)`, `float64` | $\text{s}$ | Time of the earliest deposition step of the event in `deposit.h5` |
 | `CoG` | `(selected,)`, `float64` | $\text{s}$ | Sample-weighted center-of-gravity time over the interval above threshold |
 | `CFD<percent>` | `(selected,)`, `float64` | $\text{s}$ | Constant-fraction timing timestamp, where `<percent>` is `round(100 * part)` (`NaN` if not found) |

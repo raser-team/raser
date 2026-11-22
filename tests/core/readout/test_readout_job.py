@@ -50,12 +50,16 @@ def test_each_event_of_the_currents_file_gets_its_waveform(tmp_path):
     values = {"junction_capacitance": {"farad": 10e-12, "from": "device file"}}
 
     write_waveforms(
-        currents_path, waveforms_path, CHAIN, circuit, None, pulse_edge=["rising"]
+        currents_path, waveforms_path, CHAIN, circuit, None, None, pulse_edge=["rising"],
+        pre_window_s=0.0,
+        post_window_s=0.0,
     )
     assert read_circuit_values(waveforms_path) is None
     # a second start of the job replaces the file instead of adding to it
     write_waveforms(
-        currents_path, waveforms_path, CHAIN, circuit, None, values, ["rising"]
+        currents_path, waveforms_path, CHAIN, circuit, None, None, values, ["rising"],
+        pre_window_s=0.0,
+        post_window_s=0.0,
     )
     waveforms = read_waveforms(waveforms_path)
 
@@ -98,7 +102,7 @@ def _noise(tmp_path, currents_path, circuit, seed, edges):
 
     def voltages(seed):
         path = tmp_path / f"waveforms_{seed}.h5"
-        write_waveforms(currents_path, path, CHAIN, circuit, seed, pulse_edge=edges)
+        write_waveforms(currents_path, path, CHAIN, circuit, seed, None, pulse_edge=edges, pre_window_s=0.0, post_window_s=0.0)
         return np.array([record.voltage for record in read_waveforms(path).events])
 
     return voltages(seed) - voltages(None)
@@ -256,8 +260,11 @@ def test_row_holds_in_each_event_only_the_strips_the_charge_reaches(tmp_path):
             CHAIN,
             circuit,
             seed,
+            None,
             pulse_edge=["rising"] * 41,
             **part,
+            pre_window_s=0.0,
+            post_window_s=0.0,
         )
         return read_waveforms(path).events
 
@@ -313,8 +320,11 @@ def test_currents_in_another_order_than_the_row_are_solved_where_they_are(tmp_pa
         CHAIN,
         circuit,
         None,
+        None,
         pulse_edge=["rising"] * 41,
         part_of=part_of,
+        pre_window_s=0.0,
+        post_window_s=0.0,
     )
     event = read_waveforms(path).events[0]
 
@@ -352,8 +362,11 @@ def _stored(tmp_path, my_d, names, row, current, part=True):
         CHAIN,
         circuit,
         None,
+        None,
         pulse_edge=["rising"] * len(names),
         part_of=part_of if part else None,
+        pre_window_s=0.0,
+        post_window_s=0.0,
     )
     event = read_waveforms(path).events[0]
     return event.electrodes, max(widest, default=len(names)), event.voltage
@@ -437,10 +450,13 @@ def test_noise_of_a_strip_is_its_own_whatever_else_the_file_holds(tmp_path):
                 CHAIN,
                 circuit,
                 seed,
+                None,
                 pulse_edge=["rising"] * 21,
                 part_of=lambda hit, margin: part_of_row(
                     my_d, names, hit, margin, row=row
                 ),
+                pre_window_s=0.0,
+                post_window_s=0.0,
             )
             event = read_waveforms(path).events[-1]
             return event.voltage[event.electrodes.index("top12")]

@@ -121,15 +121,21 @@ def test_pulse_edge_of_each_electrode_is_kept_in_the_file(tmp_path):
         tmp_path / "a.h5",
         ["left", "right"],
         1e-12,
+        3e-12,
         record,
         pulse_edge=["rising", "falling"],
     )
-    append_waveforms(tmp_path / "b.h5", ["left", "right"], 1e-12, record)
+    append_waveforms(tmp_path / "b.h5", ["left", "right"], 1e-12, 3e-12, record)
 
     assert read_waveforms(tmp_path / "a.h5").pulse_edge == ["rising", "falling"]
     with pytest.raises(ValueError, match="run the readout again"):
         read_waveforms(tmp_path / "b.h5")
     with pytest.raises(ValueError, match="pulse_edge"):
         append_waveforms(
-            tmp_path / "c.h5", ["left", "right"], 1e-12, record, pulse_edge=["up", "up"]
+            tmp_path / "c.h5",
+            ["left", "right"],
+            1e-12,
+            3e-12,
+            record,
+            pulse_edge=["up", "up"],
         )
