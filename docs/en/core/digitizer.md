@@ -85,7 +85,7 @@ Each event is processed in the following order:
 5. **Noise-only channels**: For each channel listed as noise-only in that event, obtain $S_d$ from its noise spectrum asset via Eq. (6), draw $K$ voltages, and quantize them; $K$ and $\varphi$ are the same as for the other channels in the event. $S_d$ is computed only once for the same spectrum.
 6. **Output**: Pass the codes, clipped counts, and each electrode's first sampling instant $t_0 + \varphi$ to the digitizer stage to write into the digital waveform file.
 
-$\varphi$, $\delta_k$, and noise-only samples are drawn using `digitizer`'s own seed. This seed is derived from the job's seed (see [experiments, scan points, and seeds](../lifecycle/experiments.md#seeds)), enters the `digitizer` node's fingerprint, and is independent of `readout`'s seed. Each instrument's $\varphi$ is determined by the seed, event ID, and instrument ID; each electrode's $\delta_k$ and noise-only samples are determined by the seed, event ID, and the electrode's index in `electrodes`.
+$\varphi$, $\delta_k$, and noise-only samples are drawn using `digitizer`'s own seed. This seed is derived from the job's seed (see [experiments, scan points, and seeds](../lifecycle/experiments.md#seeds)), enters the `digitizer` node's fingerprint, and is independent of `readout`'s seed. Each instrument's $\varphi$ is determined by the seed, event ID, and instrument ID; each electrode's $\delta_k$ and noise-only samples are determined by the seed, event ID, and the electrode's index in `electrodes`. In multi-position experiments each position uses its own seed, derived from the job seed, the stage name, and the position name, so that $\varphi$, $\delta_k$, and the noise of noise-only channels differ between positions. An error is raised when the number of samples $K$ of an event is below 2.
 
 ## Software Implementation
 
@@ -114,7 +114,7 @@ This module uses the keys of the component other than the trigger conditions: `c
 
 Noise-only channels additionally require:
 
-- **Noise spectrum asset**: a device, bias, and amplifier chain uniquely determine the noise spectrum $S_V(f)$ of each output, computed by `readout` and shared across experiments; read-only for this module.
+- **Noise spectrum asset**: a device, bias, and amplifier chain uniquely determine the noise spectrum $S_V(f)$ of each output, computed by `readout` and shared across experiments; read-only for this module. One spectrum per output (frequencies and amplitude spectral density), covering $10^3\ \text{Hz}$ up to the Nyquist frequency $1/(2\Delta t)$ of the `readout` time step, the same noise content as that of channels going through `readout`.
 - **Noise-only channel list**: indices of electrodes listed as noise-only for each event, supplied by upstream.
 - **`noise_only_channels(deposited_keV, trigger_places, cut_keV)`**: `deposited_keV` is the deposited energy ($\text{keV}$, indexed by electrode) in the region corresponding to each electrode for that event, `trigger_places` are the electrode indices used by the trigger, and `cut_keV` is the user-specified energy cut; returns the indices of electrodes whose deposited energy is below the cut and not in `trigger_places`.
 

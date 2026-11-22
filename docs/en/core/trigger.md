@@ -18,7 +18,7 @@ Triggers the first time the source channel crosses the level in the specified di
 
 ### Pattern Trigger
 
-In a pattern, each channel has its own level and state (below or above the level). The intervals during which all channels are simultaneously in their respective states form the intersection of the corresponding intervals of each channel; the start of the first interval in the intersection is the trigger time:
+In a pattern, each channel has its own level and state (below or above the level). The intervals during which all channels are simultaneously in their respective states form the intersection of the corresponding intervals of each channel; the start of the first interval in the intersection is the trigger time: "Below" and "above" are strict inequalities: an instant at which the voltage equals the level is a boundary between two intervals.
 
 $$t_{\text{trig}} = \min\Bigl\{\, t \;:\; t \in \bigcap_{s} I_s \Bigr\},\qquad t > t_{\text{first}} \tag{2}$$
 
@@ -39,7 +39,7 @@ where $E(\cdot)$ is the value of the logic expression when the given slots are t
 
 ## Algorithm
 
-1. **Read**: Digital waveform files and trigger conditions.
+1. **Read**: Digital waveform files and trigger conditions. An error is raised if a channel of the trigger conditions lies beyond `electrodes`.
 2. **Event-by-event evaluation**: For an oscilloscope's trigger condition: if any channel used has no digital waveform in that event, the event is not recorded; otherwise convert the codes of those channels back to voltage and find the trigger time by edge or pattern, and if none is found, do not record the event. For a standalone trigger device: find the hit time of each slot from its digital waveforms and evaluate Eq. (3) for the trigger time; slots with no digital waveform in that event do not hit.
 3. **Output**: Pass the event IDs and trigger times of recorded events to the trigger stage to write into `trigger.h5`.
 
@@ -51,7 +51,7 @@ where $E(\cdot)$ is the value of the logic expression when the given slots are t
 - `conditions.py`: `TriggerConditions`, constructed from the `trigger` of an oscilloscope component; raises an error on missing keys, extra keys, or invalid values.
 - `coincidence.py`: parsing and evaluation of logic expressions, and Eq. (3).
 - `crossing.py`: Eq. (1) and partitioning by level.
-- `job.py`: `write_triggered`, a single job from digital waveform files to `trigger.h5`: edge, Eq. (2), Eq. (3), and writing.
+- `job.py`: `write_triggered` (the scope's trigger: edge and Eq. (2)) and `write_coincidence` (standalone trigger device: Eq. (3), reading the files of all slots at once), a single job from digital waveform files to `trigger.h5`.
 - `draw.py`: plots for this stage.
 
 ## Interface
@@ -70,7 +70,7 @@ One `trigger.<position>.h5` per position in multi-position experiments.
 
 | Category | Name | Shape and Type | Unit | Meaning |
 | --- | --- | --- | --- | --- |
-| Attribute | `events_seen` | integer | count | Total number of events in `digitizer.h5` |
+| Attribute | `events_seen` | integer | count | Total number of events in `digitizer.h5`; for a standalone trigger device, the number of distinct event IDs occurring in the files of the slots |
 | Dataset | `event` | `(recorded,)`, `int64` | none | Event IDs of recorded events |
 | Dataset | `trigger_time` | `(recorded,)`, `float64` | $\text{s}$ | Trigger times of recorded events |
 
@@ -78,4 +78,4 @@ Downstream stages read the digital waveforms of recorded events from `digitizer.
 
 ### Plot Output
 
-For the first few recorded events, overlays the voltages converted back from codes for the channels used by triggering, dashed lines at their respective levels, and a vertical line at the trigger time, with $\text{ns}$ on the horizontal axis and $\text{mV}$ on the vertical axis, writing pdf and root for each plot.
+`trigger_amplitude`: one per node (not drawn when the node holds no event), with one panel for each channel used by triggering (each slot for a standalone trigger device). The horizontal axis is the amplitude ($\text{mV}$): the extreme of that channel's converted-back voltage toward the trigger direction (the minimum for a falling edge or `"low"`, the maximum for a rising edge or `"high"`; for a slot, the one among its electrodes farthest toward the trigger direction), with one histogram each for recorded and discarded events and the trigger level drawn as a black dashed line. See [Figures](../supports/figures.md) for style, file names, and locations.
