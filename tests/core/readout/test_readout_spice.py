@@ -70,11 +70,11 @@ def test_each_electrode_answers_its_own_current():
     assert voltage[0] == pytest.approx(_rc_step_response(times, 1e-6), abs=5e-8)
 
 
-def test_currents_on_cells_are_read_out_on_a_strip_they_lie_beside():
-    # two cells of a resistive layer, each with 1 pF to the back: the near one
+def test_currents_on_rc_nodes_are_read_out_on_a_strip_they_lie_beside():
+    # two RC nodes of a resistive layer, each with 1 pF to the back: the near one
     # is under the strip, the far one 10 kOhm away from it. Each brings 1 fC;
     # all of it leaves through the 50 Ohm load of the strip, that of the far
-    # cell later, after it has crossed the 10 kOhm
+    # RC node later, after it has crossed the 10 kOhm
     circuit = DeviceCircuit(
         lines=("Cnear strip 0 1p", "Cfar far 0 1p", "Rlayer far strip 10k"),
         sources={"near": ("0", "strip"), "far": ("0", "far")},
@@ -91,7 +91,7 @@ def test_currents_on_cells_are_read_out_on_a_strip_they_lie_beside():
     assert near.shape == far.shape == (1, times.size)
     for voltage in (near[0], far[0]):
         assert np.sum(voltage) * dt / LOAD_OHM == pytest.approx(1e-15, rel=0.01, abs=0)
-    # the far cell empties through 10 kOhm into the strip: in about 10 ns,
+    # the far RC node empties through 10 kOhm into the strip: in about 10 ns,
     # the near one through the load in less than one
     arrival = [np.sum(times * v[0]) / np.sum(v[0]) for v in (near, far)]
     assert arrival[0] < 1e-9
