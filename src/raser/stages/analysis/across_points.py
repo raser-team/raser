@@ -89,7 +89,8 @@ def write_points(points, results, folder):
     right.set_xlabel(key)
     right.set_ylabel(figures.label("Time resolution", "ps"))
     right.set_ylim(bottom=0)
-    right.legend(ncol=3)
+    if names:
+        right.legend(ncol=3)
     figures.save(figure, folder, "trend")
 
     figure, axes = figures.new(1, 2)
