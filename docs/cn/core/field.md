@@ -186,11 +186,11 @@ $$\text{1D:}\quad r = \sum_{k} w_k\,\bar\rho_k, \quad W_{\text{und}} = \sum_k w_
 
 条形电极行（`field_circuit` 读到 `Capacitance_<V>V.json`）中，相隔 $k$ 个位置的两条之间接电容 $C_k = \tfrac12 C_{\text{neighbour}k}\,L$，$k \le$ `neighbours_coupled`，$L$ 为条长 `l_y`（换成 cm）；每条接到 `undepleted` 的电容为 $C_{\text{total}}L$（或 `capacitance_pF`）减去它到行内其他条的互容之和。只为击中条附近的一段条搭电路时（`part_of_row`），段外的 $n$ 根条在虚地上，它们的这份电容合成 $n$ 倍行中部一根条的值，接在 `undepleted` 与地之间（`C_undepleted_rest`）。
 
-阻性电荷共享层（`resistive_layer`）把层切成宽为间距的晶胞，每个晶胞是一个节点，经耗尽层电容接到 `undepleted`；相邻晶胞之间接层电阻：
+阻性电荷共享层（`resistive_layer`）把层切成宽为间距的 RC 格点，每个 RC 格点是一个节点，经耗尽层电容接到 `undepleted`；相邻 RC 格点之间接层电阻：
 
-$$C_{\text{cell}} = c_A\,w\,l, \qquad R_{\text{row}} = \frac{R_\square}{l}\,w\,\Bigl(1 - \frac{m}{2}\Bigr), \qquad R_{\text{grid}} = R_\square\,\frac{w_\parallel}{w_\perp}\Bigl(1 - \frac{m}{2}\Bigr) \tag{21}$$
+$$C_{\text{node}} = c_A\,w\,l, \qquad R_{\text{row}} = \frac{R_\square}{l}\,w\,\Bigl(1 - \frac{m}{2}\Bigr), \qquad R_{\text{grid}} = R_\square\,\frac{w_\parallel}{w_\perp}\Bigl(1 - \frac{m}{2}\Bigr) \tag{21}$$
 
-其中 $c_A = C_{\text{dep}}/(w\,l)$ 为单位面积耗尽层电容（$\text{F/m}^2$，$C_{\text{dep}}$ 为一个晶胞的结电容）；$w$、$l$ 为晶胞宽度（`p_x`）与条长（`l_y`），$\text{m}$（网格中为 `p_x`、`p_y`）；$R_\square$ 为方块电阻，$\Omega$；$m \in \{0, 1\}$ 为这对晶胞中位于电极下的个数（电极从晶胞边缘开始，离邻胞中心半个晶胞）；网格中 $w_\parallel$、$w_\perp$ 为沿电阻方向与垂直方向的晶胞宽度。电极下的晶胞并成一个节点；给出 `coupling` 时电极经介质耦合到层上，层在电极下连续，每个晶胞到电极的电容为 $\varepsilon_0\varepsilon_r w l / t$（$t$ 为 `coupling.thickness`，器件文件里以 $\mu\text{m}$ 给出，代码换成 m）。
+其中 $c_A = C_{\text{dep}}/(w\,l)$ 为单位面积耗尽层电容（$\text{F/m}^2$，$C_{\text{dep}}$ 为一个 RC 格点的结电容）；$w$、$l$ 为 RC 格点宽度（`p_x`）与条长（`l_y`），$\text{m}$（网格中为 `p_x`、`p_y`）；$R_\square$ 为方块电阻，$\Omega$；$m \in \{0, 1\}$ 为这对 RC 格点中位于电极下的个数（电极从 RC 格点边缘开始，离邻 RC 格点中心半个 RC 格点）；网格中 $w_\parallel$、$w_\perp$ 为沿电阻方向与垂直方向的 RC 格点宽度。电极下的 RC 格点并成一个节点；给出 `coupling` 时电极经介质耦合到层上，层在电极下连续，每个 RC 格点到电极的电容为 $\varepsilon_0\varepsilon_r w l / t$（$t$ 为 `coupling.thickness`，器件文件里以 $\mu\text{m}$ 给出，代码换成 m）。
 
 方块电阻 $R_\square$ 取器件文件 `resistive_layer.sheet_resistance`，没有时由铝注入 4H-SiC 层的模型算出 [11]：
 
@@ -462,9 +462,9 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 | `undepleted_resistance_ohm`, `undepleted_capacitance_pF` | `None` | $\Omega$, pF | 未耗尽层，必须成对给出 |
 | `resistive_layer.sheet_resistance` | 无 | $\Omega$ | 方块电阻 |
 | `resistive_layer.implanted`, `.thickness`, `.anneal` | 无 | $\text{cm}^{-2}$, $\mu\text{m}$, $^\circ\text{C}$ | 无 `sheet_resistance` 时按式 (22) 计算 |
-| `resistive_layer.strips` | 无 | 晶胞号 | 行电路：条名到首末晶胞号 `[first, last]` |
-| `resistive_layer.pads` | 无 | 晶胞号 | 网格电路：电极名到 `[x_first, x_last, y_first, y_last]` |
-| `resistive_layer.grounded` | `{}` | 晶胞号 | 接地触点；行为 `[first, last]`，网格为矩形列表 |
+| `resistive_layer.strips` | 无 | RC 格点号 | 行电路：条名到首末 RC 格点号 `[first, last]` |
+| `resistive_layer.pads` | 无 | RC 格点号 | 网格电路：电极名到 `[x_first, x_last, y_first, y_last]` |
+| `resistive_layer.grounded` | `{}` | RC 格点号 | 接地触点；行为 `[first, last]`，网格为矩形列表 |
 | `resistive_layer.coupling.thickness`, `.permittivity` | 无 | $\mu\text{m}$, 无 | 电极下介质层 |
 | `det_model` | 无 | 无 | 选解析场类型；含 `"3d"` 时 `Detector.capacitance` 在没有 `capacitance_pF` 时为 `None` |
 | `depletion_voltage`, `input_doping` | `|bias.voltage|`, `1e12` | V, $\text{cm}^{-3}$ | 解析场 |

@@ -43,9 +43,9 @@ Cascaded netlist construction and transient solving are implemented by `_chain`,
 
 ### Response of the network of a resistive layer to an impulse on a point
 
-A charge $q$ (default $1\ \text{fC}$) landing on a point $(x, y)$ (in $\mu\text{m}$, $0 \le x \le l_x$, $0 \le y \le l_y$; when $x$ alone is given, $y$ is taken at the midline $l_y / 2$) of a device with a resistive charge-sharing layer is distributed linearly among cells according to the distance from that point to adjacent cell centers; the cells number $N_x$ (`x_ele_num`) with pitch $p_x$ (`p_x`) along $x$ and $N_y$ (`y_ele_num`) with pitch $p_y$ (`p_y`) along $y$, centered on the device (for circuit parameters of the cell network, see [device field](field.md)).
+A charge $q$ (default $1\ \text{fC}$) landing on a point $(x, y)$ (in $\mu\text{m}$, $0 \le x \le l_x$, $0 \le y \le l_y$; when $x$ alone is given, $y$ is taken at the midline $l_y / 2$) of a device with a resistive charge-sharing layer is distributed linearly among RC nodes according to the distance from that point to adjacent RC node centers; the RC nodes number $N_x$ (`x_ele_num`) with pitch $p_x$ (`p_x`) along $x$ and $N_y$ (`y_ele_num`) with pitch $p_y$ (`p_y`) along $y$, centered on the device (for circuit parameters of the RC node network, see [device field](field.md)).
 
-Along each axis (taking $x$ as the example), the position is converted to a coordinate $u$ in units of cell width relative to the first cell center; a point between two adjacent cell centers is shared linearly between cell $i$ and cell $i + 1$, whereas a point beyond the center of the first or last cell goes entirely to that outermost cell. Multiplying the shares of the two axes gives the 2D cell share $s_{ij}$, which is injected into the corresponding cell's current source as a rectangular current pulse $\bar{I}_{n,0} = s_{ij}\, q / \Delta t$ in the first time bin (with all later bins zero) and passed to the transient solver of the preceding section:
+Along each axis (taking $x$ as the example), the position is converted to a coordinate $u$ in units of RC node width relative to the first RC node center; a point between two adjacent RC node centers is shared linearly between RC node $i$ and RC node $i + 1$, whereas a point beyond the center of the first or last RC node goes entirely to that outermost RC node. Multiplying the shares of the two axes gives the 2D RC node share $s_{ij}$, which is injected into the corresponding RC node's current source as a rectangular current pulse $\bar{I}_{n,0} = s_{ij}\, q / \Delta t$ in the first time bin (with all later bins zero) and passed to the transient solver of the preceding section:
 
 $$x_0 = \frac{l_x - N_x p_x}{2}, \qquad u = \frac{x - x_0}{p_x} - \frac{1}{2} \tag{5}$$
 
@@ -58,20 +58,20 @@ where:
 - $q$: injected point charge (code variable `charge`, default $10^{-15}\ \text{C}$), $\text{C}$;
 - $(x, y)$: planar device coordinates of the impulse point (code variable `point_um`, parsed into `x_um` and `y_um`), $\mu\text{m}$;
 - $l_x, l_y$: device dimensions along $x$ and $y$ (code attributes `my_d.l_x`, `my_d.l_y`), $\mu\text{m}$;
-- $N_x, N_y$: number of cells along $x$ and $y$ (code attributes `my_d.x_ele_num`, `my_d.y_ele_num`), count;
-- $p_x, p_y$: cell pitches along $x$ and $y$ (code attributes `my_d.p_x`, `my_d.p_y`), $\mu\text{m}$;
-- $x_0$: lower boundary coordinate of the centered cell array along $x$ (code variable `first_edge`, with upper boundary `last_edge` $= x_0 + N_x p_x$), $\mu\text{m}$; the $y$-axis boundary $y_0$ is defined analogously;
-- $u$: normalized position relative to the first cell center in units of cell width (code variable `place`), dimensionless;
-- $i, j$: 0-based cell indices along $x$ and $y$ (code variable `number = int(np.floor(place))`), dimensionless;
-- $s_k^{(x)}, s_k^{(y)}$: charge share assigned to cell $k$ along a single axis (dictionary returned by `_along`, omitting zero-share cells and returning `{i: 1.0}` when $u = i$), dimensionless; the $y$-axis shares follow the same formula with $l_y, N_y, p_y, y_0$;
-- $s_{ij}$: total charge share assigned to the 2D cell $(i, j)$ (code expression `part_x * part_y`), dimensionless;
-- $n$: 0-based index of the 2D cell in `circuit.sources` (code variable `number = i * y_ele_num + j`), dimensionless;
+- $N_x, N_y$: number of RC nodes along $x$ and $y$ (code attributes `my_d.x_ele_num`, `my_d.y_ele_num`), count;
+- $p_x, p_y$: RC node pitches along $x$ and $y$ (code attributes `my_d.p_x`, `my_d.p_y`), $\mu\text{m}$;
+- $x_0$: lower boundary coordinate of the centered RC node array along $x$ (code variable `first_edge`, with upper boundary `last_edge` $= x_0 + N_x p_x$), $\mu\text{m}$; the $y$-axis boundary $y_0$ is defined analogously;
+- $u$: normalized position relative to the first RC node center in units of RC node width (code variable `place`), dimensionless;
+- $i, j$: 0-based RC node indices along $x$ and $y$ (code variable `number = int(np.floor(place))`), dimensionless;
+- $s_k^{(x)}, s_k^{(y)}$: charge share assigned to RC node $k$ along a single axis (dictionary returned by `_along`, omitting zero-share RC nodes and returning `{i: 1.0}` when $u = i$), dimensionless; the $y$-axis shares follow the same formula with $l_y, N_y, p_y, y_0$;
+- $s_{ij}$: total charge share assigned to the 2D RC node $(i, j)$ (code expression `part_x * part_y`), dimensionless;
+- $n$: 0-based index of the 2D RC node in `circuit.sources` (code variable `number = i * y_ele_num + j`), dimensionless;
 - $\Delta t$: time-bin width (code variable `dt`, default $10^{-11}\ \text{s}$), $\text{s}$;
-- $\bar{I}_{n,m}$: average injected current of the $n$-th cell in the $m$-th time bin (code variable `currents[n, m]`; default bin count `bins = 2000`), $\text{A}$.
+- $\bar{I}_{n,m}$: average injected current of the $n$-th RC node in the $m$-th time bin (code variable `currents[n, m]`; default bin count `bins = 2000`), $\text{A}$.
 
-If the impulse point lies outside the cell array (`not first_edge <= here_um <= last_edge`), `shares` raises `ValueError("The point lies at <axis> = <here_um> um, and the cells of the layer reach from <first_edge> to <last_edge> um")`, reporting the coordinate and the array's range along that axis; if the number of current sources `len(circuit.sources)` differs from the device's total cell count `x_ele_num * y_ele_num`, `impulse_response` raises `ValueError("The circuit has the currents of <len(cells)> cells, and <det_name> has <count>")`.
+If the impulse point lies outside the RC node array (`not first_edge <= here_um <= last_edge`), `shares` raises `ValueError("The point lies at <axis> = <here_um> um, and the RC nodes of the layer reach from <first_edge> to <last_edge> um")`, reporting the coordinate and the array's range along that axis; if the number of current sources `len(circuit.sources)` differs from the device's total RC node count `x_ele_num * y_ele_num`, `impulse_response` raises `ValueError("The circuit has the currents of <len(rc_nodes)> RC nodes, and <det_name> has <count>")`.
 
-Cell-share calculation and multi-point impulse-response injection are implemented by `shares` and `impulse_response` in `network.py`.
+RC-node share calculation and multi-point impulse-response injection are implemented by `shares` and `impulse_response` in `network.py`.
 
 ### Frequency-Domain Thermal Noise from a Given Spectrum and Time-Domain Synthesis
 
@@ -274,7 +274,7 @@ The short-circuit current netlist `write_short_circuit_netlist` contains only th
 - `waveforms.py`: defines the `EventWaveforms` and `Waveforms` dataclasses along with `_check_layout`, `append_waveforms`, `read_waveforms`, and `read_circuit_values` for sparse append writing and reading of `readout.h5`.
 - `schematic.py`: provides `read_hints`, `arrange`, `layout`, `value_text`, and `draw` to render `.cir` subcircuit files into schematic images.
 - `draw.py`: provides `draw_waveform`, using `raser.supports.figures` to plot single-event input induced-current and amplifier output-voltage waveforms and save them as `.png` and `.pdf`.
-- `network.py`: computes the response of a resistive-layer network to a point impulse. `shares(my_d, point_um)` returns the dictionary of cell shares for unit charge at `(x, y)`; `impulse_response(my_d, circuit, chain, points_um, dt=10e-12, bins=2000, charge=1e-15)` converts each point's cell shares into first-bin rectangular current pulses and calls `spice.solve` point by point, returning output voltages ($\text{V}$) of shape `(points, outputs, bins)` in the order of `circuit.outputs`.
+- `network.py`: computes the response of a resistive-layer network to a point impulse. `shares(my_d, point_um)` returns the dictionary of RC node shares for unit charge at `(x, y)`; `impulse_response(my_d, circuit, chain, points_um, dt=10e-12, bins=2000, charge=1e-15)` converts each point's RC node shares into first-bin rectangular current pulses and calls `spice.solve` point by point, returning output voltages ($\text{V}$) of shape `(points, outputs, bins)` in the order of `circuit.outputs`.
 - `draw_network.py`: plots resistive-layer network impulse responses and the device network circuit. `sharing` plots each readout electrode's maximum absolute waveform amplitude and waveform integral against the impulse $x$ coordinate and saves `network_sharing.png` and `.pdf` in `folder` via `raser.supports.figures.save`; `waveforms` plots the output waveforms of all readout electrodes for one impulse and saves `network_waveforms.png` and `.pdf` via `raser.supports.figures.save`; `schematic` takes the first two readout nodes of `circuit.outputs` as subcircuit ports in a temporary `.cir` file, appends layout hints by element-name prefix (`; right` for `Rxlayer_` and `Rlayer_`, `; up` for `Rylayer_` and `Cpad_`, `; down` for `Clayer_`), and calls `schematic.draw` to draw `network_schematic.png`.
 
 ### Core Data Structures
