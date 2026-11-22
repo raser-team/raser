@@ -21,3 +21,7 @@ response maps those deposits to readout channels. Telescope constructs hits
 and clusters, fits tracks across the ordered layers, and derives per-layer
 residual and resolution results. Parameter studies vary recorded setup values
 while retaining the corresponding G4Setup and Device definitions.
+
+The [single-layer strip workflow](single-strip.md) calibrates and applies
+waveform-based slope and entrance-position estimators to explicitly observed
+strip channels.
