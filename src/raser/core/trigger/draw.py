@@ -38,8 +38,10 @@ def draw_trigger_amplitude(folder, panels):
         level = level_V / figures.UNIT["mV"]
         values = np.concatenate([recorded, discarded, [level]])
         edges = np.histogram_bin_edges(values, bins=20)
-        axis.hist(recorded, bins=edges, color=figures.HISTOGRAM, label="recorded")
-        axis.hist(
+        recorded_counts, _, _ = axis.hist(
+            recorded, bins=edges, color=figures.HISTOGRAM, label="recorded"
+        )
+        discarded_counts, _, _ = axis.hist(
             discarded,
             bins=edges,
             histtype="step",
@@ -48,7 +50,7 @@ def draw_trigger_amplitude(folder, panels):
         )
         axis.axvline(level, color="black", linestyle="--")
         axis.set_xlabel(figures.label("Amplitude", "mV"))
-        axis.set_ylabel("Events")
+        figures.events(axis, counts=np.concatenate([recorded_counts, discarded_counts]))
         axis.set_title(title)
         axis.legend()
     return figures.save(figure, folder, "trigger_amplitude")

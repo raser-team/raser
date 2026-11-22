@@ -40,11 +40,11 @@ def draw_codes(folder, codes, bits):
     """Draw ``codes``: histogram of all stored ADC codes, one bin per code in ``[0, 2**bits)``."""
     maximum = 1 << int(bits)
     figure, axis = figures.new()
-    axis.hist(
+    counts, _, _ = axis.hist(
         np.asarray(codes).ravel(),
         bins=np.arange(maximum + 1) - 0.5,
         color=figures.HISTOGRAM,
     )
     axis.set_xlabel("Code")
-    axis.set_ylabel("Events")
+    figures.events(axis, counts=counts)
     return figures.save(figure, folder, "codes")
