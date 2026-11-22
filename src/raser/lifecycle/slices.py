@@ -119,7 +119,9 @@ def forget(slices, folder) -> None:
             path.unlink()
 
 
-def run(slices, folders, index, options, wanted, before, publish=lambda piece: True) -> bool:
+def run(
+    slices, folders, index, options, wanted, before, publish=lambda piece: True, call=lambda piece, options: piece.run(options)
+) -> bool:
     """Run the `wanted` slices of one job that have no mark, in order; True
     when every slice of the job is done.
 
@@ -129,7 +131,9 @@ def run(slices, folders, index, options, wanted, before, publish=lambda piece: T
     there, and is not run when one of them raised `Ended`, which the mark of
     that one says.
     `before` is called with a slice before it runs; `publish` after, and
-    False from it stops the job without the mark of the slice."""
+    False from it stops the job without the mark of the slice. `call` runs a
+    slice with the options and returns what goes with its mark; it may say
+    {"ended": True} where the slice would raise `Ended`."""
     for k, piece in enumerate(slices):
         if piece.name not in wanted or mark(folders[piece.name], index, piece.name).exists():
             continue
@@ -146,7 +150,7 @@ def run(slices, folders, index, options, wanted, before, publish=lambda piece: T
             continue
         before(piece)
         try:
-            left = piece.run(options) or {}
+            left = call(piece, options) or {}
         except Ended:
             left = {"ended": True}
         if not publish(piece):

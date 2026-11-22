@@ -13,6 +13,7 @@ from raser.core.deposit.laser import LaserInjection
 from raser.stages import readout
 from raser.stages.current import solved
 from raser.stages.files import output
+from raser.stages.files import plots
 
 
 def currents(kwargs):
@@ -21,7 +22,7 @@ def currents(kwargs):
     files = kwargs["_files"]
     my_d = bdv.Detector(kwargs["det_name"], files["device"])
     my_l = LaserInjection(my_d, dict(files["laser"]))
-    path = os.path.join(os.path.dirname(kwargs["_slice_batch_paths"]["current"]), "plots")
+    path = plots(kwargs, "current")
     write_laser_currents(
         output(kwargs, "current"),
         my_d,
