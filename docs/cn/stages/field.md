@@ -73,7 +73,7 @@ FileNotFoundError: the weighting field at <v_goal> V needs the field solved at t
 
 ### 仿真链中的共享场补算、等待与交付
 
-在测试、应用或下游环节命令（如 `raser signal`、`raser current`、`raser readout`、`raser digitizer`、`raser trigger`、`raser reconstruction`、`raser analysis`）中，每个实验是一个继承 `raser` 实验基类的 Python 类，写明它包含的环节、器件与各器件角色。主命令在启动实验作业前，对去重后的各扫描点共享场需求逐项调用 `ready` 检查；未就绪时打印 `the field is not ready: raser field <device> --set field.voltage=<V> ...`，以独立单作业进程（随主命令在本地运行或 `-b` 提交集群，已有的 `field` 配置保持原样）先行补算。
+在测试、应用或下游环节命令（如 `raser signal`、`raser current`、`raser readout`、`raser digitizer`、`raser trigger`、`raser reconstruction`、`raser analysis`）中，每个实验是一个继承 `raser` 实验基类的 Python 类，写明它包含的环节、器件与各器件角色。主命令在启动实验作业前，对去重后的各扫描点共享场需求逐项调用 `ready` 检查；未就绪时打印 `solving the field first: raser field <device> --set field.voltage=<V> ...`，以独立单作业进程（随主命令在本地运行或 `-b` 提交集群，已有的 `field` 配置保持原样）先行补算。
 
 如果另一进程正在求解同一个共享场节点（节点锁冲突），主命令打印 `<环节名>: <被占用对象> is run by another process now; run the command again when it is done`，随后下游实验作业进入等待（集群 `-b` 提交共享场尚未完成时同样进入等待）：
 
@@ -108,8 +108,8 @@ raser signal HPK-Si-PiN --scan field.voltage=100,200 -s 2 --set deposit.events_p
 主命令在启动信号作业前依次打印：
 
 ```text
-the field is not ready: raser field HPK-Si-PiN --set field.voltage=100.0
-the field is not ready: raser field HPK-Si-PiN --set field.voltage=200.0
+solving the field first: raser field HPK-Si-PiN --set field.voltage=100.0
+solving the field first: raser field HPK-Si-PiN --set field.voltage=200.0
 ```
 
 程序先后启动两个单作业进程求解 `100 V` 与 `200 V` 的场，结果存放在 `HPK-Si-PiN` project 的 `field/` 下，两个目标偏压各是一个场节点：
@@ -119,15 +119,15 @@ the field is not ready: raser field HPK-Si-PiN --set field.voltage=200.0
 - 曲线数据为 `simIV0to100.0.root`、`simIV0to200.0.root`、`simCV0to100.0.root`、`simCV0to200.0.root`；一维分布图都在 `plots/` 里，各有 `.png` 与 `.pdf`：`iv`、`cv`、`doping`，以及 `electric_field_0V`、`electric_field_100V`、`electric_field_200V`、`potential_0V`、`potential_100V`、`potential_200V`、`weighting_potential_top_100V`、`weighting_potential_top_200V`、`weighting_field_top_100V`、`weighting_field_top_200V`（未加辐照，不画俘获率图）。
 - 实验在 `points.json` 中为 `voltage_100` 和 `voltage_200` 两个扫描点记下各自的 `field` 节点号，并将 `points/voltage_100/field`、`points/voltage_200/field` 软链接指向对应的场节点（可用 `raser status` 查看参数表中各点各环节的状态和节点号）。
 
-![HPK-Si-PiN IV 曲线](../images/field-iv-HPK-Si-PiN.png)
+![HPK-Si-PiN IV 曲线](../../images/field/iv-HPK-Si-PiN.png)
 
 `HPK-Si-PiN` 反向偏压扫描得到的暗电流（IV）曲线。
 
-![HPK-Si-PiN CV 曲线](../images/field-cv-HPK-Si-PiN.png)
+![HPK-Si-PiN CV 曲线](../../images/field/cv-HPK-Si-PiN.png)
 
 `HPK-Si-PiN` 电容随反向偏压变化的 CV 曲线。
 
-![HPK-Si-PiN 200 V 一维电场分布](../images/field-efield-HPK-Si-PiN-200V.png)
+![HPK-Si-PiN 200 V 一维电场分布](../../images/field/efield-HPK-Si-PiN-200V.png)
 
 `200 V` 偏压下 `HPK-Si-PiN` 沿深度方向的一维电场分布。
 
@@ -236,7 +236,7 @@ the field is not ready: raser field HPK-Si-PiN --set field.voltage=200.0
    - 主命令遍历每个待运行扫描点所需的共享场，按器件与 `field` 段设置去重；当某组需求未在本次命令中启动且 `ready(options, files) is None` 时，调用 `start(kwargs, options, files)`：
      1. 组装 `raser field <device> --set field.voltage=<偏压>` 命令参数（若辐照注量不同于器件文件里的值，或扫描点改了器件文件里偏压以外的值，一并传入）。
      2. 写入 `batch=kwargs["batch"]`、`mem=kwargs["mem"]`、`jobs=1`（确保在独立子进程或集群作业中执行，DEVSIM 只在那里加载）、`_argv=words`、`_entry_command_prefix=("field",)`、`_waiting=kwargs.get("_waiting")`（仅 `-b` 时非空）。
-     3. 打印 `"the field is not ready: " + " ".join(["raser", *words])`，启动场求解。
+     3. 打印 `"solving the field first: " + " ".join(["raser", *words])`，启动场求解。
    - 若 `start` 因另一进程持有节点锁而抛出 `Running`，`_make_shared` 打印 `f"{piece.name}: {running}"` 并跳过；随后主命令检测到 `ready` 为 `None`，将对应下游作业移入等待并打印等待提示。
    - 若非 `-b` 且非 `--dry-run`，`start` 返回后再次检查 `ready(options, files)`；仍为 `None` 时抛出 `RuntimeError(f"{piece.name} was made in this process and is still not ready for a point of {root}: waiting would not help")`。
 5. **参数表记录、视图链接与作业内校验（`chain._field`）**：

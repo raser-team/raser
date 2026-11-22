@@ -1,11 +1,11 @@
 """The file of a slice of a job.
 
-Written into batch/ of the seed folder that holds the slice, which is the
-one of another point when the slice does not read what makes this point
-differ; one file per job and slice:
-    deposit_<job>.h5    energy deposits and pairs of the recorded events
-    current_<job>.h5    induced current of every electrode, event by event
-    readout_<job>.h5   output voltage of the electronics, event by event
+Written into the node of the slice, <experiment>/nodes/<stage>/<node>/, which
+several points read when the slice does not read what makes them differ:
+    deposit.h5    energy deposits and pairs of the recorded events
+    current.h5    induced current of every electrode, event by event
+    readout.h5    output voltage of the electronics, event by event
+A slice of one position of several, current.<position>, writes current.<position>.h5.
 """
 
 import os
@@ -16,7 +16,10 @@ def _job(kwargs):
 
 
 def output(kwargs, name):
-    """The file of the slice `name` of this job, in the point that holds the slice."""
-    return os.path.join(
-        kwargs["_slice_batch_paths"][name], "%s_%s.h5" % (name, _job(kwargs))
-    )
+    """The file of the slice `name` of this job, in the node of the slice."""
+    return os.path.join(kwargs["_node_paths"][name], "%s.h5" % name)
+
+
+def plots(kwargs, name):
+    """The folder of the pictures of the slice `name` of this job, in its node."""
+    return os.path.join(kwargs["_node_paths"][name], "plots")

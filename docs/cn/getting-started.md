@@ -36,15 +36,15 @@ raser signal HPK-Si-PiN
 
 第一次用到这块器件时，先算它的电场、IV 和 CV，存在 `examples/HPK-Si-PiN/field/`，这块器件的其他实验也用这一份。
 
-![HPK-Si-PiN IV 曲线](images/field-iv-HPK-Si-PiN.png)
+![HPK-Si-PiN IV 曲线](../images/field/iv-HPK-Si-PiN.png)
 
 反向偏压下的暗电流。
 
-![HPK-Si-PiN CV 曲线](images/field-cv-HPK-Si-PiN.png)
+![HPK-Si-PiN CV 曲线](../images/field/cv-HPK-Si-PiN.png)
 
 电容随偏压下降，器件全耗尽后趋于平缓。
 
-![HPK-Si-PiN 200 V 一维电场分布](images/field-efield-HPK-Si-PiN-200V.png)
+![HPK-Si-PiN 200 V 一维电场分布](../images/field/efield-HPK-Si-PiN-200V.png)
 
 `200 V` 下沿器件深度的电场。
 
@@ -52,11 +52,11 @@ raser signal HPK-Si-PiN
 
 deposit 用 Geant4 算出电子在器件里留下多少能量、留在哪里；current 让这些电荷在电场中漂移，算出电极上的感应电流。
 
-![HPK-Si-PiN 单事例载流子漂移路径](images/current-drift-path-HPK-Si-PiN.png)
+![HPK-Si-PiN 单事例载流子漂移路径](../images/current/drift-path-HPK-Si-PiN.png)
 
 一个事例里电子和空穴的漂移轨迹。
 
-![HPK-Si-PiN 单事例感应电流](images/current-event-HPK-Si-PiN.png)
+![HPK-Si-PiN 单事例感应电流](../images/current/event-HPK-Si-PiN.png)
 
 同一个事例在读出电极上的感应电流：电子分量、空穴分量和总电流。
 
@@ -64,7 +64,7 @@ deposit 用 Geant4 算出电子在器件里留下多少能量、留在哪里；c
 
 readout 把感应电流送进器件的等效电路，再经过前端放大器，算出放大器输出端的电压波形。这个示例用的放大器是 SantaCruz 板加 Gali52，末端接 50 Ω：
 
-![SantaCruz 放大器原理图](images/afe-schematic-SantaCruz.png)
+![SantaCruz 放大器原理图](../images/readout/schematic-SantaCruz.png)
 
 放大器的噪声也在这一步算出来，叠在输出波形上。
 
@@ -84,15 +84,15 @@ reconstruction 在每个被记录的事例里，从波形上取出这些量：�
 
 analysis 汇总所有事例。
 
-![HPK-Si-PiN 电荷收集效率分布](images/analysis-efficiency-HPK-Si-PiN.png)
+![HPK-Si-PiN 电荷收集效率分布](../images/analysis/efficiency-HPK-Si-PiN.png)
 
 电荷收集效率的分布，虚线是平均值。
 
-![HPK-Si-PiN 脉冲幅度分布](images/analysis-amplitude-HPK-Si-PiN.png)
+![HPK-Si-PiN 脉冲幅度分布](../images/analysis/amplitude-HPK-Si-PiN.png)
 
 被记录事例的脉冲幅度，虚线是幅度阈值。
 
-![HPK-Si-PiN 时间差分布与截断高斯拟合](images/analysis-time-difference-HPK-Si-PiN.png)
+![HPK-Si-PiN 时间差分布与截断高斯拟合](../images/analysis/time-difference-HPK-Si-PiN.png)
 
 各种定时方法给出的时刻相对真实沉积时刻的差。仿真知道每个事例真实的沉积时刻，所以能这样算出时间分辨；实验里拿不到真实时刻，要测时间分辨得用参考器件，见 timeres。
 
@@ -123,7 +123,7 @@ raser signal my-PiN --set field.voltage=100
 raser signal my-PiN --scan field.voltage=100,200
 ```
 
-![HPK-Si-PiN 电荷收集效率与时间分辨随偏压变化](images/analysis-points-HPK-Si-PiN.png)
+![HPK-Si-PiN 电荷收集效率与时间分辨随偏压变化](../images/analysis/trend-HPK-Si-PiN.png)
 
 打印 `work/my-PiN` 的参数表（各实验、各扫描点、各环节的状态和节点号）：
 

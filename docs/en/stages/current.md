@@ -88,11 +88,11 @@ Taking job `0`'s `current.h5` at the $200\ \text{V}$ point in the example above:
 
 `index` has length `196`, meaning $196$ of the $200$ recorded events wrote induced current into `current`, while the remaining $4$ were zero across all time bins. Downstream readers slice `index` and `current` using `stored` and `count`, reconstructing unstored electrodes as zero.
 
-![HPK-Si-PiN single-event carrier drift path](../images/current-drift-path-HPK-Si-PiN.png)
+![HPK-Si-PiN single-event carrier drift path](../../images/current/drift-path-HPK-Si-PiN.png)
 
 Single-event carrier drift path plot for `HPK-Si-PiN`: top shows 3D trajectories inside the device bulk; bottom shows deposit points, electron trajectories, and hole trajectories in the $x$-$z$ plane (coordinates in $\mu\text{m}$).
 
-![HPK-Si-PiN single-event induced current](../images/current-event-HPK-Si-PiN.png)
+![HPK-Si-PiN single-event induced current](../../images/current/event-HPK-Si-PiN.png)
 
 Single-event induced current on the `top` electrode of `HPK-Si-PiN`, showing the electron component, hole component, and total induced current versus time (horizontal axis in $\text{s}$, vertical axis in $\text{A}$).
 

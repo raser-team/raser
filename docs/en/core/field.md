@@ -156,9 +156,9 @@ where $Q_j$ is the contact charge on electrode $j$ ($\text{C/cm}$), $V_1 = 1\ \t
 
 After solving, the code determines whether each node is conductive at that bias voltage from its resistivity and depletion state:
 
-$$\text{conductive} \iff \rho < \rho_0 \ \ \text{or}\ \ \bigl(|N_{\text{net}}| > 0 \ \text{and}\ n + p > 0.5\,|N_{\text{net}}|\bigr), \qquad \rho = \frac{1}{q(\mu_n n + \mu_p p)} \tag{19}$$
+$$\text{conductive} \iff \rho < \rho_0 \ \ \text{or}\ \ \bigl(|N_{\text{net}}| > 0 \ \text{and}\ n_{\text{maj}} > 0.5\,|N_{\text{net}}|\bigr), \qquad \rho = \frac{1}{q(\mu_n n + \mu_p p)} \tag{19}$$
 
-where $\rho$ is the resistivity ($\Omega\cdot\text{cm}$), $\rho_0$ = `RESISTIVITY` $= 10\ \Omega\cdot\text{cm}$, `UNDEPLETED` $= 0.5$ is the carrier-count threshold per net dopant ion, and $q$ is taken as `1.602176634e-19` C. Nodes with zero net doping are judged by resistivity alone. Fields solved by DEVSIM use the mobility selected for the region (defaulting to the constant mobility parameters `mu_n`, `mu_p`); fields imported from TCAD use each node's `eMobility`, `hMobility` from the file. This is implemented in `conductive.conductive`, and the classification is written to `Conductive_<V>V.pkl`, used both in Eq. (16) and for the "collected" criterion in [current.md](current.md) (`DevsimField.get_conductive`).
+where $\rho$ is the resistivity ($\Omega\cdot\text{cm}$), $\rho_0$ = `RESISTIVITY` $= 10\ \Omega\cdot\text{cm}$, $n_{\text{maj}}$ is the majority-carrier concentration ($n$ at n-type nodes, $N_{\text{net}} > 0$; $p$ at p-type nodes, $N_{\text{net}} < 0$), `UNDEPLETED` $= 0.5$ is the majority-carrier-count threshold per net dopant ion: the second condition asks whether the majority carriers are still there, not depleted, and minority carriers that spill in from elsewhere do not count, entering only through the resistivity of the first condition, and $q$ is taken as `1.602176634e-19` C. Nodes with zero net doping are judged by resistivity alone. Fields solved by DEVSIM use the mobility selected for the region (defaulting to the constant mobility parameters `mu_n`, `mu_p`); fields imported from TCAD use each node's `eMobility`, `hMobility` from the file. This is implemented in `conductive.conductive`, and the classification is written to `Conductive_<V>V.pkl`, used both in Eq. (16) and for the "collected" criterion in [current.md](current.md) (`DevsimField.get_conductive`).
 
 ### Device Circuit Parameters
 
@@ -174,7 +174,7 @@ $$\text{1D:}\quad r = \sum_{k} w_k\,\bar\rho_k, \quad W_{\text{und}} = \sum_k w_
 
 where:
 
-- a bulk node must have non-zero net doping, $n + p > 0.5|N_{\text{net}}|$, and $\rho \ge 10\ \Omega\cdot\text{cm}$ (heavily doped layers beneath electrodes are excluded);
+- a bulk node must have non-zero net doping, $n_{\text{maj}} > 0.5|N_{\text{net}}|$ (majority carriers as in Eq. (19)), and $\rho \ge 10\ \Omega\cdot\text{cm}$ (heavily doped layers beneath electrodes are excluded);
 - 1D: the sum runs over mesh intervals $k$ whose two adjacent nodes both belong to the undepleted bulk; $w_k$ is the interval width (cm), and $\bar\rho_k$ is the average resistivity of the two endpoint nodes ($\Omega\cdot\text{cm}$);
 - 2D, 3D: the sum runs over undepleted bulk nodes $i$; $V_i$ is the node volume (DEVSIM's `NodeVolume`, in $\text{cm}^2$ for 2D and $\text{cm}^3$ for 3D), and $\rho_i$ is the node resistivity; $S$ is the mesh span in the electrode plane (lateral width in cm for 2D, lateral area in $\text{cm}^2$ for 3D); $W_{\text{und}}$ is the average thickness of the undepleted layer;
 - $r$: $\Omega\cdot\text{cm}^2$; $c$: $\text{F/cm}^2$; $\varepsilon$: region parameter `Permittivity`, $\text{F/cm}$;
@@ -348,7 +348,7 @@ When solving for the electric field, `solver_section.main` executes in the follo
 
 1. **Nodal quantities**: collects coordinates per region together with `Potential`, `NetDoping`, `Electrons`, `Holes`, `TrappingRate_n`, and `TrappingRate_p`; for DEVSIM fields, also computes `Conductive` (Eq. 19).
 2. **Undepleted bulk** (DEVSIM fields, 1D, 2D, and 3D): computes $W_{\text{und}}$ and specific resistance $r$ using Eq. (20a), writes `<V>V.undepleted.json` with specific capacitance $10^{12}\varepsilon/W_{\text{und}}$ ($\text{pF/cm}^2$), or `null` at full depletion, and records the bias in `solved.undepleted`.
-3. **Plotting**: plots potential, electron and hole trapping rates (not drawn without irradiation), and electric field (edge electric field at mesh edge midpoints for DEVSIM fields; `ElectricField_0` for TCAD 1D/2D and the 3-component norm for TCAD 3D).
+3. **Plotting**: plots potential, electron and hole trapping rates (not drawn without irradiation), and electric field. In 1D the electric field is the edge electric field at mesh edge midpoints for DEVSIM fields and `ElectricField_0` for TCAD fields. In 2D and 3D the plot shows the field strength $|\mathbf{E}| = |\nabla\psi|$: the gradient of the linear interpolation of the nodal potential on each mesh element (triangle, tetrahedron), averaged onto the nodes weighted by element area (volume), the same for DEVSIM and TCAD fields; the weighting field is plotted likewise as $|\nabla\phi_w|$.
 4. **Writing pickles**: one file per quantity; `NetDoping` is written only at $V = 0$ or for TCAD fields. When `is_flip` is true, the two 2D coordinates are swapped.
 
 ### Reading: Assets in a Field Node
@@ -512,7 +512,7 @@ Files are written to the field node directory `work/<device>/field/<node_id>/`. 
 
 ### Generated Plots
 
-Figures of 1D devices are stored in `plots/` of the field node directory, with the style of [Figures (`supports/figures`)](../supports/figures.md); 2D and 3D figures are stored in the node directory.
+Figures of 1D, 2D, and 3D devices are all stored in `plots/` of the field node directory, with the style of [Figures (`supports/figures`)](../supports/figures.md).
 
 | File | Content | Axis Units |
 | --- | --- | --- |
@@ -522,9 +522,18 @@ Figures of 1D devices are stored in `plots/` of the field node directory, with t
 | `plots/doping.png/.pdf` | 1D donor and acceptor concentrations along depth, log vertical axis; axes `Depth [μm]`, `Doping [cm⁻³]` | μm, $\text{cm}^{-3}$ |
 | `plots/potential_<V>V`, `plots/electric_field_<V>V`, `plots/trapping_rate_<V>V` (each with `.png/.pdf`) | 1D, per bias: potential `Potential [V]`, electric field `Electric field [kV/cm]`, and electron (blue) and hole (red) trapping rates on one figure with log vertical axis `Trapping rate [s⁻¹]`; the trapping rate is not drawn when both are zero (no irradiation); `<V>` is written in its shortest form (`200.0` as `200`) | μm; V, kV/cm, $\text{s}^{-1}$ |
 | `plots/weighting_potential_<contact>_<V>V`, `plots/weighting_field_<contact>_<V>V` (each with `.png/.pdf`) | 1D, per readout electrode and per bias with a weighting field solved: weighting potential `Weighting potential` and weighting field `Weighting field [cm⁻¹]`; stored in `plots/` with the other figures, not under `weightingfield/<contact>/` | μm; None, $\text{cm}^{-1}$ |
-| `<title><v>_2d.pdf/.root`, `<title><v>_1d.pdf/.root` | 2D contour plot and centerline profile; `<title>` is `Potential`, `Electric Field`, `Electron Trapping Rate`, `Hole Trapping Rate`, `Weighting Potential`, or `Weighting Field` | $\mu\text{m}$ |
-| `<title>_<v>_3d_1d.pdf/.root`, `_XY`, `_YZ`, `_XZ` | 3D centerline profile and three mid-plane slices; `<title>` is `Potential Distribution `, `Electric Field`, `Electron Trapping Rate `, `Hole Trapping Rate ` (with trailing space) or `Weighting Potential`, `Weighting Field` | $\mu\text{m}$ |
+| `plots/potential_<V>V`, `plots/electric_field_<V>V` (each `.png/.pdf`) | 2D and 3D, one per bias, three panels side by side: left the 2D slice (viridis map, color scale is the quantity), middle the depth profile, right the lateral profile; axes `Potential [V]`, `Electric field [kV/cm]` | μm; V, kV/cm |
+| `plots/trapping_rate_<V>V` (`.png/.pdf`) | 2D and 3D electron (blue) and hole (red) trapping rates along the depth in one plot, log vertical axis; not drawn when both are zero (no irradiation) | μm; $\text{s}^{-1}$ |
+| `plots/weighting_potential_<contact>_<V>V`, `plots/weighting_field_<contact>_<V>V` (each `.png/.pdf`) | 2D and 3D weighting potential and weighting field of each read-out electrode, three panels as above; axes `Weighting potential`, `Weighting field [cm⁻¹]` | μm; none, $\text{cm}^{-1}$ |
 | `HEMT_TRANSPORT_IdVg.png/.pdf` | HEMT transfer characteristic | V, mA/mm |
+
+The slices and profiles of 2D and 3D plots follow `mesh_axes`, and the axis titles name the device axes: lateral `x [μm]`, `y [μm]`, depth `Depth [μm]`. The "middle" of a coordinate is the mean of its minimum and maximum on the mesh.
+
+- Mesh of depth and $x$, `("z", "x")`: the slice is the whole mesh; the depth profile is at the middle of $x$, the lateral profile runs along $x$ at the middle of the depth.
+- Cross-section mesh `("x", "y")`: the slice is the whole mesh; there is no depth, and the two profiles run along $x$ (at the middle of $y$) and along $y$ (at the middle of $x$).
+- 3D: the slice is the $x$-$z$ plane through the middle of $y$; the depth profile is at the middle of $x$ and $y$, the lateral profile runs along $x$ at the middle of $y$ and of the depth.
+- Weighting potential and weighting field: the depth profile is at the mean lateral coordinate of the nodes of the read-out electrode, right below it; in a row of cells, the electrode of the middle cell.
+- Values on profiles and on 3D slices are linear interpolations on the mesh elements.
 
 ## References
 

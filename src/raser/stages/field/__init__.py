@@ -330,7 +330,7 @@ def start(kwargs, options, files):
         # the command of the experiment, which the field job starts again when it is done
         _waiting=kwargs.get("_waiting"),
     )
-    print("the field is not ready: " + " ".join(["raser", *words]))
+    print("solving the field first: " + " ".join(["raser", *words]))
     # The point is this experiment's, not one of the field's own scans.
     execute(WORKFLOW, field_kwargs, register=False)
 

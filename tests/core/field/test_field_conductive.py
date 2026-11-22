@@ -99,3 +99,28 @@ def test_the_undepleted_layer_of_a_mesh_is_that_of_its_columns_along_the_depth()
     assert along_depth[0] == pytest.approx(6e-4, rel=1e-12, abs=0)
     assert width == pytest.approx(along_depth[0], rel=1e-12, abs=0)
     assert resistance == pytest.approx(along_depth[1], rel=1e-12, abs=0)
+
+
+def test_minority_carriers_flowing_into_an_n_type_gap_do_not_make_it_undepleted() -> None:
+    # n-type 9.3e11 cm^-3 between strips: 19 electrons, 3e13 holes from the
+    # neighbouring p+ implants, about 430 Ohm cm
+    assert not _is_conductive(electrons=19.0, holes=3e13, net_doping=9.3e11)
+
+
+def test_minority_carriers_flowing_into_a_p_type_gap_do_not_make_it_undepleted() -> None:
+    assert not _is_conductive(electrons=1e13, holes=1e5, net_doping=-3.2e12)
+
+
+def test_an_n_type_node_with_its_electrons_is_conductive() -> None:
+    assert _is_conductive(electrons=9.3e11, holes=1e3, net_doping=9.3e11)
+
+
+def test_the_undepleted_bulk_leaves_out_nodes_with_inflowing_minority_carriers() -> None:
+    # n-type 9.3e11 cm^-3 at 0 to 4 um: nodes 3 and 4 carry their electrons,
+    # nodes 0 to 2 are depleted and hold holes from elsewhere
+    depth = np.arange(5) * 1e-4
+    net_doping = np.full(5, 9.3e11)
+    electrons = np.array([10.0, 10.0, 10.0, 9.3e11, 9.3e11])
+    holes = np.array([3e13, 3e13, 3e13, 0.0, 0.0])
+    width, _ = undepleted_bulk(depth, electrons, holes, net_doping, MU_N, MU_P)
+    assert width == pytest.approx(1e-4, rel=1e-12, abs=0)

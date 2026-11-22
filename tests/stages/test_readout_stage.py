@@ -40,7 +40,7 @@ def _resistive_strips(tmp_path):
     current = np.zeros((20, 1000))
     current[7, :10] = 1e-15 / (10 * DT_S)
     append_currents(
-        tmp_path / "current_0.h5",
+        tmp_path / "current.h5",
         [f"cell{k}" for k in range(1, 21)],
         DT_S,
         EventCurrents(0, 0.0, current, current.sum(axis=1) * DT_S, 0.0),
@@ -48,7 +48,7 @@ def _resistive_strips(tmp_path):
     return {
         "det_name": "SiC_LGAD_strip",
         "_files": {"device": device},
-        "_slice_batch_paths": {"current": tmp_path, "readout": tmp_path},
+        "_node_paths": {"current": tmp_path, "readout": tmp_path},
         "amplifier": "Termination50",
     }
 
@@ -57,7 +57,7 @@ def test_currents_on_the_cells_of_a_resistive_layer_come_out_on_its_strips(tmp_p
     # each strip on its 50 Ohm
     waveforms(_resistive_strips(tmp_path))
 
-    record = read_waveforms(tmp_path / "readout_0.h5")
+    record = read_waveforms(tmp_path / "readout.h5")
     assert record.electrodes == ["left", "right"]
     # the cells lie below the electrode on 740 V: they collect holes
     assert record.pulse_edge == ["rising", "rising"]
@@ -79,14 +79,14 @@ def test_sheet_resistance_given_to_the_slice_takes_the_place_of_the_device_file(
 
     waveforms(kwargs)
 
-    record = read_waveforms(tmp_path / "readout_0.h5")
+    record = read_waveforms(tmp_path / "readout.h5")
     charge_fc = record.events[0].voltage.sum(axis=1) * DT_S / 50.0 * 1e15
     left_ohm, right_ohm = 100 + 50.0, 300 + 50.0
     assert charge_fc == pytest.approx(
         [right_ohm / (left_ohm + right_ohm), left_ohm / (left_ohm + right_ohm)],
         rel=0.01,
     )
-    assert read_circuit_values(tmp_path / "readout_0.h5")["sheet_resistance"] == {
+    assert read_circuit_values(tmp_path / "readout.h5")["sheet_resistance"] == {
         "ohm": 4000.0,
         "from": "chosen",
     }
@@ -136,7 +136,7 @@ def test_a_planar_device_not_fully_depleted_is_read_out_through_its_undepleted_b
     current = np.zeros((1, 2000))
     current[0, :10] = 1e-15 / (10 * DT_S)
     append_currents(
-        tmp_path / "current_0.h5",
+        tmp_path / "current.h5",
         ["top"],
         DT_S,
         EventCurrents(0, 0.0, current, current.sum(axis=1) * DT_S, 0.0),
@@ -146,17 +146,17 @@ def test_a_planar_device_not_fully_depleted_is_read_out_through_its_undepleted_b
         {
             "det_name": "HPK-Si-PiN",
             "_files": {"device": device},
-            "_slice_batch_paths": {"current": tmp_path, "readout": tmp_path},
+            "_node_paths": {"current": tmp_path, "readout": tmp_path},
             "amplifier": "Termination50",
         }
     )
 
-    assert read_circuit_values(tmp_path / "readout_0.h5")["undepleted_layer"] == {
+    assert read_circuit_values(tmp_path / "readout.h5")["undepleted_layer"] == {
         "ohm": pytest.approx(9.4 / 0.0169, rel=1e-12),
         "farad": pytest.approx(262.0e-12 * 0.0169, rel=1e-12, abs=0),
         "from": "field",
     }
-    voltage = read_waveforms(tmp_path / "readout_0.h5").events[0].voltage[0]
+    voltage = read_waveforms(tmp_path / "readout.h5").events[0].voltage[0]
     times = (np.arange(voltage.size) + 0.5) * DT_S
     assert voltage.sum() * DT_S / 50.0 * 1e15 == pytest.approx(1.0, rel=0.01)
     assert np.sum(times * voltage) / np.sum(voltage) > 1.5e-9
@@ -203,7 +203,7 @@ def test_a_row_of_strips_is_read_out_through_the_capacitances_its_field_stored(
     current = np.zeros((4, 200))
     current[1, :10] = 1e-15 / (10 * DT_S)
     append_currents(
-        tmp_path / "current_0.h5",
+        tmp_path / "current.h5",
         [f"top{k}" for k in range(1, 5)],
         DT_S,
         EventCurrents(0, 0.0, current, current.sum(axis=1) * DT_S, 0.0),
@@ -213,12 +213,12 @@ def test_a_row_of_strips_is_read_out_through_the_capacitances_its_field_stored(
         {
             "det_name": "ITk-Si-strip",
             "_files": {"device": device},
-            "_slice_batch_paths": {"current": tmp_path, "readout": tmp_path},
+            "_node_paths": {"current": tmp_path, "readout": tmp_path},
             "amplifier": "Termination50",
         }
     )
 
-    values = read_circuit_values(tmp_path / "readout_0.h5")
+    values = read_circuit_values(tmp_path / "readout.h5")
     assert values["between_electrodes"] == {
         "farad": [pytest.approx(0.125e-12, rel=1e-12, abs=0)],
         "from": "field",
@@ -228,7 +228,7 @@ def test_a_row_of_strips_is_read_out_through_the_capacitances_its_field_stored(
         "from": "field",
     }
     # the neighbours see it through the capacitances between the strips
-    voltage = read_waveforms(tmp_path / "readout_0.h5").events[0].voltage
+    voltage = read_waveforms(tmp_path / "readout.h5").events[0].voltage
     peaks = np.abs(voltage).max(axis=1)
     assert peaks[0] > 0.05 * peaks[1] and peaks[2] > 0.05 * peaks[1]
 
@@ -262,7 +262,7 @@ def test_a_device_without_a_measured_capacitance_takes_the_one_its_field_solved(
     current = np.zeros((1, 400))
     current[0, :10] = -1e-15 / (10 * dt)
     append_currents(
-        tmp_path / "current_0.h5",
+        tmp_path / "current.h5",
         ["top"],
         dt,
         EventCurrents(0, 0.0, current, current.sum(axis=1) * dt, 0.0),
@@ -272,10 +272,10 @@ def test_a_device_without_a_measured_capacitance_takes_the_one_its_field_solved(
         {
             "det_name": "HPK-Si-PiN",
             "_files": {"device": device},
-            "_slice_batch_paths": {"current": tmp_path, "readout": tmp_path},
+            "_node_paths": {"current": tmp_path, "readout": tmp_path},
             "amplifier": "Termination50",
         }
     )
 
-    voltage = read_waveforms(tmp_path / "readout_0.h5").events[0].voltage[0]
+    voltage = read_waveforms(tmp_path / "readout.h5").events[0].voltage[0]
     assert -voltage.min() == pytest.approx(1e-15 / 16.9e-12, rel=0.1)

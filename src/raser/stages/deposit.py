@@ -12,8 +12,8 @@ from raser.core.deposit.generation import GENERATED_LIMIT
 from raser.core.deposit.simulate_deposits import write_simulated_deposits
 from raser.core.deposit.view_geometry import view_geometry
 from raser.lifecycle.slices import Ended
-from raser.stages.files import _job
 from raser.stages.files import output
+from raser.stages.files import plots
 
 
 def deposits(kwargs):
@@ -70,13 +70,11 @@ def deposits(kwargs):
 
 def _picture(kwargs):
     """The picture of the Geant4 geometry and the first `plots` recorded
-    events of this job, plots/job_<job>/g4_geometry.png beside the batch of
-    the deposits, and the number of events drawn; none for plots 0."""
+    events of this job, plots/g4_geometry.png in the node of the
+    deposits, and the number of events drawn; none for plots 0."""
     drawn = int(kwargs.get("plots") or 0)
     if not drawn:
         return None, 0
-    folder = os.path.join(
-        os.path.dirname(kwargs["_slice_batch_paths"]["deposit"]), "plots", "job_%s" % _job(kwargs)
-    )
+    folder = plots(kwargs, "deposit")
     os.makedirs(folder, exist_ok=True)
     return os.path.join(folder, "g4_geometry"), drawn

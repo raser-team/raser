@@ -38,6 +38,10 @@ def draw_drift_path(my_d, deposits, my_f, my_current, path, event):
     structure.GetXaxis().SetNdivisions(5)
     structure.GetYaxis().SetNdivisions(5)
     structure.GetZaxis().SetNdivisions(5)
+    # the titles of the 3D box stand off its tick labels
+    structure.GetXaxis().SetTitleOffset(1.6)
+    structure.GetYaxis().SetTitleOffset(1.8)
+    structure.GetZaxis().SetTitleOffset(1.4)
     structure.Draw("ISO")
 
     c1.Update()

@@ -53,9 +53,9 @@ Single-round truncated-Gaussian maximum-likelihood fitting is solved by `truncat
 
 ### Straight Tracks and Residuals
 
-When several devices are arranged along a beam as a telescope (see [Beam Telescope](../bench/telescope.md)), the cluster positions of each slot (`cluster_x`, `cluster_y` of [event reconstruction](reconstruction.md)) are transformed into global coordinates according to the slot's placement (Eq. (17) of [Energy Deposition and Ionization](deposit.md#placement-of-multiple-devices), evaluated at the mid-plane $z = l_z/2$ in device coordinates):
+When several devices are arranged along a beam as a telescope (see [Beam Telescope](../bench/telescope.md)), the cluster positions of each slot (`cluster_x`, `cluster_y` of [event reconstruction](reconstruction.md)) are transformed into global coordinates according to the slot's placement (Eqs. (17)–(18) of [Energy Deposition and Ionization](deposit.md#line-along-the-beam), evaluated at the mid-plane $z = l_z/2$ in device coordinates):
 
-$$\begin{pmatrix} X \\ Y \end{pmatrix} = \begin{pmatrix} P_x \\ P_y \end{pmatrix} + \begin{pmatrix} \cos\phi & -\sin\phi \\ \sin\phi & \cos\phi \end{pmatrix}\begin{pmatrix} \bar{x}_c - l_x/2 \\ \bar{y}_c - l_y/2 \end{pmatrix}, \qquad Z = P_z + \frac{l_z}{2} \tag{12}$$
+$$\begin{pmatrix} X \\ Y \end{pmatrix} = \begin{pmatrix} P_x \\ P_y \end{pmatrix} + \begin{pmatrix} \cos\phi & -\sin\phi \\ \sin\phi & \cos\phi \end{pmatrix}\begin{pmatrix} s\,(\bar{x}_c - l_x/2) \\ \bar{y}_c - l_y/2 \end{pmatrix}, \qquad Z = P_z + s\,\frac{l_z}{2} \tag{12}$$
 
 For events in which every slot has exactly one cluster, an unweighted least-squares straight-line fit is performed separately on $(Z_j, X_j)$ and $(Z_j, Y_j)$ over the reference-layer set $\mathcal{R}$, followed by the residual at each slot and the chi-square of the reference track:
 
@@ -66,7 +66,7 @@ $$r_{x,s} = k_x Z_s + b_x - X_s, \qquad r_{y,s} = k_y Z_s + b_y - Y_s, \qquad \c
 where:
 
 - $(\bar{x}_c, \bar{y}_c)$: cluster position in the slot's device coordinates, $\mu\text{m}$;
-- $\mathbf{P}$, $\phi$: the slot's `position` ($\mu\text{m}$) and `rotation_z` (degrees); $l_x, l_y, l_z$: dimensions of the device in that slot, $\mu\text{m}$;
+- $\mathbf{P}$: world coordinates of the front-surface center of the slot's device, accumulated from `along_beam` by Eq. (17), $\mu\text{m}$; $\phi$: the slot's `rotation_z` (degrees); $s$: $+1$ when the slot's `facing` is `"upstream"` and $-1$ when it is `"downstream"`; $l_x, l_y, l_z$: dimensions of the device in that slot, $\mu\text{m}$;
 - $(X, Y, Z)$: global coordinates of the cluster, $\mu\text{m}$; $\bar{X}, \bar{Z}$: arithmetic means of $X_j$ and $Z_j$ over the reference layers; $k_y$ and $b_y$ replace $X$ with $Y$ in Eq. (13);
 - $k_x, k_y$: track slopes (dimensionless); $b_x, b_y$: track intercepts, $\mu\text{m}$;
 - $r_{x,s}, r_{y,s}$: residual at slot $s$ (reference layer or DUT), track position minus cluster position, $\mu\text{m}$;
@@ -170,9 +170,9 @@ The table below lists all built-in physical constants and hard-coded algorithmic
 
 ### Track Fitting and DUT Residual Widths (`tracking.py`)
 
-`track_events(hits, placements, roles)` joins the reconstruction results of all slots of one job into tracks. All three arguments are dictionaries keyed by slot name, with slot order taken from `placements`; the function uses only the passed-in data. `hits[slot]` is `SlotHits(event, clusters, cluster_x, cluster_y)`, taken from the columns of the same names in that slot's event table. `placements[slot]` is `Placement(position, rotation_z, l_x, l_y, l_z, p_x, p_y)`. `roles[slot]` is `"reference"` or `"dut"`.
+`track_events(hits, placements, roles)` joins the reconstruction results of all slots of one job into tracks. All three arguments are dictionaries keyed by slot name, with slot order taken from `placements`; the function uses only the passed-in data. `hits[slot]` is `SlotHits(event, clusters, cluster_x, cluster_y)`, taken from the columns of the same names in that slot's event table. `placements[slot]` is `Placement(front, facing, rotation_z, l_x, l_y, l_z, p_x, p_y)`, where `front` is $\mathbf{P}$ of Eq. (12) (`[x, y, z]`, $\mu\text{m}$), worked out by the caller from the setup's `along_beam`. `roles[slot]` is `"reference"` or `"dut"`.
 
-1. **Input validation**: if the slot names of the three dictionaries differ, raise `ValueError` (`the slots of hits, placements and roles differ`); if there are fewer than `2` reference layers, or if all reference layers have the same $Z$, raise `ValueError` (`a track needs reference layers at two or more z`); if `rotation_z` is not `0`, `90`, `180`, or `270`, raise `ValueError`.
+1. **Input validation**: if the slot names of the three dictionaries differ, raise `ValueError` (`the slots of hits, placements and roles differ`); if there are fewer than `2` reference layers, or if all reference layers have the same $Z$, raise `ValueError` (`a track needs reference layers at two or more z`); if `rotation_z` is not `0`, `90`, `180`, or `270`, or `facing` is not `"upstream"` or `"downstream"`, raise `ValueError`.
 2. **Event alignment**: the union of event IDs across all slots, sorted in ascending order, gives the rows of the result; for an event not recorded at a slot, that slot's cluster count is `0`.
 3. **Selection**: events in which every slot has exactly `1` cluster are marked `selected = True`.
 4. **Coordinate transformation and fitting**: slots with `1` cluster compute $(X, Y)$ via Eq. (12), otherwise `NaN`. Selected events compute $k_x, b_x, k_y, b_y$ via Eq. (13) and the residuals at all slots and $\chi^2$ via Eq. (14); for unselected events these quantities are `NaN`.
@@ -295,7 +295,7 @@ In the table below, `result.json` refers to `points/<point>/analysis/result.json
 
 ### Plot Output
 
-The table below lists the ROOT statistical plots generated directly by `WaveformStatistics.draw(output_path, tag, vis)` and the Matplotlib statistical plots generated by [../stages/analysis.md](../stages/analysis.md) from the outputs of `collection_efficiency` and `core_width`; among the latter, `points.png` is written under `<experiment>/analysis/` and the rest under `points/<point>/analysis/`:
+The table below lists the ROOT statistical plots generated directly by `WaveformStatistics.draw(output_path, tag, vis)` and the Matplotlib statistical plots generated by [../stages/analysis.md](../stages/analysis.md) from the outputs of `collection_efficiency` and `core_width`; the latter each have a `.png` and a `.pdf`, and `trend` is written under `<experiment>/analysis/` and the rest under `points/<point>/analysis/`:
 
 | Filename | Content | Axis Units |
 | --- | --- | --- |
@@ -308,11 +308,11 @@ The table below lists the ROOT statistical plots generated directly by `Waveform
 | `<tag>_ita_calibration_ToT.pdf`, `.C`; `..._amplitude.pdf`, `.C`; `..._charge.pdf`, `.C` | `20 × 20`-bin 2D $\eta$ position-calibration plot `TH2F` (`"COLZ"`) drawn by `WaveformStatistics.ita_calibration` | Horizontal axis `Original x` (`[-0.5, 0.5]`, electrode pitches), vertical axis `Reconstructed x` (`[0.5, -0.5]`, electrode pitches) |
 | `track_<event>` | `draw_track` in `tracking.py` draws one for each of the first `analysis.plots` selected events: $X$-$Z$ on the left and $Y$-$Z$ on the right, filled markers for reference layers, open markers for DUTs, and the straight line of Eq. (13) | Horizontal axis `z [mm]`, vertical axes `x [μm]`, `y [μm]` |
 | `residual_<slot>` | `draw_residual` in `tracking.py` draws one for each DUT: `residual_x` on the left and `residual_y` on the right, a `64`-bin histogram within `mean ± 8 * sigma`, the last-round window shaded, and the truncated-Gaussian curve, with $\sigma_{\text{Tol}}$ in the legend | Horizontal axes `Residual x [μm]`, `Residual y [μm]`, vertical axis `Events` |
-| `efficiency.png` | `60`-bin charge collection efficiency histogram over all recorded events with a dashed vertical mean line, drawn by `stages/analysis` when recorded events $\ge 2$ | Horizontal axis `charge collection efficiency` (dimensionless), vertical axis `events` (count) |
-| `amplitude.png` | `60`-bin pulse amplitude histogram of selected events with a dashed vertical `amplitude_threshold` line, drawn by `stages/analysis` when recorded events $\ge 1$ | Horizontal axis `amplitude above the baseline [mV]`, vertical axis `events` (count) |
-| `time_difference.png` | `3 × 4` grid of `64`-bin time-difference histograms within `mean ± 8 * sigma` for `ToA`, `CoG`, and the first `10` `CFD*` channels, showing the final-round window shading and truncated-Gaussian curve, drawn by `stages/analysis` when timing fits succeed | Horizontal axis `<channel> - truth [ps]`, vertical axis event count |
-| `resolution_of_fraction.png` | Truncated-Gaussian `sigma` (with error bars) and `sigma68` versus constant fraction across all `CFD*` channels, drawn by `stages/analysis` | Horizontal axis `fraction of the CFD` (dimensionless), vertical axis `width of time - truth [ps]` |
-| `points.png` | Collection efficiency (left) and `sigma` of each `CFD*` channel (right) versus the scan variable, drawn by `stages/analysis` when multiple scan points exist and the sole varying scan parameter is numeric | Horizontal axis `<scanned_key>`, left vertical axis `charge collection efficiency` (dimensionless), right vertical axis `sigma of time - truth [ps]` |
+| `efficiency.png`, `.pdf` | `60`-bin charge collection efficiency histogram over all recorded events with a black dashed vertical mean line, drawn by `stages/analysis` when recorded events $\ge 2$; the legend reads `<N> events` and `mean <mean>` | Horizontal axis `Charge collection efficiency` (dimensionless), vertical axis `Events` |
+| `amplitude.png`, `.pdf` | `60`-bin pulse amplitude histogram of selected events with a black dashed vertical `amplitude_threshold` line, drawn by `stages/analysis` when recorded events $\ge 1$; the legend reads `<n> of <N> events` and `threshold <threshold> mV` | Horizontal axis `Amplitude [mV]`, vertical axis `Events` |
+| `time_difference.png`, `.pdf` | `3 × 4` grid of `64`-bin time-difference histograms within `mean ± 8 * sigma` for `ToA`, `CoG`, and the first `10` `CFD*` channels, showing the final-round window shading and black truncated-Gaussian curve, drawn by `stages/analysis` when timing fits succeed; each subplot title is the channel name and its upper left corner shows `sigma68`, `sigma` and the in-window count | Horizontal axis `<channel> - truth [ps]`, vertical axis `Events` |
+| `resolution_of_fraction.png`, `.pdf` | Truncated-Gaussian `sigma` (black filled circles with error bars) and `sigma68` (black open squares) versus constant fraction across all `CFD*` channels, drawn by `stages/analysis` | Horizontal axis `CFD fraction` (dimensionless), vertical axis `Time resolution [ps]` |
+| `trend.png`, `.pdf` | Collection efficiency (left) and `sigma` of each `CFD*` channel (right) versus the scan variable, drawn by `stages/analysis` when multiple scan points exist and the sole varying scan parameter is numeric, one line per `CFD*` channel in the right panel | Horizontal axis `<scanned_key>`, left vertical axis `Charge collection efficiency` (dimensionless), right vertical axis `Time resolution [ps]` |
 
 ## References
 

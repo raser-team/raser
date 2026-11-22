@@ -335,11 +335,11 @@ Element values support scientific notation and case-insensitive SPICE prefixes: 
 | `SantaCruz` | 2 (amplifier stage: `in`, `out`) | UC Santa Cruz single-channel LGAD readout board, inverting transimpedance stage with `475 Ohm` feedback based on `BFR840L3RHESD` |
 | `Termination50` | 1 (termination load: `in`) | `50 Ohm` termination resistor to ground |
 
-![BroadBandCividec schematic](../images/afe-schematic-BroadBandCividec.png)
+![BroadBandCividec schematic](../../images/readout/schematic-BroadBandCividec.png)
 
 CIVIDEC C2 broadband current amplifier with bandwidth `1 MHz - 2 GHz` and gain `40 dB`. `Rbias` provides the `1 MΩ` input DC bias and `Cin` is a `1 nF` AC coupling capacitor; the `50 Ohm` input impedance is split into two parallel resistors—a noisy `Rn` (`325.4 Ohm`) and a noiseless `Rq` (`59.08 Ohm`, `noisy=0`)—so that the input current noise integrated over the `2 GHz` single-pole bandwidth matches the manufacturer's `0.4 uA rms` specification. `E1` has a gain of `200`, which becomes `100` (`40 dB`) after the voltage divider formed by the `50 Ohm` output resistor `Rout` and the `50 Ohm` load; `Rp` (`1 Ohm`) and `Cp` (`79.58 pF`) set the `2 GHz` single pole.
 
-![ChargeSensitiveCremat schematic](../images/afe-schematic-ChargeSensitiveCremat.png)
+![ChargeSensitiveCremat schematic](../../images/readout/schematic-ChargeSensitiveCremat.png)
 
 Cremat CR-110-R2.2 charge-sensitive preamplifier with unloaded gain `1.4 V/pC` and decay time `140 us`. Input capacitance `Cin` (`12.24 pF`) and equivalent input voltage-noise resistance `Rs` (`43.1 Ohm`) precede the first stage `E1` of inverting gain `-3000`, bridged by the parallel feedback network `Cf` (`1.4 pF`) and `Rf` (`100 MOhm`) and followed by the noiseless pole `Rp` (`1 kOhm`, `noisy=0`) and `Cp` (`401.3 pF`), before driving the output through the second stage `E3` of gain `+2` and the `50 Ohm` output resistor `Rout`.
 
