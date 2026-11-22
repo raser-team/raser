@@ -9,7 +9,7 @@
 | `raser signal <器件>` | 对这块器件跑 signal 测试：整条链跑完，给出电荷收集效率 | [bench/signal.md](bench/signal.md) |
 | `raser timeres <器件>` | 对这块器件跑时间分辨（Time Resolution）测试 | [bench/timeres.md](bench/timeres.md) |
 | `raser tct <器件>` | 对这块器件跑瞬态电流技术（Transient Current Technique）测试 | [bench/tct.md](bench/tct.md) |
-| `raser telescope <器件>` | 把这块器件放在束流望远镜中间当被测器件，跑空间分辨测试 | [bench/telescope.md](bench/telescope.md) |
+| `raser telescope <器件>` | 把束流望远镜中间的两块被测器件都换成这块器件，跑空间分辨测试 | [bench/telescope.md](bench/telescope.md) |
 | `raser bmos` | 跑在线束流监测系统（Beam Monitor Online System） | [apps/bmos.md](apps/bmos.md) |
 | `raser cflm` | 跑 CEPC 快速亮度监测器（CEPC Fast Luminosity Monitor） | [apps/cflm.md](apps/cflm.md) |
 | `raser hbf` | 跑氢硼聚变（Hydrogen–Boron Fusion，p–¹¹B） | [apps/hbf.md](apps/hbf.md) |
@@ -32,6 +32,7 @@
 
 - `-b`：把运行作业提交到集群队列。
 - `-t`：与 `-b` 联用，只检查并预览提交信息，不真正提交作业。
+- `-mem <档位>`：与 `-b` 联用，每个作业申请 `8000 × <档位>` MB 内存，默认 `1`；`-bb`、`-bbb` 连写时档位取 `b` 的个数和 `-mem` 中较大的一个。
 - `--help`：打印顶层或子命令的帮助信息并退出。
 - `--version`：打印当前 `raser` 版本号并退出。
 

@@ -1,6 +1,6 @@
 # 载流子漂移与感应电流（`core/current`）
 
-`src/raser/core/current/` 承接 [能量沉积](deposit.md) 给出的电子-空穴对及产生坐标、时刻，以及 [器件场](field.md) 提供的电场、掺杂、导电标志、俘获率与权重电势。该包模拟载流子团簇的漂移、扩散、俘获与雪崩倍增，计算各读出电极上的时域感应电流与净感应电荷，并写出 `current_<job>.h5` 文件（另提供激光脉冲卷积与无场像素纯扩散收集接口）。输出的电流波形交给 [电子学读出](readout.md)，净感应电荷与初始对数交给 [统计分析](analysis.md)。
+`src/raser/core/current/` 承接 [能量沉积](deposit.md) 给出的电子-空穴对及产生坐标、时刻，以及 [器件场](field.md) 提供的电场、掺杂、导电标志、俘获率与权重电势。该包模拟载流子团簇的漂移、扩散、俘获与雪崩倍增，计算各读出电极上的时域感应电流与净感应电荷，并写出 `current.h5` 文件（多位置实验为 `current.<位置>.h5`；另提供激光脉冲卷积与无场像素纯扩散收集接口）。输出的电流波形交给 [电子学读出](readout.md)，净感应电荷与初始对数交给 [统计分析](analysis.md)。
 
 ## 物理
 
@@ -19,7 +19,7 @@ $$\mathbf{v}(\mathbf{r}) = \pm \mu\bigl(T,\, N_{\text{eff}}(\mathbf{r}),\, E(\ma
 - $N_{\text{eff}}(\mathbf{r})$：位置 $\mathbf{r}$ 处的有效净掺杂浓度，$\text{cm}^{-3}$；
 - $\mu$：载流子迁移率，$\text{cm}^2/(\text{V}\cdot\text{s})$。
 
-迁移率由 `Material(material).cal_mobility` 计算，具体参数化见 [model.md](model.md)。`core/current` 调用材料缺省迁移率模型：Si 使用 `"Selberherr"`，SiC（4H-SiC）使用 `"Das"`，Diamond 使用 `"Reggiani_diamond"`。迁移率模型只由 `material` 决定：器件文件里没有选迁移率模型的键，`CalCurrent` 构造 `Material(material)` 时也不传模型名。半导体载流子漂移输运见文献 [1]。
+迁移率由 `Material(material).cal_mobility` 计算，具体参数化见 [model.md](model.md)。迁移率模型按名字注册，器件文件按名字选用；每种材料有缺省选用的模型：Si 为 `"Selberherr"`，SiC（4H-SiC）为 `"Das"`，Diamond 为 `"Reggiani_diamond"`。`core/current` 用器件选用的模型求迁移率。半导体载流子漂移输运见文献 [1]。
 
 ### 扩散
 
@@ -33,7 +33,7 @@ $$\sigma = 10^{4}\sqrt{2 D \Delta t} \tag{3}$$
 
 - $D$：扩散系数，$\text{cm}^2/\text{s}$；
 - $\mu$：载流子迁移率，$\text{cm}^2/(\text{V}\cdot\text{s})$（有场漂移中为当前场强下的迁移率；无场纯扩散收集中为零场电子迁移率 $\mu_n(T, N_{\text{eff}}, 0)$）；
-- $k_B/e$：玻尔兹曼常数与元电荷之比，代码中常数 `kboltz`（`BOLTZMANN`）取 $8.617385\times 10^{-5}\ \text{eV/K}$（数值上等于 $k_B/e$，单位 $\text{V/K}$）；
+- $k_B/e$：玻尔兹曼常数与元电荷之比，取 CODATA 2018 值 $8.617333262\times 10^{-5}\ \text{eV/K}$（数值上等于 $k_B/e$，单位 $\text{V/K}$）；
 - $T$：器件温度，$\text{K}$；
 - $\Delta t$：时间步长，$\text{s}$；
 - $\sigma$：单步内每个坐标轴方向高斯随机位移的标准差，$\mu\text{m}$（$10^4$ 为 $\mu\text{m/cm}$ 换算因子）。
@@ -65,7 +65,7 @@ $$\Delta Q = \int_{t_1}^{t_2} i(t)\,dt = q\,\bigl[\phi_w(\mathbf{r}_2) - \phi_w(
 其中：
 
 - $i(t)$：电极上的瞬时感应电流，$\text{A}$；
-- $q = N e_0$：团簇所带电荷，$\text{C}$（$N$ 为带符号载流子数，空穴取正、电子取负；元电荷 $e_0 = 1.60217733\times 10^{-19}\ \text{C}$）；
+- $q = N e_0$：团簇所带电荷，$\text{C}$（$N$ 为带符号载流子数，空穴取正、电子取负；元电荷取 CODATA 2018 值 $e_0 = 1.602176634\times 10^{-19}\ \text{C}$）；
 - $\mathbf{v}(t)$：载流子速度，$\text{cm/s}$；
 - $\mathbf{E}_w(\mathbf{r})$：权重电场，$\text{cm}^{-1}$；
 - $\phi_w(\mathbf{r})$：无量纲权重电势（代码注释中亦记为 $U_w$），由 `DevsimField.get_w_p` 给出并截断于 $[0, 1]$；
@@ -101,9 +101,9 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
 
 一维稳态双载流子倍增积分见文献 [7]。碰撞电离系数由 `Material(material, avalanche_model=avalanche_model).cal_coefficient` 提供，具体公式与参数见 [model.md](model.md)，支持三种模型：
 
-- `"vanOverstraeten"`（Si 缺省）：van Overstraeten–de Man 分段 Chynoweth 定律，场强低于 $1.75\times 10^5\ \text{V/cm}$ 时置零 [8]；代码中经光学声子能量引入的温度依赖因子出处待补。
+- `"vanOverstraeten"`（Si 缺省）：van Overstraeten–de Man 分段 Chynoweth 定律，场强低于 $1.75\times 10^5\ \text{V/cm}$ 时置零 [8]；经光学声子能量 $\hbar\omega = 0.063\ \text{eV}$ 引入的温度因子，物理来源见 [12]，这种写法取自 [13]。
 - `"Okuto"`（Si）：Okuto–Crowell 模型，场强不高于 $1.0\times 10^5\ \text{V/cm}$ 时置零 [9]。
-- `"Hatakeyama"`（4H-SiC 缺省）：Hatakeyama 各向异性模型，按相对 $\langle 0001\rangle$ 偏向 $\langle 11\bar{2}0\rangle$ 的 $4^\circ$ 偏轴角计算，场强不高于 $10^4\ \text{V/cm}$ 时置零 [10, 11]；代码中经光学声子能量引入的温度依赖因子出处待补。
+- `"Hatakeyama"`（4H-SiC 缺省）：Hatakeyama 各向异性模型，按相对 $\langle 0001\rangle$ 偏向 $\langle 11\bar{2}0\rangle$ 的 $4^\circ$ 偏轴角计算，场强不高于 $10^4\ \text{V/cm}$ 时置零 [10, 11]；经光学声子能量 $\hbar\omega = 0.19\ \text{eV}$ 引入的温度因子，物理来源见 [12]，取值见 [14]（原文只对电子给出，代码对空穴也取这个值）。
 
 ## 算法
 
@@ -111,7 +111,7 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
 
 下表列出 `drift.py`、`cal_current.py` 与 `diffusion.py` 中的全部内置物理常数与数值步长参数。它们是模块常量，器件文件里没有对应的键；时间窗、步长和 `max_drift_time` 都按器件维度取表中的值：
 
-| 常数名 | 1D（或 `is_plugin()` 为真） | 2D / 3D | 单位 | 定义位置与含义 |
+| 常数名 | 1D（或所选二维网格在横向 $x$-$y$ 平面） | 2D / 3D | 单位 | 定义位置与含义 |
 | --- | --- | --- | --- | --- |
 | `t_bin` | `5e-12` | `50e-12` | $\text{s}$ | current 的输出时间步：感应电流时间箱宽度（文件属性 `dt`） |
 | `t_start`（相对值） | `-1.25e-9` | `-12.5e-9` | $\text{s}$ | 相对事例最早产生时刻的起始偏移（`-0.25 * t_end`） |
@@ -119,18 +119,18 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
 | `delta_t` | `2e-12` | `20e-12` | $\text{s}$ | 载流子单步漂移时间步长 $\Delta t$ |
 | `min_intensity` | `1` | `1` | $\text{V/cm}$ | 停止漂移的最低场强阈值（`"low_field"`） |
 | `max_drift_time` | `100e-9` | `100e-9` | $\text{s}$ | 单团簇最大漂移时长上限（`"time_out"`） |
-| `kboltz` | `8.617385e-5` | `8.617385e-5` | $\text{eV/K}$ | `drift.py` 中热扩散使用的玻尔兹曼常数（数值等于 $k_B/e$ [$\text{V/K}$]） |
-| `e0` | `1.60217733e-19` | `1.60217733e-19` | $\text{C}$ | `drift.py` 中 Shockley-Ramo 感应电荷使用的元电荷 |
+| `kboltz` | `8.617333262e-5` | `8.617333262e-5` | $\text{eV/K}$ | `drift.py` 中热扩散使用的 CODATA 2018 玻尔兹曼常数（数值等于 $k_B/e$ [$\text{V/K}$]） |
+| `e0` | `1.602176634e-19` | `1.602176634e-19` | $\text{C}$ | `drift.py` 中 Shockley-Ramo 感应电荷使用的 CODATA 2018 元电荷 |
 | `edge_sampling` | `0.05` | `0.05` | $\mu\text{m}$ | `split_at_conductor_edges` 探测导电边界的默认采样间距 |
 | `edge_tolerance` | `1e-4` | `1e-4` | $\mu\text{m}$ | `split_at_conductor_edges` 二分定位导电边界的默认容差 |
-| `BOLTZMANN` | `8.617385e-5` | `8.617385e-5` | $\text{eV/K}$ | `diffusion.py` 中纯扩散使用的玻尔兹曼常数 |
-| `ELEMENTARY_CHARGE` | `1.602176634e-19` | `1.602176634e-19` | $\text{C}$ | `diffusion.py` 中换算电流与电荷使用的元电荷 |
+| `BOLTZMANN` | `8.617333262e-5` | `8.617333262e-5` | $\text{eV/K}$ | `diffusion.py` 中纯扩散使用的 CODATA 2018 玻尔兹曼常数 |
+| `ELEMENTARY_CHARGE` | `1.602176634e-19` | `1.602176634e-19` | $\text{C}$ | `diffusion.py` 中换算电流与电荷使用的 CODATA 2018 元电荷 |
 
 ### 时间窗、时间箱与初始团簇筛选
 
 单个事例进入 `CalCurrent` 后按以下步骤初始化：
 
-1. **选取档位**：若 `my_d.is_plugin()` 为真，取 `t_bin[1]`、`t_end[1]`、`t_start[1]`、`delta_t[1]`；否则按 `my_d.dimension` 取对应档位。
+1. **选取档位**：若 `field` 段选用的二维网格在横向 $x$-$y$ 平面，取 `t_bin[1]`、`t_end[1]`、`t_start[1]`、`delta_t[1]`；否则按 `my_d.dimension` 取对应档位。
 2. **确定时间窗与箱数**：取所有输入沉积步产生时刻 $t_m$（$\text{s}$）的最小值 $t_{\min}$ 与最大值 $t_{\max}$（无输入时均取 $0.0$）。令首个时间箱左边界 $t_{\text{start}} = t_{\min} + \text{relative\_start}$，初始箱数 $n_{\text{bin}} = \lceil (t_{\max} + \text{relative\_end} - t_{\text{start}}) / t_{\text{bin}} \rceil$。若浮点误差导致 $t_{\text{start}} + n_{\text{bin}} t_{\text{bin}} < t_{\max} + \text{relative\_end}$，则递增 $n_{\text{bin}}$ 直至满足覆盖条件，最终令 $t_{\text{end}} = t_{\text{start}} + n_{\text{bin}} t_{\text{bin}}$。
 3. **确定读出电极名**：调用 `electrode_names(read_out_contact, read_ele_num)`。若 `read_out_contact` 长度等于 `read_ele_num`，取各项 `"name"`；若长度为 `1`，生成 `"<name>1"` 至 `"<name><read_ele_num>"`；其余情况抛出 `ValueError`。
 4. **统计总对数并筛选空间位置**：将全部输入 `ionized_pairs` 之和记为 `pairs`。随后仅保留同时满足以下条件的沉积步 $(x, y, z, t)$：
@@ -239,7 +239,7 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
 
 ### 纯扩散收集
 
-`collect_by_diffusion(my_d, pairs, positions, window, step)`（`diffusion.py`，供 [../bench/telescope.md](../bench/telescope.md) 调用）模拟低偏压无场像素传感器中电子的纯扩散收集：
+`collect_by_diffusion(my_d, pairs, positions, window, step)`（`diffusion.py`）模拟低偏压无场像素传感器中电子的纯扩散收集：
 
 1. **校验与几何预计算**：要求 `my_d.is_pixel` 为真且器件定义了 `e_width_x`、`e_width_y`（$\mu\text{m}$）。计算像素内收集区边缘留白 `low_x = (p_x - e_width_x)/2`、`low_y = (p_y - e_width_y)/2`，以及居中像素阵列起点 `first_x = (l_x - x_ele_num * p_x)/2`、`first_y = (l_y - y_ele_num * p_y)/2`。
 2. **零场迁移率与步长标准差**：取有效掺杂 $N_{\text{eff}} = \text{Donors} - \text{Acceptors}$（$\text{cm}^{-3}$），调用 `Material(material).cal_mobility(T, N_eff, -1, 0)` 求零场电子迁移率 $\mu_n(0)$，按式 (3) 计算单步时间 `step`（$\text{s}$）的高斯位移标准差 $\sigma$（$\mu\text{m}$）。
@@ -259,7 +259,7 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
 - `drift.py`：实现单团簇输运与单步物理量计算。`advance` 执行单步推进与停止判定，`drift` 循环推进单团簇至停止；`induced_charges` 计算路径各步在指定电极上的 Shockley-Ramo 感应电荷；`surviving` 与 `surviving_at` 计算俘获后的存活载流子数。
 - `cal_current.py`：实现事例级输运调度、分箱、雪崩倍增、激光卷积与批处理写出。`CalCurrent` 完成时间窗设定、空间筛选、载流子漂移与分箱；`CalCurrentGain` 继承 `CalCurrent`，按 `gain_algorithm` 执行 `"planar_integral"` 或 `"local_path"` 倍增；`CalCurrentG4P` 封装 `CarrierListFromG4P` 输入；`CalCurrentLaser` 结合 `pulse_in_bins` 执行激光脉冲卷积；`spread_over_bins`、`fill_histogram`、`electrode_names`、`split_at_conductor_edges`、`deposits_in` 与 `log_ends` 为支撑函数；`write_induced_currents` 与 `write_laser_currents` 负责将事例结果写出到 HDF5 文件并触发绘图。
 - `diffusion.py`：提供 `time_bin` 与 `collect_by_diffusion`，实现无场像素传感器的二维纯扩散收集。
-- `currents.py`：定义 `EventCurrents`、`Currents` 以及 `append_currents`、`read_currents`，负责 `current_<job>.h5` 的稀疏追加写入与全电极还原读取。
+- `currents.py`：定义 `EventCurrents`、`Currents` 以及 `append_currents`、`read_currents`，负责 `current.h5` 的稀疏追加写入与全电极还原读取。
 - `draw.py` 与 `draw_drift_path.py`：使用 PyROOT 绘制感应电流波形（`draw_currents`）、条形/像素收集电荷（`charge_collection_strip`、`charge_collection_pixel`）与三维/$x$-$z$ 漂移路径（`draw_drift_path`）。
 
 ### 核心数据结构
@@ -270,15 +270,15 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
 
 ## 接口
 
-命令行入口与切片调度选项见 [../stages/current.md](../stages/current.md)。构建 `DevsimField` 所用的偏压、辐照注量与 3D 插值配置见 [field.md](field.md)。
+命令与 `current` 段的设置见 [../stages/current.md](../stages/current.md)。构建 `DevsimField` 所用的偏压、辐照注量与 3D 插值配置见 [field.md](field.md)。
 
 ### 器件文件读取的键
 
-使用者能设的只有下表这些键。页内其他参数（迁移率模型、时间窗、步长、扩散开关）都写死在代码里。
+使用者能设的只有下表这些键；迁移率模型由器件文件按名字选用（见 [model.md](model.md)）。页内其他参数（时间窗、步长、扩散开关）都写死在代码里。
 
 | 键或派生属性 | 默认值 | 单位 | 含义 |
 | --- | --- | --- | --- |
-| `default_dimension`, `field_dimension`, `mesh.plugin` | 见 [device.md](device.md)（`mesh.plugin` 默认 `False`） | 无 | 映射为 `dimension` 与 `is_plugin()`，决定时间窗与步长档位 |
+| `default_dimension`, `field_dimension` | 见 [device.md](device.md) | 无 | 映射为 `dimension`，与 `field` 段选用的网格（二维网格是否在横向 $x$-$y$ 平面）一起决定时间窗与步长档位 |
 | `l_x`, `l_y`, `l_z` | 无（必选） | $\mu\text{m}$ | 器件边界 $[0, l_x] \times [0, l_y] \times [0, l_z]$ |
 | `electrodes`, `p_x`, `p_y`, `x_ele_num`, `y_ele_num`, `read_ele_num` | 见 [device.md](device.md) | $\mu\text{m}$ / 个 | 居中读出电极布局、间距与数量；`electrodes` 为 `"strip"`/`"pixel"` 时同时决定绘图类型，`"pixel"` 为 `collect_by_diffusion` 前提 |
 | `read_out_contact` | 无（必选） | 无 | 读出电极字典列表，每项含 `"name"`；单电极重复排布时可选 `"y_span"`（默认 `0`，控制 `y` 向近邻跨度；`x` 向跨度取场对象 `cells_either_side`） |
@@ -294,7 +294,7 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
 | `e_width_x`, `e_width_y` | 无（`collect_by_diffusion` 必选） | $\mu\text{m}$ | 纯扩散收集模式下每个像素中心矩形收集区尺寸 |
 | `doping.Donors`, `doping.Acceptors` | 无（`collect_by_diffusion` 必选） | $\text{cm}^{-3}$ | 纯扩散收集模式下用于求零场电子迁移率的施主、受主浓度数值 |
 
-### `current_<job>.h5` 文件格式
+### `current.h5` 文件格式
 
 文件由 `append_currents` 逐事例追加写入，仅存储电流非全零的电极；`read_currents` 读出时将未存储电极还原为全零数组。
 
@@ -328,7 +328,7 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
 | --- | --- | --- |
 | `<det_model>_drift_path.pdf`, `.root` | 上半图为三维器件边界框与沉积点（黑）、空穴（红）、电子（蓝）、增益空穴（洋红）、增益电子（浅蓝）路径；下半图为 $x$-$z$ 平面投影 | 空间轴 $\mu\text{m}$ |
 | `<tag>No_<k>electrode_basic_infor.pdf`, `.root` | 仅对存在非零电流分量的第 $k$ 号电极（从 `1` 起）绘制 `electron`、`hole`、`total`（开启雪崩时含 `electron gain`、`hole gain`）波形；`tag` 默认为空 | `Time [s]`, `Current [A]` |
-| `cce.pdf`, `.root` | `is_strip` 为真时绘各条收集电荷折线图（`TGraph`）；`is_pixel` 为真时绘二维像素分布（`TH2I`）；数值为电子数（按 `charge / 1.6e-19` 换算），但代码中的坐标轴标题仍标作 `charge[Coulomb]` | 电子数 |
+| `cce.pdf`, `.root` | `is_strip` 为真时绘各条收集电荷折线图（`TGraph`）；`is_pixel` 为真时绘二维像素分布（`TH2I`）；数值为收集电子数（按 `charge / 1.602176634e-19` 换算），纵轴（二维像素图为色轴）标题为“收集电子数” | 电子数 |
 
 ## 参考文献
 
@@ -343,3 +343,6 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
 - [9] Y. Okuto, C. R. Crowell, “Threshold energy effect on avalanche breakdown voltage in semiconductor junctions”, Solid-State Electronics 18 (1975) 161, doi:10.1016/0038-1101(75)90099-4
 - [10] T. Hatakeyama, T. Watanabe, T. Shinohe, K. Kojima, K. Arai, N. Sano, “Impact ionization coefficients of 4H silicon carbide”, Appl. Phys. Lett. 85 (2004) 1380, doi:10.1063/1.1784520
 - [11] T. Hatakeyama, J. Nishio, C. Ota, T. Shinohe, “Physical modeling and scaling properties of 4H-SiC power devices”, Proc. Int. Conf. Simulation of Semiconductor Processes and Devices (SISPAD) (2005) 171, doi:10.1109/SISPAD.2005.201500
+- [12] C. R. Crowell, S. M. Sze, “Temperature dependence of avalanche multiplication in semiconductors”, Appl. Phys. Lett. 9 (1966) 242, doi:10.1063/1.1754731
+- [13] Synopsys, *Sentaurus Device User Guide*, Synopsys Inc., 碰撞电离的 van Overstraeten–de Man 模型一节
+- [14] T. Hatakeyama, “Measurements of impact ionization coefficients of silicon carbide for high voltage power devices”, Phys. Status Solidi A 206 (2009) 2284, doi:10.1002/pssa.200925213

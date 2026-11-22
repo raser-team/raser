@@ -12,10 +12,10 @@
 
 ```bash
 raser signal HPK-Si-PiN --scan field.voltage=100,200 -s 2 --seed 1
-raser analysis work/HPK-Si-PiN/signal
+raser analysis examples/HPK-Si-PiN/signal
 ```
 
-第二条命令的上游节点指纹和原来相同，全部复用；`analysis` 节点指纹也相同时同样复用。每个点写完后打印它的 `result.json` 路径；样本不足时，先打印缺了哪项结果及原因。
+`work/` 下没有 `HPK-Si-PiN` 时，第一条命令在 `examples/HPK-Si-PiN/` 下就地运行，实验文件夹是 `examples/HPK-Si-PiN/signal`。链上的 `digitizer` 把每个作业的波形采样、量化，写出 `digitizer.h5`；`trigger` 按幅度阈值把越过阈值的事例号写进 `trigger.h5`，只有这些事例进入 `reconstruction`。第二条命令的上游节点指纹和原来相同，全部复用；`analysis` 节点指纹也相同时同样复用。每个点写完后打印它的 `result.json` 路径；样本不足时，先打印缺了哪项结果及原因。
 
 ### 单点统计与分布图
 
@@ -25,8 +25,8 @@ raser analysis work/HPK-Si-PiN/signal
 
 在上面的例子中（每点 `2` 个作业、共 `400` 个事例），两个点的 `result.json` 关键结果如下：
 
-- `200 V`（`work/HPK-Si-PiN/signal/points/voltage_200/analysis/result.json`）：全部 `400` 个事例的电荷收集效率 `mean = 0.9348`（`0.9347645480767679`）、`mean_error = 0.007225`、`spread = 0.1445`；超出 `10 mV` 幅度阈值的选中事例 `276` 个（`polarity = -1.0`），`ToA` 经 `5` 轮迭代在窗口内保留 `241` 个事例得 `sigma = 123.99 ps`（`1.2399e-10 s`）、`sigma68 = 123.69 ps`，`CFD30` 得 `sigma = 33.35 ps`、`sigma68 = 31.66 ps`。
-- `100 V`（`work/HPK-Si-PiN/signal/points/voltage_100/analysis/result.json`）：`400` 个事例的收集效率 `mean = 0.9195`（`0.9194852059626839`）、`mean_error = 0.008746`、`spread = 0.1749`；选中事例 `257` 个，`CFD30` 得 `sigma = 43.58 ps`、`sigma68 = 38.87 ps`。
+- `200 V`（`examples/HPK-Si-PiN/signal/points/voltage_200/analysis/result.json`）：全部 `400` 个事例的电荷收集效率 `mean = 0.9348`（`0.9347645480767679`）、`mean_error = 0.007225`、`spread = 0.1445`；被 `trigger` 记录、且找到不低于 `10 mV` 幅度阈值的团簇种子的选中事例 `276` 个（`polarity = -1.0`），`ToA` 经 `5` 轮迭代在窗口内保留 `241` 个事例得 `sigma = 123.99 ps`（`1.2399e-10 s`）、`sigma68 = 123.69 ps`，`CFD30` 得 `sigma = 33.35 ps`、`sigma68 = 31.66 ps`。
+- `100 V`（`examples/HPK-Si-PiN/signal/points/voltage_100/analysis/result.json`）：`400` 个事例的收集效率 `mean = 0.9195`（`0.9194852059626839`）、`mean_error = 0.008746`、`spread = 0.1749`；选中事例 `257` 个，`CFD30` 得 `sigma = 43.58 ps`、`sigma68 = 38.87 ps`。
 
 `200 V` 点的三张分布图如下：
 
@@ -36,7 +36,7 @@ raser analysis work/HPK-Si-PiN/signal
 
 ![HPK-Si-PiN 脉冲幅度分布](../images/analysis-amplitude-HPK-Si-PiN.png)
 
-`200 V` 下幅度达到或超过 `10 mV` 阈值的 `276` 个选中事例脉冲幅度分布直方图，虚线标出幅度阈值。
+`200 V` 下 `276` 个选中事例（被 `trigger` 记录且团簇种子幅度不低于 `10 mV`）的脉冲幅度分布直方图，虚线标出幅度阈值。
 
 ![HPK-Si-PiN 时间差分布与截断高斯拟合](../images/analysis-time-difference-HPK-Si-PiN.png)
 
@@ -46,13 +46,13 @@ raser analysis work/HPK-Si-PiN/signal
 
 有结果的扫描点多于 `1` 个时，程序在 `<实验文件夹>/analysis/` 下写出 `points.json`。它只保留各点之间取值不同的扫描选项，并汇集每点的效率与时间分辨。取值不同的扫描选项恰好只有 `1` 个、且取值都是非布尔数值时，再按该变量升序画出左右双图 `points.png`。
 
-上面的例子写出的 `work/HPK-Si-PiN/signal/analysis/points.json` 节选如下（`CoG` 与 `CFD10`–`CFD90` 通道结构与 `ToA` 相同，此处略去）：
+上面的例子写出的 `examples/HPK-Si-PiN/signal/analysis/points.json` 节选如下（`CoG` 与 `CFD10`–`CFD90` 通道结构与 `ToA` 相同，此处略去）：
 
 ```json
 [
   {
     "point": "voltage_100",
-    "voltage": 100,
+    "field.voltage": 100,
     "events": 400,
     "efficiency": 0.9194852059626839,
     "efficiency_error": 0.00874583566620318,
@@ -65,7 +65,7 @@ raser analysis work/HPK-Si-PiN/signal
   },
   {
     "point": "voltage_200",
-    "voltage": 200,
+    "field.voltage": 200,
     "events": 400,
     "efficiency": 0.9347645480767679,
     "efficiency_error": 0.007224687825783201,
@@ -79,7 +79,7 @@ raser analysis work/HPK-Si-PiN/signal
 ]
 ```
 
-对应的 `work/HPK-Si-PiN/signal/analysis/points.png` 如下：
+对应的 `examples/HPK-Si-PiN/signal/analysis/points.png` 如下：
 
 ![HPK-Si-PiN 电荷收集效率与时间分辨随偏压变化](../images/analysis-points-HPK-Si-PiN.png)
 
@@ -107,7 +107,7 @@ raser analysis work/HPK-Si-PiN/signal
 
 ### 0 事例作业与缺失文件
 
-`files.py` 的 `job_file(folder, index, name)` 找一个作业的 `<name>_<作业号>.h5`。文件存在时直接返回。不存在时读取同一作业的 `deposit_<作业号>.h5`（经 `read_deposits`），统计 `recorded = len(deposits.events)`：
+`files.py` 的 `job_file(folder, index, name)` 经视图 `points/<点名>/<name>/<作业号>` 找一个作业 `<name>` 节点里的 `<name>.h5`。文件存在时直接返回。不存在时读取同一作业 `deposit` 节点里的 `deposit.h5`（经 `read_deposits`），统计 `recorded = len(deposits.events)`：
 
 - `recorded == 0` 时返回 `None`，静默跳过该 0 事例作业；
 - `recorded > 0` 时抛出：
@@ -116,7 +116,9 @@ raser analysis work/HPK-Si-PiN/signal
   FileNotFoundError: <path>: job <index> recorded <recorded> events but left no <name> file
   ```
 
-  原因是该作业本应生成下游文件却缺失（文件被误删，或上游是多位置链，只写出了带 `.<position>` 后缀的文件）；补齐缺失文件，或针对多位置输出自行读取带位置后缀的文件。
+  原因是该作业本应生成下游文件却缺失（例如文件被误删）；补齐缺失文件。
+
+局限：多位置链只写出带 `.<position>` 后缀的文件，`analysis` 现在不读它们，遇到这样的作业也抛出上面的报错；多位置的统计还没做。
 
 ### 单点统计与绘图
 
@@ -131,27 +133,27 @@ raser analysis work/HPK-Si-PiN/signal
    ValueError: the jobs of the point were reconstructed with different settings: <settings>
    ```
    原因是同一扫描点内不同作业使用了不同的重建参数；用统一参数重跑重建后再分析。
-2. **核对电流文件并计算逐事例收集效率（`event_efficiencies`）**：对 `tables` 中的每条 `(place, folder, index, table)`，调用 `job_file(folder, index, "current")` 与 `read_currents(path).events`。比较 `sorted(event.event for event in events)` 与 `sorted(int(number) for number in table.columns["event"])`：
-   - 若两者不等，抛出：
+2. **核对电流文件并计算逐事例收集效率（`event_efficiencies`）**：收集效率按作业 `current` 节点里的全部事例算，不经过触发；重建表里只有被 `trigger` 记录的事例，是电流文件事例的一个子集。对 `tables` 中的每条 `(place, folder, index, table)`，调用 `job_file(folder, index, "current")` 与 `read_currents(path).events`，记 `numbers = {event.event for event in events}`、`rows = {int(number) for number in table.columns["event"]}`：
+   - 若 `rows - numbers` 非空，抛出：
 
      ```text
-     ValueError: <path>: events <list> are in the currents or in the reconstruction of the job, not in both
+     ValueError: <path>: events <list> are in the reconstruction of the job, not in its currents
      ```
 
-     其中 `<list>` 为对称差 `sorted(set(numbers) ^ set(rows))`；原因是该作业的电流文件与重建表事例集合不一致，重跑该作业的 `current` 及下游即可。
-   - 一致时调用 `collection_efficiency([event.charge for event in events], [event.pairs for event in events])` 计算每个事例的无量纲收集效率，全部作业拼接为一维数组 `efficiencies`（`tables` 为空时返回空数组）。
+     其中 `<list>` 为 `sorted(rows - numbers)`；原因是该作业的重建表不是由这份电流文件算出来的，重跑该作业的 `current` 及下游即可。电流文件里有、重建表里没有的事例是没被触发记录的事例，属于正常情形。
+   - 否则调用 `collection_efficiency([event.charge for event in events], [event.pairs for event in events])` 计算电流文件里每个事例的无量纲收集效率，全部作业拼接为一维数组 `efficiencies`（`tables` 为空时返回空数组）。
 3. **记录重建参数并统计效率展宽（`efficiency_spread`）**：若 `tables` 非空，将 `table_setting(tables[0][3])` 写入 `result["reconstruction"]`（两阈值单位 `mV`）。对 `efficiencies` 统计样本数 `count = len(efficiencies)`：
    - 若 `count < 2`，`efficiency_spread` 抛出 `TooFewValues`，消息为 `<count> events in the point, a mean and a spread need at least 2`。`write_point` 捕获后写入 `result["collection"] = {"events": count, "error": str(too_few)}`，向 `missing` 追加 `no efficiency: <too_few>`，并跳过 `efficiency.png`。
    - 若 `count >= 2`，计算样本标准差 `spread = float(np.std(efficiencies, ddof=1))`、均值 `mean = float(np.mean(efficiencies))` 与均值标准误 `mean_error = spread / np.sqrt(count)`，写入 `result["collection"]`，并调用 `plots.draw_efficiencies` 画出 `efficiency.png`（`60` 箱直方图，均值处画虚线，`150 dpi`）。
 4. **全点 0 事例提前结束**：若 `len(efficiencies) == 0`，写入 `result["timing"] = {"events": 0, "selected": 0, "error": "the jobs recorded no event"}`，向 `missing` 追加 `"no time resolution: the jobs recorded no event"`，写出 `result.json` 并返回 `"; ".join(missing)`。
 5. **提取单电极选中事例时间与真值（`event_times`）**：
-   - 先检查 `tables` 中每个表；若任一表满足 `len(table.electrodes) > 1`，抛出：
+   - 局限：`analysis` 现在只统计单电极的结果，多电极的统计还没做。先检查 `tables` 中每个表；若任一表满足 `len(table.electrodes) > 1`，抛出：
 
      ```text
      NotImplementedError: <len> electrodes; the time of an event with several electrodes is not settled
      ```
 
-     原因是环节目前只为单电极器件定义了事例时间；多电极时间分析需自行读取 `reconstruction_<作业号>.h5` 完成。
+     原因是 `analysis` 现在只为单电极器件定义了事例时间。
    - 对每条 `(place, folder, index, table)`，经 `slice_file(folder, index, "deposit")` 找到该作业的沉积文件 `deposits`，构造映射 `earliest = {event.event: min(event.t) for event in read_deposits(str(deposits)).events}`（单位 `s`）。逐条检查 `table.columns["event"]` 中的全部事例号 `number`（含未选中事例）；若 `number not in earliest`，抛出：
 
      ```text
@@ -168,7 +170,7 @@ raser analysis work/HPK-Si-PiN/signal
    - 若全部通道拟合成功，写入 `result["timing"]["times"] = widths` 并绘制两张图：
      - `plots.draw_differences` 写出 `time_difference.png`：在 `3 × 4` 网格上绘制前 `12` 个通道（`ToA`、`CoG` 与前 `10` 个 `CFD*`，其余空子图隐藏）。每个通道将非 `NaN` 的 `difference` 除以 `PICOSECOND` 换算为 `ps`，在 `[mean - 8 * sigma, mean + 8 * sigma]` 内均分为 `64` 箱（`65` 个边界），用浅灰阴影标出末轮窗口 `[low, high]`，在 `[low, high]` 上取 `200` 个等距点绘出归一化截断高斯曲线：
        $$y(x) = N_{\text{win}}\,\Delta x_{\text{bin}}\,\frac{\exp\!\left(-\frac{(x - \mu)^2}{2\sigma^2}\right)}{\sqrt{2\pi}\,\sigma \cdot \frac{1}{2}\left[\operatorname{erf}\!\left(\frac{\text{high} - \mu}{\sqrt{2}\,\sigma}\right) - \operatorname{erf}\!\left(\frac{\text{low} - \mu}{\sqrt{2}\,\sigma}\right)\right]}$$
-       以 `130 dpi` 保存。
+       其中 $x$ 为时间差（$\text{ps}$），$\mu$、$\sigma$ 为该通道末轮拟合的 `mean`、`sigma`（$\text{ps}$），$N_{\text{win}}$ 为末轮窗口内的事例数 `window_events`（个），$\Delta x_{\text{bin}}$ 为直方图箱宽（$\text{ps}$），$y(x)$ 为每箱的期望事例数（个）。图以 `130 dpi` 保存。
      - `plots.draw_fractions` 写出 `resolution_of_fraction.png`：筛选所有 `CFD*` 通道，按 `int(name[3:]) / 100` 还原恒比比例，以误差棒绘出 `sigma ± sigma_error`（`ps`）、空心方点绘出 `sigma68`（`ps`），纵轴下限设为 `0`，以 `150 dpi` 保存。
 8. **落盘单点结果并打印摘要**：以 2 空格缩进写出 `result.json` 并返回 `"; ".join(missing) or None`。回到 `collect`，若返回值非 `None`，先打印 `<点的输出文件夹>: <error>`，随后打印 `result.json` 的路径，再把这个点的选项与解析后的 `result.json` 留给跨点汇总。
 
@@ -186,7 +188,7 @@ raser analysis work/HPK-Si-PiN/signal
 ### 模块与文件分工
 
 - `src/raser/stages/analysis/__init__.py`：注册子命令 `analysis`（短别名 `ana`），实现作业函数 `collect`（编排单点分析与跨点汇总）。
-- `src/raser/stages/analysis/files.py`：提供 `slice_file` 与 `job_file`，找到一个作业的上游文件，并在文件缺失时核查 `deposit_<作业号>.h5`，区分正常 0 事例作业与缺失报错。
+- `src/raser/stages/analysis/files.py`：提供 `slice_file` 与 `job_file`，找到一个作业的上游文件，并在文件缺失时核查该作业 `deposit` 节点里的 `deposit.h5`，区分正常 0 事例作业与缺失报错。
 - `src/raser/stages/analysis/collection.py`：提供 `event_efficiencies` 与 `efficiency_spread`，核对电流与重建事例号一致，调用 `collection_efficiency` 计算逐事例收集效率并汇总均值、均值标准误与样本标准差。
 - `src/raser/stages/analysis/timing.py`：提供 `table_setting`、`point_tables`、`event_times`、`time_widths` 与独立汇总接口 `point_resolution`，负责同点重建参数校验、单电极检查、最早沉积时刻 `truth` 提取以及各时间通道核心宽度拟合。
 - `src/raser/stages/analysis/point.py`：提供 `write_point`，串联单个扫描点的表加载、效率计算、时间提取、`events.h5` 与 `result.json` 落盘以及四张单点图绘制，并捕获 `TooFewValues` 转为结果中的 `error` 字段。
@@ -210,7 +212,7 @@ raser analysis work/HPK-Si-PiN/signal
 
 ### 命令行与运行选项
 
-`raser analysis [路径]`：不给路径就是当前文件夹，给了就是相对或绝对路径，例如 `work/HPK-Si-PiN/signal`。全局选项和共用运行参数见[命令行接口](../cli.md)：
+`raser analysis [路径]`：不给路径就是当前文件夹，给了就是相对或绝对路径，例如 `examples/HPK-Si-PiN/signal`。全局选项和共用运行参数见[命令行接口](../cli.md)：
 
 | 选项 | 默认值 | 含义 |
 | --- | --- | --- |
@@ -222,14 +224,14 @@ raser analysis work/HPK-Si-PiN/signal
 | `--scan` | 无 | 用“段.键”作地址扫描设置，例如 `--scan field.voltage=100,200` |
 | `--dry-run` | 关闭 | 只打印将要运行的扫描点、环节和作业状态 |
 
-收集效率最少事例数 `2`、截断高斯拟合最少事例数 `20` 与最大轮数 `6`、直方图箱数与拟合曲线点数、`3 × 4` 子图上限以及 PNG 分辨率都写死在代码里。定时阈值、事例选中幅度阈值、恒比比例与脉冲沿方向是 `reconstruction` 段的设置，`analysis` 直接读取 `reconstruction_<作业号>.h5` 中记录的值；改了它们，`reconstruction` 节点号变，`analysis` 跟着重算。
+收集效率最少事例数 `2`、截断高斯拟合最少事例数 `20` 与最大轮数 `6`、直方图箱数与拟合曲线点数、`3 × 4` 子图上限以及 PNG 分辨率都写死在代码里。定时阈值、团簇种子的幅度阈值、恒比比例与脉冲沿方向是 `reconstruction` 段的设置，`analysis` 直接读取 `reconstruction` 节点里 `reconstruction.h5` 记录的值；改了它们，`reconstruction` 节点号变，`analysis` 跟着重算。
 
 ### 读入的文件
 
 - **`<实验文件夹>/points.json`**：参数表，给出每个扫描点各环节的节点号。
-- **`deposit` 节点里的 `deposit_<作业号>.h5`**：文件格式见[能量沉积与电离（`core/deposit`）](../core/deposit.md)。本环节只读取事例数 `len(events)` 与每个事例最早沉积步时刻 `min(event.t)`（$\text{s}$）。
-- **`current` 节点里的 `current_<作业号>.h5`**：文件格式见[载流子漂移与感应电流（`core/current`）](../core/current.md)。本环节只读取每个事例的 `event`、`charge`（$\text{C}$）与 `pairs`（对）。
-- **`reconstruction` 节点里的 `reconstruction_<作业号>.h5`**：文件格式见[事件重建（`core/reconstruction`）](../core/reconstruction.md)。本环节读取属性 `electrodes`、`threshold`（$\text{V}$）、`amplitude_threshold`（$\text{V}$）、`fractions`、`edge` 及数据集 `event`、`selected`、`ToA`、`ToT`、`amplitude`、`baseline`、`noise`、`CoG`、`CFD`。
+- **`deposit` 节点里的 `deposit.h5`**：文件格式见[能量沉积与电离（`core/deposit`）](../core/deposit.md)。本环节只读取事例数 `len(events)` 与每个事例最早沉积步时刻 `min(event.t)`（$\text{s}$）。
+- **`current` 节点里的 `current.h5`**：文件格式见[载流子漂移与感应电流（`core/current`）](../core/current.md)。本环节只读取每个事例的 `event`、`charge`（$\text{C}$）与 `pairs`（对）。
+- **`reconstruction` 节点里的 `reconstruction.h5`**：文件格式见[事件重建（`core/reconstruction`）](../core/reconstruction.md)。本环节读取属性 `electrodes`、`threshold`（$\text{V}$）、`amplitude_threshold`（$\text{V}$）、`fractions`、`edge` 及数据集 `event`、`selected`、`ToA`、`ToT`、`amplitude`、`baseline`、`noise`、`CoG`、`CFD`。
 
 ### 写出的文件
 

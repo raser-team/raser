@@ -1,6 +1,6 @@
 # 探测器组件（`components/device`）
 
-器件组件文件（`components/device/<器件名>.json` 或项目文件夹下的 `device.json`）由 [`core/device`](../core/device.md) 的 `device_file` 与 `Detector` 定位并读入内存，定义探测器的三维尺寸、半导体材料、读出电极排布、掺杂分布、偏置电压、工作温度、辐照缺陷、雪崩倍增模型及器件等效电路参数，交给 [`field`](../stages/field.md)（[`core/field`](../core/field.md)）、[`deposit`](../stages/deposit.md)（[`core/deposit`](../core/deposit.md)）、[`current`](../stages/current.md)（[`core/current`](../core/current.md)）和 [`readout`](../stages/readout.md)（[`core/readout`](../core/readout.md)）四个环节使用。按 [架构总纲](../architecture.md#组件) 的设计，几何与网格分离，网格归属 [`field`](../stages/field.md)。
+器件组件文件（`components/device/<器件名>.json` 或项目文件夹下的 `device.json`）由 [`core/device`](../core/device.md) 的 `device_file` 与 `Detector` 定位并读入内存，定义探测器的三维尺寸、半导体材料、读出电极排布、掺杂分布、偏置电压、工作温度、辐照缺陷、雪崩倍增模型及器件等效电路参数，交给 [`field`](../stages/field.md)（[`core/field`](../core/field.md)）、[`deposit`](../stages/deposit.md)（[`core/deposit`](../core/deposit.md)）、[`current`](../stages/current.md)（[`core/current`](../core/current.md)）和 [`readout`](../stages/readout.md)（[`core/readout`](../core/readout.md)）四个环节使用。按 [架构总纲](../architecture.md#组件)，几何与网格分离，网格归属 [`field`](../stages/field.md)。
 
 ```mermaid
 flowchart LR
@@ -17,7 +17,7 @@ flowchart LR
 
 ## 组件文件原文
 
-下面是库里的 `components/device/HPK-Si-PiN.json`（去掉归属 [`field`](../stages/field.md) 的 `"mesh"` 整段）：
+下面是库里的 `components/device/HPK-Si-PiN.json`。器件文件里没有 `mesh` 段：几何（各层厚度、材料、电极在哪一面）是器件的固有性质，用哪一套网格由 [`field`](../stages/field.md) 段的设置指定。
 
 ```json
 {
@@ -112,12 +112,12 @@ flowchart LR
 | `field_interpolation_bins` | `None`（3D 插值默认 `{"x": 30, "y": 30, "z": 30}`） | 个 | `DevsimField` 将三维非结构化点云插值到规则网格时的各轴箱数 |
 | `hemt_physics` | 无（可选） | 迁移率 `cm^2/(V s)`、电压 `V`、长度 `nm` | `hemt_physics.transport_model == "drift_diffusion_v1"` 时启用二维 AlGaN/GaN HEMT 直流转移特性求解器 |
 
-其余与器件物理和等效电路相关的参数（真空介电常数、按材料绑定的缺省迁移率模型、导电区判定阈值、权重场导电边介电常数放大倍数、铝注入碳化硅阻性层拟合参数）均写死在代码里，器件文件中没有对应的键：
+物理模型按名字注册，器件文件按名字选用；每种材料有缺省选用的模型（见 [`core/model`](../core/model.md)）。其余与器件物理和等效电路相关的参数（真空介电常数、各材料缺省选用的迁移率模型、导电区判定阈值、权重场导电边介电常数放大倍数、铝注入碳化硅阻性层拟合参数）均写死在代码里，器件文件中没有对应的键：
 
 | 常数名或固定项 | 值 | 单位 | 定义位置与含义 |
 | --- | --- | --- | --- |
 | `EPSILON_0_F_PER_M` / `VACUUM_PERMITTIVITY_F_M` | `8.8541878128e-12` | `F/m` | `src/raser/core/device/build_device.py:20`、`src/raser/core/field/circuit_parameters.py:17`，平行板结电容与阻性层介电耦合电容计算使用的真空介电常数 |
-| 缺省迁移率模型 | `"Si"`: `"Selberherr"`；`"SiC"`: `"Das"`；`"Diamond"`: `"Reggiani_diamond"` | 无 | `src/raser/core/model/material.py:46`、`:53`、`:59`、`src/raser/core/current/cal_current.py:313`，迁移率模型仅由 `material` 决定 |
+| 缺省迁移率模型 | `"Si"`: `"Selberherr"`；`"SiC"`: `"Das"`；`"Diamond"`: `"Reggiani_diamond"` | 无 | `src/raser/core/model/material.py:46`、`:53`、`:59`、`src/raser/core/current/cal_current.py:313`，各材料缺省选用的迁移率模型 |
 | `ELEMENTARY_CHARGE` / `ELEMENTARY_CHARGE_C` | `1.602176634e-19` | `C` | `src/raser/core/field/conductive.py:9`、`src/raser/core/field/implanted_aluminium.py:15`，电导率与阻性层方阻换算使用的元电荷 |
 | `RESISTIVITY` | `10.0` | `Ohm cm` | `src/raser/core/field/conductive.py:10`，判定网格节点为高导电区的电阻率上限 |
 | `UNDEPLETED` | `0.5` | 无量纲 | `src/raser/core/field/conductive.py:11`，判定有净掺杂节点尚未耗尽的载流子浓度与净掺杂浓度之比下限 |
@@ -142,14 +142,14 @@ flowchart LR
 
 ### `field` 环节（`stages/field`、`core/field`）
 
-1. **读取追踪与掺杂求值（`reading.py`、`create_mesh.py`）**：`solver_section.main` 用 `Reading(Detector(...))` 包装器件对象，自动记录求解期间访问的属性、JSON 键及外部网格文件 SHA-256 指纹并写入 `<project>/field/run.json` 的 `"read"` 字段。`DevsimMesh.setDoping` 在网格节点上对 `doping` 里的 `Acceptors`、`Donors`（以及可选的辐照附加项 `Acceptors_ir`、`Donors_ir`）求值，计算净掺杂浓度：
+1. **读取追踪与掺杂求值（`reading.py`、`create_mesh.py`）**：`solver_section.main` 用 `Reading(Detector(...))` 包装器件对象，自动记录求解期间访问的器件属性与 JSON 键并写入场节点 `<器件 project>/field/<节点号>/node.json` 的 `"read"` 字段。`DevsimMesh.setDoping` 在网格节点上对 `doping` 里的 `Acceptors`、`Donors`（以及可选的辐照附加项 `Acceptors_ir`、`Donors_ir`）求值，计算净掺杂浓度：
    $$N_{\text{net}}(x) = N_D(x) - N_A(x) \tag{1}$$
    其中：
    - $N_{\text{net}}(x)$：网格节点处的净掺杂浓度，$\text{cm}^{-3}$；
    - $N_D(x)$、$N_A(x)$：节点处的施主与受主浓度（含可选 `_ir` 项），$\text{cm}^{-3}$；
    - $x$：沿深度方向的 DEVSIM 一维网格坐标，$\text{cm}$，对应 `deposit` 和 `current` 中的 $z$ 坐标（单位 `um`）；表达式中 `step(a)` 在 $a > 0$ 时取 $1$、$a < 0$ 时取 $0$，两个 `step` 相减表示一段掺杂区间。
 2. **求解电势、电场、权重势与俘获率（`create_parameter.py`、`solver_section.py`、`loop_section.py`）**：`bias` 和 `temperature` 定出接触边界条件与半导体参数（热电压、禁带宽度、本征载流子浓度），在 `dimension` 维网格上求出电势和电场，并按 `read_out_contact` 求出各读出电极的权重势；给定 `irradiation` 时同时求出缺陷空间电荷与电子、空穴俘获率。`area_factor` 将一维（乘以面积 $l_x l_y$，单位 `cm^2`）或二维（乘以垂直于求解平面的长度，单位 `cm`）网格求出的比电流、比电容换算为整块器件的 IV、CV 值。
-3. **未耗尽体区阻抗提取（`conductive.py`、`save_milestone.py`）**：一维 DEVSIM 求解在偏压未耗尽整块器件时，将满足 $|N_{\text{net}}| > 0$、$n + p > 0.5|N_{\text{net}}|$ 且电阻率 $\rho = [e(\mu_n n + \mu_p p)]^{-1} \ge 10.0\ \Omega\cdot\text{cm}$ 的相邻节点区间积分为未耗尽层厚度 $w_{\text{undep}}$（`cm`）、比电阻 $r_{\text{undep}} = \sum \bar{\rho}\,\Delta x$（`Ohm cm^2`）和比电容 $c_{\text{undep}} = 10^{12}\varepsilon / w_{\text{undep}}$（`pF/cm^2`），存入 `<V>V.undepleted.json`，并在读出环节通过 `area_factor` 换算为整块器件的未耗尽层电阻和电容。
+3. **未耗尽体区阻抗提取（`conductive.py`、`save_milestone.py`）**：一维 DEVSIM 求解在偏压未耗尽整块器件时，将满足 $|N_{\text{net}}| > 0$、$n + p > 0.5|N_{\text{net}}|$ 且电阻率 $\rho = [e(\mu_n n + \mu_p p)]^{-1} \ge 10.0\ \Omega\cdot\text{cm}$ 的相邻节点区间积分为未耗尽层厚度 $w_{\text{undep}}$（`cm`）、比电阻 $r_{\text{undep}} = \sum \bar{\rho}\,\Delta x$（`Ohm cm^2`）和比电容 $c_{\text{undep}} = 10^{12}\varepsilon / w_{\text{undep}}$（`pF/cm^2`），其中 $e$ 为元电荷（C），$\mu_n$、$\mu_p$ 为电子、空穴迁移率（$\text{cm}^2/(\text{V}\cdot\text{s})$），$n$、$p$ 为电子、空穴浓度（$\text{cm}^{-3}$），$\varepsilon$ 为材料介电常数（F/cm），存入 `<V>V.undepleted.json`，并在读出环节通过 `area_factor` 换算为整块器件的未耗尽层电阻和电容。
 
 ![HPK-Si-PiN 掺杂沿深度分布](../images/field-doping-HPK-Si-PiN.png)
 

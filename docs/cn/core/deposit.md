@@ -1,6 +1,6 @@
 # 能量沉积与电离（`core/deposit`）
 
-`src/raser/core/deposit/` 从 [器件模型](device.md) 取器件的尺寸与材料，从 [能量沉积组件](../components/deposit.md) 取装置脚本、放射源或束流、激光的定义。它用 Geant4 或直线 toy MIP 模型算出粒子在器件里的沉积步，把每步沉积能量换成电子-空穴对，写成 `deposit_<job>.h5`；激光则按吸收系数直接给出载流子群。沉积文件交给 [载流子漂移与感应电流](current.md) 做漂移，事例最早沉积时刻交给 [统计分析](analysis.md) 作 `truth`，[望远镜](../bench/telescope.md) 也读这个文件；激光载流子群由 [TCT](../bench/tct.md) 交给电流计算。命令行入口见 [能量沉积环节](../stages/deposit.md)。
+`src/raser/core/deposit/` 从 [器件模型](device.md) 取器件的尺寸与材料，从 [能量沉积组件](../components/deposit.md) 取装置脚本、放射源或束流、激光的定义。它用 Geant4 或直线 toy MIP 模型算出粒子在器件里的沉积步，把每步沉积能量换成电子-空穴对，写成 `deposit.h5`；激光则按吸收系数直接给出载流子群，同样写成 `deposit.h5`。沉积文件交给 [载流子漂移与感应电流](current.md) 做漂移，事例最早沉积时刻交给 [统计分析](analysis.md) 作 `truth`，[望远镜](../bench/telescope.md) 也读这个文件。命令与 `deposit` 段的设置见 [能量沉积环节](../stages/deposit.md)。
 
 ## 物理
 
@@ -21,12 +21,12 @@ $$N = \max\bigl(0,\ X\bigr), \qquad X \sim \mathcal{N}\bigl(\bar{N},\ F\bar{N}\b
 - $\mathcal{N}(\mu, \sigma^2)$：均值 $\mu$、方差 $\sigma^2$ 的高斯分布；
 - $N$：写入文件的对数，对。
 
-两式由 `ionized_pairs(event, material, fano)` 实现。`fano=True`（缺省）时按式 (2) 抽样，否则取 $N = \bar{N}$，此时材料不需要 Fano 因子。各材料的取值：
+两式由 `ionized_pairs(event, material, fano)` 实现。`fano=True` 时按式 (2) 抽样，否则取 $N = \bar{N}$，此时材料不需要 Fano 因子。各材料的取值：
 
 | 材料 | `PAIR_ENERGY_EV`（$\text{eV}$） | `FANO_FACTOR` | 出处 |
 | --- | --- | --- | --- |
-| `"Si"` | `3.6` | `0.115` | 出处待补 |
-| `"SiC"` | `8.4` | `0.128` | 出处待补 |
+| `"Si"` | `3.6` | `0.115` | 电离能是 PDG 第 35.8 节表 35.10 所给 $3.65\ \text{eV}$ 的近似 [8]；Fano 因子取渐近值 $0.115$ [9]，实测 $0.1161$ [10] |
+| `"SiC"` | `7.83` | `0.128` | 4H-SiC 的电子-空穴对产生能 $(7.83 \pm 0.02)\ \text{eV}$ [11]；Fano 因子 $0.128$ [12] |
 | `"Diamond"` | `13.1` | `0.382` | CVD 金刚石对 Am-241 的 $5.486\ \text{MeV}$ α 粒子的测量值，Fano 因子为 $0.382 \pm 0.007$ [2] |
 
 Fano 涨落见文献 [1]。
@@ -44,7 +44,7 @@ $$E_k = \texttt{GetTotalEnergyDeposit}, \qquad \mathbf{r}_k = \tfrac{1}{2}\bigl(
 - $\mathbf{r}_k$：沉积步位置，取步中点，$\mu\text{m}$（代码注释说明：步的两端在器件表面上，舍入误差可能把端点落到器件外）；
 - $\ell_k$：步长，$\mu\text{m}$；$s_{\max}$：装置的 `maxstep`，$\mu\text{m}$。
 
-器件材料在 Geant4 里按 `material` 建：`"Si"` 用 NIST 的 `G4_Si`；`"Diamond"` 用密度改为 $3.52\ \text{g/cm}^3$ 的 `G4_C`（代码注释：NIST 的 `G4_C` 是 $2.0\ \text{g/cm}^3$ 的石墨）；`"SiC"` 是 Si、C 原子数各占一半、密度 $3.2\ \text{g/cm}^3$ 的化合物。两个密度的出处待补。
+器件材料在 Geant4 里按 `material` 建：`"Si"` 用 NIST 的 `G4_Si`；`"Diamond"` 用密度改为 $3.52\ \text{g/cm}^3$ 的 `G4_C`（代码注释：NIST 的 `G4_C` 是 $2.0\ \text{g/cm}^3$ 的石墨）；`"SiC"` 是 Si、C 原子数各占一半、密度 $3.21\ \text{g/cm}^3$ 的化合物。金刚石密度取自 PDG 的原子与核性质表 [8]，4H-SiC 密度取自文献 [13]。
 
 ### toy MIP 径迹
 
@@ -70,14 +70,18 @@ $$p(Y) = \frac{1}{\pi \sigma}\int_0^\infty e^{-t \ln t - \lambda t}\sin(\pi t)\,
 
 | 材料 | `PAIRS_PER_UM`（$\mu\text{m}^{-1}$） | $dE/dx$（$\text{MeV}/\mu\text{m}$） | `LANDAU_WIDTH_MEV_PER_UM`（$\text{MeV}/\mu\text{m}$） |
 | --- | --- | --- | --- |
-| `"Si"` | `80.0` | `2.88e-4` | `2.0e-5` |
-| `"SiC"` | `55.0` | `4.62e-4` | `3.2e-5` |
+| `"Si"` | `80.0` | `2.88e-4` | `1.78e-5` |
+| `"SiC"` | `55.0` | `4.31e-4` | `2.46e-5` |
 
-`PAIRS_PER_UM` 与 `LANDAU_WIDTH_MEV_PER_UM` 的出处待补。
+Si 每 $\mu\text{m}$ 约 $80$ 对：$300\ \mu\text{m}$ 硅的最可几电荷约 $23\,000\ e$，即约 $77\ e/\mu\text{m}$ [8, 14]。SiC 约 $55$ 对$/\mu\text{m}$，按 $7.83\ \text{eV}$ 与 MIP 能损换算。Landau 宽度按 PDG 第 34 章 [8] 的
+
+$$w = \frac{K}{2}\left\langle\frac{Z}{A}\right\rangle\frac{\rho}{\beta^2} \times 10^{-4} \tag{4a}$$
+
+取 $\beta = 1$，其中 $K/2 = 0.1535\ \text{MeV cm}^2/\text{g}$，$\rho$ 为密度（$\text{g/cm}^3$），$10^{-4}$ 把每 $\text{cm}$ 换成每 $\mu\text{m}$：Si（$\langle Z/A\rangle = 0.4985$，$\rho = 2.329$）为 $1.78\times10^{-5}\ \text{MeV}/\mu\text{m}$，4H-SiC（$\langle Z/A\rangle = 0.4988$，$\rho = 3.21$）为 $2.46\times10^{-5}\ \text{MeV}/\mu\text{m}$。
 
 ### 激光的单光子与双光子吸收
 
-激光脉冲在器件里按吸收产生载流子。单光子吸收（SPA）每吸收一个光子产生一对，强度沿光路按 $e^{-\alpha s}$ 衰减。双光子吸收（TPA）的产生率正比于光强平方，集中在焦点附近。光束是高斯光束，横向半径随离焦距离展宽。
+激光脉冲在器件里按吸收产生载流子。单光子吸收（SPA）每吸收一个光子产生一对，强度沿光路按 Beer–Lambert 定律 $e^{-\alpha s}$ 衰减。双光子吸收（TPA）按 $dI/dz = -\alpha I - \beta_2 I^2$ [15]，产生率正比于光强平方，集中在焦点附近。光束是高斯光束，横向半径随离焦距离展宽。
 
 吸收系数 $\alpha$ 在激光文件未给 `alpha` 时由 `absorption_coefficient` 查表：
 
@@ -117,7 +121,7 @@ $$P(t) = \frac{2\sqrt{2\ln 2}}{\sqrt{2\pi}\,\tau}\exp\!\left(-\frac{4\ln 2\; t^2
 - $r$：到光轴的距离，$\mu\text{m}$；
 - $P(t)$：离脉冲中心 $t$（$\text{s}$）处的归一化时间分布，$\text{s}^{-1}$（`timePulse`）。
 
-式 (11) 中第二个因子是高斯脉冲时间分布平方的积分。光强沿光路只按 $\alpha$ 衰减。$\alpha \ne 0$ 时按式 (10) 加 SPA 载流子群，`tech` 为 `"TPA"` 时再按式 (11) 加 TPA 载流子群；双光子激光的 $\alpha$ 是缺陷对带隙以下光子的吸收（代码注释）。每个群的产生时刻以 `central_time` 为中心展宽：SPA 群的半高全宽为 $\tau$，TPA 群为 $\tau/\sqrt{2}$，因为 $P^2(t)$ 是宽度缩小 $\sqrt{2}$ 的高斯。由 `LaserInjection` 实现。吸收系数表 `Si.txt` 取自文献 [7]；式 (9)–(13) 的出处待补。
+式 (11) 中第二个因子是高斯脉冲时间分布平方的积分。光强沿光路只按 $\alpha$ 衰减。$\alpha \ne 0$ 时按式 (10) 加 SPA 载流子群，`tech` 为 `"TPA"` 时再按式 (11) 加 TPA 载流子群；双光子激光的 $\alpha$ 是缺陷对带隙以下光子的吸收（代码注释）。每个群的产生时刻以 `central_time` 为中心展宽：SPA 群的半高全宽为 $\tau$，TPA 群为 $\tau/\sqrt{2}$，因为 $P^2(t)$ 是宽度缩小 $\sqrt{2}$ 的高斯。由 `LaserInjection` 实现。吸收系数表 `Si.txt` 取自文献 [7]。
 
 ### 放射源
 
@@ -146,17 +150,17 @@ $$f = \frac{1 - \cos\theta_c}{2} \tag{16}$$
 
 | 常数 | 取值 | 单位 | 位置与含义 | 文件里的键 |
 | --- | --- | --- | --- | --- |
-| `PAIR_ENERGY_EV` | Si `3.6`，SiC `8.4`，Diamond `13.1` | $\text{eV}$ | `ionization.py`，式 (1) 的 $\varepsilon$ | 无 |
-| `FANO_FACTOR` | Si `0.115`，SiC `0.128`，Diamond `0.382` | 无 | `ionization.py`，式 (2) 的 $F$ | 无（开关 `fano` 是环节选项） |
+| `PAIR_ENERGY_EV` | Si `3.6`，SiC `7.83`，Diamond `13.1` | $\text{eV}$ | `ionization.py`，式 (1) 的 $\varepsilon$ | 无 |
+| `FANO_FACTOR` | Si `0.115`，SiC `0.128`，Diamond `0.382` | 无 | `ionization.py`，式 (2) 的 $F$ | 无（开关 `deposit.fano` 是环节设置） |
 | `PAIRS_PER_UM` | Si `80.0`，SiC `55.0` | $\mu\text{m}^{-1}$ | `mip_track.py`，式 (4) 的 $n_{\text{MIP}}$ | 无 |
-| `LANDAU_WIDTH_MEV_PER_UM` | Si `2.0e-5`，SiC `3.2e-5` | $\text{MeV}/\mu\text{m}$ | `mip_track.py`，式 (5) 的 $w$ | 无 |
-| `GENERATED_LIMIT` | `10_000_000` | 事例 | `generation.py`，按记录数运行时最多生成的事例数 | 无（环节选项 `--generated-limit`） |
-| `DEVICE_ALONE` | 见下文“装置” | — | `simulate_deposits.py`，未给装置时的装置 | 由 `g4setup` 整体替换 |
+| `LANDAU_WIDTH_MEV_PER_UM` | Si `1.78e-5`，SiC `2.46e-5` | $\text{MeV}/\mu\text{m}$ | `mip_track.py`，式 (5) 的 $w$ | 无 |
+| `GENERATED_LIMIT` | `10_000_000` | 事例 | `generation.py`，按记录数运行时最多生成的事例数 | 无（环节设置 `deposit.generated_limit`） |
+| `DEVICE_ALONE` | 见下文“装置” | — | `simulate_deposits.py`，未给装置时的装置 | 由 `deposit.g4setup` 整体替换 |
 | `WORLD_HALF_SIDE` | `25000` | $\mu\text{m}$ | `simulate_deposits.py`，世界立方体的缺省半边长 | `gdml_import` 下的 `world_half_size_um` |
 | 物理表 | `FTFP_BERT` + `G4StepLimiterPhysics` | — | `geant4/interaction.py` | 无 |
 | 放射性衰变时间阈值 | `1.0e60` | 年 | `geant4/interaction.py` | 无 |
-| 随机引擎 | `CLHEP::RanecuEngine`，种子为作业的 `seed` | — | `geant4/interaction.py` | 无 |
-| 器件密度 | Diamond `3.52`，SiC `3.2`（Si:C 原子数 `50:50`） | $\text{g/cm}^3$ | `geant4/detector_construction.py` | 无 |
+| 随机引擎 | `CLHEP::RanecuEngine`，种子为 `deposit` 环节的种子（由作业的种子派生） | — | `geant4/interaction.py` | 无 |
+| 器件密度 | Diamond `3.52`，SiC `3.21`（Si:C 原子数 `50:50`） | $\text{g/cm}^3$ | `geant4/detector_construction.py` | 无 |
 | `RADIOACTIVE_DECAY` | `210` | — | `geant4/nuclide_source.py`，放射性衰变的过程子类型 | 无 |
 | $h$, $c$ | `6.626e-34`, `2.998e8` | $\text{J}\cdot\text{s}$, $\text{m/s}$ | `laser.py`，式 (8) | 无 |
 | 环数、扇区数 | `4`, `8` | 个 | `laser.py`，激光横截面的划分 | 无 |
@@ -186,7 +190,7 @@ $$f = \frac{1 - \cos\theta_c}{2} \tag{16}$$
 
 `write_simulated_deposits` 调用 `simulate_deposits` 后用 `write_deposits` 写文件，返回记录事例数。
 
-GDML 导入模式按 `material` 为 `"Si"`（`G4_Si`）和 `"SiC"`（Si、C 原子数各半，$3.2\ \text{g/cm}^3$）建器件逻辑体 `"Device"`。
+GDML 导入模式按 `material` 为 `"Si"`（`G4_Si`）和 `"SiC"`（Si、C 原子数各半，$3.21\ \text{g/cm}^3$）建器件逻辑体 `"Device"`。
 
 ### 能损线切成沉积步
 
@@ -204,7 +208,7 @@ GDML 导入模式按 `material` 为 `"Si"`（`G4_Si`）和 `"SiC"`（Si、C 原�
 
 ### 激光载流子群
 
-`LaserInjection(my_d, laser_dic)` 读入激光键（见“接口”）。未给 `alpha` 时按式 (7) 查表：组件里没有 `laser/absorption/<material>.txt` 时抛 `ValueError`；$10^3\lambda$ 小于表的最短波长时抛 `ValueError`；大于最长波长时 $\alpha = 0$。然后先在 $\alpha \ne 0$ 时用 $k = 2$、展宽 $\tau$ 加 SPA 群，再在 `tech == "TPA"` 时用 $k = 4$、展宽 $\tau/\sqrt{2}$ 加 TPA 群。`tech` 不是 `"SPA"`、`"TPA"` 时在加完 SPA 群之后抛 `NameError(tech)`。每次加群（`_add_groups`）的步骤：
+`LaserInjection(my_d, laser_dic)` 读入激光键（见“接口”）。未给 `alpha` 时按式 (7) 查表：组件里没有 `deposit/absorption/<material>.txt` 时抛 `ValueError`；$10^3\lambda$ 小于表的最短波长时抛 `ValueError`；大于最长波长时 $\alpha = 0$。然后先在 $\alpha \ne 0$ 时用 $k = 2$、展宽 $\tau$ 加 SPA 群，再在 `tech == "TPA"` 时用 $k = 4$、展宽 $\tau/\sqrt{2}$ 加 TPA 群。`tech` 不是 `"SPA"`、`"TPA"` 时在加完 SPA 群之后抛 `NameError(tech)`。每次加群（`_add_groups`）的步骤：
 
 1. **光路坐标**（`_beam_frame`）：`"top"` 从 $z = 0$ 沿 $+z$，光路长 $l_z$，焦点 $s_f = f_z l_z$，横向坐标 $(u, v) = (x, y)$，中心 $(f_x l_x, f_y l_y)$；`"bottom"` 从 $z = l_z$ 沿 $-z$，光路长 $l_z$，$s_f = l_z - f_z l_z$，$z = l_z - s$；`"edge"` 从 $x = 0$ 沿 $+x$，光路长 $l_x$，$s_f = f_x l_x$，$(u, v) = (y, z)$，中心 $(f_y l_y, f_z l_z)$。其中 $f_x, f_y, f_z$ 为 `fx_rel`、`fy_rel`、`fz_rel`。其他 `direction` 抛 `NameError(direction)`。
 2. **光路采样**：最细尺度 $d = \min\bigl(L_{\text{beam}},\ z_R,\ 10^{6}/\alpha\bigr)$（$\alpha = 0$ 时第三项取 $L_{\text{beam}}$），在 $[0, L_{\text{beam}}]$ 上取 $\lceil 50 L_{\text{beam}}/d \rceil + 1$ 个等距点，按式 (10) 或 (11) 求 $dN/ds$，用梯形法累积得 $M(s)$（乘 $10^{-6}$ 换成每 $\mu\text{m}$），总对数 $N_{\text{tot}} = M(L_{\text{beam}})$。
@@ -232,7 +236,7 @@ GDML 导入模式按 `material` 为 `"Si"`（`G4_Si`）和 `"SiC"`（Si、C 原�
 1. 记 `tsg` 为 `driver.upper()` 属于 `{"TSG", "TSG_FILE", "TSG_OFFSCREEN"}`。给了 `output` 而驱动既不是 TSG 也不以 `"OGL"` 开头时抛 `ValueError`。
 2. 驱动不在 `DAWNFILE`、`HEPREPFILE`、`K3DJUPYTER`、`MPLJUPYTER`、`TSG`、`TSG_FILE`、`TSG_OFFSCREEN`、`VRML2FILE` 中时，先建 `G4UIExecutive` 会话。
 3. 以 `generated = events`、无能量窗合成配置并转动，构建与“Geant4 分支”相同的几何和动作。
-4. 打开驱动（`register_driver` 为 g4ppyy 补注册 `TSG_OFFSCREEN`、`TSG_QT_GLES`、`OGL`、`VRML2FILE`、`ATREE`）。TSG 且给了 `output` 时设 PNG 输出 `<output>.png`。`gdml_import` 执行组件 `g4macro/vis_pcb.mac`，否则执行 `g4macro/init_vis.mac` 与 `g4macro/vis.mac`；宏不在组件路径中时抛 `FileNotFoundError`。OGL 且给了 `output` 时设白底、矢量打印、`2000 × 2000`、文件名 `output`。
+4. 打开驱动（`register_driver` 为 g4ppyy 补注册 `TSG_OFFSCREEN`、`TSG_QT_GLES`、`OGL`、`VRML2FILE`、`ATREE`）。TSG 且给了 `output` 时设 PNG 输出 `<output>.png`。`gdml_import` 执行组件 `deposit/vis_pcb.mac`，否则执行 `deposit/init_vis.mac` 与 `deposit/vis.mac`；宏不在组件路径中时抛 `FileNotFoundError`。OGL 且给了 `output` 时设白底、矢量打印、`2000 × 2000`、文件名 `output`。
 5. `BeamOn(events)`，然后刷新视图并导出图片。有会话时进入交互，关窗后返回。任一 Geant4 命令返回非零状态时抛 `RuntimeError`（`Geant4 refused the command ...`）。
 
 ## 软件实现
@@ -260,7 +264,7 @@ GDML 导入模式按 `material` 为 `"Si"`（`G4_Si`）和 `"SiC"`（Si、C 原�
 
 ## 接口
 
-使用者能设的是下表中器件文件、装置脚本、放射源和束流文件、激光文件里的键；页内其余参数写死在代码里。事例数、能量窗、`fano` 与绘图事例数 `deposit.plots` 是环节选项，命令行用法见 [能量沉积环节](../stages/deposit.md)。
+使用者能设的是下表中器件文件、装置脚本、放射源和束流文件、激光文件里的键；页内其余参数写死在代码里。事例数、能量窗、`deposit.fano` 与绘图事例数 `deposit.plots` 是 `deposit` 段的设置，见 [能量沉积环节](../stages/deposit.md)。
 
 ### 器件文件读取的键
 
@@ -271,7 +275,7 @@ GDML 导入模式按 `material` 为 `"Si"`（`G4_Si`）和 `"SiC"`（Si、C 原�
 
 ### 装置
 
-装置是 `g4setup/<名称>.py` 脚本里的字典 `G4SETUP`，未给装置时用 `DEVICE_ALONE`（除 `name`、`description` 外与 `device_alone.py` 相同）。
+装置是 `components/deposit/` 下 `<名称>.py` 脚本里的字典 `G4SETUP`，未给装置时用 `DEVICE_ALONE`（除 `name`、`description` 外与 `device_alone.py` 相同）。
 
 #### `G4SETUP` 顶层键
 
@@ -333,7 +337,7 @@ GDML 文件中含字符串 `RASER_GDML_WRAPPER_WORLD` 时，GDML 的世界体直
 | 键 | 默认值 | 单位 | 含义 |
 | --- | --- | --- | --- |
 | `world_half_size_um` | 由 `world_half_side` 计算 | $\mu\text{m}$ | 覆盖世界立方体的半边长 |
-| `gdml.file` | 无（必填） | 无 | GDML 文件路径；依次按绝对路径、各组件根下的该路径、各组件根下 `g4experiment/<file>`、`src/raser/<file>` 查找；为空抛 `ValueError`，找不到抛 `FileNotFoundError` |
+| `gdml.file` | 无（必填） | 无 | GDML 文件路径；依次按绝对路径、各组件根下的该路径、各组件根下 `deposit/<file>`、`src/raser/<file>` 查找；为空抛 `ValueError`，找不到抛 `FileNotFoundError` |
 | `gdml.top_volume` | `None` | 无 | 要放置的逻辑体名；文件中没有该名字或未给时放置 GDML 的世界体 |
 | `gdml.validate` | `False` | 无 | 读取时是否校验 GDML schema |
 | `gdml.auto_center` | `True` | 无 | 是否减去 GDML 中全部 `<position>` 坐标包围盒的中心 |
@@ -346,10 +350,10 @@ GDML 文件中含字符串 `RASER_GDML_WRAPPER_WORLD` 时，GDML 的世界体直
 
 | 组件 | 位置 | 说明 |
 | --- | --- | --- |
-| `device_alone` | `components/g4setup/` | 器件单独放在真空里，源在顶面上方 $17\ \text{mm}$ |
-| `Sr90_collimator` | `bench/signal/components/g4setup/` | 空气中的黄铜准直器（见 [信号](../bench/signal.md)） |
-| `pcb_readout_gdml` | `bench/signal/components/g4setup/` | 导入 `pcb_readout.gdml` 的 PCB 读出板（见 [信号](../bench/signal.md)） |
-| `time_resolution` | `bench/timeres/components/g4setup/` | 参考硅器件与两块开孔 PCB 板（见 [时间分辨](../bench/timeres.md)） |
+| `device_alone` | `raser/components/deposit/` | 器件单独放在真空里，源在顶面上方 $17\ \text{mm}$ |
+| `Sr90_collimator` | `src/raser_bench/signal/components/deposit/` | 空气中的黄铜准直器（见 [信号](../bench/signal.md)） |
+| `pcb_readout_gdml` | `src/raser_bench/signal/components/deposit/` | 导入 `pcb_readout.gdml` 的 PCB 读出板（见 [信号](../bench/signal.md)） |
+| `time_resolution` | `src/raser_bench/timeres/components/deposit/` | 参考硅器件与两块开孔 PCB 板（见 [时间分辨](../bench/timeres.md)） |
 
 ### 放射源和束流
 
@@ -401,7 +405,7 @@ GDML 文件中含字符串 `RASER_GDML_WRAPPER_WORLD` 时，GDML 的世界体直
 | `toy/MIP` | `toy_mip` | 缺省径迹，`landau_sampling = true` |
 | `toy/MIP_pixel_edge`、`toy/MIP_pixel_edge_fast` | `toy_mip` | 从 $(600, 450, 0)$ 到 $(600, 450, 300)$ $\mu\text{m}$，`packets` 为 `50` 与 `5`，后者不做 Landau 抽样 |
 | `toy/MIP_strip_edge` | `toy_mip` | 起点 $x$ 在 $[150, 270]$ $\mu\text{m}$ 内抽样，$dx/dz$ 的标准差 $10$ mrad |
-| `bunch`（`apps/bmos/components/source/`） | `beam` | 三个 $80\ \text{MeV}$ 质子并排同时发射（见 [`bmos`](../apps/bmos.md)） |
+| `bunch`（`src/raser_app/bmos/components/deposit/`） | `beam` | 三个 $80\ \text{MeV}$ 质子并排同时发射（见 [`bmos`](../apps/bmos.md)） |
 
 ### 激光
 
@@ -423,7 +427,7 @@ GDML 文件中含字符串 `RASER_GDML_WRAPPER_WORLD` 时，GDML 的世界体直
 | `groups` | 无（必填） | 群 | 每种吸收至少分出的群数（去掉器件外的群之前） |
 | `fx_rel`, `fy_rel`, `fz_rel` | 无（必填） | 无 | 焦点的相对坐标，绝对位置为 $(f_x l_x,\ f_y l_y,\ f_z l_z)$ |
 
-#### 吸收系数表（`laser/absorption/<material>.txt`）
+#### 吸收系数表（`deposit/absorption/<material>.txt`）
 
 空白分隔的两列文本，`#` 开头为注释：第一列波长（$\text{nm}$），第二列 $300\ \text{K}$ 下的带间吸收系数（$\text{cm}^{-1}$），按波长升序。库中只有 `Si.txt`，波长 $250$ 至 $1450\ \text{nm}$，取自文献 [7]。
 
@@ -436,7 +440,7 @@ GDML 文件中含字符串 `RASER_GDML_WRAPPER_WORLD` 时，GDML 的世界体直
 | `PIL037_top_SiC`、`PIL037_edge_SiC` | `"SPA"` | $375\ \text{nm}$，碳化硅，`alpha` 分别为 `1000`、`21000` $\text{m}^{-1}$ |
 | `TPA1550_top_Si`、`TPA1550_edge_Si` | `"TPA"` | $1550\ \text{nm}$，硅，长于表的上限，$\alpha = 0$，只有 TPA 群 |
 
-### `deposit_<job>.h5` 文件格式
+### `deposit.h5` 文件格式
 
 #### 文件属性
 
@@ -482,3 +486,11 @@ GDML 文件中含字符串 `RASER_GDML_WRAPPER_WORLD` 时，GDML 的世界体直
 - [5] S. Hauf et al., “Radioactive Decays in Geant4”, IEEE Trans. Nucl. Sci. 60 (2013) 2966, doi:10.1109/TNS.2013.2270894
 - [6] L. Landau, “On the energy loss of fast particles by ionization”, J. Phys. (USSR) 8 (1944) 201
 - [7] M. A. Green, “Self-consistent optical parameters of intrinsic silicon at 300 K including temperature coefficients”, Sol. Energy Mater. Sol. Cells 92 (2008) 1305, doi:10.1016/j.solmat.2008.06.009
+- [8] S. Navas et al. (Particle Data Group), “Review of Particle Physics”, Phys. Rev. D 110 (2024) 030001, doi:10.1103/PhysRevD.110.030001
+- [9] K. Ramanathan, N. Kurinsky, “Ionization yield in silicon for eV-scale electron-recoil processes”, Phys. Rev. D 102 (2020) 063026, doi:10.1103/PhysRevD.102.063026
+- [10] B. G. Lowe, “Measurements of Fano factors in silicon and germanium in the low-energy X-ray region”, Nucl. Instrum. Methods Phys. Res. A 399 (1997) 354, doi:10.1016/S0168-9002(97)00965-0
+- [11] A. Gsponer et al., Nucl. Instrum. Methods Phys. Res. A 1064 (2024) 169412, doi:10.1016/j.nima.2024.169412
+- [12] S. K. Chaudhuri, K. J. Zavalla, K. C. Mandal, Appl. Phys. Lett. 102 (2013) 031109, doi:10.1063/1.4776703
+- [13] M. E. Levinshtein, S. L. Rumyantsev, M. S. Shur (eds.), *Properties of Advanced Semiconductor Materials*, Wiley (2001)
+- [14] H. Bichsel, “Straggling in thin silicon detectors”, Rev. Mod. Phys. 60 (1988) 663, doi:10.1103/RevModPhys.60.663
+- [15] R. W. Boyd, *Nonlinear Optics*, 3rd ed., Academic Press (2008)

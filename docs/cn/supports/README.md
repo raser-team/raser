@@ -6,17 +6,17 @@
 
 ### 工作区、项目与组件路径解析（`paths`）
 
-无论 RASER 从源码树运行还是作为已安装包运行，命令行启动、实验初始化与各环节读取组件时，都通过 `raser.supports.paths` 解析工作区根目录、当前项目根目录、包内应用私有文件，并按四级优先级查找组件文件。运行下面这条扫描命令时：
+无论 RASER 从源码树运行还是作为已安装包运行，命令行启动、实验初始化与各环节读取组件时，都通过 `raser.supports.paths` 解析工作区根目录、当前项目根目录、测试类与应用类的包内文件，并按四级优先级查找组件文件。运行下面这条扫描命令时：
 
 ```bash
 raser signal HPK-Si-PiN --scan field.voltage=100,200 -s 2 --seed 1
 ```
 
-命令行入口在进入子命令前调用 `infer_project_root("HPK-Si-PiN")` 并通过 `project_root_context()` 设定路径上下文，使各层解析到如下路径：
+命令行入口在进入子命令前调用 `infer_project_root("HPK-Si-PiN")`（`work/` 下没有 `HPK-Si-PiN` 时解析到 `examples/HPK-Si-PiN/`）并通过 `project_root_context()` 设定路径上下文，使各层解析到如下路径：
 
 ```text
 work_root()           -> work/
-project_root()        -> work/HPK-Si-PiN/
+project_root()        -> examples/HPK-Si-PiN/
 component_file_path() -> src/raser/components/device/HPK-Si-PiN.json
                          src/raser/components/deposit/   放射源 decay/Sr90、Geant4 装置 device_alone
                          src/raser/components/readout/   SantaCruz、Gali52、Termination50
@@ -29,9 +29,9 @@ component_file_path() -> src/raser/components/device/HPK-Si-PiN.json
 各环节与核心模块在当前项目下构造输出目录或清理旧文件时，通过 `raser.supports.output` 校验相对路径片段与删除目标。路径片段含绝对路径或 `".."`、归属者名称为空，或删除目标解析后落在 `project_root()` 之外时，操作在访问磁盘前即抛出 `ValueError` 中止：
 
 ```text
-owned_path("field", "batch")  -> <project_root>/field/batch
-owned_path("field", "../out") -> ValueError: Output label must remain inside the project: ../out
-delete_file("/tmp/test.h5")   -> ValueError: File removal must remain inside the project: /tmp/test.h5
+owned_path("field", "<节点号>") -> <器件 project>/field/<节点号>/
+owned_path("field", "../out")   -> ValueError: Output label must remain inside the project: ../out
+delete_file("/tmp/test.h5")     -> ValueError: File removal must remain inside the project: /tmp/test.h5
 ```
 
 ### 缺失依赖捕获与提示（`dependency`）
@@ -101,7 +101,7 @@ Memory increase: RSS = 1.50 MB, VMS = 0.00 MB
    - `len(path.parts) > 1`（包含多级路径）；
    - `bool(path.suffix)` 为真（带文件后缀）。
 
-   若三者均不满足（例如纯器件名 `"HPK-Si-PiN"`），返回 `work_root() / str(input_value)`，各实验文件夹随之落在该项目根目录下。第六轮的查找顺序是先找 `work/<名字>/`，再找 `examples/<名字>/`，最后找 `./<名字>/`，见[实验、扫描点与种子](../lifecycle/experiments.md)。若满足任一条件，判定为路径输入，先对 `Path(input_value)` 调用 `.expanduser()` 展开 `~`，再进入第 3 步。
+   若三者均不满足（纯名字，例如 `"HPK-Si-PiN"`、`"bmos"`），按 `work/<名字>/`（`work_root() / str(input_value)`）、`examples/<名字>/`（源码树下 `REPO_ROOT / "examples" / str(input_value)`）、`./<名字>/`（`Path.cwd() / str(input_value)`）的顺序查找 project，返回第一个存在的目录；三处都没有时报错退出（新建 project 用 `raser new --from`，见[实验、扫描点与种子](../lifecycle/experiments.md)）。例如 `raser signal HPK-Si-PiN` 在 `work/` 下没有它时解析到 `examples/HPK-Si-PiN/`。若满足任一条件，判定为路径输入，先对 `Path(input_value)` 调用 `.expanduser()` 展开 `~`，再进入第 3 步。
 3. **从路径输入提取项目根目录（`_project_root_from_path(path)`）**：取路径分段元组 `parts = path.parts`：
    - 若 `"components" in parts`，取首次出现的位置 `index = parts.index("components")`；当 `index > 0`（即 `"components"` 位于首段之后）时，返回第一个 `"components"` 之前的父路径 `Path(*parts[:index])`；
    - 否则检查 `path.is_dir()`：若路径本身是已存在的目录，返回 `path`；其余情况返回其父目录 `path.parent`。
@@ -112,12 +112,12 @@ Memory increase: RSS = 1.50 MB, VMS = 0.00 MB
 
 ### 组件搜索优先级与文件定位
 
-定位组件文件与包内应用文件时，按以下步骤执行：
+定位组件文件与测试类、应用类的包内文件时，按以下步骤执行：
 
 1. **组装并去重搜索根目录（`component_roots(extra_roots=None)`）**：
    - 按从高到低的固定顺序收集四层目录到列表 `roots`：
      1. `project_path("components")`：当前项目的 `components/` 目录；
-     2. `_as_path_list(extra_roots)`：`extra_roots` 为 `None` 时取 `[]`，为单个 `str | os.PathLike` 时取 `[Path(extra_roots)]`，为列表时逐项转为 `Path`；调用 `app_component_roots(app_name, *app_names)` 时，会将一个或多个应用的 `app_component_root(name)`（即 `PACKAGE_ROOT / name / "components"`）作为 `extra_roots` 传给 `component_roots()`；
+     2. `_as_path_list(extra_roots)`：`extra_roots` 为 `None` 时取 `[]`，为单个 `str | os.PathLike` 时取 `[Path(extra_roots)]`，为列表时逐项转为 `Path`；测试类与应用类分别在与 `raser` 平级的 `raser_bench`（`src/raser_bench/`）和 `raser_app`（`src/raser_app/`）包里，调用 `app_component_roots(app_name, *app_names)` 时，会将一个或多个测试或应用的 `app_component_root(name)`（按各自包的根目录定位，即 `<包根>/<名字>/components`）作为 `extra_roots` 传给 `component_roots()`；
      3. `os.environ.get("RASER_COMPONENT_PATH", "")`：按 `os.pathsep`（Linux 与 macOS 上为 `:`，Windows 上为 `;`）切分，过滤掉空字符串片段后逐项转为 `Path(path)`；
      4. `DEFAULT_COMPONENT_ROOT`：包内置的 `PACKAGE_ROOT / "components"`。
    - 遍历 `roots`，以字符串 `key = str(root)` 在集合 `seen` 中去重，保留首次出现的位置，返回 `deduped`（`list[Path]`）。
@@ -140,17 +140,17 @@ Memory increase: RSS = 1.50 MB, VMS = 0.00 MB
      - `path.exists()` 为真但不是文件（例如传了目录）时，抛出 `IsADirectoryError: RASER <kind> input must be a file: <path>`，应改为指向具体文件；
      - `path.exists()` 为假时，抛出 `FileNotFoundError: Cannot find RASER <kind> file: <path>`，应核对文件路径。
    - 若 `name_or_path` 是纯组件名，转调并返回 `component_path(kind, str(name_or_path) + suffix)`；未找到时按第 3 步抛出 `component_path()` 的 `FileNotFoundError`。
-5. **定位包内应用文件（`app_file_path(app_name, filename)`）**：构造 `path = PACKAGE_ROOT / app_name / filename`。当 `path.exists()` 为真时返回 `path`；目标不存在时抛出 `FileNotFoundError: Cannot find RASER app file: <path>`。原因是应用目录名或文件名有误，或该数据文件未打进安装包，核对拼写并确认文件存在于包内对应目录即可。
+5. **定位测试类与应用类的包内文件（`app_file_path(app_name, filename)`）**：测试类在 `raser_bench` 包（`src/raser_bench/`）、应用类在 `raser_app` 包（`src/raser_app/`），与 `raser` 平级，按各自包的根目录构造 `path = <包根>/<名字>/<filename>`。当 `path.exists()` 为真时返回 `path`；目标不存在时抛出 `FileNotFoundError: Cannot find RASER app file: <path>`。原因是测试或应用名、文件名有误，或该数据文件未打进安装包，核对拼写并确认文件存在于对应包目录即可。
 
 ### 模块工作路径与项目内输出边界保护
 
 `paths.py` 与 `output.py` 按以下步骤推导模块工作目录并约束目录创建与文件删除：
 
 1. **计算模块工作目录名与路径（`module_work_name(current_file_path)`、`module_work_path(current_file_path, *labels)`）**：
-   - 将 `current_file_path` 解析为绝对路径 `path = Path(current_file_path).resolve()`，求其相对 `PACKAGE_ROOT` 的路径 `relative = path.relative_to(PACKAGE_ROOT)`；若文件不在 `PACKAGE_ROOT` 之下（抛出 `ValueError`），返回文件名词干 `path.stem`；
-   - 取 `parts = relative.parts`：若 `len(parts) >= 2` 且首段 `parts[0] in {"apps", "bench", "core"}`，返回第二段 `parts[1]`（例如 `"field"`、`"current"`）；
-   - 若 `parts` 非空且首段 `parts[0] == "cli"`，返回 `"cli"`；
-   - 其余情况返回 `path.stem`；
+   - 将 `current_file_path` 解析为绝对路径 `path = Path(current_file_path).resolve()`；
+   - 若文件在 `raser_bench`（`src/raser_bench/`）或 `raser_app`（`src/raser_app/`）包的根目录之下，求相对该 `<包根>` 的路径 `relative`：属于 `<包根>/<名字>/...`（即 `len(relative.parts) >= 2`）时返回 `<名字>`（`relative.parts[0]`，例如 `"signal"`、`"bmos"`），其余情况返回 `path.stem`；
+   - 若文件在 `PACKAGE_ROOT`（`raser` 包根目录）之下，求 `relative = path.relative_to(PACKAGE_ROOT)` 并取 `parts = relative.parts`：若 `len(parts) >= 2` 且首段 `parts[0] == "core"`，返回第二段 `parts[1]`（例如 `"field"`、`"current"`）；若 `parts` 非空且首段 `parts[0] == "cli"`，返回 `"cli"`；其余情况返回 `path.stem`；
+   - 若文件不在上述三个包的根目录之下，返回文件名词干 `path.stem`；
    - `module_work_path(current_file_path, *labels)` 返回 `project_path(module_work_name(current_file_path), *labels)`。
 2. **校验项目内相对路径片段（`_relative_parts(parts)`）**：将各段转为字符串元组 `values = tuple(str(part) for part in parts)`，对每一项令 `path = Path(value)`。若 `path.is_absolute()` 为真或 `".." in path.parts`，抛出 `ValueError: Output label must remain inside the project: <value>`。原因是输出路径必须留在项目目录之内，应改用项目内的相对路径片段。校验全部通过后返回 `values`。
 3. **构造带归属者的项目内路径（`owned_path(owner, *parts)`）**：
@@ -206,7 +206,7 @@ Memory increase: RSS = 1.50 MB, VMS = 0.00 MB
 
 ### 源文件分工
 
-- `src/raser/supports/paths.py`：定义 `PACKAGE_ROOT`、`REPO_ROOT`、`DEFAULT_COMPONENT_ROOT`；实现源码树判定（`source_tree`）、工作区与项目根目录解析（`default_work_root`、`work_root`、`project_root`、`project_path`、`infer_project_root`）、环境变量上下文管理器（`project_root_context`、`_environment`）、组件与应用文件路径定位（`component_roots`、`app_component_root`、`app_component_roots`、`app_file_path`、`component_candidates`、`component_path`、`optional_component_path`、`component_file_path`）以及模块工作目录推导（`module_work_name`、`module_work_path`）。
+- `src/raser/supports/paths.py`：定义 `PACKAGE_ROOT`、`REPO_ROOT`、`DEFAULT_COMPONENT_ROOT`；实现源码树判定（`source_tree`）、工作区与项目根目录解析（`default_work_root`、`work_root`、`project_root`、`project_path`、`infer_project_root`）、环境变量上下文管理器（`project_root_context`、`_environment`）、组件与测试、应用包内文件路径定位（`component_roots`、`app_component_root`、`app_component_roots`、`app_file_path`、`component_candidates`、`component_path`、`optional_component_path`、`component_file_path`）以及模块工作目录推导（`module_work_name`、`module_work_path`）。
 - `src/raser/supports/output.py`：实现项目内相对路径片段校验（`_relative_parts`）、带归属者的项目内路径构造（`owned_path`）、兼容旧调用的模块输出目录创建（`output`）、按需目录创建（`create_path`）以及限制在项目根目录之内的单文件删除（`delete_file`）。
 - `src/raser/supports/dependency.py`：定义缺失依赖异常 `MissingDependency`，以及 PyROOT 模块名集合 `ROOT_MODULES` 和预构造异常实例 `ROOT_MISSING`。
 - `src/raser/supports/process.py`：维护模块级清理回调列表 `_callbacks`，提供去重注册函数 `at_process_end` 和后进先出清理函数 `close`。
@@ -235,7 +235,7 @@ Memory increase: RSS = 1.50 MB, VMS = 0.00 MB
 | --- | --- | --- | --- |
 | `RASER_WORK_PATH` | 未设置（回退到 `default_work_root()`：源码树下为 `<REPO_ROOT>/work`，包安装模式下为当前工作目录下的 `work`） | 无 | 工作区根目录路径，由 `work_root()` 读取；设置后直接按 `Path(RASER_WORK_PATH)` 解析 |
 | `RASER_PROJECT_PATH` | 未设置（`project_root()` 回退到 `Path.cwd()`） | 无 | 当前项目根目录路径，由 `project_root()` 和 `infer_project_root()` 读取；设置且非空时 `infer_project_root()` 直接采用它；`project_root_context()` 在上下文内临时覆盖并在退出时恢复该变量 |
-| `RASER_COMPONENT_PATH` | `""` | 无 | 附加组件搜索根目录列表，由 `component_roots()` 读取；多个目录用 `os.pathsep`（Linux 与 macOS 上为 `:`，Windows 上为 `;`）分隔，空片段忽略；`project_root_context()` 传入应用列表时会把对应应用的 `components/` 目录前置到该变量中，退出时恢复原值 |
+| `RASER_COMPONENT_PATH` | `""` | 无 | 附加组件搜索根目录列表，由 `component_roots()` 读取；多个目录用 `os.pathsep`（Linux 与 macOS 上为 `:`，Windows 上为 `;`）分隔，空片段忽略；`project_root_context()` 传入测试或应用列表时会把对应的 `<包根>/<名字>/components` 目录前置到该变量中，退出时恢复原值 |
 
 ### 读写与检查的文件及目录
 
@@ -243,5 +243,5 @@ Memory increase: RSS = 1.50 MB, VMS = 0.00 MB
 
 - **`<REPO_ROOT>/pyproject.toml`**：由 `source_tree()` 通过 `.is_file()` 只读检查是否存在，配合 `PACKAGE_ROOT.parent.name == "src"` 判定当前是否运行于源码树中（TOML 文本文件）。
 - **组件候选文件 `<component_root>/<kind>/<name><suffix>`**：由 `component_path()`、`optional_component_path()` 与 `component_file_path()` 按 `<project_root>/components/`、`extra_roots`、`RASER_COMPONENT_PATH`、`<PACKAGE_ROOT>/components/` 的顺序检查 `.exists()` 或 `.is_file()` 并返回 `Path`（`suffix` 默认为 `".json"`），文件内容与字段单位由调用方环节或组件模块解析。
-- **包内应用文件 `<PACKAGE_ROOT>/<app_name>/<filename>`**：由 `app_file_path()` 检查 `.exists()` 并返回 `Path`，供 `raser_bench` 与 `raser_app` 读取测试或应用目录下的内置配置或数据文件。
+- **测试类与应用类的包内文件 `<包根>/<名字>/<filename>`**：由 `app_file_path()` 按 `raser_bench`（`src/raser_bench/`）或 `raser_app`（`src/raser_app/`）各自包的根目录检查 `.exists()` 并返回 `Path`，供测试或应用读取各自目录下的内置配置或数据文件。
 - **项目内输出目录 `<project_root>/<owner>/<parts...>` 与 `<project_root>/<module_work_name>/<label...>`**：由 `owned_path()`、`module_work_path()` 构造路径，`create_path()` 与 `output()` 调用 `mkdir(parents=True, exist_ok=True)` 创建目录；项目根目录内的单文件 `<project_root>/<相对路径>` 由 `delete_file()` 校验归属后调用 `unlink()` 删除。
