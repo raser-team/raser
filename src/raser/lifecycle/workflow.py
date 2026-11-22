@@ -127,6 +127,19 @@ class Workflow:
     # its options at the addresses <name>.device.... One device is the one the
     # command names, in files["device"].
     devices: Mapping = field(default_factory=dict)
+    # The sections of config.json, for an experiment whose settings are
+    # written whole in sections: its keys are then addresses <section>.<key>,
+    # config.json holds every one of them, a key it lacks or does not know is
+    # an error, and each slice reads those of its stage under their bare names.
+    sections: tuple = ()
+    # Those of the sections whose settings say what is measured: a list of
+    # values for one of them is a scan, a run of the experiment for each
+    # value. A setting of the other sections says how what was measured is
+    # analysed: a list is its value, and it is not scanned.
+    scanned: tuple = ()
+    # <section>.<slot> -> the kind of file the slot names: a key inside that
+    # file is given as <section>.<slot>.<keys down to it>.
+    slots: Mapping = field(default_factory=dict)
     # The last stage of the chain, the analysis: (the experiment folder) ->
     # the results of its points whose jobs are all done. It works on the jobs
     # of a point together, so it is no slice of a job: the command runs it
@@ -201,7 +214,7 @@ def execute(workflow, kwargs, register=True):
             held[0] = None
 
     try:
-        return _execute(workflow, kwargs, register, root, _read(root / "config.json"), identity, release)
+        return _execute(workflow, kwargs, register, root, read_config(workflow, root), identity, release)
     finally:
         release()
 
@@ -218,7 +231,24 @@ def _execute(workflow, kwargs, register, root, config, identity, release):
         fixed_here[address.get(key, key)] = _parse(value)
     scanned_here = {address.get(item.partition("=")[0], item.partition("=")[0]) for item in kwargs["scan"]}
     for key, value in fixed_here.items():
+        if workflow.sections and key.split(".")[0] not in workflow.scanned:
+            continue  # a setting of the analysis names no folder: any value
+        if workflow.sections and isinstance(value, list):
+            raise ValueError(f"{key}: a list of values is a scan; give it to --scan as {key}=" + ",".join(map(str, value)))
         _check_folder_names(key, [value])
+    if workflow.sections:
+        # what the command line gives is a setting or a key under a slot; anything else is told now
+        for key in sorted(scanned_here | set(fixed_here)):
+            if key not in workflow.keys:
+                in_file(workflow, key)
+    if workflow.sections:
+        for key in sorted(scanned_here):
+            if key.split(".")[0] not in workflow.scanned:
+                raise ValueError(
+                    f"{key} is not scanned: a setting of {key.split('.')[0]} says how the events that were measured "
+                    f"are analysed, not what is measured. Set another value with --set and run again: the events are "
+                    f"used as they are. Scanned are the settings of {', '.join(workflow.scanned)}"
+                )
     if both := sorted(scanned_here & set(fixed_here)):
         raise ValueError(f"{', '.join(both)}: given to --set and to --scan at once; give it to one of them")
     given = {**given, **fixed_here}
@@ -288,7 +318,12 @@ def _execute(workflow, kwargs, register, root, config, identity, release):
             # them; DEFAULT for an experiment that scans nothing. A point that
             # only holds slices of the points asked has none.
             titles = config.get("names", {})
-            view = "_".join(f"{_label(key, titles)}_{_text(options.get(key, given_here.get(key)))}" for key in scan) or DEFAULT
+            view = (
+                "_".join(
+                    f"{_label(key, titles, workflow)}_{_text(options.get(key, given_here.get(key)))}" for key in scan
+                )
+                or DEFAULT
+            )
             record["view"] = view if name in asked else None
         record.update(commit=commit, options=options, files=files)
         if workflow.settings:
@@ -379,7 +414,9 @@ def _execute(workflow, kwargs, register, root, config, identity, release):
             "cwd": os.getcwd(),
             "seed_folder": label or None,
         }
-        _make_shared({**kwargs, "_waiting": waiting} if kwargs["batch"] else kwargs, [need for *_, need in todo], root)
+        _make_shared(
+            workflow, {**kwargs, "_waiting": waiting} if kwargs["batch"] else kwargs, [need for *_, need in todo], root
+        )
         for folder, left, stale, record, run_again, before, names, (shared, options, files) in todo:
             _stamp(workflow, record, options, files)  # of what was made just now
         # The table is of the points of the experiment: a command that runs
@@ -418,9 +455,8 @@ def complete_points(root) -> list[str]:
 def _write_points(workflow, kwargs, root, scan, asked, todo) -> None:
     """points.json of the experiment: per point asked, the values of the
     scanned options and the node of each slice of each job; and the views of
-    the nodes that are there already. In a scan points/DEFAULT is a link to
-    the point that has the values of the experiment without the scan, when
-    the scan holds it."""
+    the nodes that are there already. An experiment that scans has no point
+    DEFAULT: none of its points is the one it would run without the scan."""
     records = {record["point"]: record for _, _, _, record, *_ in todo}
     default = Path(root) / "points" / DEFAULT
     if default.is_symlink():
@@ -451,9 +487,6 @@ def _write_points(workflow, kwargs, root, scan, asked, todo) -> None:
     for old in default.parent.iterdir() if default.parent.is_dir() else ():
         if old.name not in rows:
             old.unlink() if old.is_symlink() else shutil.rmtree(old)
-    if scan and "" in asked:
-        default.parent.mkdir(parents=True, exist_ok=True)
-        default.symlink_to(records[""]["view"])
 
 
 def _close(handles) -> None:
@@ -470,7 +503,10 @@ def _write_config(workflow, kwargs, register, root, config, identity, given, sca
         new = {**identity, "set": given if register else {}, "scan": scan if register else {}}
         if workflow.seeds:
             new["same_seeds"] = same_seeds
-        _write(root / "config.json", new)
+        if workflow.sections:
+            # written whole: what the experiment takes where nothing is given
+            new["set"] = {**workflow.defaults, **new["set"]}
+        _write(root / "config.json", written_config(workflow, new))
     elif register and (kwargs["scan"] or fixed_here):
         # A scan or a --set given to an experiment that exists joins its config,
         # under its address as _points reads it, in place of what the config
@@ -493,7 +529,14 @@ def _write_config(workflow, kwargs, register, root, config, identity, given, sca
             written[key] = [_parse(value) for value in values.split(",")]
         for key in fixed_here:
             leave_out(key)
-        _write(root / "config.json", {**config, "scan": written, "set": {**kept, **fixed_here}})
+        # Another component in a slot is another file: the keys that were set
+        # inside the one before it go, but for those this command gives.
+        now = {*fixed_here, *written} - set(config.get("scan", {}))
+        for slot in workflow.slots:
+            if slot in fixed_here or any(address.get(item.partition("=")[0], item.partition("=")[0]) == slot for item in kwargs["scan"]):
+                kept = {key: v for key, v in kept.items() if not key.startswith(slot + ".") or key in fixed_here}
+                written = {key: v for key, v in written.items() if not key.startswith(slot + ".") or key in now}
+        _write(root / "config.json", written_config(workflow, {**config, "scan": written, "set": {**kept, **fixed_here}}))
 
 
 def _run_points(workflow, kwargs, todo, label) -> list:
@@ -517,7 +560,11 @@ def _run_points(workflow, kwargs, todo, label) -> list:
             for i in range(kwargs.get("jobs") or 1):
                 if all(slices.mark(held_by[piece.name], i, piece.name).exists() for piece in workflow.slices):
                     _done(folder, i).touch()
-        unready = [piece.name for piece in shared if piece.shared.ready(options, files) is None]
+        unready = [
+            piece.name
+            for piece in shared
+            if piece.shared.ready(flat(workflow, options, stage_of(piece.name)), files) is None
+        ]
         waiting = [
             i
             for i in left
@@ -577,11 +624,14 @@ def _stamp(workflow, record, options, files) -> None:
         shared = [j for j in sorted(slices.upstream(workflow.slices, k) | {k}) if workflow.slices[j].shared]
         if shared:
             record["slices"][piece.name]["shared"] = {
-                workflow.slices[j].name: workflow.slices[j].shared.stamp(options, files) for j in shared
+                workflow.slices[j].name: workflow.slices[j].shared.stamp(
+                    flat(workflow, options, stage_of(workflow.slices[j].name)), files
+                )
+                for j in shared
             }
 
 
-def _make_shared(kwargs, needs, root) -> None:
+def _make_shared(workflow, kwargs, needs, root) -> None:
     """Make what the points share and is not ready, once for all the points
     that read the same of it. `needs` holds, per point, (its shared slices,
     its options, its files). A shared slice that another command is making
@@ -590,6 +640,7 @@ def _make_shared(kwargs, needs, root) -> None:
     for shared, options, files in needs:
         for piece in shared:
             same = json.dumps([piece.name, {key: options.get(key) for key in piece.keys}, files.get("device")])
+            options = flat(workflow, options, stage_of(piece.name))
             if same not in started and piece.shared.ready(options, files) is None:
                 started.add(same)
                 try:
@@ -609,7 +660,7 @@ def make_shared(workflow, kwargs, root) -> None:
     made as a command of the experiment makes it before its jobs start, as
     raser field <experiment> does; no job of the experiment runs. Its
     --scan and --set choose the points, for this command only."""
-    config = _read(Path(root) / "config.json")
+    config = read_config(workflow, root)
     address = {name: key for key, name in config.get("names", {}).items()}
     given = {}
     for item in kwargs.get("set") or []:
@@ -621,10 +672,11 @@ def make_shared(workflow, kwargs, root) -> None:
     if kwargs["dry_run"]:
         for _, options, files in needs:
             for piece in shared:
-                state = "ready" if piece.shared.ready(options, files) is not None else "to be made"
+                seen = flat(workflow, options, stage_of(piece.name))
+                state = "ready" if piece.shared.ready(seen, files) is not None else "to be made"
                 print(f"{root}: {piece.name} {state} for {options}")
         return
-    _make_shared(kwargs, needs, root)
+    _make_shared(workflow, kwargs, needs, root)
 
 
 def finished(workflow, kwargs, root) -> list[tuple[str, dict, list[tuple[Path, int]]]]:
@@ -634,7 +686,7 @@ def finished(workflow, kwargs, root) -> list[tuple[str, dict, list[tuple[Path, i
     A point's jobs come from all its seed folders that ran with the options and
     files the experiment has now, whatever their seed and commit. Folders kept
     aside by a rerun are left out: their name is not seed_<their seed>."""
-    _, points, asked = _points(workflow, kwargs, _read(root / "config.json"), {})
+    _, points, asked = _points(workflow, kwargs, read_config(workflow, root), {})
     result = []
     for name in asked:
         options, files = points[name][:2]
@@ -686,8 +738,9 @@ def jobs_of_points(root) -> list[tuple[str, dict, list[tuple[Path, dict]], list[
     """The points of the experiment in `root` as its last command left them
     in points.json, each with its name, the values of its scanned options,
     the finished jobs that measured it and, for the screen, the finished
-    jobs that measured something else: (how many, the settings they have
-    otherwise). A job is (the experiment folder, slice -> its node).
+    jobs that measured something no point of the experiment measures now:
+    (how many, the settings they have otherwise). A job is (the experiment
+    folder, slice -> its node).
 
     The jobs of a point are all those in the nodes of the experiment that
     measured what the point measures (points.json: "measures"), whichever
@@ -728,19 +781,23 @@ def jobs_of_points(root) -> list[tuple[str, dict, list[tuple[Path, dict]], list[
         return {key: value for key, value in given.items() if key not in counts}
 
     everything = [chain for chain in _chains(own, written) if roots(chain) and finished(chain)]
+
+    def measures(chain, row) -> bool:
+        return all(
+            measured_thing(workflow, written[name][node]["inputs"]) == row["measures"][name]
+            for name, node in chain.items()
+        )
+
+    # A job of another point of the experiment is counted there: it is not
+    # set apart here. Set apart are the jobs that no point of now measures.
+    of_no_point = [chain for chain in everything if not any(measures(chain, row) for row in table.values())]
     result = []
     for point, row in table.items():
         mine: dict = {}  # the deposits of a job -> the job: two chains on the same deposits are one
-        elsewhere = []
         for chain in everything:
-            same = all(
-                measured_thing(workflow, written[name][node]["inputs"]) == row["measures"][name]
-                for name, node in chain.items()
-            )
-            if same:
+            if measures(chain, row):
                 mine.setdefault(roots(chain), chain)
-            else:
-                elsewhere.append(chain)
+        elsewhere = of_no_point
         here = settings(next(iter(mine.values()))) if mine else {}
         apart: dict = {}  # what they are set to otherwise -> their deposits
         for chain in elsewhere:
@@ -843,8 +900,24 @@ def _points(workflow, kwargs, config, given) -> tuple[dict, dict]:
     """The scanned options and the points of an experiment.
 
     One point for every combination of the scanned values. A point's folder is
-    named by the scanned options that differ from the unscanned run."""
+    named by every scanned option and its value, as its view is."""
+    # Another component in a slot is another file: what config.json set or
+    # scanned inside the one before it is not read by this command.
+    replaced = tuple(
+        slot + "."
+        for slot in workflow.slots
+        if slot in given or any(item.partition("=")[0] == slot for item in kwargs["scan"])
+    )
+    if replaced:
+        config = {
+            **config,
+            **{part: {key: v for key, v in config.get(part, {}).items() if not key.startswith(replaced)} for part in ("set", "scan")},
+        }
     fixed = {**workflow.defaults, **config.get("set", {}), **given}
+    if workflow.sections:
+        # every setting is there, None where nothing sets it, as config.json holds them:
+        # the first command and the ones after it read the same
+        fixed = {**dict.fromkeys(workflow.keys), **fixed}
     # Of a group of keys of which one is given, the highest layer that gives
     # one decides; the others of the group from the layers below are left out.
     layers = (("the command line", given), ('the "set" of config.json', config.get("set", {})), ("the defaults", workflow.defaults))
@@ -882,15 +955,17 @@ def _points(workflow, kwargs, config, given) -> tuple[dict, dict]:
                     fixed.pop(key, None)
     for key, values in scan.items():
         _check_folder_names(key, values)
-    label = {key: _label(key, names) for key in scan}
+    label = {key: _label(key, names, workflow) for key in scan}
     for key, other in itertools.combinations(scan, 2):
         if label[key] == label[other]:
             raise ValueError(
                 f"{key} and {other} would both be {label[key]!r} in the names of folders: "
                 'give one of them a name under "names" in config.json'
             )
-    # A scanned address is not given in the unscanned run: there it takes the file's value.
-    base, _ = _point(workflow, kwargs, {**dict.fromkeys(key for key in scan if "." in key), **fixed})
+    # A scanned address that no file of the run holds is told before any point is made.
+    _point(
+        workflow, kwargs, {**dict.fromkeys(key for key in scan if "." in key and key not in workflow.keys), **fixed}
+    )
     # folder inside the experiment -> (options, files, the options given, per
     # slice the folder of the point whose run holds it)
     points: dict = {}
@@ -902,8 +977,7 @@ def _points(workflow, kwargs, config, given) -> tuple[dict, dict]:
         options do not make a measurement of its own (Slice.new_events)."""
         given_here = {**fixed, **values}
         options, files = _point(workflow, kwargs, given_here)
-        changed = [key for key in values if options[key] != base.get(key)]
-        name = "_".join(f"{label[key]}_{_text(options[key])}" for key in changed)
+        name = "_".join(f"{label[key]}_{_text(options[key])}" for key in values)
         if name in points and any(points[name][0].get(key) != options.get(key) for key in scan):
             other = {key: points[name][0].get(key) for key in scan}
             raise ValueError(
@@ -945,7 +1019,7 @@ def _point(workflow, kwargs, options) -> tuple[dict, dict]:
     # given, it is written into the file; not given, it takes the file's value.
     # An option may also be named by its address, "afe.stages.first.R1.ohm":
     # the kind of file, then the keys down to a value the file has.
-    addresses = {key: key for key in options if "." in key}
+    addresses = {key: in_file(workflow, key) for key in options if "." in key and key not in workflow.keys}
     for key, address in {**addresses, **workflow.in_file}.items():
         *steps, last = address.split(".")
         place, walked = files, "the files of this run"
@@ -1103,7 +1177,7 @@ def _run_one_job(workflow, kwargs, folder, index):
     if not workflow.slices:
         if workflow.seeds:
             seed()
-        workflow.job(options)
+        workflow.job(flat(workflow, options, None))
         _done(folder, index).touch()
         _submitted(folder, index, "job").unlink(missing_ok=True)
         _start_again(workflow, record, folder, progress=True)
@@ -1124,7 +1198,7 @@ def _run_one_job(workflow, kwargs, folder, index):
         slice wrote for these inputs is not written twice, whichever point,
         run or version of the code wrote it."""
         if piece.name not in planned:
-            return piece.run(options)  # shared: held outside the experiment
+            return piece.run(flat(workflow, options, stage_of(piece.name)))  # shared: held outside the experiment
         inputs, node = planned[piece.name]
         stage = stage_of(piece.name)
         place = nodes.node_dir(root, stage, node)
@@ -1142,7 +1216,7 @@ def _run_one_job(workflow, kwargs, folder, index):
                 part = nodes.start(place, stage, inputs, noted)
                 options["_node_paths"][piece.name] = str(part)
                 try:
-                    left, state = piece.run(options) or {}, "done"
+                    left, state = piece.run(flat(workflow, options, stage_of(piece.name))) or {}, "done"
                 except slices.Ended:
                     left, state = {}, "ended"
                 finally:
@@ -1400,10 +1474,128 @@ def _done(folder, index) -> Path:
     return slices.mark(folder, index)
 
 
-def _label(key, names) -> str:
+def _label(key, names, workflow=None) -> str:
     """A scanned option in the name of a folder: the name the config gives it,
-    else the last two steps of an address, else the option itself."""
+    else the key of a setting without its section, else the last two steps of
+    an address into a file, else the option itself."""
+    if workflow is not None and workflow.sections and key in workflow.keys:
+        return names.get(key) or key.split(".", 1)[1]
     return names.get(key) or ".".join(key.split(".")[-2:])
+
+
+def in_file(workflow, key) -> str:
+    """Where the key `key`, no setting of the experiment, sits in the files
+    of a run: <kind of file>.<keys down to it>. In an experiment written in
+    sections the key is <section>.<slot>.<keys>, of a slot of Workflow.slots."""
+    for slot, kind in workflow.slots.items():
+        if key.startswith(slot + "."):
+            return kind + key[len(slot) :]
+    if workflow.sections:
+        raise ValueError(
+            f"{key}: no such setting. The settings are {', '.join(workflow.keys)}; "
+            f"a key inside a component is <section>.<slot>.<key>, with the slots {', '.join(workflow.slots) or 'none'}"
+        )
+    return key
+
+
+def flat(workflow, options, stage) -> dict:
+    """The options as a slice of `stage` reads them: the settings of the
+    sections under their bare names, those of its own section over the
+    others, so that deposit.plots and current.plots are each "plots" to
+    their stage. Without sections, the options as they are."""
+    if not workflow.sections:
+        return options
+    seen = dict(options)
+    ordered = sorted((key for key in workflow.keys if key in options), key=lambda key: key.split(".")[0] == stage)
+    for key in ordered:
+        seen[key.split(".", 1)[1]] = options[key]
+    return seen
+
+
+def _leaves(held, path=()):
+    """(keys down to it, value) of every value in the nested objects `held`."""
+    for key, value in held.items():
+        if isinstance(value, dict):
+            yield from _leaves(value, (*path, key))
+        else:
+            yield ".".join((*path, key)), value
+
+
+def read_config(workflow, root) -> dict:
+    """config.json of the experiment in `root`, {} when there is none. For
+    an experiment written in sections, its settings as "set": address ->
+    value, and as "scan": address -> values those of the sections that are
+    scanned (Workflow.scanned) whose value is a list. A setting that is not
+    there is null; nothing but its settings is in a section. A slot may hold an object: its
+    "name" is the component, its other keys are keys inside the file."""
+    raw = _read(Path(root) / "config.json")
+    if not raw or not workflow.sections:
+        return raw
+    path = Path(root) / "config.json"
+    known = {"workflow", "device", "names", "same_seeds", *workflow.sections}
+    if unknown := sorted(set(raw) - known):
+        raise ValueError(
+            f"{path}: no {', '.join(unknown)} in a config.json; it holds workflow, device, the sections "
+            f"{', '.join(workflow.sections)}, names and same_seeds"
+        )
+    settings: dict = {}
+    scan: dict = {}
+
+    def take(address, value, section) -> None:
+        (scan if isinstance(value, list) and section in workflow.scanned else settings)[address] = value
+
+    for section in workflow.sections:
+        held = raw.get(section, {})
+        if not isinstance(held, dict):
+            raise ValueError(f"{path}: {section} is a section, an object of its settings")
+        for key, value in held.items():
+            address = f"{section}.{key}"
+            if address in workflow.slots and isinstance(value, dict):
+                inside = dict(value)
+                if address in workflow.keys:
+                    if "name" not in inside:
+                        raise ValueError(f"{path}: {address} is an object without the name of its component")
+                    take(address, inside.pop("name"), section)
+                for below, leaf in _leaves(inside):
+                    take(f"{address}.{below}", leaf, section)
+            elif address in workflow.keys:
+                take(address, value, section)
+            else:
+                mine = [name.split(".", 1)[1] for name in workflow.keys if name.startswith(section + ".")]
+                raise ValueError(f"{path}: no {address}; the settings of {section} are {', '.join(mine) or 'none'}")
+    # A setting that is not written is null: the stage that needs a value of it tells.
+    settings = {**{key: None for key in workflow.keys if key not in scan}, **settings}
+    return {**{key: raw[key] for key in raw if key not in workflow.sections}, "set": settings, "scan": scan}
+
+
+def written_config(workflow, config) -> dict:
+    """`config` as config.json holds it: for an experiment written in
+    sections, each section with every setting of it, null where none is
+    set and the list of its values where it is scanned; a key inside the
+    file of a slot is in the object of the slot, beside its name."""
+    if not workflow.sections:
+        return config
+    values = {**config.get("set", {}), **config.get("scan", {})}
+    out = {key: config[key] for key in ("workflow", "device") if key in config}
+    for section in workflow.sections:
+        out[section] = {key.split(".", 1)[1]: values.get(key) for key in workflow.keys if key.startswith(section + ".")}
+    for address, value in values.items():
+        if address in workflow.keys:
+            continue
+        slot = next(slot for slot in workflow.slots if address.startswith(slot + "."))
+        section, name = slot.split(".", 1)
+        held = out[section].get(name)
+        if not isinstance(held, dict):
+            if isinstance(held, list):
+                raise ValueError(f"{address}: {slot} is scanned; a key inside it belongs to one component")
+            held = out[section][name] = {"name": held} if slot in workflow.keys else {}
+        *steps, last = address[len(slot) + 1 :].split(".")
+        for step in steps:
+            held = held.setdefault(step, {})
+        held[last] = value
+    out["names"] = config.get("names", {})
+    out["same_seeds"] = config.get("same_seeds", False)
+    return out
 
 
 def _one_of_each_group(groups, layer, where) -> bool:

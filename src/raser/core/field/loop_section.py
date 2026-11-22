@@ -17,7 +17,42 @@ import numpy as np
 from . import initial
 from . import physics_drift_diffusion
 from .create_parameter import delete_init
+from .physics_irradiation import irradiation_defects, set_fluence
 from raser.supports.memory_decorator import memory_decorator
+
+# The smallest step in fluence, as a fraction of the target fluence.
+SMALLEST_FLUX_STEP = 1e-7
+
+
+def raise_fluence(target, first_share, increase, decrease, solve, restore):
+    """Raise the fluence from 0 to `target` [cm^-2] in steps.
+
+    The first step is `target * first_share`. A step that `solve(flux)` solves
+    (returns True) is kept and the next step is `increase` times larger; the
+    last step is cut to end at `target`. A step it does not solve (returns
+    False) is undone by `restore()` and tried again with `decrease` times the
+    failed step. A step below `SMALLEST_FLUX_STEP * target` raises RuntimeError.
+
+    Returns the list of fluences [cm^-2] that were solved, in order.
+    """
+    reached = 0.0
+    step = target * first_share
+    solved = []
+    while reached < target:
+        trial = min(reached + step, target)
+        if solve(trial):
+            reached = trial
+            step *= increase
+            solved.append(trial)
+        else:
+            restore()
+            step = (trial - reached) * decrease
+            if step < SMALLEST_FLUX_STEP * target:
+                raise RuntimeError(
+                    "Fluence step too small: stopped at {:.6g} cm^-2 of the target {:.6g} cm^-2".format(reached, target)
+                )
+    return solved
+
 
 class loop_section:
     def __init__(self, paras, device, region, solve_model, irradiation, path, with_noise=False):
@@ -42,6 +77,38 @@ class loop_section:
         self.electrons = []
         self.holes = []
 
+    def _raise_initial_fluence(self, irradiation_model, irradiation_flux):
+        """Raise the fluence of the initial solution from 0 to `irradiation_flux` [cm^-2]."""
+        defects = irradiation_defects(self.device, self.region, irradiation_model)
+        names = ("Potential", "Electrons", "Holes")
+        kept = {}
+
+        def keep():
+            for name in names:
+                kept[name] = np.array(devsim.get_node_model_values(device=self.device, region=self.region, name=name))
+
+        def solve(flux):
+            set_fluence(self.device, self.region, defects, flux)
+            try:
+                devsim.solve(type="dc", absolute_error=self.paras['absolute_error_Initial'], relative_error=self.paras['relative_error_Initial'], maximum_iterations=self.paras['maximum_iterations_Initial'],)
+            except devsim.error as error:
+                if "Convergence failure" in str(error):
+                    return False
+                raise
+            keep()
+            print(f"{self.device}: the initial solution at a fluence of {flux:.3g} cm^-2 of {irradiation_flux:.3g}")
+            return True
+
+        def restore():
+            for name in names:
+                devsim.set_node_values(device=self.device, region=self.region, name=name, values=list(kept[name]))
+
+        keep()
+        try:
+            raise_fluence(irradiation_flux, self.paras["flux_step_initial"], self.paras["flux_step_increase"], self.paras["flux_step_decrease"], solve, restore)
+        except RuntimeError as error:
+            raise RuntimeError(f"{self.device}: {error}") from error
+
     def initial_solver(self, contact, set_contact_type, irradiation_model, irradiation_flux, impact_model,):
         initial.PotentialOnlyInitialSolution(device=self.device, region=self.region, circuit_contacts=contact, paras=self.paras, set_contact_type=set_contact_type,)
         devsim.solve(type="dc", absolute_error=self.paras['absolute_error_Initial'], relative_error=self.paras['relative_error_Initial'], maximum_iterations=self.paras['maximum_iterations_Initial'],)
@@ -50,10 +117,13 @@ class loop_section:
             pass
         else:
             print("======RASER info ===========\nradiation\n================info=================")
+            raised = irradiation_model is not None and irradiation_flux > 0
             initial.DriftDiffusionInitialSolution(device=self.device, region=self.region, circuit_contacts=contact,paras=self.paras,set_contact_type=set_contact_type,
-                                                irradiation_model=irradiation_model,irradiation_flux=irradiation_flux,impact_model=impact_model,)
+                                                irradiation_model=irradiation_model,irradiation_flux=0 if raised else irradiation_flux,impact_model=impact_model,)
             devsim.solve(type="dc", absolute_error=self.paras['absolute_error_Initial'], relative_error=self.paras['relative_error_Initial'], maximum_iterations=self.paras['maximum_iterations_Initial'],)
-            
+            if raised:
+                self._raise_initial_fluence(irradiation_model, irradiation_flux)
+
         # eliminate calculation fatals from intrinsic carrier concentration
         delete_init(device=self.device, region=self.region)
 
@@ -71,6 +141,9 @@ class loop_section:
             slope = (last["Potential"] - before["Potential"]) / (v_last - v_before)
             start["Potential"] = last["Potential"] + (v_trial - v_last) * slope
         for name, values in start.items():
+            if name != "Potential":
+                # a density that went down to zero would stop the next solve
+                values = np.maximum(values, np.finfo(float).tiny)
             devsim.set_node_values(device=self.device, region=self.region, name=name, values=list(values))
 
     def keep_solved(self, v_trial):

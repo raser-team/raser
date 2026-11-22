@@ -52,12 +52,12 @@ raser = "raser.cli.raser:main"
 # The experiments: command -> the module that registers it. A package of its
 # own registers its experiments in the same group.
 [project.entry-points."raser.experiments"]
-signal = "raser_bench.signal"
-timeres = "raser_bench.timeres"
-tct = "raser_bench.tct"
+signal = "raser_bench.signal:Signal"
+timeres = "raser_bench.timeres:Timeres"
+tct = "raser_bench.tct:Tct"
 telescope = "raser_bench.telescope"
-bmos = "raser_app.bmos"
-cflm = "raser_app.cflm"
+bmos = "raser_app.bmos:Bmos"
+cflm = "raser_app.cflm:Cflm"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -105,6 +105,7 @@ type = "layers"
 layers = [
   "raser.core.analysis",
   "raser.core.reconstruction",
+  "raser.core.trigger",
   "raser.core.digitizer",
   "raser.core.readout",
   "raser.core.current",

@@ -64,7 +64,7 @@ flowchart TD
 - **分段配置文件**：每个实验文件夹里的 `config.json` 写全这次运行用的设置，按环节分段（`field`、`deposit`、`current`、`readout`、`digitizer`、`trigger`、`reconstruction`、`analysis` 各一段）。`--set`、`--scan` 用“段.键”作地址，例如 `--set field.voltage=100`、`--scan field.voltage=100,200`。运行用到的每个设置都来自配置文件，八段在文件里都写全；页面上的示例只摘和那一页有关的段。
 - **新建 project**：`raser new --from <示例> <路径>` 把示例 project 整个复制过去，配置是完整的，之后和示例互不影响。例如 `raser new --from HPK-Si-PiN work/my-PiN`。
 - **引用器件**：project 文件夹里有自己的器件文件就用自己的；只写名字时到组件库里找。
-- **组件槽位**：段里选组件的键是槽位，例如 `deposit.source`、`deposit.laser`、`readout.amplifier`、`digitizer.device`。槽位写成组件名字符串，或写成带 `name` 的对象，对象里其余的键覆盖组件文件里的同名键：`"laser": {"name": "PIL037_top_SiC", "fz_rel": 0.5}`。组件里的一个键用“段.槽位.键”寻址，例如 `--scan deposit.laser.fz_rel=0.1,0.5`、`--set digitizer.device.full_scale_V=0.08`；`readout.amplifier` 由几级串成，地址再加一层级名，例如 `readout.amplifier.SantaCruz.R1`。
+- **组件槽位**：段里选组件的键是槽位，例如 `deposit.g4setup`、`deposit.laser`、`readout.amplifier`、`digitizer.device`。槽位写成组件名字符串，或写成带 `name` 的对象，对象里其余的键覆盖组件文件里的同名键：`"laser": {"name": "PIL037_top_SiC", "fz_rel": 0.5}`。组件里的一个键用“段.槽位.键”寻址，例如 `--scan deposit.laser.fz_rel=0.1,0.5`、`--set digitizer.device.full_scale_V=0.08`；`readout.amplifier` 由几级串成，地址再加一层级名，例如 `readout.amplifier.SantaCruz.R1`。
 - **换组件就是换整套**：`name` 不能用 `--set`、`--scan` 改。换组件写 `--set 段.槽位=<组件名>`，扫组件写 `--scan 段.槽位=<组件名1>,<组件名2>`；这时槽位整个换成那个组件文件，原来覆盖的键（例如激光的 `fx_rel`、`fy_rel`、`fz_rel`）一并去掉；同一条命令里另给的 `段.槽位.键` 作用在换上去的组件上，例如 `--set deposit.laser=LA01IR_top_Si --set deposit.laser.fz_rel=0.3`。要让换上的组件带着别的取值，就另写一个组件文件放进 project，或在 `config.json` 里给它写整套对象。
 
 配置合并、扫描点展开与作业调度的细节见 [lifecycle/experiments.md](lifecycle/experiments.md) 和 [lifecycle/jobs.md](lifecycle/jobs.md)。
@@ -113,7 +113,7 @@ work/HPK-Si-PiN/                      # 器件 project
 
 ### 视图
 
-`points/<点名>/<环节>/` 是一个文件夹，这个点的每个作业在里面有一个软链接，名字是作业号，指向这个作业在这一环节的节点；`field` 和 `analysis` 一个点只有一个节点，`points/<点名>/field`、`points/<点名>/analysis` 直接是软链接。点名按扫描轴的取值起，例如 `voltage_100`，是给人看的入口；改了设置或加了扫描轴，点名可能不变，指向的节点会跟着变，参数和结果始终对得上。每个点都按全部扫描轴的取值起名，取值和不扫描时相同的那个点也一样；不做扫描的实验只有一个点，叫 `default`。开始扫描以后，扫描里有取值和不扫描时相同的点时，`points/default` 是指向这个点的软链接。
+`points/<点名>/<环节>/` 是一个文件夹，这个点的每个作业在里面有一个软链接，名字是作业号，指向这个作业在这一环节的节点；`field` 和 `analysis` 一个点只有一个节点，`points/<点名>/field`、`points/<点名>/analysis` 直接是软链接。点名按扫描轴的取值起，例如 `voltage_100`，是给人看的入口；改了设置或加了扫描轴，点名可能不变，指向的节点会跟着变，参数和结果始终对得上。每个点都按全部扫描轴的取值起名；不做扫描的实验只有一个点，叫 `default`，有扫描时没有这个点。
 
 ### 复用
 
@@ -192,4 +192,4 @@ flowchart LR
 | 器件参数电路图：结电容、耦合电容、未耗尽层，标上数值 | field | 器件和偏压 | `work/<器件>/field/` | readout 接进器件电路 |
 | 前端电路图和冲击响应 | readout | 电路和它的参数 | `work/<电路名>/` | 各实验的 readout |
 | 阻性层器件网络的响应：冲击器件上一点时各读出电极的波形 | readout | 器件、方阻和放大器链 | `work/<器件>/network/<节点号>/` | 核对阻性层的电荷分配 |
-| 放射源到第一个器件前一个平面的相空间文件 | deposit | 源和到这个平面为止的几何 | `work/<装置名>/` | 各实验的 deposit 从这个平面接着发粒子 |
+| 放射源的出射分布 | deposit | 源组件 | `work/<源名>/emission/<节点号>/emission.h5` | 各实验的 deposit 从准直孔出口接着发粒子 |

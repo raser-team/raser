@@ -134,7 +134,7 @@ def test_inside_an_experiment_folder_the_command_and_device_come_from_its_config
             ([*prefix, *tail[:-2]], use_cluster, mem)
         ),
     )
-    first = ["signal", "HPK-Si-PiN", "--scan", "voltage=200,300", "-s", "1", "--seed", "1"]
+    first = ["signal", "HPK-Si-PiN", "--scan", "field.voltage=200,300", "-s", "1", "--seed", "1"]
     assert main(first) == 0
     experiment = work_root / "HPK-Si-PiN" / "signal"
     monkeypatch.chdir(experiment)
@@ -146,7 +146,7 @@ def test_inside_an_experiment_folder_the_command_and_device_come_from_its_config
         for name in ("deposit", "field", "current", "readout", "reconstruction")
     ]
     assert capsys.readouterr().out.splitlines() == [
-        f"{experiment / 'seed_2'}: jobs [0, 1]",
+        f"{experiment / 'voltage_200' / 'seed_2'}: jobs [0, 1]",
         *slices,
         f"{experiment / 'voltage_300' / 'seed_2'}: jobs [0, 1]",
         *slices,
@@ -170,7 +170,37 @@ def test_a_stage_command_given_inside_an_experiment_folder_is_not_taken_for_its_
     experiment = work_root / "HPK-Si-PiN" / "signal"
     experiment.mkdir(parents=True)
     (experiment / "config.json").write_text(
-        json.dumps({"workflow": "signal", "device": "HPK-Si-PiN"})
+        json.dumps(
+            {
+                "workflow": "signal",
+                "device": "HPK-Si-PiN",
+                "field": {"voltage": None, "irradiation_flux": None},
+                "deposit": {
+                    "source": "decay/Sr90",
+                    "g4setup": "device_alone",
+                    "events_per_job": 1,
+                    "generated_per_job": None,
+                    "generated_limit": None,
+                    "edep_min": None,
+                    "edep_max": None,
+                    "fano": True,
+                    "plots": 100,
+                },
+                "current": {"plots": 100},
+                "readout": {"amplifier": "SantaCruz+Gali52+Termination50", "sheet_resistance": None},
+                "digitizer": {},
+                "trigger": {},
+                "reconstruction": {
+                    "threshold": 10.0,
+                    "amplitude_threshold": 10.0,
+                    "fractions": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+                    "edge": None,
+                },
+                "analysis": {},
+                "names": {},
+                "same_seeds": False,
+            }
+        )
     )
     monkeypatch.chdir(experiment)
 
@@ -269,23 +299,23 @@ def test_the_experiments_of_the_source_tree_and_of_other_packages_are_commands(
     from raser.cli.raser import experiments
 
     (tmp_path / "pyproject.toml").write_text(
-        '[project.entry-points."raser.experiments"]\nsignal = "raser_bench.signal"\n',
+        '[project.entry-points."raser.experiments"]\nsignal = "raser_bench.signal:Signal"\n',
         encoding="utf-8",
     )
     # raser installed from this tree as well: its own entry points are those of the tree
     _registered(
         monkeypatch,
         [
-            _Point("signal", "raser_bench.signal", "raser"),
+            _Point("signal", "raser_bench.signal:Signal", "raser"),
             _Point("mine", "my_lab.mine", "my-lab"),
         ],
     )
 
     assert experiments(tmp_path) == {
-        "signal": "raser_bench.signal",
+        "signal": "raser_bench.signal:Signal",
         "mine": "my_lab.mine",
     }
-    assert experiments(None) == {"signal": "raser_bench.signal", "mine": "my_lab.mine"}
+    assert experiments(None) == {"signal": "raser_bench.signal:Signal", "mine": "my_lab.mine"}
 
 
 @pytest.mark.parametrize(

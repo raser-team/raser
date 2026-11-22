@@ -83,7 +83,7 @@ def _capacitance(kwargs):
     from raser.core.field.save_milestone import save_solved
 
     my_d = Detector(kwargs["det_name"], kwargs["_files"]["device"])
-    voltage = _bias(kwargs) if kwargs["cv"] is True else float(kwargs["cv"])
+    voltage = _bias(kwargs) if kwargs["cv"] is None or kwargs["cv"] is True else float(kwargs["cv"])
     folder = Path(kwargs["_run_path"])
     value, frequency = saved_point.capacitance(my_d, folder, voltage, _solver(kwargs))
     point = {
@@ -178,13 +178,13 @@ def solve(kwargs):
         )
         if asked
     ]
-    cv_at = _bias(kwargs) if kwargs["cv"] is True else kwargs["cv"]
+    cv_at = _bias(kwargs) if kwargs["cv"] is None or kwargs["cv"] is True else kwargs["cv"]
     have = {
         "iv": _solved(kwargs, "potential", _bias(kwargs)),
         "cv": _solved(kwargs, "capacitance", cv_at),
         "wf": _solved(kwargs, "weighting", _bias(kwargs)),
     }
-    left = [part for part in named or ["iv", "wf"] if not have[part]]
+    left = [part for part in named or ["iv", "cv", "wf"] if not have[part]]
     for done, part in enumerate(left):
         if done:
             _empty_devsim()
@@ -266,8 +266,8 @@ def run(kwargs):
 
 def _flux_of_run(my_d, options):
     """The flux of the field a run of the chain takes: its option, else that of the device."""
-    if options.get("irradiation") is not None:
-        return float(options["irradiation"])
+    if options.get("irradiation_flux") is not None:
+        return float(options["irradiation_flux"])
     return float(my_d.irradiation_flux)
 
 

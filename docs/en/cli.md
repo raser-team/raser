@@ -15,7 +15,7 @@
 | `raser hbf` | Runs Hydrogen–Boron Fusion (p–¹¹B) | [apps/hbf.md](apps/hbf.md) |
 | `raser pimg` | Runs Proton Imaging | [apps/pimg.md](apps/pimg.md) |
 | `raser field [path]` (short command `fld`) | Uses the current directory if no path is given, or the given relative or absolute path; computes electric field, weighting field, and IV/CV in the device | [stages/field.md](stages/field.md) |
-| `raser deposit [path]` (short command `dep`) | Runs the experiment in the current directory or at the given path up to `deposit` (computing particle energy deposition with Geant4), filling in missing upstream stages automatically | [stages/deposit.md](stages/deposit.md) |
+| `raser deposit [path] [<source>]` (short command `dep`) | Runs the experiment in the current directory or at the given path up to `deposit` (computing particle energy deposition with Geant4), filling in missing upstream stages automatically; `<source>` is shorthand for `--set deposit.g4setup.source=<source>` | [stages/deposit.md](stages/deposit.md) |
 | `raser current [path]` (short command `cur`) | Runs the experiment in the current directory or at the given path up to `current` (drifting carriers in the fields and computing induced currents on the electrodes), filling in missing upstream stages automatically | [stages/current.md](stages/current.md) |
 | `raser readout [path]` (short command `rdo`) | Runs the experiment in the current directory or at the given path up to `readout` (feeding current into the device equivalent circuit and front-end amplifier to obtain waveforms), filling in missing upstream stages automatically | [stages/readout.md](stages/readout.md) |
 | `raser digitizer [path]` (short command `digi`) | Runs the experiment in the current directory or at the given path up to `digitizer` (converting waveforms into digital waveforms according to oscilloscope or digitizer board sampling and quantization), filling in missing upstream stages automatically | [stages/digitizer.md](stages/digitizer.md) |
@@ -42,7 +42,7 @@
 - `--seed`: Sets an integer random seed to make simulation results reproducible; defaults to the current timestamp if omitted.
 - `--same-seeds`: Makes jobs with the same index across scan points share random seeds so upstream results unaffected by the scan are reused.
 - `--set`: Modifies a setting in the configuration file using `"section.key"` as the address, for example `--set field.voltage=100`.
-- `--scan`: Scans one or more settings using `"section.key"` as the address, for example `--scan field.voltage=100,200`.
+- `--scan`: Scans one or more settings using `"section.key"` as the address, for example `--scan field.voltage=100,200`; only the settings of the sections `field`, `deposit`, `current`, `readout` can be scanned, see [lifecycle/experiments.md](lifecycle/experiments.md).
 - `--dry-run`: Prints only the scan points, stages, and job statuses to be run without starting computation.
 
 Details of configuration file sectioning rules, scan-point expansion, and cluster job scheduling are in [lifecycle/experiments.md](lifecycle/experiments.md) and [lifecycle/jobs.md](lifecycle/jobs.md).

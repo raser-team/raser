@@ -15,7 +15,7 @@
 | `raser hbf` | 跑氢硼聚变（Hydrogen–Boron Fusion，p–¹¹B） | [apps/hbf.md](apps/hbf.md) |
 | `raser pimg` | 跑质子成像（Proton Imaging） | [apps/pimg.md](apps/pimg.md) |
 | `raser field [路径]`（短命令 `fld`） | 不给路径就是当前文件夹，给了就是相对或绝对路径；算器件里的电场、权重场、IV/CV | [stages/field.md](stages/field.md) |
-| `raser deposit [路径]`（短命令 `dep`） | 在当前文件夹或给定路径的实验上跑到 `deposit`（用 Geant4 算粒子沉积的能量），缺的上游自动补上 | [stages/deposit.md](stages/deposit.md) |
+| `raser deposit [路径] [<source>]`（短命令 `dep`） | 在当前文件夹或给定路径的实验上跑到 `deposit`（用 Geant4 算粒子沉积的能量），缺的上游自动补上；`<source>` 是 `--set deposit.g4setup.source=<source>` 的简写 | [stages/deposit.md](stages/deposit.md) |
 | `raser current [路径]`（短命令 `cur`） | 在当前文件夹或给定路径的实验上跑到 `current`（让载流子在场中漂移，算电极上的感应电流），缺的上游自动补上 | [stages/current.md](stages/current.md) |
 | `raser readout [路径]`（短命令 `rdo`） | 在当前文件夹或给定路径的实验上跑到 `readout`（把电流送进器件等效电路和前端放大器，得到波形），缺的上游自动补上 | [stages/readout.md](stages/readout.md) |
 | `raser digitizer [路径]`（短命令 `digi`） | 在当前文件夹或给定路径的实验上跑到 `digitizer`（按示波器或数字化板的采样和量化把波形变成数字波形），缺的上游自动补上 | [stages/digitizer.md](stages/digitizer.md) |
@@ -42,7 +42,7 @@
 - `--seed`：指定整数随机种子，让仿真结果可重复；不给时用当前时间戳作种子。
 - `--same-seeds`：让各扫描点的同编号作业共用随机种子，从而复用未受扫描影响的上游结果。
 - `--set`：用“段.键”作地址修改配置文件中的设置，例如 `--set field.voltage=100`。
-- `--scan`：用“段.键”作地址扫描一个或多个设置，例如 `--scan field.voltage=100,200`。
+- `--scan`：用“段.键”作地址扫描一个或多个设置，例如 `--scan field.voltage=100,200`；只有 `field`、`deposit`、`current`、`readout` 四段的设置能扫描，见 [lifecycle/experiments.md](lifecycle/experiments.md)。
 - `--dry-run`：只打印将要运行的扫描点、环节和作业状态，不启动实际计算。
 
 配置文件分段规则、扫描点展开与集群作业调度的细节见 [lifecycle/experiments.md](lifecycle/experiments.md) 和 [lifecycle/jobs.md](lifecycle/jobs.md)。

@@ -52,7 +52,39 @@ $$N(t) = N_0 \exp\!\left(-\int_{t_0}^{t} \Gamma\bigl(\mathbf{r}(t')\bigr)\,dt'\r
 - $N_0$：初始时刻 $t_0$（$\text{s}$）的带符号载流子数（无量纲）；
 - $\Gamma(\mathbf{r})$：位置 $\mathbf{r}$（$\mu\text{m}$）处的载流子俘获率，$\text{s}^{-1}$，由 [field.md](field.md) 的 `DevsimField.get_trap_e`（电子）与 `DevsimField.get_trap_h`（空穴）提供。
 
-仅当器件配置了非空的 `irradiation_model` 时计算俘获衰减；否则不计俘获（等效 $\Gamma = 0$）。深能级缺陷俘获动力学见文献 [3]，辐照硅探测器中有效俘获率与指数存活模型见文献 [4]。
+俘获、释放与寿命衰减由下列器件键决定，键的写法见[器件文件读取的键](#器件文件读取的键)：
+
+- `enable_trapping` 为真时按场的俘获率 $\Gamma$ 俘获，为假时 $\Gamma = 0$；与 `irradiation_model` 的名字无关。键没写时沿用原规则：`irradiation_model` 非 `None` 即俘获，否则不俘获。
+- `enable_lifetime_decay` 为真时再加有限寿命衰减，电子、空穴的寿命 $\tau$ 取 `electron_lifetime`、`hole_lifetime`（$\text{s}$），两个键都须写；缺省为假。
+- `trapping_model` 块给出 `mode`、释放时间、俘获率倍率与空间涨落；缺省为 `"deterministic"`、不释放、倍率 $1$、无空间涨落。
+
+一个载流子被移出自由运动的总速率为
+
+$$\Lambda(\mathbf{r}) = s\, f(\mathbf{r})\, \Gamma(\mathbf{r}) + \frac{1}{\tau}$$
+
+其中 $s$ 为 `trapping_rate_scale` 中该种载流子的倍率（缺省 $1$），$f(\mathbf{r})$ 为空间涨落因子（未开启时为 $1$），$1/\tau$ 仅在 `enable_lifetime_decay` 为真时计入；`enable_trapping` 为假时第一项为 $0$。
+
+`mode` 为 `"deterministic"`（缺省）时，存活数是平均值，即式 (4) 中以 $\Lambda$ 代替 $\Gamma$：$N(t) = N_0 \exp\!\left(-\int \Lambda\, dt'\right)$。此模式不含释放。
+
+`mode` 为 `"stochastic"` 时，团簇按 $n = \max(\mathrm{round}(|N_0|), 1)$ 个载流子逐个抽样，每个电荷为 $N_0 / n$。每一步时长 $\Delta t$ 内：
+
+- 仍在运动的载流子以概率 $1 - e^{-\Lambda \Delta t}$ 离开运动；其中被俘获的比例为 $s f \Gamma / \Lambda$，其余因寿命湮灭，湮灭的不再回来；
+- 步开始时已被俘获的载流子以概率 $1 - e^{-\Delta t / t_{\text{rel}}}$ 释放，回到运动的载流子中，$t_{\text{rel}}$ 为 `electron_release_time`、`hole_release_time`（$\text{s}$）；没写则不释放。本步新俘获的不在本步释放；
+- 各概率下的个数为二项抽样。
+
+某步的存活数取该步开始与结束时运动载流子数的平均乘以单个载流子电荷，与确定性模式取步中点的约定一致。
+
+空间涨落（`trapping_model.spatial_variation`，`enabled` 为真时）把 $f$ 写成界面增强与体涨落之积：
+
+$$f(\mathbf{r}) = \left[1 + (F - 1)\, e^{-d/\lambda}\right]_{d \le d_0} \cdot \exp\!\left(\sigma g_c - \frac{\sigma^2}{2}\right)$$
+
+其中 $d = \min(z, l_z - z)$ 为到两个接触面的距离（$\mu\text{m}$），$d_0$、$\lambda$、$F$ 为 `interface` 的 `depth_um`、`profile_um`、`factor`（电子、空穴各一个；$d > d_0$ 时第一个因子为 $1$）；$\sigma$ 为 `lognormal_sigma`，$g_c$ 为边长 `cell_size_um` 的立方体单元 $c$ 的标准正态数。$\exp(\sigma g - \sigma^2/2)$ 的均值为 $1$，不改变平均俘获率。同一单元内的 $g_c$ 固定，与团簇到达的先后无关。
+
+随机数都从按作业种子派生的流中取：随机模式用 `stream("trap_electron")`、`stream("trap_hole")`；单元的 $g_c$ 取自以作业种子、`spatial_variation.seed` 与单元编号命名的流的第一个数。同一作业种子下结果可复现；`seed_generators` 重新播种后全部重新抽取。
+
+以下数值是 peiyao 器件文件里的写法，**无出处、待拟合**：$\sigma = 0.3$、`cell_size_um` $= 25\ \mu\text{m}$、界面 `depth_um` $= 5\ \mu\text{m}$、`profile_um` $= 2\ \mu\text{m}$、`factor` $= 3$（电子、空穴）。`electron_release_time`、`hole_release_time` 同样没有出处；他的文件不写它们，即不释放。代码里这些键没有缺省值：开启空间涨落或界面时须写全。
+
+深能级缺陷俘获动力学见文献 [3]，辐照硅探测器中有效俘获率与指数存活模型见文献 [4]。
 
 ### Shockley-Ramo 感应
 
@@ -166,7 +198,7 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
 
 ### 俘获存活数计算
 
-`drift_all` 在同号团簇全部漂移完成后一次性计算俘获存活数。当 `my_d.irradiation_model is None` 时跳过俘获，`remaining` 置为 `None`。否则对每条含 $M$ 个点（$M - 1$ 步）的路径 $\{(\mathbf{r}_k, t_k)\}_{k=0}^{M-1}$：
+`drift_all` 在同号团簇全部漂移完成后一次性计算存活数。`Trapping.from_device(my_d)` 读出俘获设置；`enable_trapping` 与 `enable_lifetime_decay` 都为假（未写这两个键时即 `irradiation_model` 为 `None`）时跳过，`remaining` 置为 `None`。否则对每条含 $M$ 个点（$M - 1$ 步）的路径 $\{(\mathbf{r}_k, t_k)\}_{k=0}^{M-1}$，`mode` 为 `"stochastic"` 时从第 5 点起另走，下面第 1 至 4 点是 `"deterministic"` 的算法，其中 $\Gamma_k$ 都指 $\Lambda_k$ 中的 $s f \Gamma_k + 1/\tau$（未写新键时就是 $\Gamma_k$）：
 
 1. 按团簇电荷符号选用 `my_f.get_trap_h_cached`（空穴）或 `my_f.get_trap_e_cached`（电子），在每一步的**步首**位置 $\mathbf{r}_k$ 读取俘获率 $\Gamma_k$（$\text{s}^{-1}$，$k = 0, \dots, M - 2$），并在整步 $[t_k, t_{k+1}]$ 内视为常数。
 2. 计算各步衰减量 $d_k = \Gamma_k (t_{k+1} - t_k)$。
@@ -174,6 +206,8 @@ $$G(z) = M(z) - 1 = \frac{K(z)}{1 - \int_{0}^{W} \alpha_p(z')\,K(z')\,dz'} - 1 \
    $$N_{k + 1/2} = N_0 \exp\!\left(-\sum_{j=0}^{k-1} d_j - \frac{1}{2} d_k\right)$$
 4. 若需要求某步内任意比例 $\eta \in [0, 1]$ 处的存活数（`surviving_at`，用于一维平板增益穿层计算），则取：
    $$N_{k + \eta} = N_0 \exp\!\left(-\sum_{j=0}^{k-1} d_j - \eta\, d_k\right)$$
+
+5. 随机模式：按[俘获](#俘获)一节的步骤，逐步从 $n$ 个载流子中抽出被俘获、湮灭与释放的个数，$k$ 步的存活数为该步开始与结束时运动载流子数的平均乘以单个载流子电荷（`stochastic_survivors`）。一维平板增益穿层处没有步内插值，取穿层所在步的这个数。
 
 `count_ends` 汇总各停止原因对应的载流子数时，取无符号值；若开启俘获且路径至少走了一步，取最后一步中点的存活数 $|N_{M - 3/2}|$，否则取初始数 $|N_0|$。
 
@@ -272,7 +306,8 @@ $$t_{\text{end}} = t_{\text{start}} + n_{\text{bin}}\,t_{\text{bin}} \tag{11}$$
 
 ### 模块与函数分工
 
-- `drift.py`：实现单团簇输运与单步物理量计算。`advance` 执行单步推进与停止判定，`drift` 循环推进单团簇至停止；`induced_charges` 计算路径各步在指定电极上的 Shockley-Ramo 感应电荷；`surviving` 与 `surviving_at` 计算俘获后的存活载流子数。
+- `drift.py`：实现单团簇输运与单步物理量计算。`advance` 执行单步推进与停止判定，`drift` 循环推进单团簇至停止；`induced_charges` 计算路径各步在指定电极上的 Shockley-Ramo 感应电荷；`surviving` 与 `surviving_at` 计算俘获后的存活载流子数，交给 `trapping.py`。
+- `trapping.py`：`Trapping` 读器件的俘获设置；`survivors`、`survivors_at` 算确定性存活数，`stochastic_survivors` 做随机抽样，`spatial_factor` 给空间涨落因子。
 - `cal_current.py`：实现事例级输运调度、分箱、雪崩倍增、激光卷积与批处理写出。`CalCurrent` 完成时间窗设定、空间筛选、载流子漂移与分箱；`CalCurrentGain` 继承 `CalCurrent`，按 `gain_algorithm` 执行 `"planar_integral"` 或 `"local_path"` 倍增；`CalCurrentLaser` 结合 `pulse_in_bins` 执行激光脉冲卷积；`spread_over_bins`、`fill_histogram`、`electrode_names`、`split_at_conductor_edges`、`deposits_in` 与 `log_ends` 为支撑函数；`write_induced_currents` 与 `write_laser_currents` 负责将事例结果写出到 HDF5 文件并触发绘图。
 - `diffusion.py`：提供 `time_bin` 与 `collect_by_diffusion`，实现无场像素传感器的二维纯扩散收集。
 - `currents.py`：定义 `EventCurrents`、`Currents` 以及 `append_currents`、`read_currents`，负责 `current.h5` 的稀疏追加写入与全电极还原读取。
@@ -301,7 +336,18 @@ $$t_{\text{end}} = t_{\text{start}} + n_{\text{bin}}\,t_{\text{bin}} \tag{11}$$
 | `det_name`, `det_model` | `det_name` 默认文件名词干；`det_model` 无（绘图必选） | 无 | 器件名称（用于报错信息）与模型标识（用于 `<det_model>_drift_path` 文件名） |
 | `max_drift_time_ns` | 无（缺省时按器件估计，见 [单步推进与停止条件](#单步推进与停止条件) 第 1 步） | $\text{ns}$ | 单团簇最大漂移时长，正的有限数 |
 | `material`, `temperature` | 无（必选） | 无, $\text{K}$ | 材料名称（传入 [model.md](model.md) 的 `Material`）与器件温度 $T$ |
-| `irradiation.irradiation_model` | 无 `irradiation` 块时为 `None` | 无 | 映射为 `irradiation_model`；非 `None` 时开启载流子俘获衰减 |
+| `irradiation.irradiation_model` | 无 `irradiation` 块时为 `None` | 无 | 映射为 `irradiation_model`；未写 `enable_trapping` 时，非 `None` 即开启载流子俘获 |
+| `enable_trapping` | 未写时为 `irradiation_model` 是否非 `None` | 无 | 为真时按场的俘获率俘获；写了就与 `irradiation_model` 无关 |
+| `enable_lifetime_decay` | `False` | 无 | 为真时加有限寿命衰减，须同时写 `electron_lifetime`、`hole_lifetime` |
+| `electron_lifetime`, `hole_lifetime` | 无（`enable_lifetime_decay` 为真时必选） | $\text{s}$ | 电子、空穴的寿命 $\tau$，大于 $0$ |
+| `trapping_model.mode` | `"deterministic"` | 无 | `"deterministic"` 为指数衰减的平均值，`"stochastic"` 为逐个载流子的随机俘获、释放与寿命湮灭 |
+| `trapping_model.electron_release_time`, `trapping_model.hole_release_time` | 未写为不释放 | $\text{s}$ | 被俘获载流子的平均释放时间 $t_{\text{rel}}$，大于 $0$；仅 `"stochastic"` 用 |
+| `trapping_model.trapping_rate_scale.electron`, `.hole` | `1` | 无 | 场俘获率的倍率 $s$，不小于 $0$ |
+| `trapping_model.spatial_variation.enabled` | `False` | 无 | 为真时俘获率乘空间涨落因子，下面各键须写全 |
+| `trapping_model.spatial_variation.seed`, `.cell_size_um`, `.lognormal_sigma` | 无（`enabled` 为真时必选） | 无, $\mu\text{m}$, 无 | 单元编号用的种子（整数）、立方体单元边长、对数正态的 $\sigma$；数值无出处、待拟合 |
+| `trapping_model.spatial_variation.interface.enabled` | `False` | 无 | 为真时加接触面附近的俘获增强 |
+| `trapping_model.spatial_variation.interface.depth_um`, `.profile_um`, `.factor.electron`, `.factor.hole` | 无（`interface.enabled` 为真时必选） | $\mu\text{m}$, $\mu\text{m}$, 无, 无 | 增强范围 $d_0$、衰减长度 $\lambda$、接触面上的倍数 $F$；数值无出处、待拟合 |
+| `trapping_model.enabled`, `trapping_model.lifetime_enabled` | 未写为不限制 | 无 | 写成 `false` 时关掉俘获、寿命衰减，只能关不能开 |
 | `enable_gain`, `avalanche_model` | `False`, `None` | 无 | 同时有效时 `has_avalanche` 为真并启用 `CalCurrentGain`；支持 `"vanOverstraeten"`、`"Okuto"`、`"Hatakeyama"` |
 | `gain_pair_threshold` | `0.05` | 对 | `"local_path"` 模式下触发发射新增益团簇的最小累积对数（负值截断为 `0.0`） |
 | `gain_max_carriers` | `50000` | 团簇 | `"local_path"` 模式下单事例允许生成的最大增益团簇数；$\le 0$ 时不设上限 |
@@ -343,8 +389,8 @@ $$t_{\text{end}} = t_{\text{start}} + n_{\text{bin}}\,t_{\text{bin}} \tag{11}$$
 | 文件名 | 内容 | 单位 |
 | --- | --- | --- |
 | `drift_path_<event>.png`, `.pdf`, `.root` | 上半图为三维器件边界框与沉积点（灰）、空穴（红）、电子（蓝）、增益空穴（橙）、增益电子（浅蓝）路径；下半图为 $x$-$z$ 平面投影 | 空间轴 $\mu\text{m}$ |
-| `current_<event>.png`, `.pdf`, `.root`（多个读出电极时为 `current_<event>_electrode_<k>`） | 仅对存在非零电流分量的第 $k$ 号电极（从 `1` 起）绘制 `electrons`、`holes`、`total`（开启雪崩时含 `gain electrons`、`gain holes`）波形 | `Time [ns]`, `Current [μA]` |
-| `charge_per_electrode_<event>.png`, `.pdf`, `.root` | `is_strip` 为真时绘各条收集电荷折线图（`TGraph`）；`is_pixel` 为真时绘二维像素分布（`TH2D`）；数值为各电极的净电荷，纵轴（二维像素图为色轴）标题为 `Charge [fC]` | $\text{fC}$ |
+| `current_<event>.png`, `.pdf`, `.root`（多个读出电极时为 `current_<event>_electrode_<k>`） | 仅对存在非零电流分量的第 $k$ 号电极（从 `1` 起）绘制 `electrons`、`holes`、`total`（开启雪崩时含 `gain electrons`、`gain holes`）波形 | `Time [ns]`, `Current [μA]`；时间轴只画信号所在的一段（见[出图](../supports/figures.md#坐标轴与单位)） |
+| `charge_per_electrode_<event>.png`, `.pdf`, `.root` | `is_strip` 为真时绘各条收集电荷折线图（`TGraph`）；`is_pixel` 为真时绘二维像素分布（`TH2D`）；数值为各电极的净电荷，纵轴（二维像素图为色轴）标题为 `Charge [fC]`；条形图横轴为各条中心的 `x [μm]`，像素图两轴为 `x [μm]`、`y [μm]`，格子按电极的实际位置排 | $\text{fC}$、$\mu\text{m}$ |
 
 ## 参考文献
 

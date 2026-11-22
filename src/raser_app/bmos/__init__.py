@@ -6,24 +6,13 @@ the bunch in components/source of this app.
 """
 
 from raser.stages import chain
-from raser.lifecycle.workflow import Workflow
-
-WORKFLOW = Workflow(
-    name="bmos",
-    keys=chain.KEYS,
-    defaults={**chain.DEFAULTS, "source": "bunch", "plots": 0},
-    components=chain.COMPONENTS,
-    readers=chain.READERS,
-    in_file=chain.IN_FILE,
-    slices=chain.SLICES,
-    exclusive=chain.EXCLUSIVE,
-    command=chain.job_command,
-    analysis=chain.analyse,
-)
 
 
-def register(subparsers):
-    parser = subparsers.add_parser("bmos", help="Beam Monitor Online System")
-    chain.add_arguments(parser)
-    WORKFLOW.attach(parser)
-    parser.set_defaults(_project="det_name", _components=("raser_app/bmos",))
+class Bmos(chain.Chain):
+    name = "bmos"
+    help = "Beam Monitor Online System"
+    components = ("raser_app/bmos",)
+    defaults = {"deposit.source": "bunch", "deposit.plots": 0, "current.plots": 0}
+
+
+WORKFLOW = Bmos.workflow()

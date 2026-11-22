@@ -3,6 +3,7 @@ import pytest
 from raser.core.deposit.deposits import Deposits
 from raser.core.deposit.deposits import EventDeposits
 from raser.core.deposit.deposits import deposits_of_steps
+from raser.core.deposit.deposits import joined
 from raser.core.deposit.deposits import read_deposits
 from raser.core.deposit.deposits import write_deposits
 
@@ -10,8 +11,9 @@ from raser.core.deposit.deposits import write_deposits
 def test_deposits_file_returns_each_event_with_its_own_deposits(tmp_path) -> None:
     deposits = Deposits(
         generated_events=5,
-        edep_min=0.05,
-        edep_max=None,
+        windows={"ref": (0.05, None), "dut": (None, 0.2)},
+        require="ref AND dut",
+        coincidence_window_ns=0.5,
         events=[
             EventDeposits(
                 event=1,
@@ -74,33 +76,43 @@ def test_deposits_of_steps_drop_steps_and_events_without_energy() -> None:
         ],
         energies=[[0.02, 0.0, 0.03], [0], [0.0, 0.01]],
         times=[[1.0e-12, 1.1e-12, 1.2e-12], [0], [2.0e-12, 2.1e-12]],
-        generated_events=3,
-        edep_min=None,
-        edep_max=0.1,
     )
 
-    assert deposits == Deposits(
-        generated_events=3,
-        edep_min=None,
-        edep_max=0.1,
-        events=[
-            EventDeposits(
-                event=0,
-                detector=["Device", "Device"],
-                x=[1.0, 2.0],
-                y=[2.0, 3.0],
-                z=[30.0, 10.0],
-                t=[1.0e-12, 1.2e-12],
-                e=[0.02, 0.03],
-            ),
-            EventDeposits(
-                event=2,
-                detector=["Device"],
-                x=[7.5],
-                y=[8.5],
-                z=[4.0],
-                t=[2.1e-12],
-                e=[0.01],
-            ),
-        ],
-    )
+    assert deposits == [
+        EventDeposits(
+            event=0,
+            detector=["Device", "Device"],
+            x=[1.0, 2.0],
+            y=[2.0, 3.0],
+            z=[30.0, 10.0],
+            t=[1.0e-12, 1.2e-12],
+            e=[0.02, 0.03],
+        ),
+        EventDeposits(
+            event=2,
+            detector=["Device"],
+            x=[7.5],
+            y=[8.5],
+            z=[4.0],
+            t=[2.1e-12],
+            e=[0.01],
+        ),
+    ]
+
+
+def test_joined_events_put_the_slots_one_after_another_in_the_order_given() -> None:
+    def steps(slot, numbers, energy):
+        return deposits_of_steps(
+            slot,
+            numbers,
+            [[[1.0, 2.0, 3.0]] for _ in numbers],
+            [[energy] for _ in numbers],
+            [[1.0e-12] for _ in numbers],
+        )
+
+    events = joined([steps("dut", [3, 5], 0.02), steps("ref", [1, 3], 0.01)])
+
+    assert [event.event for event in events] == [1, 3, 5]
+    assert events[1].detector == ["dut", "ref"]
+    assert events[1].e == [0.02, 0.01]
+    assert events[0].detector == ["ref"] and events[2].detector == ["dut"]

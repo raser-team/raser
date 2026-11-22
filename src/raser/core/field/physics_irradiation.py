@@ -11,6 +11,40 @@ Description:  physics_irradiation.py
 import devsim
 from .model_create import *
 
+CARRIER_FLOOR = 1.0  # cm^-3
+
+
+def floored(expression):
+    """`expression` with the densities Electrons and Holes held at CarrierFloor or above."""
+    return (expression.replace("Electrons", "ifelse(Electrons > CarrierFloor, Electrons, CarrierFloor)")
+            .replace("Holes", "ifelse(Holes > CarrierFloor, Holes, CarrierFloor)"))
+
+
+def irradiation_defects(device, region, label, custom_defect=None):
+    """The defects of the irradiation model `label`, as a list of dicts.
+
+    A label that names no built-in model takes `custom_defect` as the list.
+    """
+    if label == 'XingChen':
+        return CreateIrradiationModel_XingChen(device, region)
+    elif label == 'Perugia':
+        return CreateIrradiationModel_Perugia(device, region)
+    elif label == 'Schwandt':
+        return CreateIrradiationModel_Schwandt(device, region)
+    elif label == 'CommonDefect':
+        if devsim.get_material(device=device, region=region) == "Diamond":
+            return CreateIntrinsicModel_DiamondCommonDefect(device, region)
+        return CreateIntrinsicModel_SiCCommonDefect(device, region)
+    return custom_defect
+
+
+def set_fluence(device, region, defects, flux):
+    """Set the trap concentration N_t_irr_<name> [cm^-3] of every defect to
+    its background N_t0 [cm^-3] plus g_int [cm^-1] times the fluence `flux` [cm^-2]."""
+    for defect in defects:
+        devsim.set_parameter(device=device, region=region, name="N_t_irr_" + defect["name"], value=defect.get("N_t0", 0.0) + defect["g_int"] * flux)
+
+
 def CreateIrradiation(device, region, label="XingChen", flux=1e15, custom_defect = {}):
 
     # if not InEdgeModelList(device, region, "ElectricField"):
@@ -18,16 +52,13 @@ def CreateIrradiation(device, region, label="XingChen", flux=1e15, custom_defect
     #     CreateEdgeModelDerivatives(device, region, "ElectricField", "(Potential@n0-Potential@n1)*EdgeInverseLength", "Potential")
 
     # TODO: change labels into formal names
-    if label == 'XingChen':
-        defects = CreateIrradiationModel_XingChen(device, region)
-    elif label == 'Perugia':
-        defects = CreateIrradiationModel_Perugia(device, region)
-    elif label == 'Schwandt':
-        defects = CreateIrradiationModel_Schwandt(device, region)
-    elif label == 'CommonDefect':
-        defects = CreateIntrinsicModel_SiCCommonDefect(device, region)
-    else:
-        defects = custom_defect
+    defects = irradiation_defects(device, region, label, custom_defect)
+
+    # In a diamond region the carrier densities in the defect terms are held
+    # at CARRIER_FLOOR or above.
+    diamond = devsim.get_material(device=device, region=region) == "Diamond"
+    if diamond:
+        devsim.set_parameter(device=device, region=region, name="CarrierFloor", value=CARRIER_FLOOR)
 
     TrappedElectrons="0"
     TrappedHoles="0"
@@ -40,7 +71,7 @@ def CreateIrradiation(device, region, label="XingChen", flux=1e15, custom_defect
         )
         e = 1.6*1e-19
         E_t = E_t_ev * e
-        N_t_irr = g_int*flux
+        N_t_irr = defect.get("N_t0", 0.0) + g_int*flux
 
         devsim.set_parameter(device=device, region=region, name="sigma_n_irr_"+name,   value=sigma_n_irr)
         devsim.set_parameter(device=device, region=region, name="sigma_p_irr_"+name,   value=sigma_p_irr)
@@ -57,10 +88,19 @@ def CreateIrradiation(device, region, label="XingChen", flux=1e15, custom_defect
         trap_n = "+(vel_mean * sigma_n_irr_{name})*(N_t_irr_{name}*(Holes*{r_p}+{n_1}*{r_n})/({r_n}*(Electrons+{n_1})+{r_p}*(Holes+{p_1})))".format(name=name,r_n=r_n,n_1=n_1,r_p=r_p,p_1=p_1)
         trap_p = "+(vel_mean * sigma_p_irr_{name})*(N_t_irr_{name}*(Electrons*{r_n}+{p_1}*{r_p})/({r_n}*(Electrons+{n_1})+{r_p}*(Holes+{p_1})))".format(name=name,r_n=r_n,n_1=n_1,r_p=r_p,p_1=p_1)
         U_r_i="+(N_t_irr_{name}*{r_n}*{r_p}*(Electrons*Holes-n_i^2)/({r_n}*(Electrons+{n_1})+{r_p}*(Holes+{p_1})))".format(name=name,r_n=r_n,n_1=n_1,r_p=r_p,p_1=p_1)
+        if diamond:
+            n_t_irr_n, n_t_irr_p, trap_n, trap_p, U_r_i = (
+                floored(expression)
+                for expression in (n_t_irr_n, n_t_irr_p, trap_n, trap_p, U_r_i)
+            )
 
         # The charge a defect carries: an acceptor is negative while it holds
         # an electron, a donor positive while it holds none.
-        if defect.get("type") == "acceptor":
+        if diamond:
+            # peiyao's charge: every defect adds N f to TrappedElectrons and N (1 - f) to TrappedHoles
+            TrappedElectrons=TrappedElectrons+n_t_irr_n
+            TrappedHoles=TrappedHoles+n_t_irr_p
+        elif defect.get("type") == "acceptor":
             TrappedElectrons=TrappedElectrons+n_t_irr_n
         elif defect.get("type") == "donor":
             TrappedHoles=TrappedHoles+n_t_irr_p
@@ -135,5 +175,18 @@ def CreateIntrinsicModel_SiCCommonDefect(device, region):
     defects = []
     defects.append({"name" : "Z12", "type" : "acceptor",  "E_t_ev" : 1.63-0.67, "g_int" : 1, "sigma_n_irr" : 3e-16, "sigma_p_irr" : 2e-12,})
     defects.append({"name" : "EH67", "type" : "donor", "E_t_ev" : 1.63-1.65, "g_int" : 1, "sigma_n_irr" : 2e-17, "sigma_p_irr" : 3e-17,})
+
+    return defects
+
+
+def CreateIntrinsicModel_DiamondCommonDefect(device, region):
+    """
+    Diamond background defects
+    """
+
+    defects = []
+    defects.append({"name" : "BoronAcceptor", "type" : "acceptor", "E_t_ev" : -5.47/2+0.37, "g_int" : 0, "N_t0" : 2.0e14, "sigma_n_irr" : 1.0e-15, "sigma_p_irr" : 2.0e-14,})
+    defects.append({"name" : "SubstitutionalNitrogen_P1", "type" : "donor", "E_t_ev" : 5.47/2-1.70, "g_int" : 0, "N_t0" : 5.0e14, "sigma_n_irr" : 2.0e-14, "sigma_p_irr" : 1.0e-15,})
+    defects.append({"name" : "VacancyRelated", "type" : "acceptor", "E_t_ev" : -5.47/2+2.00, "g_int" : 0, "N_t0" : 1.0e14, "sigma_n_irr" : 1.0e-14, "sigma_p_irr" : 1.0e-14,})
 
     return defects

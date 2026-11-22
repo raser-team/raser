@@ -330,7 +330,7 @@ def _folders(started: list[Any], experiment: Path) -> list[str]:
     return [str(Path(tail[-1]).relative_to(experiment)) for _, tail, _, _ in started]
 
 
-def test_a_scan_runs_every_value_and_only_values_that_differ_get_a_folder(
+def test_a_scan_runs_every_value_and_every_value_gets_a_folder_named_by_the_scanned_key(
     started: list[Any], disk: dict[str, Any], tmp_path: Path
 ) -> None:
     scan = ["voltage=200,300"]
@@ -338,12 +338,12 @@ def test_a_scan_runs_every_value_and_only_values_that_differ_get_a_folder(
     execute(BIASED, _kwargs(det_name="dev", voltage=None, scan=scan, jobs=2))
 
     experiment = tmp_path / "toy"
-    assert _folders(started, experiment) == ["seed_42", "voltage_300/seed_42"]
-    assert _record(experiment / "seed_42")["options"]["voltage"] == 200
+    assert _folders(started, experiment) == ["voltage_200/seed_42", "voltage_300/seed_42"]
+    assert _record(experiment / "voltage_200" / "seed_42")["options"]["voltage"] == 200
     assert _record(experiment / "voltage_300" / "seed_42")["options"]["voltage"] == 300
 
 
-def test_a_scanned_address_is_written_into_the_file_of_each_point_that_differs(
+def test_a_scanned_address_is_written_into_the_file_of_each_point(
     started: list[Any], disk: dict[str, Any], tmp_path: Path
 ) -> None:
     scan = ["device.bias.voltage=200,300"]
@@ -351,8 +351,8 @@ def test_a_scanned_address_is_written_into_the_file_of_each_point_that_differs(
     execute(TOY_DEVICE, _kwargs(det_name="dev", scan=scan, jobs=2))
 
     experiment = tmp_path / "toy"
-    assert _folders(started, experiment) == ["seed_42", "bias.voltage_300/seed_42"]
-    unscanned = _record(experiment / "seed_42")
+    assert _folders(started, experiment) == ["bias.voltage_200/seed_42", "bias.voltage_300/seed_42"]
+    unscanned = _record(experiment / "bias.voltage_200" / "seed_42")
     scanned = _record(experiment / "bias.voltage_300" / "seed_42")
     assert unscanned["files"]["device"]["bias"] == {"electrode": "top", "voltage": 200.0}
     assert scanned["files"]["device"]["bias"] == {"electrode": "top", "voltage": 300}
@@ -374,7 +374,7 @@ def test_a_name_the_config_gives_an_address_names_the_folders_and_may_be_scanned
 
     execute(TOY_DEVICE, _kwargs(det_name="dev", scan=scan, jobs=2))
 
-    assert _folders(started, experiment) == ["seed_42", "bias_300/seed_42"]
+    assert _folders(started, experiment) == ["bias_200/seed_42", "bias_300/seed_42"]
     scanned = _record(experiment / "bias_300" / "seed_42")
     assert scanned["files"]["device"]["bias"]["voltage"] == 300
     assert scanned["options"]["device.bias.voltage"] == 300
@@ -397,9 +397,9 @@ def test_two_scanned_addresses_that_end_alike_stop_the_command_until_one_is_name
     execute(TOY_DEVICE, _kwargs(det_name="dev", scan=scan, jobs=2))
 
     assert _folders(started, experiment) == [
-        "seed_42",
-        "spare_2/seed_42",
-        "bias.voltage_300/seed_42",
+        "bias.voltage_200_spare_1/seed_42",
+        "bias.voltage_200_spare_2/seed_42",
+        "bias.voltage_300_spare_1/seed_42",
         "bias.voltage_300_spare_2/seed_42",
     ]
 
@@ -424,7 +424,7 @@ def test_an_address_that_leads_nowhere_stops_the_command_and_says_where(
     assert not (tmp_path / "toy").exists()
 
 
-def test_two_scanned_options_give_every_combination_named_by_what_differs(
+def test_two_scanned_options_give_every_combination_named_by_both_keys(
     started: list[Any], tmp_path: Path
 ) -> None:
     scan = ["gain=5,7", "width=1.0,2.0"]
@@ -432,9 +432,9 @@ def test_two_scanned_options_give_every_combination_named_by_what_differs(
     execute(GAIN, _kwargs(gain=None, width=None, scan=scan, jobs=2))
 
     assert _folders(started, tmp_path / "toy") == [
-        "seed_42",
-        "width_2/seed_42",
-        "gain_7/seed_42",
+        "gain_5_width_1/seed_42",
+        "gain_5_width_2/seed_42",
+        "gain_7_width_1/seed_42",
         "gain_7_width_2/seed_42",
     ]
 
@@ -442,9 +442,9 @@ def test_two_scanned_options_give_every_combination_named_by_what_differs(
 def test_two_combinations_that_would_name_one_folder_stop_the_command_before_any_job(
     started: list[Any], tmp_path: Path
 ) -> None:
-    scan = ["gain=7_width_2,7", "width=1.0,2.0"]
+    scan = ["gain=5_width_1,5", "width=2,1_width_2"]
 
-    with pytest.raises(ValueError, match="gain_7_width_2"):
+    with pytest.raises(ValueError, match="gain_5_width_1_width_2"):
         execute(GAIN, _kwargs(gain=None, width=None, scan=scan, jobs=2))
 
     assert started == []
@@ -472,9 +472,9 @@ def test_the_first_run_writes_its_scan_to_the_config_and_later_runs_repeat_it(
     execute(GAIN, _kwargs(gain=None, width=None, seed=2, jobs=2))
 
     assert _folders(started, tmp_path / "toy") == [
-        "seed_1",
+        "gain_5/seed_1",
         "gain_7/seed_1",
-        "seed_2",
+        "gain_5/seed_2",
         "gain_7/seed_2",
     ]
 
@@ -583,7 +583,7 @@ def test_the_finished_jobs_of_a_folder_come_from_the_workflow_and_device_its_con
     points = workflow_module.finished_in(tmp_path / "toy")
 
     assert [(name, options["voltage"], [index for _, index in done]) for name, options, done in points] == [
-        ("", 200, [0, 1]),
+        ("voltage_200", 200, [0, 1]),
         ("voltage_300", 300, [0, 1]),
     ]
     assert [(name, options, len(done)) for name, options, done in workflow_module.finished_in(tmp_path / "other")] == [
@@ -620,7 +620,7 @@ def test_finished_lists_every_point_with_the_jobs_of_all_its_seed_folders(
     execute(GAIN, _kwargs(gain=None, width=None, scan=scan, seed=2, jobs=1))
 
     assert _finished(tmp_path / "toy") == [
-        ("", 5, ["seed_1:0", "seed_1:1", "seed_2:0"]),
+        ("gain_5", 5, ["seed_1:0", "seed_1:1", "seed_2:0"]),
         ("gain_7", 7, ["seed_1:0", "seed_1:1", "seed_2:0"]),
     ]
 
@@ -650,7 +650,7 @@ def _point_seeds(seeded: list[int], experiment: Path, **given: Any) -> list[list
     """Job seeds of the two points of a gain scan, for job indices 0 and 1."""
     execute(GAIN, _kwargs(gain=None, width=None, scan=["gain=5,7"], jobs=2, **given))
     seeds = []
-    for point in ("", "gain_7"):
+    for point in ("gain_5", "gain_7"):
         seeded.clear()
         for index in (0, 1):
             folder = str(experiment / point / "seed_42")
@@ -706,7 +706,7 @@ def test_without_seeds_the_job_of_every_point_runs_in_the_point_folder_at_every_
 
     experiment = tmp_path / "toy"
     assert [options["_run_path"] for options in received] == [
-        str(experiment),
+        str(experiment / "x_1"),
         str(experiment / "x_2"),
     ] * 2
     assert "seed" not in received[0]
@@ -715,7 +715,7 @@ def test_without_seeds_the_job_of_every_point_runs_in_the_point_folder_at_every_
     }
     assert "same_seeds" not in json.loads((experiment / "config.json").read_text())
     assert [(name, len(done)) for name, _, done in
-            workflow_module.finished(workflow, _plain(), experiment)] == [("", 1), ("x_2", 1)]
+            workflow_module.finished(workflow, _plain(), experiment)] == [("x_1", 1), ("x_2", 1)]
 
 
 def test_a_workflow_that_names_its_folder_has_its_experiment_there_wherever_the_command_is_run(
@@ -818,7 +818,7 @@ def test_without_seeds_a_point_whose_folder_begins_with_seed_counts_as_finished(
     execute(workflow, _plain(scan=["seed_layer=1,2"]))
 
     points = workflow_module.finished(workflow, _plain(), tmp_path / "toy")
-    assert [(name, len(done)) for name, _, done in points] == [("", 1), ("seed_layer_2", 1)]
+    assert [(name, len(done)) for name, _, done in points] == [("seed_layer_1", 1), ("seed_layer_2", 1)]
 
 
 def test_each_of_several_points_runs_in_a_process_of_its_own_and_one_failing_leaves_the_rest(
@@ -852,7 +852,7 @@ def test_each_of_several_points_runs_in_a_process_of_its_own_and_one_failing_lea
 
     assert ran == [1, 2, 3]
     assert commands == [
-        ["toy", "--job-dir", str(experiment / name)] for name in ("", "x_2", "x_3")
+        ["toy", "--job-dir", str(experiment / name)] for name in ("x_1", "x_2", "x_3")
     ]
     assert "1 of 3 points failed" in str(stopped.value)
     assert str(experiment / "x_2") in str(stopped.value)
@@ -1147,7 +1147,7 @@ def test_the_points_are_views_of_the_nodes_and_points_json_is_their_table(
     fast, unscanned = table["amplifier_fast"]["nodes"], table["amplifier_standard"]["nodes"]
     assert fast["deposits"] == unscanned["deposits"] and fast["currents"] == unscanned["currents"]
     assert fast["waveforms"] != unscanned["waveforms"]
-    assert os.readlink(experiment / "points" / "default") == "amplifier_standard"
+    assert not os.path.lexists(experiment / "points" / "default")  # no point of a scan is the one without it
     for point, nodes_of_point in (("amplifier_fast", fast), ("amplifier_standard", unscanned)):
         for piece, listed in nodes_of_point.items():
             (node,) = listed  # one job
@@ -1167,7 +1167,7 @@ def test_a_command_that_runs_points_of_its_own_leaves_the_table_of_the_experimen
     assert (tmp_path / "toy" / "points.json").read_text() == table
 
 
-def test_an_experiment_that_begins_to_scan_keeps_default_as_a_link_while_the_scan_holds_its_values(
+def test_an_experiment_that_begins_to_scan_has_no_default_point_any_more(
     started: list[Any], seeded: list[int], disk: dict[str, Any], ran: list[tuple[str, Any]], tmp_path: Path
 ) -> None:
     points = tmp_path / "toy" / "points"
@@ -1175,8 +1175,7 @@ def test_an_experiment_that_begins_to_scan_keeps_default_as_a_link_while_the_sca
     assert (points / "default").is_dir() and not (points / "default").is_symlink()
 
     execute(_chain(ran), _chain_kwargs(scan=["amplifier=standard,fast"]))
-    assert os.readlink(points / "default") == "amplifier_standard"
-    assert (points / "default" / "waveforms" / "0" / "node.json").is_file()
+    assert sorted(path.name for path in points.iterdir()) == ["amplifier_fast", "amplifier_standard"]
 
     # The usual amplifier is no point of this scan: it has no view, though its
     # point still holds the deposits and the currents the two points read.
@@ -1286,9 +1285,9 @@ def test_points_that_read_the_same_deposits_through_other_electronics_each_have_
     points = workflow_module.jobs_of_points(tmp_path / "toy")
 
     assert [(name, len(jobs), others) for name, _, jobs, others in points] == [
-        ("amplifier_fast", 1, [(1, {"amplifier": "standard"})]),
-        ("amplifier_standard", 1, [(1, {"amplifier": "fast"})]),
-    ]
+        ("amplifier_fast", 1, []),
+        ("amplifier_standard", 1, []),
+    ]  # the job of the other point is counted there: it is not set apart here
     (_, fast), (_, standard) = points[0][2][0], points[1][2][0]
     assert fast["deposits"] == standard["deposits"] and fast["waveforms"] != standard["waveforms"]
 
@@ -1442,9 +1441,9 @@ def test_with_same_seeds_the_slices_before_the_scanned_one_stay_in_the_unscanned
         ("waveforms", "standard"),
     ]
     experiment = tmp_path / "toy"
-    assert _marks(experiment / "seed_42") == [
+    assert _marks(experiment / "seed_42") == ["deposits_0.done"]
+    assert _marks(experiment / "voltage_200" / "seed_42") == [
         "currents_0.done",
-        "deposits_0.done",
         "job_0.done",
         "waveforms_0.done",
     ]
@@ -2061,3 +2060,199 @@ def test_a_setting_of_the_command_line_that_changed_makes_the_run_out_of_date_wh
         (tmp_path / "toy" / "run.json").write_text(json.dumps(old))
         execute(solver, _plain(umf=asked))
         assert ("replaced: other settings of the command line" in capsys.readouterr().out) is replaced
+
+
+def _in_sections(seen: list[tuple[str, Any, Any]]) -> Workflow:
+    """A chain written in sections: the deposits and the currents each have
+    plots, the readout an amplifier whose file is the slot readout.amplifier."""
+
+    def piece(name: str, keys: tuple, **more: Any) -> Slice:
+        def run(options: dict[str, Any]) -> None:
+            seen.append((name, options["plots"], options["amplifier"]))
+
+        return Slice(name, run, keys=keys, **more)
+
+    return Workflow(
+        name="toy",
+        slices=(
+            piece("deposit", ("deposit.plots", "deposit.source", "deposit.limit")),
+            piece("current", ("current.plots",)),
+            piece("readout", ("readout.amplifier",), kinds=("readout.amplifier",), new_events=False),
+        ),
+        keys=("deposit.source", "deposit.plots", "deposit.limit", "current.plots", "readout.amplifier", "analysis.cuts"),
+        # deposit.limit is set by nothing: null in config.json
+        defaults={
+            "deposit.source": "beta",
+            "deposit.plots": 7,
+            "current.plots": 3,
+            "readout.amplifier": "standard",
+            "analysis.cuts": [1, 2],  # a list that is one value: the analysis is not scanned
+        },
+        components={"afe": "readout.amplifier"},
+        sections=("deposit", "current", "readout", "analysis"),
+        scanned=("deposit", "current", "readout"),
+        slots={"readout.amplifier": "afe"},
+    )
+
+
+def _config(tmp_path: Path) -> dict[str, Any]:
+    return json.loads((tmp_path / "toy" / "config.json").read_text())
+
+
+def test_a_config_in_sections_is_written_whole_and_each_stage_reads_its_own_section(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], tmp_path: Path
+) -> None:
+    seen: list[tuple[str, Any, Any]] = []
+
+    execute(_in_sections(seen), _chain_kwargs())
+
+    assert _config(tmp_path) == {
+        "workflow": "toy",
+        "device": "dev",
+        "deposit": {"source": "beta", "plots": 7, "limit": None},
+        "current": {"plots": 3},
+        "readout": {"amplifier": "standard"},
+        "analysis": {"cuts": [1, 2]},
+        "names": {},
+        "same_seeds": False,
+    }
+    # plots is 7 to the deposits and 3 to the currents; the readout, which has none, sees one of them
+    assert seen[:2] == [("deposit", 7, "standard"), ("current", 3, "standard")]
+
+    del seen[:]
+    execute(_in_sections(seen), _chain_kwargs())  # the same command reads the config it wrote: nothing runs again
+    assert seen == []
+
+
+def test_set_and_scan_write_their_sections_and_stay_for_the_commands_after(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], tmp_path: Path
+) -> None:
+    seen: list[tuple[str, Any, Any]] = []
+    workflow = _in_sections(seen)
+    execute(workflow, _chain_kwargs())
+
+    execute(workflow, _chain_kwargs(set=["current.plots=0"], scan=["readout.amplifier=standard,fast"]))
+    del seen[:]
+    execute(workflow, _chain_kwargs(seed=7))  # no option: what the config holds
+
+    config = _config(tmp_path)
+    assert config["current"] == {"plots": 0} and config["deposit"]["plots"] == 7
+    assert config["readout"] == {"amplifier": ["standard", "fast"]}  # a list where what is measured is set: a scan
+    assert "scan" not in config
+    assert sorted(seen) == [("current", 0, "standard"), ("deposit", 7, "standard"), ("readout", 0, "fast"), ("readout", 0, "standard")]
+    assert (tmp_path / "toy" / "points" / "amplifier_fast").is_dir()  # named by the key without its section
+
+    execute(workflow, _chain_kwargs(set=["readout.amplifier=fast"]))  # a set of the key ends its scan
+    assert _config(tmp_path)["readout"] == {"amplifier": "fast"}
+    assert sorted(path.name for path in (tmp_path / "toy" / "points").iterdir()) == ["default"]
+
+
+def test_a_setting_of_the_analysis_is_not_scanned_and_its_list_is_one_value(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], tmp_path: Path
+) -> None:
+    seen: list[tuple[str, Any, Any]] = []
+    workflow = _in_sections(seen)
+
+    with pytest.raises(ValueError, match="analysis.cuts is not scanned.*Scanned are the settings of deposit, current, readout"):
+        execute(workflow, _chain_kwargs(scan=["analysis.cuts=1,2"]))
+    assert seen == []
+
+    with pytest.raises(ValueError, match="current.plots: a list of values is a scan; give it to --scan as current.plots=0,5"):
+        execute(workflow, _chain_kwargs(set=["current.plots=[0, 5]"]))
+    execute(workflow, _chain_kwargs(set=["analysis.cuts=[3, 4, 5]"]))
+
+    assert _config(tmp_path)["analysis"] == {"cuts": [3, 4, 5]}
+    assert sorted(path.name for path in (tmp_path / "toy" / "points").iterdir()) == ["default"]  # one run
+
+
+def test_a_key_set_inside_a_component_stays_in_the_object_of_its_slot_until_the_slot_takes_another(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], tmp_path: Path
+) -> None:
+    seen: list[tuple[str, Any, Any]] = []
+    workflow = _in_sections(seen)
+    execute(workflow, _chain_kwargs(set=["readout.amplifier.marker=second"]))
+    assert _config(tmp_path)["readout"] == {"amplifier": {"name": "standard", "marker": "second"}}
+
+    execute(workflow, _chain_kwargs(seed=7))  # no option: the key is in the config
+    record = json.loads((tmp_path / "toy" / "seed_7" / "run.json").read_text())
+    assert record["files"]["afe"]["marker"] == "second" and record["options"]["readout.amplifier"] == "standard"
+
+    execute(workflow, _chain_kwargs(scan=["readout.amplifier.marker=second,third"], seed=8))
+    assert _config(tmp_path)["readout"] == {"amplifier": {"name": "standard", "marker": ["second", "third"]}}
+
+    execute(workflow, _chain_kwargs(set=["readout.amplifier=fast"], seed=9))  # another file: its keys are its own
+    assert _config(tmp_path)["readout"] == {"amplifier": "fast"}
+
+
+def test_the_run_that_puts_another_component_in_a_slot_reads_no_key_set_inside_the_one_before(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], tmp_path: Path
+) -> None:
+    seen: list[tuple[str, Any, Any]] = []
+    workflow = _in_sections(seen)
+    execute(workflow, _chain_kwargs(set=["readout.amplifier.marker=second"]))
+
+    execute(workflow, _chain_kwargs(set=["readout.amplifier=fast"], seed=7))
+
+    record = json.loads((tmp_path / "toy" / "seed_7" / "run.json").read_text())
+    assert record["files"]["afe"] == {"kind": "afe", "selector": "fast", "marker": "first"}
+    assert _config(tmp_path)["readout"] == {"amplifier": "fast"}
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        (lambda config: config["current"].update(plot=1), "no current.plot; the settings of current are plots"),
+        (lambda config: config.update(set={"deposit.plots": 1}), "no set in a config.json"),
+        (lambda config: config.update(readout="fast"), "readout is a section"),
+    ],
+)
+def test_a_config_that_holds_what_no_stage_knows_is_refused(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], tmp_path: Path, change: Any, message: str
+) -> None:
+    seen: list[tuple[str, Any, Any]] = []
+    workflow = _in_sections(seen)
+    execute(workflow, _chain_kwargs())
+    config = _config(tmp_path)
+    change(config)
+    (tmp_path / "toy" / "config.json").write_text(json.dumps(config))
+    del seen[:]
+
+    with pytest.raises(ValueError, match=message):
+        execute(workflow, _chain_kwargs(seed=7))
+
+    assert seen == []
+
+
+def test_a_setting_that_config_json_does_not_write_is_null(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], tmp_path: Path
+) -> None:
+    seen: list[tuple[str, Any, Any]] = []
+    workflow = _in_sections(seen)
+    execute(workflow, _chain_kwargs())
+    config = _config(tmp_path)
+    del config["current"]["plots"]
+    (tmp_path / "toy" / "config.json").write_text(json.dumps(config))
+    del seen[:]
+
+    execute(workflow, _chain_kwargs(seed=7))
+
+    assert ("current", None, "standard") in seen
+
+
+def test_a_key_inside_a_component_is_given_through_its_slot_and_no_other_address_is_a_setting(
+    started: list[Any], seeded: list[int], disk: dict[str, Any], tmp_path: Path
+) -> None:
+    seen: list[tuple[str, Any, Any]] = []
+    workflow = _in_sections(seen)
+
+    execute(workflow, _chain_kwargs(set=["readout.amplifier.marker=second"]))
+
+    record = json.loads((tmp_path / "toy" / "seed_42" / "run.json").read_text())
+    assert record["files"]["afe"]["marker"] == "second"
+    with pytest.raises(ValueError, match="deposit.event: no such setting"):
+        execute(workflow, _chain_kwargs(set=["deposit.event=5"], seed=7))
+    with pytest.raises(ValueError, match="afe.marker: no such setting"):
+        execute(workflow, _chain_kwargs(set=["afe.marker=third"], seed=8))
+    with pytest.raises(ValueError, match="plots: no such setting"):  # a key without its section
+        execute(workflow, _chain_kwargs(scan=["plots=0,5"], seed=9))
+

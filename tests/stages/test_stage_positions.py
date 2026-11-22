@@ -21,7 +21,7 @@ def _job(tmp_path: Path) -> dict:
 def test_a_position_with_no_deposit_in_the_job_leaves_no_currents(tmp_path: Path) -> None:
     kwargs = _job(tmp_path)
     in_a = EventDeposits(0, ["A"], [1.0], [1.0], [1.0], [0.0], [0.1], pairs=[10.0])
-    write_deposits(str(tmp_path / "node" / "deposit.h5"), Deposits(1, None, None, [in_a]))
+    write_deposits(str(tmp_path / "node" / "deposit.h5"), Deposits(1, {}, "any", None, [in_a]))
 
     assert current.currents(kwargs, "B") == {"events": 0}
     assert not (tmp_path / "node" / "current.B.h5").exists()
@@ -39,7 +39,7 @@ def test_a_position_with_a_deposit_drifts_its_own_and_its_readout_reads_its_curr
 ) -> None:
     kwargs = {**_job(tmp_path), "det_name": "D", "_files": {"device": {}}, "plots": 0, "amplifier": "amp"}
     in_a = EventDeposits(0, ["A"], [1.0], [1.0], [1.0], [0.0], [0.1], pairs=[10.0])
-    write_deposits(str(tmp_path / "node" / "deposit.h5"), Deposits(1, None, None, [in_a]))
+    write_deposits(str(tmp_path / "node" / "deposit.h5"), Deposits(1, {}, "any", None, [in_a]))
     drifted: list[tuple[str, str, object]] = []
     read: list[tuple[str, str]] = []
     device = type("Device", (), {"read_out_contact": [], "read_ele_num": 1, "device_dict": {}, "irradiation_flux": 0, "voltage": 1})()

@@ -549,7 +549,7 @@ def deposits(kwargs):
             record.pairs, _ = ionized_pairs(record, my_d.material)
         write_deposits(
             _file(kwargs, "deposit"),
-            Deposits(int(kwargs["events_per_job"]), None, None, events),
+            Deposits(int(kwargs["events_per_job"]), {}, "any", None, events),
         )
         return
     my_g4 = TelescopeG4Interaction(
@@ -577,7 +577,7 @@ def deposits(kwargs):
         record.pairs, _ = ionized_pairs(record, my_d.material)
         events.append(record)
     write_deposits(
-        _file(kwargs, "deposit"), Deposits(my_g4.generated_events, None, None, events)
+        _file(kwargs, "deposit"), Deposits(my_g4.generated_events, {}, "any", None, events)
     )
 
 

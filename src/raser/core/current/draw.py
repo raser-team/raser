@@ -3,6 +3,7 @@
 from array import array
 import logging
 
+import numpy as np
 import ROOT
 
 from raser.supports import figures
@@ -60,6 +61,9 @@ def draw_currents(path, event, t0, dt, current, hole_current, electron_current,
         if margin > 0:
             sum_cu.SetMinimum(low - margin)
             sum_cu.SetMaximum(high + margin)
+        time = t0 + (np.arange(len(current[electrode])) + 0.5) * dt
+        start, stop = figures.signal_window(time, np.array(values))
+        sum_cu.GetXaxis().SetRangeUser(start, stop)
         # the total first and wide, the parts over it: where a part is the
         # whole current, as the holes after the electrons are collected,
         # both stay in sight
@@ -85,8 +89,12 @@ def draw_currents(path, event, t0, dt, current, hole_current, electron_current,
             gain_positive_cu.Draw("SAME HIST")
             gain_negative_cu.Draw("SAME HIST")
 
-        legend = ROOT.TLegend(0.68, 0.2, 0.88, 0.45)
-        legend.SetFillStyle(0)
+        canvas.Update()
+        entries = 5 if gain_hole_current is not None else 3
+        drawn = [negative_cu, positive_cu, sum_cu]
+        if gain_hole_current is not None:
+            drawn += [gain_positive_cu, gain_negative_cu]
+        legend = _place_legend(canvas, drawn, 0.22, 0.06 * entries)
         legend.AddEntry(negative_cu, "electrons", "l")
         legend.AddEntry(positive_cu, "holes", "l")
         if gain_hole_current is not None:
@@ -103,15 +111,95 @@ def draw_currents(path, event, t0, dt, current, hole_current, electron_current,
         del canvas
 
 
-def charge_collection_strip(path, event, charge):
-    """Draw the net charge [C] of every strip, in fC, against its number."""
+def _curve_points(curve):
+    """The (x, y_low, y_high) points of a drawn curve, in user coordinates.
+
+    A histogram gives each bin centre with the span from the previous bin's
+    content to its own, so a vertical jump counts; a graph gives its points.
+    """
+    if isinstance(curve, ROOT.TMultiGraph):
+        for graph in curve.GetListOfGraphs():
+            yield from _curve_points(graph)
+    elif isinstance(curve, ROOT.TH1):
+        previous = None
+        for i in range(1, curve.GetNbinsX() + 1):
+            content = curve.GetBinContent(i)
+            yield (curve.GetBinCenter(i), min(content, content if previous is None else previous),
+                   max(content, content if previous is None else previous))
+            previous = content
+    else:
+        for x, y in zip(curve.GetX(), curve.GetY()):
+            yield (x, y, y)
+
+
+def _place_legend(pad, curves, width, height):
+    """A legend of `width` x `height` (NDC) inside the plot frame of `pad`,
+    at the corner or edge middle where the fewest points of `curves` lie."""
+    pad.Update()
+    frame_left = pad.GetLeftMargin() + 0.02
+    frame_right = 1 - pad.GetRightMargin() - 0.02
+    frame_bottom = pad.GetBottomMargin() + 0.02
+    frame_top = 1 - pad.GetTopMargin() - 0.02
+    middle_x = (frame_left + frame_right - width) / 2
+    candidates = [
+        (frame_right - width, frame_top - height),
+        (frame_left, frame_top - height),
+        (frame_right - width, frame_bottom),
+        (frame_left, frame_bottom),
+        (middle_x, frame_top - height),
+        (middle_x, frame_bottom),
+    ]
+    x_min, x_max = pad.GetUxmin(), pad.GetUxmax()
+    y_min, y_max = pad.GetUymin(), pad.GetUymax()
+    points = [point for curve in curves for point in _curve_points(curve)]
+
+    def user_x(ndc):
+        return x_min + (ndc - pad.GetLeftMargin()) / (1 - pad.GetLeftMargin() - pad.GetRightMargin()) * (x_max - x_min)
+
+    def user_y(ndc):
+        return y_min + (ndc - pad.GetBottomMargin()) / (1 - pad.GetBottomMargin() - pad.GetTopMargin()) * (y_max - y_min)
+
+    def inside(x1, y1):
+        low_x, high_x = user_x(x1), user_x(x1 + width)
+        low_y, high_y = user_y(y1), user_y(y1 + height)
+        return sum(
+            low_x <= x <= high_x and y_low <= high_y and y_high >= low_y
+            for x, y_low, y_high in points
+        )
+
+    x1, y1 = min(candidates, key=lambda corner: inside(*corner))
+    legend = ROOT.TLegend(x1, y1, x1 + width, y1 + height)
+    legend.SetFillColor(0)
+    legend.SetBorderSize(0)
+    return legend
+
+
+def electrode_edges(length, number, pitch):
+    """Edges [um] of `number` electrodes of `pitch`, centred in `length`."""
+    first = (length - number * pitch) / 2
+    return [first + k * pitch for k in range(number + 1)]
+
+
+def electrode_centers(length, number, pitch):
+    """Centres [um] of `number` electrodes of `pitch`, centred in `length`."""
+    first = (length - number * pitch) / 2
+    return [first + (k + 0.5) * pitch for k in range(number)]
+
+
+def pixel_cells(charge, x_ele_num, y_ele_num):
+    """(ix, jy, value) of every pixel; electrode number i = ix * y_ele_num + jy."""
+    return [(i // y_ele_num, i % y_ele_num, charge[i]) for i in range(x_ele_num * y_ele_num)]
+
+
+def charge_collection_strip(path, event, charge, l_x, x_ele_num, p_x):
+    """Draw the net charge [C] of every strip, in fC, against the x [um] of its centre."""
     electrons = [value / ELECTRON_CHARGE for value in charge]
     logger.info(
         "Collected charge of the strips that have any (number from 1: e): %s",
         {number: value for number, value in enumerate(electrons, start=1) if value},
     )
     femtocoulombs = array('d', [value / figures.UNIT["fC"] for value in charge])
-    x = array('d', range(1, len(femtocoulombs) + 1))
+    x = array('d', electrode_centers(l_x, x_ele_num, p_x))
     canvas = figures.canvas()
     canvas.SetLeftMargin(0.12)
     canvas.SetBottomMargin(0.13)
@@ -119,13 +207,25 @@ def charge_collection_strip(path, event, charge):
     graph.SetMarkerStyle(20)
     graph.SetMarkerColor(figures.root_color(figures.TOTAL))
     graph.Draw("AP")
-    graph.GetXaxis().SetTitle("Electrode")
+    graph.GetXaxis().SetTitle(figures.label("x", "um", root=True))
     graph.GetYaxis().SetTitle(figures.label("Charge", "fC", root=True))
     figures.save_canvas(canvas, path, "charge_per_electrode", event)
 
 
-def charge_collection_pixel(path, event, charge, x_ele_num, y_ele_num):
-    """Draw the net charge [C] of every pixel, in fC, as a map."""
+def pixel_histogram(charge, l_x, l_y, x_ele_num, y_ele_num, p_x, p_y):
+    """The charge [C] of every pixel in fC, on the pixels' x, y [um] edges."""
+    histogram = ROOT.TH2D(
+        "cce", "",
+        x_ele_num, array('d', electrode_edges(l_x, x_ele_num, p_x)),
+        y_ele_num, array('d', electrode_edges(l_y, y_ele_num, p_y)),
+    )
+    for ix, jy, value in pixel_cells(charge, x_ele_num, y_ele_num):
+        histogram.SetBinContent(ix + 1, jy + 1, float(value) / figures.UNIT["fC"])
+    return histogram
+
+
+def charge_collection_pixel(path, event, charge, l_x, l_y, x_ele_num, y_ele_num, p_x, p_y):
+    """Draw the net charge [C] of every pixel, in fC, as a map over x, y [um]."""
     electrons = [value / ELECTRON_CHARGE for value in charge]
     logger.info(
         "Collected charge of the pixels that have any (number from 1: e): %s",
@@ -135,11 +235,9 @@ def charge_collection_pixel(path, event, charge, x_ele_num, y_ele_num):
     canvas.SetLeftMargin(0.12)
     canvas.SetRightMargin(0.15)
     canvas.SetBottomMargin(0.13)
-    histogram = ROOT.TH2D("cce", "", x_ele_num, 0, x_ele_num, y_ele_num, 0, y_ele_num)
-    for i in range(x_ele_num*y_ele_num):
-        histogram.Fill(i % x_ele_num, i // x_ele_num, charge[i] / figures.UNIT["fC"])
+    histogram = pixel_histogram(charge, l_x, l_y, x_ele_num, y_ele_num, p_x, p_y)
     histogram.Draw("COLZ")
-    histogram.GetXaxis().SetTitle("Electrode column")
-    histogram.GetYaxis().SetTitle("Electrode row")
+    histogram.GetXaxis().SetTitle(figures.label("x", "um", root=True))
+    histogram.GetYaxis().SetTitle(figures.label("y", "um", root=True))
     histogram.GetZaxis().SetTitle(figures.label("Charge", "fC", root=True))
     figures.save_canvas(canvas, path, "charge_per_electrode", event)

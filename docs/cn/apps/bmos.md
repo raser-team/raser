@@ -27,11 +27,11 @@ $$N_{\text{bunch}} = \sum_{m=1}^{M}\sum_{k \in \mathcal{S}_m} N_{\text{pairs}, k
 
 `bmos` 默认使用 `device_alone` Geant4 装置（`raser/components/deposit/device_alone.py`）和专属束团源 `bunch`（`src/raser_app/bmos/components/deposit/bunch.json`，均见[能量沉积组件（`components/deposit`）](../components/deposit.md)）：
 
-- **Geant4 装置（`device_alone`）**：世界立方体材料为真空 `"G4_Galactic"`（默认半边长 `WORLD_HALF_SIDE = 25000` $\mu\text{m}$），监测器件逻辑体 `"Device"` 顶面中心位于原点 $(0, 0, 0)\ \mu\text{m}$、占据 $x \in [-l_x/2, l_x/2]$、$y \in [-l_y/2, l_y/2]$、$z \in [0, l_z]\ \mu\text{m}$，器件内最大步长 `maxstep = 2` $\mu\text{m}$；源基准位置 `at = [0, 0, -17000]` $\mu\text{m}$（顶面上方 $17\ \text{mm}$），瞄准点 `towards = [0, 0, 0]` $\mu\text{m}$，入射倾角 `angle = 0` $\text{degree}$。
-- **束团源（`bunch.json`）**：源类型 `"kind": "beam"`，粒子种类 `"par_type": "proton"`（质子），单粒子动能 `"par_energy": 80` $\text{MeV}$，横向方向随机偏移半宽 `par_randx = 0`、`par_randy = 0` $\mu\text{m}$。`"particles"` 列表包含 `3` 个同时发射的质子项，相对于基准起点 `at` 和瞄准点 `towards` 的平移向量 `"offset"` 依次为：
-  - 质子 1：`offset = [-1, 1, 0]` $\mu\text{m}$（从 `[-1, 1, -17000]` $\mu\text{m}$ 沿 $+z$ 射向 `[-1, 1, 0]` $\mu\text{m}$）；
-  - 质子 2：`offset = [0, 1, 0]` $\mu\text{m}$（从 `[0, 1, -17000]` $\mu\text{m}$ 沿 $+z$ 射向 `[0, 1, 0]` $\mu\text{m}$）；
-  - 质子 3：`offset = [1, 1, 0]` $\mu\text{m}$（从 `[1, 1, -17000]` $\mu\text{m}$ 沿 $+z$ 射向 `[1, 1, 0]` $\mu\text{m}$）。
+- **Geant4 装置（`device_alone`）**：世界立方体材料为真空 `"G4_Galactic"`，以 `along_beam` 一列的中点为中心，半边长不小于 `WORLD_HALF_SIDE = 25000` $\mu\text{m}$；世界坐标原点 $(0, 0, 0)\ \mu\text{m}$ 在源上（带准直孔时在准直孔出口面中心），$z$ 轴沿束流指向下游，入射倾角 `angle = 0` $\text{degree}$。装置通过 `"along_beam": ["source", {"gap": 17000}, {"slot": "Device"}]`（`"materials": {}`、`"objects": {}`）在源下游 $17\ \text{mm}$ 处放置监测器件逻辑体 `"Device"`，前表面中心位于 $(0, 0, 17000)\ \mu\text{m}$、有源层占据 $x \in [-l_x/2, l_x/2]$、$y \in [-l_y/2, l_y/2]$、$z \in [17000, 17000 + l_z]\ \mu\text{m}$（器件如含灵敏层以外的各层则紧接在其下游），器件内最大步长 `maxstep = 2` $\mu\text{m}$；源基准发射起点 `par_in = [0, 0, 0]` $\mu\text{m}$，瞄准器件前表面中心 `par_out = [0, 0, 17000]` $\mu\text{m}$。
+- **束团源（`bunch.json`）**：源类型 `"kind": "beam"`，粒子种类 `"par_type": "proton"`（质子），单粒子动能 `"par_energy": 80` $\text{MeV}$，横向方向随机偏移半宽 `par_randx = 0`、`par_randy = 0` $\mu\text{m}$。`"particles"` 列表包含 `3` 个同时发射的质子项，相对于基准发射起点 `par_in = [0, 0, 0]` $\mu\text{m}$ 和瞄准点 `par_out = [0, 0, 17000]` $\mu\text{m}$ 的平移向量 `"offset"` 依次为：
+  - 质子 1：`offset = [-1, 1, 0]` $\mu\text{m}$（从 `[-1, 1, 0]` $\mu\text{m}$ 沿 $+z$ 射向器件前表面 `[-1, 1, 17000]` $\mu\text{m}$）；
+  - 质子 2：`offset = [0, 1, 0]` $\mu\text{m}$（从 `[0, 1, 0]` $\mu\text{m}$ 沿 $+z$ 射向器件前表面 `[0, 1, 17000]` $\mu\text{m}$）；
+  - 质子 3：`offset = [1, 1, 0]` $\mu\text{m}$（从 `[1, 1, 0]` $\mu\text{m}$ 沿 $+z$ 射向器件前表面 `[1, 1, 17000]` $\mu\text{m}$）。
 
   三个 $80\ \text{MeV}$ 质子在 $y = +1\ \mu\text{m}$ 平面内沿 $x$ 方向以 $1\ \mu\text{m}$ 间距并排同时射入器件。
 
@@ -39,7 +39,7 @@ $$N_{\text{bunch}} = \sum_{m=1}^{M}\sum_{k \in \mathcal{S}_m} N_{\text{pairs}, k
 
 ### 代码执行步骤与内置常数
 
-`bmos` 在 `src/raser_app/bmos/` 中定义，直接复用八环节链的执行流程，`examples/bmos/config.json` 里 `deposit.source` 写 `"bunch"`、`deposit.plots` 与 `current.plots` 写 `0`，并挂载 `src/raser_app/bmos/components/` 组件路径：
+`bmos` 在 `src/raser_app/bmos/` 中定义，直接复用八环节链的执行流程，`examples/bmos/config.json` 里 `deposit.g4setup` 写 `{"name": "device_alone", "source": "bunch"}`（装置仍是 `device_alone`，源换成 `bunch`，装置里的 `angle` 沿用）、`deposit.plots` 与 `current.plots` 写 `0`，并挂载 `src/raser_app/bmos/components/` 组件路径：
 
 1. **共享场检查与求解（`field`）**：复用监测器件在目标偏压 `field.voltage`（$\text{V}$）与辐照注量 `field.irradiation_flux`（$\text{cm}^{-2}$，$1\ \text{MeV}$ 中子等效注量）下的场节点；找不到场时，所需的场在作业开始前补算，存进器件 project 的 `field/`。
 2. **单束团多粒子 Geant4 沉积（`deposit`）**：`GeneralPrimaryGeneratorAction` 在每个 Geant4 事例中循环遍历 `bunch.json` 的 `particles` 列表，对每个粒子调用 `beam.GeneratePrimaryVertex(event)`（`beam` 取自 `shot["guns"]`），同时发射 `3` 个 `80 MeV` 质子；汇总整个束团在 `"Device"` 内的全部沉积步，当束团总沉积能量满足能量窗时记为 `1` 个有效束团事例，直至录满 `deposit.events_per_job`（示例里为 `1`）个束团并写入 `deposit` 节点的 `deposit.h5`。
@@ -77,8 +77,7 @@ raser bmos --scan field.voltage=-300,-500
     "irradiation_flux": null
   },
   "deposit": {
-    "source": "bunch",
-    "g4setup": "device_alone",
+    "g4setup": {"name": "device_alone", "source": "bunch"},
     "events_per_job": 1,
     "fano": true,
     "plots": 0
@@ -105,8 +104,8 @@ raser bmos --scan field.voltage=-300,-500
 | --- | --- | --- | --- |
 | `field.voltage` | `-500.0`（写 `null` 时取器件文件里的偏压） | $\text{V}$ | 监测器件反向偏置电压 |
 | `field.irradiation_flux` | `null`（取器件文件里的辐照注量，器件文件没有辐照块时为 `0`） | $\text{cm}^{-2}$ | 监测器件辐照注量（$1\ \text{MeV}$ 中子等效注量） |
-| `deposit.source` | `"bunch"` | 无 | 信号源组件名称或路径 |
 | `deposit.g4setup` | `"device_alone"` | 无 | Geant4 装置组件名称或路径 |
+| `deposit.g4setup.source` | `"bunch"` | 无 | 信号源组件名称或路径；整套换掉 `device_alone` 里写的 `decay/Sr90`，装置里的 `angle` 沿用 |
 | `deposit.events_per_job` | `1` | 事例（束团） | 每作业需记录的有效沉积束团数（与 `deposit.generated_per_job` 互斥） |
 | `deposit.generated_per_job` | `null`（不用） | 事例（束团） | 每作业由源生成的总束团数（与 `deposit.events_per_job` 互斥） |
 | `deposit.generated_limit` | `10000000` | 事例（束团） | 为录满 `deposit.events_per_job` 允许生成的最大束团数上限 |

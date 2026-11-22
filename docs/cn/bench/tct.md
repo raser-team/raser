@@ -158,7 +158,7 @@ raser tct NJU-PiN --set deposit.laser=PIL037_top_SiC --scan deposit.laser.fz_rel
 
 | 路径 | 写出环节 | 内容与主要字段 | 单位 |
 | --- | --- | --- | --- |
-| `nodes/deposit/<节点号>/deposit.h5` | [`deposit`](../stages/deposit.md) | 激光注入载流子群（记录为事例 `event = 0`）：属性 `generated_events`、`recorded_events`、`generated_fraction`；数据集 `event`、`count`、`detector`、`x`/`y`/`z`、`x_start`/`y_start`/`z_start`、`t`、`t_fwhm`、`e`、`pairs` | 坐标 $\mu\text{m}$，时间 $\text{s}$，能量 $\text{MeV}$，`pairs` 为对 |
+| `nodes/deposit/<节点号>/deposit.h5` | [`deposit`](../stages/deposit.md) | 激光注入载流子群（记录为事例 `event = 0`）：属性 `generated_events`、`recorded_events`、`emission_probability`（没有出射分布的源为 `1.0`）；数据集 `event`、`count`、`detector`、`x`/`y`/`z`、`x_start`/`y_start`/`z_start`、`t`、`t_fwhm`、`e`、`pairs` | 坐标 $\mu\text{m}$，时间 $\text{s}$，能量 $\text{MeV}$，`pairs` 为对 |
 | `nodes/current/<节点号>/current.h5` | [`current`](../stages/current.md) | 卷积脉冲时间包络后的感应电流文件：属性 `electrodes`、`dt`；数据集 `event`、`t0`、`count`、`pairs`、`sensitive_pairs`、`carriers_without_field`、`charge`、`stored`、`index`、`current` | `dt`、`t0` 为 $\text{s}$，`charge` 为 $\text{C}$，`current` 为 $\text{A}$，`pairs` 为对 |
 | `nodes/readout/<节点号>/readout.h5` | [`readout`](../stages/readout.md) | 经器件等效电路与前端放大器链求解的输出电压波形：属性 `electrodes`、`dt`、`pulse_edge`、`device_circuit`；数据集 `event`、`t0`、`count`、`stored`、`index`、`voltage` | `dt`、`t0` 为 $\text{s}$，`voltage` 为 $\text{V}$ |
 | `nodes/digitizer/<节点号>/digitizer.h5` | [`digitizer`](../stages/digitizer.md) | 数字化量化码波形：属性 `electrodes`、`sampling_period`、`lsb_V`、`offset_V`、`bits`、`pulse_edge`、`device`；数据集 `event`、`t0`、`count`、`stored`、`index`、`clipped`、`code`（`int16`） | `sampling_period`、`t0` 为 $\text{s}$，`lsb_V`、`offset_V` 为 $\text{V}$，`bits` 为位，`code` 无量纲 |

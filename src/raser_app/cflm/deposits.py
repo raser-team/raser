@@ -61,7 +61,7 @@ def bunch_deposits(my_d, g4_dic, seed):
         if event.e:
             event.pairs, _ = ionized_pairs(event, my_d.material)
             events.append(event)
-    return Deposits(bunches, None, None, events)
+    return Deposits(bunches, {}, "any", None, events)
 
 
 def deposits(kwargs):

@@ -9,7 +9,11 @@ from raser.core.analysis.resolution import TooFewValues
 
 from . import plots
 from .collection import efficiency_spread
+from .collection import energy_resolution
+from .collection import event_charges
 from .collection import event_efficiencies
+from .signals import energy_spread
+from .signals import event_energies
 from .timing import event_times
 from .timing import point_tables
 from .timing import table_setting
@@ -30,6 +34,18 @@ def write_point(jobs, folder):
                     point; the efficiency is of the currents and does not
                     see the reconstruction. With fewer than 2 events,
                     `events` and `error` in place of the rest
+        energy_resolution  `charge` and `amplitude`, each what
+                    `mad_core_resolution` gives (`events`, `mean`, `sigma`,
+                    `resolution`, `median`, `mad_sigma`, `core_events`,
+                    `core_mean`, `core_sigma`, `core_resolution`), or `events`
+                    and `error` in place of it; `charge` [C] is the collected
+                    charge of all events, `amplitude` [V] that of the
+                    selected events; `amplitude` is not there when the jobs
+                    recorded no event
+        deposited_energy  events, mean and std [MeV] of the energy the
+                    recorded events deposited in the sensitive layers, or
+                    `events` and `error` in place of the last two for fewer
+                    than 2 events
         timing      events, selected, polarity and times, as
                     `point_resolution` gives them [s]; or `error` in place of
                     `times` when the selected events give no width, and of
@@ -60,6 +76,9 @@ def write_point(jobs, folder):
         missing.append(f"no efficiency: {too_few}")
     else:
         plots.draw_efficiencies(efficiencies, pictures)
+    charges = event_charges(tables)
+    result["energy_resolution"] = {"charge": energy_resolution(charges)}
+    result["deposited_energy"] = energy_spread(event_energies(jobs))
     if not len(efficiencies):
         result["timing"] = {"events": 0, "selected": 0, "error": "the jobs recorded no event"}
         missing.append("no time resolution: the jobs recorded no event")
@@ -71,6 +90,7 @@ def write_point(jobs, folder):
         for name, values in times.items():
             file[name] = values.astype("int64") if name in ("job", "event") else values
     result["timing"] = {"events": count, "selected": len(times["truth"]), "polarity": polarity}
+    result["energy_resolution"]["amplitude"] = energy_resolution(times["amplitude"])
     plots.draw_amplitudes(times["amplitude"], tables[0][3].amplitude_threshold, count, pictures)
     try:
         widths = time_widths(times)

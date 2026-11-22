@@ -43,7 +43,7 @@ $$\Delta E = E_{\text{in}} - E_{\text{out}}, \qquad \text{WEPL}(x, y) = \int_{\t
 raser pimg
 ```
 
-实验配置写在 `work/pimg/config.json` 中，按环节分段。这个情景需要两类能量沉积组件：质子束流源 `beam/proton`，以及前后望远镜层中间放 toy 人头的装置 `head_phantom`，在 `deposit` 段里选用；跟踪层器件默认是 `TAICHU3`。下面只摘和本页有关的段；`examples/pimg/config.json` 里八段都写全。
+实验配置写在 `work/pimg/config.json` 中，按环节分段。这个情景需要两类能量沉积组件：质子束流源 `beam/proton`，以及前后望远镜层中间放 toy 人头的装置 `head_phantom`，在 `deposit` 段里选装置 `head_phantom`，它的 `source` 块写 `{"name": "beam/proton", "angle": 0}`；跟踪层器件默认是 `TAICHU3`。下面只摘和本页有关的段；`examples/pimg/config.json` 里八段都写全。
 
 ```json
 {
@@ -52,7 +52,6 @@ raser pimg
     "voltage": null
   },
   "deposit": {
-    "source": "beam/proton",
     "g4setup": "head_phantom"
   },
   "readout": {

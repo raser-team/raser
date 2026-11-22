@@ -5,26 +5,13 @@ Description:  signal/__init__.py
 @version    : 2.0
 """
 
-from raser.lifecycle.workflow import Workflow
 from raser.stages import chain
 
 
-WORKFLOW = Workflow(
-    name="signal",
-    keys=chain.KEYS,
-    defaults=chain.DEFAULTS,
-    components=chain.COMPONENTS,
-    readers=chain.READERS,
-    in_file=chain.IN_FILE,
-    slices=chain.SLICES,
-    exclusive=chain.EXCLUSIVE,
-    command=chain.job_command,
-    analysis=chain.analyse,
-)
+class Signal(chain.Chain):
+    name = "signal"
+    help = "single signal simulation"
+    components = ("raser_bench/signal",)
 
 
-def register(subparsers):
-    parser = subparsers.add_parser("signal", help="single signal simulation")
-    chain.add_arguments(parser)
-    WORKFLOW.attach(parser)
-    parser.set_defaults(_project="det_name", _components=("raser_bench/signal",))
+WORKFLOW = Signal.workflow()

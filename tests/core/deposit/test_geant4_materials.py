@@ -8,18 +8,23 @@ pytestmark = pytest.mark.geant4
 def test_binary_compound_takes_shares_of_atoms() -> None:
     from raser.core.deposit.geant4.detector_construction import GeneralDetectorConstruction
 
-    device = SimpleNamespace(l_x=100, l_y=100, l_z=50)
+    from raser.core.deposit.along_beam import parse_along_beam
+
+    device = SimpleNamespace(l_x=100, l_y=100, l_z=50, material="SiC")
     silica = {
         "name": "silica", "material_1": "Si", "material_2": "O", "compound_name": "SiO2",
         "density": 2.2, "natoms_1": 33.4, "natoms_2": 66.6, "side_x": 10, "side_y": 10,
-        "side_z": 10, "colour": [0, 0, 1], "position_x": 0, "position_y": 0,
-        "position_z": -100, "tub": {},
+        "side_z": 10, "colour": [0, 0, 1], "tub": {},
     }
     configuration = {
         "world": "G4_Galactic", "geant4_model": "device",
         "object": {"binary_compounds": {"silica": silica}},
+        "along_beam": ["source", {"gap": 100}, "silica", {"slot": "Device"}],
     }
-    construction = GeneralDetectorConstruction(device, configuration, "SiC", 2)
+    devices = {"Device": device}
+    construction = GeneralDetectorConstruction(
+        devices, parse_along_beam(configuration, devices), configuration, 2
+    )
     silicon_carbide = construction.compound_materials["SiC"][0]
     atoms = silicon_carbide.GetVecNbOfAtomsPerVolume()
     silicon, carbon = atoms[0], atoms[1]

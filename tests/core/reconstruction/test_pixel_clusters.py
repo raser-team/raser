@@ -151,7 +151,8 @@ def test_step_at_30_80_lies_in_pixel_one_one_and_only_steps_of_the_slot_with_pai
 ):
     deposits = Deposits(
         2,
-        None,
+        {},
+        "any",
         None,
         [
             deposit_event(
@@ -191,7 +192,8 @@ def test_event_table_of_deposits_is_read_back_from_its_file_as_written(
 ) -> None:
     deposits = Deposits(
         3,
-        None,
+        {},
+        "any",
         None,
         [
             deposit_event(1, [("a", 30.0, 80.0, 10.0, 100.0)]),

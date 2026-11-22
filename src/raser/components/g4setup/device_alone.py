@@ -1,4 +1,4 @@
-"""The device alone in vacuum, the source 17 mm above its top face.
+"""The device alone in vacuum, the source 17 mm in front of its front face.
 
 What surrounds the device in Geant4; reading it imports no Geant4."""
 
@@ -7,7 +7,8 @@ G4SETUP = {
     "description": "The device alone in vacuum",
     "geant4_model": "device",
     "object": {},
-    "source": {"at": [0, 0, -17000], "towards": [0, 0, 0], "angle": 0},
+    "source": {"angle": 0},
+    "along_beam": ["source", {"gap": 17000}, {"slot": "Device"}],
     "world": "G4_Galactic",
     "maxstep": 2,
     "g4_vis": False,

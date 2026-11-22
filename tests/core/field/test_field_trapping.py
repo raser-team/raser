@@ -41,6 +41,9 @@ def _models(
     monkeypatch.setattr(
         physics_irradiation, "CreateNodeModelDerivative", lambda *given: None
     )
+    monkeypatch.setattr(
+        physics_irradiation.devsim, "get_material", lambda device, region: "Silicon"
+    )
     defect = {
         "name": "one",
         "E_t_ev": level_ev,

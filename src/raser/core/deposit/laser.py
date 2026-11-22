@@ -119,7 +119,7 @@ def laser_deposits(my_d, laser_dic: dict) -> Deposits:
         z_start=list(z),
         t_fwhm=[float(w) for w in laser.time_FWHM],
     )
-    return Deposits(1, None, None, [event] if count else [])
+    return Deposits(1, {"Device": (None, None)}, "any", None, [event] if count else [])
 
 
 class LaserInjection:

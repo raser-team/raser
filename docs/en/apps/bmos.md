@@ -27,11 +27,11 @@ Eq. (1) is computed by `ionized_pairs` in [`core/deposit/ionization.py`](../core
 
 By default, `bmos` uses the `device_alone` Geant4 setup (`raser/components/deposit/device_alone.py`) and the dedicated bunch source `bunch` (`src/raser_app/bmos/components/deposit/bunch.json`; see [energy deposition components (`components/deposit`)](../components/deposit.md) for both):
 
-- **Geant4 setup (`device_alone`)**: the world cube material is vacuum `"G4_Galactic"` (default half-side `WORLD_HALF_SIDE = 25000` $\mu\text{m}$); the monitoring device logical volume `"Device"` has its top surface centered at the origin $(0, 0, 0)\ \mu\text{m}$, occupying $x \in [-l_x/2, l_x/2]$, $y \in [-l_y/2, l_y/2]$, $z \in [0, l_z]\ \mu\text{m}$, with maximum step size `maxstep = 2` $\mu\text{m}$ inside the device; the reference source position is `at = [0, 0, -17000]` $\mu\text{m}$ ($17\ \text{mm}$ above the top surface), aiming at `towards = [0, 0, 0]` $\mu\text{m}$ with incidence angle `angle = 0` $\text{degree}$.
-- **Bunch source (`bunch.json`)**: source kind `"kind": "beam"`, particle type `"par_type": "proton"` (proton), single-particle kinetic energy `"par_energy": 80` $\text{MeV}$, and transverse random offset half-widths `par_randx = 0`, `par_randy = 0` $\mu\text{m}$. The `"particles"` list contains `3` simultaneously emitted proton entries whose translation vectors `"offset"` relative to the reference origin `at` and aim point `towards` are:
-  - Proton 1: `offset = [-1, 1, 0]` $\mu\text{m}$ (fired from `[-1, 1, -17000]` $\mu\text{m}$ along $+z$ toward `[-1, 1, 0]` $\mu\text{m}$);
-  - Proton 2: `offset = [0, 1, 0]` $\mu\text{m}$ (fired from `[0, 1, -17000]` $\mu\text{m}$ along $+z$ toward `[0, 1, 0]` $\mu\text{m}$);
-  - Proton 3: `offset = [1, 1, 0]` $\mu\text{m}$ (fired from `[1, 1, -17000]` $\mu\text{m}$ along $+z$ toward `[1, 1, 0]` $\mu\text{m}$).
+- **Geant4 setup (`device_alone`)**: the world cube material is vacuum `"G4_Galactic"`, centered at the midpoint of the `along_beam` line with half-side at least `WORLD_HALF_SIDE = 25000` $\mu\text{m}$; the world coordinate origin $(0, 0, 0)\ \mu\text{m}$ sits on the source (at the center of the collimator exit plane when carrying a collimator), the $z$ axis points downstream along the beam, and the incidence angle is `angle = 0` $\text{degree}$. Using `"along_beam": ["source", {"gap": 17000}, {"slot": "Device"}]` (`"materials": {}`, `"objects": {}`), the setup places the monitoring device logical volume `"Device"` $17\ \text{mm}$ downstream of the source, with its front surface centered at $(0, 0, 17000)\ \mu\text{m}$ and its active layer occupying $x \in [-l_x/2, l_x/2]$, $y \in [-l_y/2, l_y/2]$, $z \in [17000, 17000 + l_z]\ \mu\text{m}$ (any layers outside the active layer follow immediately downstream), with maximum step size `maxstep = 2` $\mu\text{m}$ inside the device; the reference source emission origin is `par_in = [0, 0, 0]` $\mu\text{m}$, aiming at the device front-surface center `par_out = [0, 0, 17000]` $\mu\text{m}$.
+- **Bunch source (`bunch.json`)**: source kind `"kind": "beam"`, particle type `"par_type": "proton"` (proton), single-particle kinetic energy `"par_energy": 80` $\text{MeV}$, and transverse random offset half-widths `par_randx = 0`, `par_randy = 0` $\mu\text{m}$. The `"particles"` list contains `3` simultaneously emitted proton entries whose translation vectors `"offset"` relative to the reference emission origin `par_in = [0, 0, 0]` $\mu\text{m}$ and aim point `par_out = [0, 0, 17000]` $\mu\text{m}$ are:
+  - Proton 1: `offset = [-1, 1, 0]` $\mu\text{m}$ (fired from `[-1, 1, 0]` $\mu\text{m}$ along $+z$ toward the device front surface `[-1, 1, 17000]` $\mu\text{m}$);
+  - Proton 2: `offset = [0, 1, 0]` $\mu\text{m}$ (fired from `[0, 1, 0]` $\mu\text{m}$ along $+z$ toward the device front surface `[0, 1, 17000]` $\mu\text{m}$);
+  - Proton 3: `offset = [1, 1, 0]` $\mu\text{m}$ (fired from `[1, 1, 0]` $\mu\text{m}$ along $+z$ toward the device front surface `[1, 1, 17000]` $\mu\text{m}$).
 
   The three $80\ \text{MeV}$ protons enter the device simultaneously side by side along the $x$ direction with $1\ \mu\text{m}$ spacing in the $y = +1\ \mu\text{m}$ plane.
 
@@ -39,7 +39,7 @@ Limitations: the `3` protons of a bunch in `bunch.json` are emitted in parallel 
 
 ### Execution Steps and Built-in Constants
 
-`bmos` is defined in `src/raser_app/bmos/` and directly reuses the execution flow of the eight-stage chain; in `examples/bmos/config.json`, `deposit.source` is set to `"bunch"`, `deposit.plots` and `current.plots` are set to `0`, and the `src/raser_app/bmos/components/` component path is mounted:
+`bmos` is defined in `src/raser_app/bmos/` and directly reuses the execution flow of the eight-stage chain; in `examples/bmos/config.json`, `deposit.g4setup` is set to `{"name": "device_alone", "source": "bunch"}` (the setup stays `device_alone`, the source is replaced by `bunch`, and the setup's `angle` is kept), `deposit.plots` and `current.plots` are set to `0`, and the `src/raser_app/bmos/components/` component path is mounted:
 
 1. **Shared field check and solve (`field`)**: reuses the field node of the monitoring device at the target bias `field.voltage` ($\text{V}$) and irradiation fluence `field.irradiation_flux` ($\text{cm}^{-2}$, $1\ \text{MeV}$ neutron-equivalent fluence); if no field is found, the required field is solved before jobs begin and stored in `field/` of the device project.
 2. **Single-bunch multi-particle Geant4 deposition (`deposit`)**: in each Geant4 event, `GeneralPrimaryGeneratorAction` loops over the `particles` list in `bunch.json` and calls `beam.GeneratePrimaryVertex(event)` for each particle (`beam` taken from `shot["guns"]`), emitting `3` `80 MeV` protons simultaneously; it aggregates all deposition steps of the entire bunch inside `"Device"`, records `1` valid bunch event whenever the total bunch deposited energy satisfies the energy window, and repeats until `deposit.events_per_job` (`1` in the example) bunches are recorded and written to `deposit.h5` in the `deposit` node.
@@ -77,8 +77,7 @@ Following the sectioned format in [Architecture Overview](../architecture.md#pro
     "irradiation_flux": null
   },
   "deposit": {
-    "source": "bunch",
-    "g4setup": "device_alone",
+    "g4setup": {"name": "device_alone", "source": "bunch"},
     "events_per_job": 1,
     "fano": true,
     "plots": 0
@@ -105,8 +104,8 @@ The configuration keys that users can set in `bmos` are listed below (see [Simul
 | --- | --- | --- | --- |
 | `field.voltage` | `-500.0` (uses the bias voltage in the device file when `null`) | $\text{V}$ | Monitoring device reverse bias voltage |
 | `field.irradiation_flux` | `null` (uses the irradiation fluence in the device file, or `0` if the device file has no irradiation block) | $\text{cm}^{-2}$ | Monitoring device irradiation fluence ($1\ \text{MeV}$ neutron-equivalent fluence) |
-| `deposit.source` | `"bunch"` | None | Signal source component name or path |
 | `deposit.g4setup` | `"device_alone"` | None | Geant4 setup component name or path |
+| `deposit.g4setup.source` | `"bunch"` | None | Signal source component name or path; replaces the whole `decay/Sr90` written in `device_alone`, and the setup's `angle` is kept |
 | `deposit.events_per_job` | `1` | events (bunches) | Number of valid deposited bunches to record per job (mutually exclusive with `deposit.generated_per_job`) |
 | `deposit.generated_per_job` | `null` (unused) | events (bunches) | Total number of bunches generated from the source per job (mutually exclusive with `deposit.events_per_job`) |
 | `deposit.generated_limit` | `10000000` | events (bunches) | Maximum number of generated bunches allowed to reach `deposit.events_per_job` |
