@@ -59,6 +59,7 @@ The same species or element uses the same color across all figures:
 | Total (total current, total charge) | Black |
 | Initial deposition point | Gray `#808080` |
 | Reference lines such as thresholds and means | Black dashed |
+| Boundaries inside the device | Gray thin dashed |
 | Fit curve | Black solid |
 | Histogram | Gray-blue `#6c8ebf` fill |
 
@@ -86,7 +87,7 @@ When inspecting figures by scan point, enter through the view `<experiment>/poin
 
 ## Figures per Stage
 
-Each stage draws at least the figures listed below. "Per-event" figures are drawn for the first `<stage>.plots` recorded events, with this option and its default value documented on each stage page; all other figures are drawn once per node. Figures specific to individual experiments and applications (`telescope`, `tct`, `bmos`, `cflm`, etc.) follow the same rules and are placed in the node of the stage they read and write.
+Each stage draws at least the figures listed below. "Per-event" figures are drawn for the first `<stage>.plots` recorded events, with this option and its default value documented on each stage page; all other figures are drawn once per node. Figures specific to individual experiments and applications (`telescope`, `tct`, `bmos`, `cflm`, etc.) follow the same rules and are placed in the node of the stage they read and write. Every depth profile of field (`doping`, `potential`, `electric_field`, `trapping_rate`, `weighting_potential`, `weighting_field`) draws a vertical line at each boundary inside the device; a boundary is where the doping concentration changes by more than one order of magnitude between neighbouring mesh nodes, such as a PN junction or the interface of the high-resistivity layer and the substrate.
 
 | Stage | Figure name | What is plotted | Count |
 | --- | --- | --- | --- |
