@@ -59,7 +59,7 @@ raser rdo examples/HPK-Si-PiN/signal --scan field.voltage=100,200 --scan readout
 
 `raser readout --draw <对象>` 画本环节的对象：前端电路的原理图和冲击响应。前端电路图和冲击响应只取决于电路和它的参数，是资产，放在 `work/<电路名>/` 下，被各实验的 `readout` 引用。
 
-阻性层器件（器件文件有 `resistive_layer`）另有一个对象 `network`：`raser readout --draw network [路径]` 只解器件电路与 `readout.amplifier` 的放大器链，不读 `deposit` 和 `current` 的结果。冲击的位置是器件上的一个点，用几何坐标 $(x, y)$ 给出，单位 $\mu\text{m}$，坐标系与 `current` 相同（$0 \le x \le l_x$，$0 \le y \le l_y$）；条形器件只用 $x$。$1\ \text{fC}$ 的电荷在第一个时间箱里以矩形电流脉冲注入这一点，按它到相邻晶胞中心的距离线性分给这些晶胞的节点；时间箱宽 $10\ \text{ps}$、共 $2000$ 箱；方阻取 `readout.sheet_resistance`，没有时取器件文件。给出 `--at <x>,<y>` 时冲击这一点，`network_waveforms.png` 画每个读出电极（条或焊盘）的输出波形；不给时沿 $x$ 以晶胞宽度为步长扫过器件中线（$y = l_y/2$），另画 `network_sharing.png`：各读出电极的波形幅度和波形积分随冲击点 $x$ 的曲线。两种情形都画 `network_schematic.png`：器件网络的电路图，标上各元件的数值。
+阻性层器件（器件文件有 `resistive_layer`）另有一个对象 `network`：`raser readout --draw network [路径]` 只解器件电路与 `readout.amplifier` 的放大器链，不读 `deposit` 和 `current` 的结果。冲击的位置是器件上的一个点，用几何坐标 $(x, y)$ 给出，单位 $\mu\text{m}$，坐标系与 `current` 相同（$0 \le x \le l_x$，$0 \le y \le l_y$）；条形器件只用 $x$。$1\ \text{fC}$ 的电荷在第一个时间箱里以矩形电流脉冲注入这一点，按它到相邻晶胞中心的距离线性分给这些晶胞的节点；时间箱宽 $10\ \text{ps}$、共 $2000$ 箱；方阻取 `readout.sheet_resistance`，没有时取器件文件。给出 `--at <x>,<y>` 时冲击这一点，`network_waveforms.png` 画每个读出电极（条或焊盘）的输出波形；不给时沿 $x$ 以晶胞宽度为步长扫过器件中线（$y = l_y/2$），`network_waveforms.png` 画扫描中点那一个冲击点的波形，另画 `network_sharing.png`：各读出电极的波形幅度和波形积分随冲击点 $x$ 的曲线。两种情形都画 `network_schematic.png`：器件网络的电路图，标上各元件的数值。
 
 ## 规则
 
