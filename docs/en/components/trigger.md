@@ -28,12 +28,9 @@ One component file describes one trigger device; its filename is the component n
 
 ### Coincidence Conditions
 
-The coincidence condition is defined once here, and `deposit` preselection refers to the same definition (see [Energy Deposition Stage](../stages/deposit.md)).
-
 - **Slots and hits**: Operands of the logic expression are slot names from the experiment's device table (composed of letters, digits, `_`, and `-`). A slot hits when the waveform on any of its electrodes crosses `level_V` along `slope`; the hit time is the earliest of those crossing times. See [Trigger (`core/trigger`)](../core/trigger.md#level-crossing) for crossing evaluation and timing.
 - **Logic expression**: Slot names are combined with `AND`, `OR`, and parentheses, e.g. `"dut AND (ref1 OR ref2)"`. `"all"` is shorthand for all slots joined with `AND`, and `"any"` is shorthand for all slots joined with `OR`. An error is raised if the expression contains a slot name absent from the device table or if a slot in the device table is missing from the expression.
 - **Time window**: When `coincidence_window_ns` is $W$, only slots whose hit times fall within the same interval of width $W$ are counted together: the event is recorded only if there exists a time $t$ such that the slots with hit times in $[t - W,\ t]$ satisfy the logic expression, and the trigger time is the earliest such $t$. When `null`, all hitting slots are counted together, and the trigger time is the earliest time at which the logic expression holds.
-- **`deposit` window**: The time window of `deposit` preselection is no narrower than `coincidence_window_ns` here.
 
 - **At least $k$ of $N$**: `AT_LEAST(k: a, b, c)` evaluates to true when at least $k$ of slots `a`, `b`, `c` hit; it can be mixed with `AND` and `OR`, e.g. `"AT_LEAST(6: l1, l2, l3, l4, l5, l6, l7, l8) AND dut"`.
 
