@@ -537,6 +537,8 @@ The slices and profiles of 2D and 3D plots follow `mesh_axes`, and the axis titl
 - 3D: the slice is the $x$-$z$ plane through the middle of $y$; the depth profile is at the middle of $x$ and $y$, the lateral profile runs along $x$ at the middle of $y$ and of the depth.
 - Weighting potential and weighting field: the depth profile is at the mean lateral coordinate of the nodes of the read-out electrode, right below it; in a row of cells, the electrode of the middle cell.
 - Values on profiles and on 3D slices are linear interpolations on the mesh elements.
+- Each profile has a one-line panel title saying where it lies, such as `x = 29.0 μm` or `Depth = 25.0 μm`; a 3D slice says `y = <value> μm`.
+- When the values of a panel vary by less than 1% of the largest of them in magnitude, its vertical axis (the colour scale of a slice) starts from 0 instead of closing in on the data, so that numerical noise on the mesh does not look like a variation of the field.
 
 ## References
 
