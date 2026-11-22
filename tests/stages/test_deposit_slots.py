@@ -88,3 +88,34 @@ def test_only_the_field_lookup_of_a_device_of_several_leaves_the_project_of_the_
     assert seen == {"field": str(tmp_path / "LGAD"), "drift": str(tmp_path / "PiN")}
     with files.field_project({"det_name": "PiN"}):
         assert os.environ["RASER_PROJECT_PATH"] == str(tmp_path / "PiN")
+
+
+def _recorded(monkeypatch: pytest.MonkeyPatch, kwargs: dict[str, Any], slots: tuple[str, ...]) -> tuple[Any, ...]:
+    """The arguments the deposits stage hands to write_simulated_deposits."""
+    seen: list[tuple[Any, ...]] = []
+    monkeypatch.setattr(stage, "detectors", lambda kwargs, slots=None: dict.fromkeys(slots or ()))
+    monkeypatch.setattr(stage, "output", lambda kwargs, name: "deposit.h5")
+
+    def record(*args: Any) -> int:
+        seen.append(args)
+        return 1
+
+    monkeypatch.setattr(stage, "write_simulated_deposits", record)
+    base = {"_files": {"source": {}}, "seed": 1, "fano": False, "events_per_job": 5}
+    stage.deposits({**base, **kwargs}, slots)
+    return seen[0]
+
+
+def test_the_logic_and_the_time_window_reach_the_recording(monkeypatch: pytest.MonkeyPatch) -> None:
+    args = _recorded(monkeypatch, {"require": "ref AND dut", "coincidence_window_ns": 2.5}, ("ref", "dut"))
+    assert args[6:9] == (
+        {"ref": (None, None), "dut": (None, None)},
+        "ref AND dut",
+        2.5,
+    )
+
+
+def test_the_energy_window_of_a_slot_replaces_only_its_own_side(monkeypatch: pytest.MonkeyPatch) -> None:
+    kwargs = {"require": "any", "edep_min": 0.01, "edep_max": 0.5, "dut.edep_min": 0.03, "ref.edep_max": 0.2}
+    windows = _recorded(monkeypatch, kwargs, ("ref", "dut"))[6]
+    assert windows == {"ref": (0.01, 0.2), "dut": (0.03, 0.5)}

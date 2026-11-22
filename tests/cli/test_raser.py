@@ -183,6 +183,8 @@ def test_a_stage_command_given_inside_an_experiment_folder_is_not_taken_for_its_
                     "generated_limit": None,
                     "edep_min": None,
                     "edep_max": None,
+                    "require": "any",
+                    "coincidence_window_ns": None,
                     "fano": True,
                     "plots": 100,
                 },
