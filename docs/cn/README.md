@@ -37,6 +37,7 @@ RASER 是半导体辐射探测器全链路仿真软件，用一套命令行连�
 - [core/current.md](core/current.md)：载流子漂移、扩散、俘获、雪崩倍增与 Shockley-Ramo 感应电流计算。
 - [core/readout.md](core/readout.md)：SPICE 前端电路瞬态求解与噪声叠加。
 - [core/digitizer.md](core/digitizer.md)：波形采样、量化与数字电路仿真。
+- [core/trigger.md](core/trigger.md)：边沿触发、码型触发与槽位之间的符合。
 - [core/reconstruction.md](core/reconstruction.md)：基线扣除、定时量（`ToA`、`ToT`、`CoG`、`CFD`）、脉冲面积与团簇重建算法。
 - [core/analysis.md](core/analysis.md)：电荷收集效率统计与时间分辨截断高斯拟合。
 
