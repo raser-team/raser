@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from raser.apps.cflm import PADS
+from raser_app.cflm import PADS
 from raser.cli.raser import main
 from raser.lifecycle import jobs
 

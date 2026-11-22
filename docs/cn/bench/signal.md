@@ -34,7 +34,7 @@ $$\Delta t = t_{\text{reco}} - t_{\text{truth}}, \qquad t_{\text{truth}} = \min_
 
 电荷收集效率就由这个装置给出，和时间分辨用同一批事例，测效率不另换装置。
 
-此外，`signal` 组件目录（`src/raser/bench/signal/components/g4setup/`）还提供 `Sr90_collimator`（空气 `"G4_AIR"` 中在 $z = -14000\ \mu\text{m}$ 处放置 $10000 \times 10000 \times 5000\ \mu\text{m}$、中心圆孔半径 `tub_radius = 500` $\mu\text{m}$、半深 `tub_depth = 2600` $\mu\text{m}$ 的黄铜 `"G4_BRASS"` 准直器，跨越 $z \in [-16500, -11500]\ \mu\text{m}$）和 `pcb_readout_gdml`（`"geant4_model": "gdml_import"`，导入外部 `pcb_readout.gdml`，世界半边长 `world_half_size_um = 2000000` $\mu\text{m}$）。
+此外，`signal` 组件目录（`src/raser_bench/signal/components/g4setup/`）还提供 `Sr90_collimator`（空气 `"G4_AIR"` 中在 $z = -14000\ \mu\text{m}$ 处放置 $10000 \times 10000 \times 5000\ \mu\text{m}$、中心圆孔半径 `tub_radius = 500` $\mu\text{m}$、半深 `tub_depth = 2600` $\mu\text{m}$ 的黄铜 `"G4_BRASS"` 准直器，跨越 $z \in [-16500, -11500]\ \mu\text{m}$）和 `pcb_readout_gdml`（`"geant4_model": "gdml_import"`，导入外部 `pcb_readout.gdml`，世界半边长 `world_half_size_um = 2000000` $\mu\text{m}$）。
 
 ### 四类信号源
 

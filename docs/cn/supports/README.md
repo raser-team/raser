@@ -74,6 +74,7 @@ Memory increase: RSS = 1.50 MB, VMS = 0.00 MB
 | 常数名 | 值 | 单位 | 定义位置与含义 |
 | --- | --- | --- | --- |
 | `PACKAGE_ROOT` | `Path(__file__).resolve().parents[1]` | 无 | `paths.py`：`raser` 包所在的根目录；源码树下为 `<REPO_ROOT>/src/raser`，包安装模式下为安装目录中的 `raser` |
+| `PACKAGES_ROOT` | `PACKAGE_ROOT.parent` | 无 | `paths.py`：`raser`、`raser_bench`、`raser_app` 三个包并排所在的目录；源码树下为 `<REPO_ROOT>/src`，包安装模式下为 `site-packages` |
 | `REPO_ROOT` | `source_tree()` 返回值（`Path` 或 `None`） | 无 | `paths.py`：源码检出或 `pip install -e` 运行时的仓库根目录；作为普通包安装时为 `None` |
 | `DEFAULT_COMPONENT_ROOT` | `PACKAGE_ROOT / "components"` | 无 | `paths.py`：内置组件库根目录；源码树下为 `src/raser/components` |
 | `ROOT_MODULES` | `{"ROOT", "cppyy"}` | 无 | `dependency.py`：ROOT 的 Python 绑定对应的顶层模块名集合 |
@@ -117,7 +118,7 @@ Memory increase: RSS = 1.50 MB, VMS = 0.00 MB
 1. **组装并去重搜索根目录（`component_roots(extra_roots=None)`）**：
    - 按从高到低的固定顺序收集四层目录到列表 `roots`：
      1. `project_path("components")`：当前项目的 `components/` 目录；
-     2. `_as_path_list(extra_roots)`：`extra_roots` 为 `None` 时取 `[]`，为单个 `str | os.PathLike` 时取 `[Path(extra_roots)]`，为列表时逐项转为 `Path`；调用 `app_component_roots(app_name, *app_names)` 时，会将一个或多个应用的 `app_component_root(name)`（即 `PACKAGE_ROOT / name / "components"`）作为 `extra_roots` 传给 `component_roots()`；
+     2. `_as_path_list(extra_roots)`：`extra_roots` 为 `None` 时取 `[]`，为单个 `str | os.PathLike` 时取 `[Path(extra_roots)]`，为列表时逐项转为 `Path`；调用 `app_component_roots(app_name, *app_names)` 时，会将一个或多个应用的 `app_component_root(name)`（即 `PACKAGES_ROOT / name / "components"`，`name` 形如 `"raser_bench/signal"`）作为 `extra_roots` 传给 `component_roots()`；
      3. `os.environ.get("RASER_COMPONENT_PATH", "")`：按 `os.pathsep`（Linux 与 macOS 上为 `:`，Windows 上为 `;`）切分，过滤掉空字符串片段后逐项转为 `Path(path)`；
      4. `DEFAULT_COMPONENT_ROOT`：包内置的 `PACKAGE_ROOT / "components"`。
    - 遍历 `roots`，以字符串 `key = str(root)` 在集合 `seen` 中去重，保留首次出现的位置，返回 `deduped`（`list[Path]`）。
@@ -140,16 +141,17 @@ Memory increase: RSS = 1.50 MB, VMS = 0.00 MB
      - `path.exists()` 为真但不是文件（例如传了目录）时，抛出 `IsADirectoryError: RASER <kind> input must be a file: <path>`，应改为指向具体文件；
      - `path.exists()` 为假时，抛出 `FileNotFoundError: Cannot find RASER <kind> file: <path>`，应核对文件路径。
    - 若 `name_or_path` 是纯组件名，转调并返回 `component_path(kind, str(name_or_path) + suffix)`；未找到时按第 3 步抛出 `component_path()` 的 `FileNotFoundError`。
-5. **定位包内应用文件（`app_file_path(app_name, filename)`）**：构造 `path = PACKAGE_ROOT / app_name / filename`。当 `path.exists()` 为真时返回 `path`；目标不存在时抛出 `FileNotFoundError: Cannot find RASER app file: <path>`。原因是应用目录名或文件名有误，或该数据文件未打进安装包，核对拼写并确认文件存在于包内对应目录即可。
+5. **定位包内应用文件（`app_file_path(app_name, filename)`）**：构造 `path = PACKAGES_ROOT / app_name / filename`（`app_name` 形如 `"raser_app/cflm"`）。当 `path.exists()` 为真时返回 `path`；目标不存在时抛出 `FileNotFoundError: Cannot find RASER app file: <path>`。原因是应用目录名或文件名有误，或该数据文件未打进安装包，核对拼写并确认文件存在于包内对应目录即可。
 
 ### 模块工作路径与项目内输出边界保护
 
 `paths.py` 与 `output.py` 按以下步骤推导模块工作目录并约束目录创建与文件删除：
 
 1. **计算模块工作目录名与路径（`module_work_name(current_file_path)`、`module_work_path(current_file_path, *labels)`）**：
-   - 将 `current_file_path` 解析为绝对路径 `path = Path(current_file_path).resolve()`，求其相对 `PACKAGE_ROOT` 的路径 `relative = path.relative_to(PACKAGE_ROOT)`；若文件不在 `PACKAGE_ROOT` 之下（抛出 `ValueError`），返回文件名词干 `path.stem`；
-   - 取 `parts = relative.parts`：若 `len(parts) >= 2` 且首段 `parts[0] in {"apps", "bench", "core"}`，返回第二段 `parts[1]`（例如 `"field"`、`"current"`）；
-   - 若 `parts` 非空且首段 `parts[0] == "cli"`，返回 `"cli"`；
+   - 将 `current_file_path` 解析为绝对路径 `path = Path(current_file_path).resolve()`，求其相对 `PACKAGES_ROOT` 的路径 `relative = path.relative_to(PACKAGES_ROOT)`；若文件不在 `PACKAGES_ROOT` 之下（抛出 `ValueError`），返回文件名词干 `path.stem`；
+   - 取 `parts = relative.parts`：若 `len(parts) >= 2` 且首段 `parts[0] in {"raser_app", "raser_bench"}`，返回第二段 `parts[1]`（例如 `"telescope"`）；
+   - 若 `len(parts) >= 3` 且前两段为 `("raser", "core")`，返回第三段 `parts[2]`（例如 `"field"`、`"current"`）；
+   - 若前两段为 `("raser", "cli")`，返回 `"cli"`；
    - 其余情况返回 `path.stem`；
    - `module_work_path(current_file_path, *labels)` 返回 `project_path(module_work_name(current_file_path), *labels)`。
 2. **校验项目内相对路径片段（`_relative_parts(parts)`）**：将各段转为字符串元组 `values = tuple(str(part) for part in parts)`，对每一项令 `path = Path(value)`。若 `path.is_absolute()` 为真或 `".." in path.parts`，抛出 `ValueError: Output label must remain inside the project: <value>`。原因是输出路径必须留在项目目录之内，应改用项目内的相对路径片段。校验全部通过后返回 `values`。

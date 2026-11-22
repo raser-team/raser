@@ -1,4 +1,4 @@
-"""Time-resolution experiment application."""
+"""Charge-collection experiment application."""
 
 import json
 from pathlib import Path
@@ -6,11 +6,11 @@ from pathlib import Path
 from raser.stages import chain
 from raser.lifecycle.workflow import Workflow
 
-DEFAULTS = json.loads((Path(__file__).parent / "time_resolution.json").read_text("utf-8"))
+DEFAULTS = json.loads((Path(__file__).parent / "charge_collection.json").read_text("utf-8"))
 
 
 WORKFLOW = Workflow(
-    name="timeres",
+    name="cce",
     keys=chain.KEYS,
     defaults={**chain.DEFAULTS, **DEFAULTS, "events_per_job": 10000, "plots": 0},
     components=chain.COMPONENTS,
@@ -23,7 +23,7 @@ WORKFLOW = Workflow(
 
 
 def register(subparsers):
-    parser = subparsers.add_parser("timeres", help="time-resolution experiment")
+    parser = subparsers.add_parser("cce", help="charge-collection experiment")
     chain.add_arguments(parser)
     WORKFLOW.attach(parser)
-    parser.set_defaults(_project="det_name", _components=("bench/timeres", "bench/signal"))
+    parser.set_defaults(_project="det_name", _components=("raser_bench/cce", "raser_bench/signal"))

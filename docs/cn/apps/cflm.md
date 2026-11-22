@@ -8,7 +8,7 @@
 
 在环形正负电子对撞机（CEPC）中，对撞区附近的辐射巴巴散射或束流损失会产生偏离束流包络的高能丢失电子。这些丢失电子以小掠射角撞击铜束流管内壁并在管壁中产生电磁簇射，次级正负电子与 $\gamma$ 光子穿出铜管外壁。快速亮度监测器（CFLM）在铜束流管外壁左右两侧对称贴装快速耐辐照半导体探测焊盘阵列（如 4H-SiC PiN 二极管），逐束团测量两侧各焊盘的信号脉冲幅度与到达时刻，从而实时监测对撞亮度与束流损失空间分布。
 
-在 RASER 的 `src/raser/apps/cflm/cflm_p1.py`（第 194–214 行）与 `deposits.py`（第 23–37 行）中，铜束流管外壁两侧共排布 `24` 块尺寸为 $l_x \times l_y \times l_z$（单位 $\mu\text{m}$）的探测焊盘，位置编号为 `<side>_<i>_<j>`。第 `(side, i, j)` 块焊盘中心在束流管全局坐标系（单位 $\mu\text{m}$）中的位置 $(x_{\text{pad}}, y_{\text{pad}}, z_{\text{pad}})$ 为：
+在 RASER 的 `src/raser_app/cflm/cflm_p1.py`（第 194–214 行）与 `deposits.py`（第 23–37 行）中，铜束流管外壁两侧共排布 `24` 块尺寸为 $l_x \times l_y \times l_z$（单位 $\mu\text{m}$）的探测焊盘，位置编号为 `<side>_<i>_<j>`。第 `(side, i, j)` 块焊盘中心在束流管全局坐标系（单位 $\mu\text{m}$）中的位置 $(x_{\text{pad}}, y_{\text{pad}}, z_{\text{pad}})$ 为：
 
 $$x_{\text{pad}} = s_{\text{side}}\!\left(1000\,R_{\max} + \frac{l_z}{2}\right), \qquad y_{\text{pad}} = (i + 0.5)\,l_x, \qquad z_{\text{pad}} = 1000\,z_{\text{from}} + (j + 0.5)\,l_y \tag{1}$$
 
@@ -27,11 +27,11 @@ $$x = \frac{l_x}{2} - Y + (i + 0.5)\,l_x, \qquad y = \frac{l_y}{2} + Z - \bigl(1
 - $(X, Y, Z)$：Geant4 步起点 `point_in` 在束流管全局坐标系中的位置，$\mu\text{m}$；
 - $(x, y, z)$：写入 `deposit_<job>.h5` 的焊盘局部坐标，$\mu\text{m}$，其中 $x \in [0, l_x]$、$y \in [0, l_y]$，深度 $z \in [0, l_z]$ 从紧贴铜管外壁的入射面（$z = 0$）指向焊盘内部。
 
-式 (1) 由 `cflmDetectorConstruction.pads`（`src/raser/apps/cflm/cflm_p1.py:194`）实现，式 (2) 由 `pad_frame`（`src/raser/apps/cflm/deposits.py:23`）实现。`cflm` 采用与 4H-SiC PIN 时间分辨研究相同的 UCSC（`SantaCruz`）加宽带放大器读出链，见文献 [1]（T. Yang et al., “Time Resolution of the 4H-SiC PIN Detector”, *Front. Phys.* 10 (2022) 718071, doi:10.3389/fphy.2022.718071）。
+式 (1) 由 `cflmDetectorConstruction.pads`（`src/raser_app/cflm/cflm_p1.py:194`）实现，式 (2) 由 `pad_frame`（`src/raser_app/cflm/deposits.py:23`）实现。`cflm` 采用与 4H-SiC PIN 时间分辨研究相同的 UCSC（`SantaCruz`）加宽带放大器读出链，见文献 [1]（T. Yang et al., “Time Resolution of the 4H-SiC PIN Detector”, *Front. Phys.* 10 (2022) 718071, doi:10.3389/fphy.2022.718071）。
 
 ### 铜束流管、24 块焊盘与丢失电子配置（`cflm_p1.json`）
 
-`src/raser/apps/cflm/cflm_p1.json` 与 `cflm_p1.py` 定义了 Geant4 束流管几何与丢失电子粒子枪参数：
+`src/raser_app/cflm/cflm_p1.json` 与 `cflm_p1.py` 定义了 Geant4 束流管几何与丢失电子粒子枪参数：
 
 - **世界与铜束流管（`world`、`pipe`、`vacuum`）**：
   - 世界立方体 `world`：材料 `"G4_AIR"`，半尺寸为 $2000\ \text{mm} \times 2000\ \text{mm} \times 2000\ \text{mm}$；
@@ -50,34 +50,34 @@ $$x = \frac{l_x}{2} - Y + (i + 0.5)\,l_x, \qquad y = \frac{l_y}{2} + Z - \bigl(1
 
 ### 代码执行步骤与内置常数
 
-`cflm` 通过 `DEVICES = {"pad": (None, list(PADS))}` 和 `chain.expand(DEVICES, deposit=_deposits)`（`src/raser/apps/cflm/__init__.py:15-28`）将单作业展开为 `1` 片 `deposit`、`1` 片共享 `field` 以及 `24` 个焊盘位置各自的 `current.<pos>`、`readout.<pos>`、`reconstruction.<pos>`（共 `74` 个切片），按以下顺序执行：
+`cflm` 通过 `DEVICES = {"pad": (None, list(PADS))}` 和 `chain.expand(DEVICES, deposit=_deposits)`（`src/raser_app/cflm/__init__.py:15-28`）将单作业展开为 `1` 片 `deposit`、`1` 片共享 `field` 以及 `24` 个焊盘位置各自的 `current.<pos>`、`readout.<pos>`、`reconstruction.<pos>`（共 `74` 个切片），按以下顺序执行：
 
 1. **模拟束团丢失电子并写出 24 块焊盘沉积（`deposit` 片，`deposits.deposits`）**：构造单焊盘 `Detector`，读取 `apps/cflm/cflm_p1.json`，调用 `cflm_p1.simulate_bunches(g4_dic, seed, my_d)` 运行 Geant4 `FTFP_BERT` 物理列表与 `G4StepLimiterPhysics`。在 `bunch_deposits` 中遍历每个束团和全部 `24` 块焊盘，跳过 `energy <= 0` 的占位步（无沉积焊盘在 `simulate_bunches` 中填 `[[0, 0, 0]]` 和 `[0]`），对其余有效步用式 (2) 的 `pad_frame` 转为焊盘局部坐标 $(x, y, z)$，将 `detector` 记为 `<side>_<i>_<j>`、时刻 `t` 记为 `0.0` $\text{s}$，调用 `ionized_pairs(event, my_d.material)`（默认 `fano=True`）抽样电子-空穴对数 `pairs`，写入 `batch/deposit_<job>.h5`。若所有束团在 24 块焊盘中均无有效沉积（`not found.events`），抛出 `Ended` 提前结束作业。
 2. **定位单焊盘共享场（`field` 片）**：定位（未就绪时自动调用 `raser field` 求解）单焊盘器件在 `work/<det_name>/field/` 下的电场、权重场与等效电路参数，由全部 24 个焊盘位置共用。
 3. **24 路载流子漂移（`current.<pos>` 片）**：对每个位置 `<pos>`（`I_-3_0` 至 `II_2_1`），先检查 `deposit_<job>.h5` 中是否存在 `detector == <pos>` 的沉积步；若该焊盘在本作业无沉积，立即返回 `{"events": 0}` 写入 `batch/current.<pos>_<job>.done` 且不写 `.h5` 文件；若有沉积，调用 `write_induced_currents(..., detector=position)` 仅漂移属于该焊盘的沉积步，写出 `batch/current.<pos>_<job>.h5`（当 `current.plots > 0` 时在 `plots/job_<job>_<pos>/event_<event>/` 下绘图）。
 4. **24 路电子学读出与事件重建（`readout.<pos>`、`reconstruction.<pos>` 片）**：对每个位置 `<pos>`，若上游缺少对应的 `.h5` 文件，直接返回 `{"events": 0}` 写入 `.done`；否则依次调用 `ngspice` 求解前端放大器链输出电压波形写出 `batch/readout.<pos>_<job>.h5`，再扣除前 `200` 点基线提取幅度与定时特征写出 `batch/reconstruction.<pos>_<job>.h5`。
 
-此外，`src/raser/apps/cflm/` 下还包含一组独立于 `raser cflm` 仿真链的次级粒子分布辅助脚本：
+此外，`src/raser_app/cflm/` 下还包含一组独立于 `raser cflm` 仿真链的次级粒子分布辅助脚本：
 
 - `cflm_spd.py`（读取 `cflm_spd.json`：世界半边长 $6000\ \text{mm}$，铜管全长 `Pipe_Z = 6000` $\text{mm}$、中心 $z = 2000\ \text{mm}$，步长上限 $1\ \text{mm}$）：在无焊盘情况下记录从铜束流管穿出 $x = -31\ \text{mm}$ 与 $x = +31\ \text{mm}$ 平面的次级粒子名称与 $(z, y)$ 交点坐标，写出 `<PosBaseName>_nx.txt` 与 `<PosBaseName>_px.txt`；
-- `data_file.py`、`p1_sample.py`、`spd_dis.py`、`spd_plot.py`：`data_file.py` 读 `lossposition_CEPC.xlsx` 并写出 `src/raser/apps/cflm/input/datafile_p1.root`（输入目录不在仓库中），其余脚本读这个 ROOT 文件或 `SecondaryParticle_*_{nx,px}.txt`，抽样泊松击中数或批量改写 `cflm_spd.json` 调用 `cflm_spd.main()` 并绘制次级 $\gamma$ 与 $e^-$ 的空间分布图。
+- `data_file.py`、`p1_sample.py`、`spd_dis.py`、`spd_plot.py`：`data_file.py` 读 `lossposition_CEPC.xlsx` 并写出 `src/raser_app/cflm/input/datafile_p1.root`（输入目录不在仓库中），其余脚本读这个 ROOT 文件或 `SecondaryParticle_*_{nx,px}.txt`，抽样泊松击中数或批量改写 `cflm_spd.json` 调用 `cflm_spd.main()` 并绘制次级 $\gamma$ 与 $e^-$ 的空间分布图。
 
 `cflm` 中的内置常数如下表：
 
 | 常数名或固定项 | 取值 | 单位 | 定义位置与含义 |
 | --- | --- | --- | --- |
-| `PADS` | `24` 个位置（`I_-3_0` 至 `II_2_1`） | 个 | `src/raser/apps/cflm/__init__.py:15`，两侧（`I`、`II`）$\times$ `6` 行（`i = -3..2`）$\times$ `2` 列（`j = 0..1`）焊盘位置元组 |
-| 展开总片数 | `74`（`1` `deposit` + `1` `field` + `24 × 3`） | 片 | `src/raser/apps/cflm/__init__.py:27`，`chain.expand` 为 24 个焊盘位置展开的作业总片数 |
-| 世界立方体半边长 | `2000`（`cflm_p1.py`）；`6000`（`cflm_spd.py`） | $\text{mm}$ | `src/raser/apps/cflm/cflm_p1.py:118-121`、`cflm_spd.py:43-46`，Geant4 世界体半尺寸 |
-| 束流管与焊盘旋转角 | `3 * pi / 2`（`270`） | $\text{rad}$（$\text{deg}$） | `src/raser/apps/cflm/cflm_p1.py:98-99`，将焊盘局部坐标旋转贴合铜管两侧外壁的绕 $Z$ 轴旋转角 |
-| Geant4 `"SiC"` 密度与配比 | `3.2`，`50 : 50` | $\text{g/cm}^3$, `%` | `src/raser/apps/cflm/cflm_p1.py:220-222`，构建碳化硅焊盘材料时的固定密度与硅、碳原子百分比 |
-| 沉积步固定时刻 `t` | `0.0` | $\text{s}$ | `src/raser/apps/cflm/deposits.py:59`，`cflm_p1` 沉积步未携带时间戳时写入 `deposit_<job>.h5` 的固定时刻 |
+| `PADS` | `24` 个位置（`I_-3_0` 至 `II_2_1`） | 个 | `src/raser_app/cflm/__init__.py:15`，两侧（`I`、`II`）$\times$ `6` 行（`i = -3..2`）$\times$ `2` 列（`j = 0..1`）焊盘位置元组 |
+| 展开总片数 | `74`（`1` `deposit` + `1` `field` + `24 × 3`） | 片 | `src/raser_app/cflm/__init__.py:27`，`chain.expand` 为 24 个焊盘位置展开的作业总片数 |
+| 世界立方体半边长 | `2000`（`cflm_p1.py`）；`6000`（`cflm_spd.py`） | $\text{mm}$ | `src/raser_app/cflm/cflm_p1.py:118-121`、`cflm_spd.py:43-46`，Geant4 世界体半尺寸 |
+| 束流管与焊盘旋转角 | `3 * pi / 2`（`270`） | $\text{rad}$（$\text{deg}$） | `src/raser_app/cflm/cflm_p1.py:98-99`，将焊盘局部坐标旋转贴合铜管两侧外壁的绕 $Z$ 轴旋转角 |
+| Geant4 `"SiC"` 密度与配比 | `3.2`，`50 : 50` | $\text{g/cm}^3$, `%` | `src/raser_app/cflm/cflm_p1.py:220-222`，构建碳化硅焊盘材料时的固定密度与硅、碳原子百分比 |
+| 沉积步固定时刻 `t` | `0.0` | $\text{s}$ | `src/raser_app/cflm/deposits.py:59`，`cflm_p1` 沉积步未携带时间戳时写入 `deposit_<job>.h5` 的固定时刻 |
 
 ## 用到的环节和组件
 
 ### 环节
 
-- [`deposit`](../stages/deposit.md)：由 `src/raser/apps/cflm/deposits.py` 替换标准单器件沉积，在铜束流管几何下模拟束团丢失电子簇射并把全部 24 块焊盘的沉积步写入同一个 `deposit_<job>.h5`。
+- [`deposit`](../stages/deposit.md)：由 `src/raser_app/cflm/deposits.py` 替换标准单器件沉积，在铜束流管几何下模拟束团丢失电子簇射并把全部 24 块焊盘的沉积步写入同一个 `deposit_<job>.h5`。
 - [`field`](../stages/field.md)：在 `work/<det_name>/field/` 下求解或复用单块焊盘器件的电场、权重场与等效电路参数，供全部 24 块焊盘共用。
 - [`current`](../stages/current.md)：按位置展开为 24 片 `current.<pos>`，分别筛选各焊盘的沉积步并在共享场中漂移载流子，写出各焊盘的感应电流。
 - [`readout`](../stages/readout.md)：按位置展开为 24 片 `readout.<pos>`，把有沉积焊盘的感应电流送入器件等效电路与前端放大器链，求解输出电压波形并叠加频域热噪声。
@@ -88,7 +88,7 @@ $$x = \frac{l_x}{2} - Y + (i + 0.5)\,l_x, \qquad y = \frac{l_y}{2} + Z - \bigl(1
 ### 组件
 
 - [探测器组件（`components/device`）](../components/device.md)：提供单块探测焊盘的尺寸 `l_x`、`l_y`、`l_z`（$\mu\text{m}$）、材料 `material`（`"Si"` 或 `"SiC"`）、掺杂、偏压与温度定义（如 `NJU-PiN.json`、`HPK-Si-PiN.json`）。
-- [能量沉积组件（`components/deposit`）](../components/deposit.md)：由包内 `src/raser/apps/cflm/cflm_p1.json` 定义铜束流管、真空与 3 个高能丢失电子参数。
+- [能量沉积组件（`components/deposit`）](../components/deposit.md)：由包内 `src/raser_app/cflm/cflm_p1.json` 定义铜束流管、真空与 3 个高能丢失电子参数。
 - [前端读出电路组件（`components/readout`）](../components/readout.md)：提供以 `+` 串联的 SPICE 放大器级与终端负载子电路（默认 `SantaCruz+Gali52+Termination50`）。
 - [数字化器组件（`components/digitizer`）](../components/digitizer.md) 与 [触发组件（`components/trigger`）](../components/trigger.md)：提供数字化采样量化与触发阈值定义。
 
@@ -127,7 +127,7 @@ raser cflm NJU-PiN --scan field.voltage=-300,-500
 }
 ```
 
-使用者在 `cflm` 工作流中能设的配置键及 `cflm_p1.json` 中的装置键如下表（`src/raser/apps/cflm/__init__.py:29-49`、`cflm_p1.json:1-80`）：
+使用者在 `cflm` 工作流中能设的配置键及 `cflm_p1.json` 中的装置键如下表（`src/raser_app/cflm/__init__.py:29-49`、`cflm_p1.json:1-80`）：
 
 | 段.键（代码键名） | 默认值 | 单位 | 含义 |
 | --- | --- | --- | --- |

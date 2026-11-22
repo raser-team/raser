@@ -56,7 +56,7 @@ $$P(t) = \frac{2\sqrt{\ln 2}}{\sqrt{\pi}\,\text{FWHM}_t}\exp\!\left(-\frac{4\ln 
 
 ### 代码执行步骤与内置常数
 
-单个 `tct` 扫描点的作业 `0` 按以下顺序执行（`src/raser/bench/tct/tct_signal.py:18-36`）：
+单个 `tct` 扫描点的作业 `0` 按以下顺序执行（`src/raser_bench/tct/tct_signal.py:18-36`）：
 
 1. **生成激光载流子群（`LaserInjection`）**：在 `current` 片中按 `files["device"]` 构造 `Detector`，按 `files["laser"]` 构造 `LaserInjection`。对生效的每种吸收机制（$\alpha \ne 0$ 时算单光子，`tech == "TPA"` 时加双光子），沿光路总长 $L$ 取 $\lceil 50 L / \min(L, l_R, 10^6/\alpha) \rceil + 1$ 个采样点梯形积分求出总对数 $N_{\text{tot}}$；将横截面按 `4` 个等份额同心环（归一化半径 $\rho_r = \sqrt{-\ln(1 - (r + 0.5)/4)/k}$，$r = 0, 1, 2, 3$，单光子 $k = 2$、双光子 $k = 4$）和 `8` 个等角扇区（$\phi_m = (m + 0.5)\pi/4$，$m = 0, \dots, 7$）切分为 `32` 个单元，沿光路按等份额切分为 $N_{\text{slab}} = \lceil \max(N_{\text{tot}} / \text{pairs\_per\_group},\, \text{groups}) / 32 \rceil$ 层，在每个位于器件横向边界内的单元中心放置一个携带 $N_{\text{tot}} / (32 N_{\text{slab}})$ 对电子-空穴、时刻为 `central_time`（$\text{s}$）的载流子群。
 2. **无扩散漂移、脉冲卷积与画图（`write_laser_currents`）**：调用 `stages.current.solved` 加载共享场 `DevsimField`，在 `CalCurrentLaser(my_d, my_f, my_l, diffusion=False)` 中完成全部载流子群的漂移、雪崩倍增与 Shockley-Ramo 感应电流分箱，再按单箱采样数 $S = \max(1, \lceil 20\,\Delta t_{\text{bin}} / \text{FWHM}_t \rceil)$ 算出式 (5) 的脉冲权重矩阵右乘电流波形，作为事例 `0` 写入 `batch/current_0.h5`，并在 `plots/` 下绘制非零电极感应电流波形及 `draw_nocarrier3D`、`draw_nocarrier2D` 初始载流子分布图。
@@ -73,7 +73,7 @@ $$P(t) = \frac{2\sqrt{\ln 2}}{\sqrt{\pi}\,\text{FWHM}_t}\exp\!\left(-\frac{4\ln 
 | 脉冲卷积单箱采样倍数 | `20` | 点 | `src/raser/core/current/cal_current.py:691`，`pulse_in_bins` 要求单箱内中点矩形积分采样间距不超过 $\text{FWHM}_t / 20$ |
 | `t_bin`, `delta_t` | 1D: `5e-12`, `2e-12`；2D/3D: `50e-12`, `20e-12` | $\text{s}$ | `src/raser/core/current/cal_current.py:30-50`，感应电流时间箱宽与单步漂移步长 |
 | `diffusion` | `False` | 无 | `src/raser/core/current/cal_current.py:833`，`write_laser_currents` 固定关闭载流子热扩散 |
-| `seeds` | `False` | 无 | `src/raser/bench/tct/__init__.py:55`，`tct` 为无随机种子工作流，`readout` 不叠加频域热噪声 |
+| `seeds` | `False` | 无 | `src/raser_bench/tct/__init__.py:55`，`tct` 为无随机种子工作流，`readout` 不叠加频域热噪声 |
 
 ## 用到的环节和组件
 
@@ -127,7 +127,7 @@ raser tct NJU-PiN --set deposit.laser=PIL037_top_SiC --scan deposit.laser.fz_rel
 
 `deposit` 段里的 `laser` 写成带 `name` 的对象时，`name` 选用激光组件，其余键覆盖这个组件文件里的同名键，和命令行的 `deposit.laser.fz_rel` 一一对应；只选组件、不改键时写成字符串 `"laser": "PIL037_top_SiC"`。
 
-使用者在 `tct` 中能设的配置键如下表（`src/raser/bench/tct/__init__.py:15-56`、`transient_current.json:1-5` 与 [`../components/deposit.md`](../components/deposit.md#激光与吸收系数表)）：
+使用者在 `tct` 中能设的配置键如下表（`src/raser_bench/tct/__init__.py:15-56`、`transient_current.json:1-5` 与 [`../components/deposit.md`](../components/deposit.md#激光与吸收系数表)）：
 
 | 段.键（代码键名） | 默认值 | 单位 | 含义 |
 | --- | --- | --- | --- |

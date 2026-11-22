@@ -30,4 +30,4 @@ def test_ana_finds_the_components_as_the_command_of_the_experiment_does(
 
     main(["ana", str(experiment)])
 
-    assert roots == [[str(app_component_root("bench/cce")), str(app_component_root("bench/signal"))]]
+    assert roots == [[str(app_component_root("raser_bench/cce")), str(app_component_root("raser_bench/signal"))]]

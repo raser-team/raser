@@ -25,7 +25,7 @@ $$N_{\text{bunch}} = \sum_{m=1}^{M}\sum_{k \in \mathcal{S}_m} N_{\text{pairs}, k
 
 ### 束团源 `bunch` 与装置几何
 
-`bmos` 默认使用 `device_alone` Geant4 装置（`src/raser/components/g4setup/device_alone.py`）和专属束团源 `bunch`（`src/raser/apps/bmos/components/source/bunch.json`）：
+`bmos` 默认使用 `device_alone` Geant4 装置（`src/raser/components/g4setup/device_alone.py`）和专属束团源 `bunch`（`src/raser_app/bmos/components/source/bunch.json`）：
 
 - **Geant4 装置（`device_alone`）**：世界立方体材料为真空 `"G4_Galactic"`（默认半边长 `WORLD_HALF_SIDE = 25000` $\mu\text{m}$），监测器件逻辑体 `"Device"` 顶面中心位于原点 $(0, 0, 0)\ \mu\text{m}$、占据 $x \in [-l_x/2, l_x/2]$、$y \in [-l_y/2, l_y/2]$、$z \in [0, l_z]\ \mu\text{m}$，器件内最大步长 `maxstep = 2` $\mu\text{m}$；源基准位置 `at = [0, 0, -17000]` $\mu\text{m}$（顶面上方 $17\ \text{mm}$），瞄准点 `towards = [0, 0, 0]` $\mu\text{m}$，入射倾角 `angle = 0` $\text{degree}$。
 - **束团源（`bunch.json`）**：源类型 `"kind": "beam"`，粒子种类 `"par_type": "proton"`（质子），单粒子动能 `"par_energy": 80` $\text{MeV}$，横向方向随机偏移半宽 `par_randx = 0`、`par_randy = 0` $\mu\text{m}$。`"particles"` 列表包含 `3` 个同时发射的质子项，相对于基准起点 `at` 和瞄准点 `towards` 的平移向量 `"offset"` 依次为：
@@ -39,7 +39,7 @@ $$N_{\text{bunch}} = \sum_{m=1}^{M}\sum_{k \in \mathcal{S}_m} N_{\text{pairs}, k
 
 ### 代码执行步骤与内置常数
 
-`bmos` 的工作流定义（`src/raser/apps/bmos/__init__.py:11-28`）直接复用 `stages.chain` 的全部切片与执行函数，仅将 `defaults` 中的 `"source"` 覆盖为 `"bunch"`、`"plots"` 覆盖为 `0` 并挂载组件路径 `"apps/bmos"`：
+`bmos` 的工作流定义（`src/raser_app/bmos/__init__.py:11-28`）直接复用 `stages.chain` 的全部切片与执行函数，仅将 `defaults` 中的 `"source"` 覆盖为 `"bunch"`、`"plots"` 覆盖为 `0` 并挂载组件路径 `"raser_app/bmos"`：
 
 1. **共享场检查与求解（`field`）**：定位或自动调用 `raser field` 求解监测器件在目标偏压 `voltage`（$\text{V}$）与辐照注量 `irradiation`（$\text{neq/cm}^2$）下的共享场。
 2. **单束团多粒子Geant4沉积（`deposit`）**：`GeneralPrimaryGeneratorAction` 在每个 Geant4 事例中循环遍历 `bunch.json` 的 `particles` 列表，对每个粒子调用 `beam.GeneratePrimaryVertex(event)`（`beam` 取自 `shot["guns"]`），同时发射 `3` 个 `80 MeV` 质子；汇总整个束团在 `"Device"` 内的全部沉积步，当束团总沉积能量满足能量窗时记为 `1` 个有效束团事例，直至录满 `events_per_job`（默认 `1`）个束团并写入 `deposit_<job>.h5`。
@@ -54,7 +54,7 @@ $$N_{\text{bunch}} = \sum_{m=1}^{M}\sum_{k \in \mathcal{S}_m} N_{\text{pairs}, k
 ### 组件
 
 - [探测器组件（`components/device`）](../components/device.md)：提供在线束流监测器件定义（如专用的 4H-SiC PiN 器件 `NJU-PiN-bmos.json`，尺寸 $5000 \times 5000 \times 100\ \mu\text{m}$，默认偏压 `-500.0 V`）。
-- [能量沉积组件（`components/deposit`）](../components/deposit.md)：提供默认多粒子束团源 `bunch.json`（`src/raser/apps/bmos/components/source/bunch.json`）及默认 Geant4 装置 `device_alone.py`。
+- [能量沉积组件（`components/deposit`）](../components/deposit.md)：提供默认多粒子束团源 `bunch.json`（`src/raser_app/bmos/components/source/bunch.json`）及默认 Geant4 装置 `device_alone.py`。
 - [前端读出电路组件（`components/readout`）](../components/readout.md)、[数字化器组件（`components/digitizer`）](../components/digitizer.md)、[触发组件（`components/trigger`）](../components/trigger.md)：提供 SPICE 前端放大器链（默认 `SantaCruz+Gali52+Termination50`）、数字化采样量化与触发阈值定义。
 
 ## 跑法与配置
@@ -99,7 +99,7 @@ raser bmos --scan field.voltage=-300,-500
 }
 ```
 
-使用者在 `bmos` 中能设的配置键如下表（`src/raser/apps/bmos/__init__.py:11-21` 与 `src/raser/stages/chain.py:14-106`）：
+使用者在 `bmos` 中能设的配置键如下表（`src/raser_app/bmos/__init__.py:11-21` 与 `src/raser/stages/chain.py:14-106`）：
 
 | 段.键（代码键名） | 默认值 | 单位 | 含义 |
 | --- | --- | --- | --- |

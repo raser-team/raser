@@ -30,7 +30,7 @@ $$\mathcal{L}(\mu, \sigma) = \frac{1}{2}\sum_{i=1}^{n}\left(\frac{x_i - \mu}{\si
 
 ### `time_resolution` 装置几何
 
-`timeres` 默认加载 Geant4 装置 `time_resolution`（`src/raser/bench/timeres/components/g4setup/time_resolution.py`）。世界体材料为真空 `"G4_Galactic"`，默认半边长 `WORLD_HALF_SIDE = 25000` $\mu\text{m}$。默认 $\beta$ 源 `decay/Sr90` 圆盘中心位于 $z = -17000\ \mu\text{m}$（被测器件顶面上方 $17\ \text{mm}$），圆盘半径 `par_radius = 2500` $\mu\text{m}$，出射半顶角 `par_cone = 15` $\text{degree}$，瞄准原点 `towards = [0, 0, 0]` $\mu\text{m}$，入射倾角 `angle = 0` $\text{degree}$。
+`timeres` 默认加载 Geant4 装置 `time_resolution`（`src/raser_bench/timeres/components/g4setup/time_resolution.py`）。世界体材料为真空 `"G4_Galactic"`，默认半边长 `WORLD_HALF_SIDE = 25000` $\mu\text{m}$。默认 $\beta$ 源 `decay/Sr90` 圆盘中心位于 $z = -17000\ \mu\text{m}$（被测器件顶面上方 $17\ \text{mm}$），圆盘半径 `par_radius = 2500` $\mu\text{m}$，出射半顶角 `par_cone = 15` $\text{degree}$，瞄准原点 `towards = [0, 0, 0]` $\mu\text{m}$，入射倾角 `angle = 0` $\text{degree}$。
 
 装置沿 $+z$ 方向依次放置铝片 `Al`、参考器件、中心开圆孔的上层 PCB 板 `pcb1`、被测器件和中心开圆孔的下层 PCB 板 `pcb2`。`Al`、`pcb1` 与 `pcb2` 沿用 `time_resolution.py` 中的尺寸、材料与位置。参考器件按它的器件文件建成实体（默认 `HPK-Si-LGAD`：材料 `"Si"`，尺寸 $1300 \times 1300 \times 50\ \mu\text{m}$），中心位于 $(0, 0, -10000)\ \mu\text{m}$；被测器件按它的器件文件建成实体，顶面中心位于原点 $(0, 0, 0)\ \mu\text{m}$，占据 $x \in [-l_x/2, l_x/2]$、$y \in [-l_y/2, l_y/2]$、$z \in [0, l_z]\ \mu\text{m}$。两块器件内最大步长均为 `maxstep = 2` $\mu\text{m}$。
 
@@ -108,7 +108,7 @@ $$\sigma_1^2 = \frac{\sigma_{12}^2 + \sigma_{13}^2 - \sigma_{23}^2}{2}, \qquad \
 ### 组件
 
 - [探测器组件（`components/device`）](../components/device.md)：提供被测器件和参考器件的几何、材料、掺杂、偏压、温度、辐照与雪崩倍增参数。参考器件默认使用 `HPK-Si-LGAD`（`HPK-Si-LGAD.json`），被测器件由命令行给定（如 `HPK-Si-PiN`、`NJU-PiN`、`SICAR-1`）。
-- [能量沉积组件（`components/deposit`）](../components/deposit.md)：提供默认 Geant4 装置 `time_resolution`（`src/raser/bench/timeres/components/g4setup/time_resolution.py`）和默认 $\beta$ 放射源 `decay/Sr90`（`decay/Sr90.json`）。
+- [能量沉积组件（`components/deposit`）](../components/deposit.md)：提供默认 Geant4 装置 `time_resolution`（`src/raser_bench/timeres/components/g4setup/time_resolution.py`）和默认 $\beta$ 放射源 `decay/Sr90`（`decay/Sr90.json`）。
 - [前端读出电路组件（`components/readout`）](../components/readout.md)：提供以 `+` 串联的 SPICE 放大器级与终端负载子电路（默认 `SantaCruz+Gali52+Termination50`）。
 - [数字化器组件（`components/digitizer`）](../components/digitizer.md)：提供示波器或数字化板的采样与量化设置（如 `scope`）。
 - [触发组件（`components/trigger`）](../components/trigger.md)：触发条件定义；`timeres` 的触发要求两块（或三块）器件在同一事例里都过幅度阈值。

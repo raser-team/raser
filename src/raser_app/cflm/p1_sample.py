@@ -27,7 +27,7 @@ def main():
 
     cp.SaveAs(os.path.join(output_path, 'poisson_dis.pdf'))
 
-    file = ROOT.TFile("src/raser/apps/cflm/input/datafile_p1.root", "READ")
+    file = ROOT.TFile("src/raser_app/cflm/input/datafile_p1.root", "READ")
     tree = file.Get("electrons")
 
     pos, mom, energy = [], [], []
