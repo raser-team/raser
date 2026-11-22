@@ -17,6 +17,7 @@ from . import devsim_draw
 from .create_parameter import create_parameter, delete_init
 from .conductive import conductive
 from .conductive import undepleted_bulk
+from .conductive import undepleted_layer_of_mesh
 from raser.supports.output import create_path
 
 def conductive_of_region(device, region):
@@ -195,7 +196,7 @@ def milestone_save_wf_1D(device, v, path, contact_name, is_tcad):
             data['metadata'] = metadata
             pickle.dump(data, file)
 
-def milestone_save_2D(device, v, path, is_tcad, is_flip=False):
+def milestone_save_2D(device, v, path, is_tcad, is_flip=False, axes=None):
     if is_tcad:
         U = "ElectrostaticPotential"
         # TODO: replace E with (ElectricField_0**2 + ElectricField_1**2)**0.5
@@ -229,6 +230,7 @@ def milestone_save_2D(device, v, path, is_tcad, is_flip=False):
     TrappingRate_n = []
     TrappingRate_p = []
     Conductive = []
+    volumes = []
 
     # TODO: TCAD imports can contain dielectric/metal regions that do not carry
     # semiconductor node models; filter by available node models before saving.
@@ -247,6 +249,32 @@ def milestone_save_2D(device, v, path, is_tcad, is_flip=False):
         TrappingRate_p.extend(devsim.get_node_model_values(device=device, region=region, name=trap_p))
         if not is_tcad:
             Conductive.extend(conductive_of_region(device, region))
+            volumes.extend(devsim.get_node_model_values(device=device, region=region, name="NodeVolume"))
+            mu_n, mu_p, permittivity = (
+                float(devsim.get_parameter(device=device, region=region, name=name))
+                for name in ("mu_n", "mu_p", "Permittivity")
+            )
+
+    if not is_tcad and axes is not None and "z" in axes:
+        # The undepleted bulk at this bias, per area: its mean width over the
+        # span of the mesh across the depth, and its resistance times its
+        # area, which a run takes with the area of the device.
+        coordinates = dict(zip(axes, (x, y)))
+        span = 1.0
+        for axis in axes:
+            if axis != "z":
+                span *= float(np.max(coordinates[axis]) - np.min(coordinates[axis]))
+        width, resistance = undepleted_layer_of_mesh(volumes, span, Electrons, Holes, NetDoping, mu_n, mu_p)
+        layer = {
+            "voltage_V": float(v),
+            "undepleted_width_um": width * 1e4,
+            "specific_resistance_ohm_cm2": resistance,
+            "specific_capacitance_pF": 1e12 * permittivity / width if width else None,
+            "per": "cm^2",
+        }
+        with open(os.path.join(path, f"{float(v)}V.undepleted.json"), "w") as file:
+            json.dump(layer, file, indent=2)
+        save_solved(path, "undepleted", float(v))
 
     x = geometry_scale*np.array(x) # get x-node values
     y = geometry_scale*np.array(y) # get y-node values
@@ -373,7 +401,7 @@ def milestone_save_wf_2D(device, v, path, contact_name, is_tcad, is_flip=False, 
             data['metadata'] = metadata
             pickle.dump(data, file)
 
-def milestone_save_3D(device, v, path, is_tcad):
+def milestone_save_3D(device, v, path, is_tcad, axes=None):
     if is_tcad:
         U = "ElectrostaticPotential"       
         E = "ElectricField"           
@@ -408,6 +436,7 @@ def milestone_save_3D(device, v, path, is_tcad):
     TrappingRate_n = []     
     TrappingRate_p = []    
     Conductive = []
+    volumes = []
 
     
     for region in devsim.get_region_list(device=device):
@@ -426,8 +455,34 @@ def milestone_save_3D(device, v, path, is_tcad):
         TrappingRate_p.extend(devsim.get_node_model_values(device=device, region=region, name=trap_p))
         if not is_tcad:
             Conductive.extend(conductive_of_region(device, region))
+            volumes.extend(devsim.get_node_model_values(device=device, region=region, name="NodeVolume"))
+            mu_n, mu_p, permittivity = (
+                float(devsim.get_parameter(device=device, region=region, name=name))
+                for name in ("mu_n", "mu_p", "Permittivity")
+            )
 
   
+    if not is_tcad and axes is not None and "z" in axes:
+        # The undepleted bulk at this bias, per area: its mean width over the
+        # span of the mesh across the depth, and its resistance times its
+        # area, which a run takes with the area of the device.
+        coordinates = dict(zip(axes, (x, y, z)))
+        span = 1.0
+        for axis in axes:
+            if axis != "z":
+                span *= float(np.max(coordinates[axis]) - np.min(coordinates[axis]))
+        width, resistance = undepleted_layer_of_mesh(volumes, span, Electrons, Holes, NetDoping, mu_n, mu_p)
+        layer = {
+            "voltage_V": float(v),
+            "undepleted_width_um": width * 1e4,
+            "specific_resistance_ohm_cm2": resistance,
+            "specific_capacitance_pF": 1e12 * permittivity / width if width else None,
+            "per": "cm^2",
+        }
+        with open(os.path.join(path, f"{float(v)}V.undepleted.json"), "w") as file:
+            json.dump(layer, file, indent=2)
+        save_solved(path, "undepleted", float(v))
+
     x = geometry_scale * np.array(x)
     y = geometry_scale * np.array(y)
     z = geometry_scale * np.array(z)
@@ -581,7 +636,7 @@ def save_solved(path, asset, at):
     save_record(path, solved=solved)
 
 
-def save_milestone(device, v, path, dimension, contact_name, is_wf, is_tcad = False, is_flip=False, cells_either_side=None):
+def save_milestone(device, v, path, dimension, contact_name, is_wf, is_tcad = False, is_flip=False, cells_either_side=None, axes=None):
     if dimension == 1:
         if is_wf == True:
             milestone_save_wf_1D(device, v, path, contact_name, is_tcad)
@@ -593,13 +648,13 @@ def save_milestone(device, v, path, dimension, contact_name, is_wf, is_tcad = Fa
         if is_wf == True:
             milestone_save_wf_2D(device, v, path, contact_name, is_tcad, is_flip, cells_either_side)
         elif is_wf == False:
-            milestone_save_2D(device, v, path, is_tcad, is_flip)
+            milestone_save_2D(device, v, path, is_tcad, is_flip, axes=axes)
         else:
             print("==========RASER info ==========\nis_wf only has 2 values, True or False\n==========Error=========")
     if dimension == 3:
         if is_wf == True:
             milestone_save_wf_3D(device, v, path, contact_name, is_tcad)
         elif is_wf == False:
-            milestone_save_3D(device, v, path, is_tcad)
+            milestone_save_3D(device, v, path, is_tcad, axes=axes)
         else:
             print("==========RASER info ==========\nis_wf only has 2 values, True or False\n==========Error=========")

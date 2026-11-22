@@ -17,15 +17,25 @@ raser trig [路径]
 
 ### 按幅度阈值触发
 
-`HPK-Si-PiN` 示例按幅度阈值触发：波形越过阈值的事例记入 `trigger.h5` 被记录，没越过的就丢掉。
+`HPK-Si-PiN` 示例照组里实测的设置，在 `MXR608A` 的 `CH1` 上边沿触发：下降沿、电平 $-2\ \text{mV}$。`CH1` 的数字波形向下越过电平的事例记入 `trigger.h5`，没越过的就丢掉。改电平：
+
+```bash
+raser trig --set digitizer.device.trigger.level_V=-0.005
+```
+
+改的是触发条件，所以只得到新的 `trigger` 节点，`digitizer` 及更早的节点照常复用。
+
+### 几块器件之间的符合
+
+`timeres` 的两块、三块器件用独立触发设备 `coincidence`：各槽位分别设阈值，按逻辑式和符合时间窗判断整个事例记不记录，各位置记录同一批事例。写法见[触发组件](../components/trigger.md#符合条件)。
 
 ## 规则
 
 ### 执行流程
 
 1. 读 `digitizer` 节点的 `digitizer.h5`（按 `lsb_V`、`offset_V` 把量化码换回电压，单位 $\text{V}$），以及 `trigger` 段和触发组件里的触发条件。
-2. 按触发条件逐个事例判断，决定哪些事例被记录。
-3. 把被记录事例的事例号数据集 `event`（`int64`）写进 `nodes/trigger/<节点号>/trigger.h5`（多位置实验里同节点下每个位置一个文件 `trigger.<位置>.h5`），并写出本环节的图。
+2. 按触发条件逐个事例判断，决定哪些事例被记录：`trigger.device` 为 `null` 时用各位置示波器的边沿或码型触发，否则用独立触发设备的符合条件。式子见[触发（`core/trigger`）](../core/trigger.md)。
+3. 把被记录事例的事例号数据集 `event`（`int64`）和触发时刻 `trigger_time`（$\text{s}$）写进 `nodes/trigger/<节点号>/trigger.h5`（多位置实验里同节点下每个位置一个文件 `trigger.<位置>.h5`），并写出本环节的图。
 
 本环节节点的指纹由 `trigger` 段里用到的设置值、触发组件里用到的部分，以及上游 `digitizer` 节点的节点号组成。
 
@@ -33,11 +43,11 @@ raser trig [路径]
 
 ### 设置
 
-本环节自身的设置写在 `config.json` 的 `trigger` 段里，用 `--set trigger.<键>=<值>` 改一个设置，用 `--scan trigger.<键>=<值1>,<值2>` 扫描。独立触发设备的组件放在 `components/trigger/` 下，由槽位 `trigger.device` 选用，其内部量按“段.槽位.键”寻址（`--set trigger.device.<键>=<值>`、`--scan trigger.device.<键>=<值1>,<值2>`）；`name` 不能用 `--set`、`--scan` 改，换设备写 `--set trigger.device=<组件名>`，扫设备写 `--scan trigger.device=<组件名1>,<组件名2>`，这时槽位整个换成那个组件文件，原来覆盖的键一并去掉。一台设备同时管采样和触发时（例如示波器 `MXR608A`），设置在[`components/digitizer/`](../components/digitizer.md)下只放一份，`digitizer` 和 `trigger` 都读它，其触发条件在槽位 `digitizer.device` 里，按 `digitizer.device.<键>` 寻址（例如 `digitizer.device.trigger_level_V`），见[触发组件（`components/trigger`）](../components/trigger.md)。公共运行参数见[命令行接口（`raser`）](../cli.md)，配置分段与扫描见[实验、扫描点与种子](../lifecycle/experiments.md)。
+`config.json` 的 `trigger` 段只有一个键，就是槽位 `device`：`null` 表示用 `digitizer.device` 里示波器的触发条件，否则是独立触发设备的组件名或带 `name` 的对象；缺了这个键时报错。本环节自身的设置写在 `config.json` 的 `trigger` 段里，用 `--set trigger.<键>=<值>` 改一个设置，用 `--scan trigger.<键>=<值1>,<值2>` 扫描。独立触发设备的组件放在 `components/trigger/` 下，由槽位 `trigger.device` 选用，其内部量按“段.槽位.键”寻址（`--set trigger.device.<键>=<值>`、`--scan trigger.device.<键>=<值1>,<值2>`）；`name` 不能用 `--set`、`--scan` 改，换设备写 `--set trigger.device=<组件名>`，扫设备写 `--scan trigger.device=<组件名1>,<组件名2>`，这时槽位整个换成那个组件文件，原来覆盖的键一并去掉。一台设备同时管采样和触发时（例如示波器 `MXR608A`），设置在[`components/digitizer/`](../components/digitizer.md)下只放一份，`digitizer` 和 `trigger` 都读它，其触发条件在槽位 `digitizer.device` 里，按 `digitizer.device.trigger.<键>` 寻址（例如 `digitizer.device.trigger.level_V`），见[触发组件（`components/trigger`）](../components/trigger.md)。公共运行参数见[命令行接口（`raser`）](../cli.md)，配置分段与扫描见[实验、扫描点与种子](../lifecycle/experiments.md)。
 
 ### 读写的文件
 
 - **读：`digitizer` 节点的 `digitizer.h5`**（多位置实验为 `digitizer.<位置>.h5`）：数字波形（量化码 `code` 与 `sampling_period`、`lsb_V`、`offset_V`、`bits` 等），由[数字化环节（`stages/digitizer`）](digitizer.md)写出，本环节只读。
-- **写：`nodes/trigger/<节点号>/trigger.h5`**（多位置实验为同节点下的 `trigger.<位置>.h5`）：被记录事例清单，含形状为 `(recorded,)`、类型 `int64`、无单位的数据集 `event`，存通过触发条件的事例编号；下游[事件重建环节（`stages/reconstruction`）](reconstruction.md)据此从 `digitizer.h5` 读取这些事例的数字波形。
+- **写：`nodes/trigger/<节点号>/trigger.h5`**（多位置实验为同节点下的 `trigger.<位置>.h5`）：被记录事例清单，含形状为 `(recorded,)`、类型 `int64`、无单位的数据集 `event`，存通过触发条件的事例编号；形状相同、类型 `float64` 的数据集 `trigger_time`（$\text{s}$），存触发时刻；属性 `events_seen` 为 `digitizer.h5` 里的事例总数；下游[事件重建环节（`stages/reconstruction`）](reconstruction.md)据此从 `digitizer.h5` 读取这些事例的数字波形。
 - **写：本环节的图与 `nodes/trigger/<节点号>/node.json`**：节点里另含本环节的图与 `node.json`，记下本环节的输入、代码版本、运行环境和运行状态。写到一半的节点带 `.part` 后缀，写完才改成正式的名字。
 - **写：`points.json` 与 `points/<点名>/trigger/<作业号>`**：参数表记各点 `trigger` 用的节点号；视图软链接指向 `../../../nodes/trigger/<节点号>`。

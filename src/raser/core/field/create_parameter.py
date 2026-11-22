@@ -1,7 +1,7 @@
 import devsim
 
 from raser.core.model.band_structure import BAND_STRUCTURE
-from raser.core.model.material import RELATIVE_PERMITTIVITY
+from raser.core.model.material import RELATIVE_PERMITTIVITY, Material
 from raser.core.model.recombination import SRH_LIFETIME, TAT_SATURATION_FIELD
 
 from . import model_create
@@ -76,8 +76,10 @@ def CreateDiamondConstant(T, device, region):
     N_i = band["n_i"]
     devsim.set_parameter(device=device, region=region, name="n_i", value=N_i)
 
-    devsim.set_parameter(device=device, region=region, name="mu_n", value=110)
-    devsim.set_parameter(device=device, region=region, name="mu_p", value=1100)
+    # the low-field mobilities of the default mobility model of diamond
+    diamond = Material("Diamond")
+    devsim.set_parameter(device=device, region=region, name="mu_n", value=diamond.cal_mobility(T, 0.0, -1, 0.0))
+    devsim.set_parameter(device=device, region=region, name="mu_p", value=diamond.cal_mobility(T, 0.0, 1, 0.0))
 
     devsim.set_parameter(device=device, region=region, name="n1", value=N_i)
     devsim.set_parameter(device=device, region=region, name="p1", value=N_i)

@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import errno
 import fcntl
-import hashlib
 import itertools
 import json
 import os
@@ -26,6 +25,7 @@ import raser
 from raser.components import load_component
 from raser.core.device.build_device import device_json
 from raser.lifecycle import jobs
+from raser.lifecycle import nodes
 from raser.lifecycle import scheduler
 from raser.lifecycle import slices
 from raser.supports.paths import REPO_ROOT
@@ -85,7 +85,7 @@ def _folder_lock(folder) -> Path:
 class Workflow:
     """What an application hands in."""
 
-    name: str  # command words, "cce" or "telescope taichu_v1"; folder work/<device>/<words>
+    name: str  # command words, "signal" or "telescope taichu_v1"; folder work/<device>/<words>
     job: Callable | None = None  # runs one job; receives the options as a dict
     # Instead of `job`: the Slices of slices.py that a job runs one after
     # another. A slice is run again when what it or a slice it reads
@@ -260,7 +260,15 @@ def _execute(workflow, kwargs, register, root, config, identity, release):
             for k, piece in enumerate(workflow.slices)
             if k in runs and any(points[other][3][k] == name for other in asked)
         ]
-        record = {"seed": seed, "point": name, "same_seeds": same_seeds}
+        # The scanned options of the point that make it a measurement of its
+        # own: those a slice that measures reads, all of them without slices.
+        measured = {
+            key: options[key]
+            for key in scan
+            if not workflow.slices
+            or any(workflow.slices[j].new_events for j in slices.owners(workflow.slices, key))
+        }
+        record = {"seed": seed, "point": name, "same_seeds": same_seeds, "measured": measured}
         if not workflow.seeds:
             record = {"point": name}
         record.update(commit=commit, options=options, files=files)
@@ -811,9 +819,11 @@ def _own_process(workflow, kwargs, words) -> None:
 def _run_job(workflow, kwargs):
     """One job: its options, files and seed come from the run.json of its seed folder.
 
-    The job's seed is a hash of the run's seed, the point and the job index, so
-    points draw different random numbers; with same_seeds the point is left out
-    and the jobs with one index draw the same numbers in every point."""
+    The job's seed is a hash of the run's seed, the job index and the scanned
+    options of the point that measure, so points that measure something else
+    draw different random numbers, whatever their names; with same_seeds the
+    options are left out and the jobs with one index draw the same numbers in
+    every point."""
     folder, index = Path(kwargs["job_dir"]), kwargs.get("job_index") or 0
     # The same job run twice at once, as when it is submitted twice: the second stops.
     held = _lock(folder / "batch" / f"job_{index}.lock", f"job {index} of {folder}")
@@ -839,10 +849,8 @@ def _run_one_job(workflow, kwargs, folder, index):
         wrote all have the numbers it drew there."""
         from raser.core.seeding import seed_generators  # loads ROOT
 
-        point = [] if record["same_seeds"] else [record["point"]]
-        words = [record["seed"], *point, index, *filter(None, [piece])]
-        digest = hashlib.sha256("/".join(map(str, words)).encode()).digest()
-        options["seed"] = 1 + int.from_bytes(digest[:8], "big") % (2**31 - 1)
+        job = nodes.job_seed(record["seed"], index, record["measured"], record["same_seeds"])
+        options["seed"] = job if piece is None else nodes.stage_seed(job, piece)
         seed_generators(options["seed"])
 
     if not workflow.slices:

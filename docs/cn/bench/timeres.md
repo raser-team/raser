@@ -31,19 +31,33 @@ $$\mathcal{L}(\tilde{\mu}, \ln\tilde{\sigma}) = \frac{1}{2}\sum_{i=1}^{n}\left(\
 
 ### `time_resolution` 装置几何
 
-`timeres` 默认加载 Geant4 装置 `time_resolution`（`src/raser_bench/timeres/components/deposit/time_resolution.py`，见 [能量沉积组件（`components/deposit`）](../components/deposit.md)）。世界体材料为真空 `"G4_Galactic"`，默认半边长 `WORLD_HALF_SIDE = 25000` $\mu\text{m}$。默认 $\beta$ 源 `decay/Sr90` 圆盘中心位于 $z = -17000\ \mu\text{m}$（被测器件顶面上方 $17\ \text{mm}$），圆盘半径 `par_radius = 2500` $\mu\text{m}$，出射半顶角 `par_cone = 15` $\text{degree}$，瞄准原点 `towards = [0, 0, 0]` $\mu\text{m}$，入射倾角 `angle = 0` $\text{degree}$。
+`timeres` 默认加载 Geant4 装置 `time_resolution`（`src/raser_bench/timeres/components/deposit/time_resolution.py`，见 [能量沉积组件（`components/deposit`）](../components/deposit.md)）。世界体材料为真空 `"G4_Galactic"`，以 `along_beam` 一列的中点为中心，半边长不小于 `WORLD_HALF_SIDE = 25000` $\mu\text{m}$。世界坐标原点 $(0, 0, 0)$ 在源上，$z$ 轴沿束流指向下游；默认 $\beta$ 源 `decay/Sr90` 圆盘中心位于原点，圆盘半径 `par_radius = 2500` $\mu\text{m}$，出射半顶角 `par_cone = 15` $\text{degree}$，沿 $+z$ 发射，入射倾角 `angle = 0` $\text{degree}$。
 
-装置沿 $+z$ 方向依次放置铝片 `Al`、参考器件、中心开圆孔的上层 PCB 板 `pcb1`、被测器件和中心开圆孔的下层 PCB 板 `pcb2`。`Al`、`pcb1` 与 `pcb2` 沿用 `time_resolution.py` 中的尺寸、材料与位置。参考器件按它的器件文件建成实体（默认 `HPK-Si-LGAD`：材料 `"Si"`，尺寸 $1300 \times 1300 \times 50\ \mu\text{m}$），中心位于 $(0, 0, -10000)\ \mu\text{m}$；被测器件按它的器件文件建成实体，顶面中心位于原点 $(0, 0, 0)\ \mu\text{m}$，占据 $x \in [-l_x/2, l_x/2]$、$y \in [-l_y/2, l_y/2]$、$z \in [0, l_z]\ \mu\text{m}$。两块器件内最大步长均为 `maxstep = 2` $\mu\text{m}$。
+装置用 `along_beam` 从源开始沿 $+z$ 依次排布铝片 `Al`、参考器件（槽位 `ref`）、中心开圆孔的上层 PCB 板 `pcb1`、被测器件（槽位 `dut`）和中心开圆孔的下层 PCB 板 `pcb2`：
 
-Geant4 完整模拟 $\beta$ 电子穿过铝片、参考器件、上层 PCB 板、被测器件和下层 PCB 板时的能量沉积、多次散射与次级粒子产生，同时记录参考器件与被测器件内的能量沉积步。装置沿 $+z$ 方向各实体的尺寸与坐标如下表：
+```python
+"along_beam": [
+    "source",
+    {"gap": 1995}, "Al",
+    {"gap": 4978.5},
+    {"slot": "ref"}, "pcb1",
+    {"gap": 8183.5},
+    {"slot": "dut"}, "pcb2",
+]
+```
 
-| 实体 | 类型 | 材料与密度 | 全尺寸 `side_x × side_y × side_z`（$\mu\text{m}$） | 中心 `position_z`（$\mu\text{m}$） | $z$ 轴覆盖范围（$\mu\text{m}$） | 中心圆孔 `tub_radius`, `tub_depth`（$\mu\text{m}$） |
+按沿束流放置规则（见 [`core/deposit`](../core/deposit.md#沿束流的一列)），器件几何按深度分层，灵敏层以外的各层（衬底等）见 [探测器组件](../components/device.md)。两个槽位 `ref`（参考器件，默认 `HPK-Si-LGAD`，有源层尺寸 $1300 \times 1300 \times 50\ \mu\text{m}$，灵敏层以外各层总厚 $t_{\text{ref}}$）和 `dut`（被测器件，命令行给定，有源层尺寸 $l_x \times l_y \times l_z$，灵敏层以外各层总厚 $t$）均取缺省 `"facing": "upstream"`、`"offset": [0, 0]`、`"rotation_z": 0`，紧贴在对应下游 PCB 板 `pcb1`、`pcb2` 朝源的一面（不留 `gap`）：有源层在朝源外侧，灵敏层以外的各层紧贴板面，有源层内最大步长均为 `maxstep = 2` $\mu\text{m}$；Geant4 建出全部层，只记录有源层里的沉积步。
+
+Geant4 完整模拟 $\beta$ 电子穿过铝片、参考器件（含衬底）、上层 PCB 板、被测器件（含衬底）和下层 PCB 板时的能量沉积、多次散射与次级粒子产生，同时记录参考器件与被测器件有源层内的能量沉积步。装置沿 $+z$ 方向各项的尺寸、厚度与到前一项的间隔如下表：
+
+| 项（按沿束流顺序） | 类型 | 材料与密度 | 到前一项的间隔 `gap`（$\mu\text{m}$） | 横向尺寸 `side_x × side_y`（$\mu\text{m}$） | 厚度 `side_z` 或 $l_z + t$（$\mu\text{m}$） | 中心圆孔 `tub_radius`, `tub_depth`（$\mu\text{m}$） |
 | --- | --- | --- | --- | --- | --- | --- |
-| `Al` | 周边物体（`elemental`） | `"G4_Al"` | $5000 \times 5000 \times 10$ | `-15000` | $[-15005,\, -14995]$ | 无 |
-| 参考器件（默认 `HPK-Si-LGAD`） | 有源器件 | 取器件文件（默认 `"G4_Si"`） | 取器件文件（默认 $1300 \times 1300 \times 50$） | `-10000` | $[-10000 - l_{z,\text{ref}}/2,\, -10000 + l_{z,\text{ref}}/2]$（默认 $[-10025,\, -9975]$） | 无 |
-| `pcb1` | 周边物体（`binary_compounds`） | `"SiO2"`（Si/O 原子比 `33.4:66.6`，`2.2 g/cm^3`） | $20000 \times 20000 \times 1500$ | `-8933.5` | $[-9683.5,\, -8183.5]$ | `500`, `1500` |
-| 被测器件（命令行给定） | 有源器件 | 取器件文件 | $l_x \times l_y \times l_z$ | $l_z / 2$ | $[0,\, l_z]$ | 无 |
-| `pcb2` | 周边物体（`binary_compounds`） | `"SiO2"`（Si/O 原子比 `33.4:66.6`，`2.2 g/cm^3`） | $20000 \times 20000 \times 1500$ | `1100` | $[350,\, 1850]$ | `500`, `1500` |
+| `"source"`（`decay/Sr90`） | 源 | — | — | 圆盘半径 `2500` | `0` | 无 |
+| `Al` | 周边物体（`elemental`） | `"G4_Al"` | `1995` | $5000 \times 5000$ | `10` | 无 |
+| 参考器件（槽位 `ref`，默认 `HPK-Si-LGAD`） | 器件（含灵敏层与以外各层） | 取器件文件 | `4978.5` | 取器件文件（$l_{x,\text{ref}} \times l_{y,\text{ref}}$） | 取器件文件（有源层 $l_{z,\text{ref}}$ 加以外各层 $t_{\text{ref}}$） | 无 |
+| `pcb1` | 周边物体（`binary_compounds`） | `"SiO2"`（Si/O 原子比 `33.4:66.6`，`2.2 g/cm^3`） | `0`（紧贴） | $20000 \times 20000$ | `1500` | `500`, `1500` |
+| 被测器件（槽位 `dut`，命令行给定） | 器件（含灵敏层与以外各层） | 取器件文件 | `8183.5` | 取器件文件（$l_x \times l_y$） | 取器件文件（有源层 $l_z$ 加以外各层 $t$） | 无 |
+| `pcb2` | 周边物体（`binary_compounds`） | `"SiO2"`（Si/O 原子比 `33.4:66.6`，`2.2 g/cm^3`） | `0`（紧贴） | $20000 \times 20000$ | `1500` | `500`, `1500` |
 
 ### 三块器件
 
@@ -135,6 +149,8 @@ raser timeres NJU-PiN --scan field.voltage=-300,-500
 | `deposit.generated_limit` | `10000000` | 事例 | 为录满 `events_per_job` 允许生成的最大源事例数上限 |
 | `deposit.edep_min` | `null`（不设下限） | $\text{MeV}$ | 记录事例的最小沉积能量下限 |
 | `deposit.edep_max` | `null`（不设上限） | $\text{MeV}$ | 记录事例的最大沉积能量上限 |
+| `deposit.require` | `"all"` | 无 | 记录事例的符合条件：参考器件和被测器件都有沉积才记录，见 [`stages/deposit`](../stages/deposit.md) |
+| `deposit.coincidence_window_ns` | `null`（不卡时间） | $\text{ns}$ | 两块器件最早沉积时刻之差的上限 |
 | `deposit.fano` | `true` | 无 | 电离对数转化是否开启 Fano 涨落抽样 |
 | `deposit.plots` | `0` | 事例 | 每作业画 Geant4 几何与径迹图的前若干个记录事例数 |
 | `current.plots` | `0` | 事例 | 每作业画载流子漂移路径图与电流图的前若干个记录事例数 |
@@ -144,7 +160,7 @@ raser timeres NJU-PiN --scan field.voltage=-300,-500
 | `reconstruction.fractions` | `[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]` | 无量纲 | 恒比定时（`CFD`）的幅度比例列表，每项须位于 `(0, 1)` 开区间内 |
 | `reconstruction.edge` | `null`（各自沿用对应器件 `readout` 写出的 `pulse_edge`） | 无 | 阈值作用的脉冲边沿方向，可选 `"rising"` 或 `"falling"` |
 
-其余参数（`time_resolution.py` 中 `Al`、`pcb1`、`pcb2` 的尺寸、材料与位置，参考器件中心坐标 `z = -10000 um`，世界默认半边长 `25000 um`，两器件内最大步长 `2 um`，材料平均电离能与 Fano 因子，漂移时间窗与时间步长档位，`ngspice` 噪声分析频率范围与 `27 °C` 温度，重建基线点数 `200`，截断高斯拟合初窗 `median ± 8 * MAD`，最少样本数 `20` 与最大迭代轮数 `6`）固定在代码与默认装置脚本中。
+其余参数（`time_resolution.py` 中 `Al`、`pcb1`、`pcb2` 的尺寸、材料与间隔，世界默认半边长 `25000 um`，两器件内最大步长 `2 um`，材料平均电离能与 Fano 因子，漂移时间窗与时间步长档位，`ngspice` 噪声分析频率范围与 `27 °C` 温度，重建基线点数 `200`，截断高斯拟合初窗 `median ± 8 * MAD`，最少样本数 `20` 与最大迭代轮数 `6`）固定在代码与默认装置脚本中。
 
 ## 输出
 

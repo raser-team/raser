@@ -91,9 +91,11 @@ def test_a_run_takes_the_field_of_the_mode_it_asks_for(fields: Path) -> None:
         solved_field(_device(), 100.0, 0, "semi_fast")
 
 
-def test_the_undepleted_bulk_of_a_field_is_taken_with_the_area_factor(fields: Path) -> None:
+def test_the_undepleted_bulk_of_a_field_is_taken_for_the_area_it_is_given(fields: Path) -> None:
+    # 0.25 cm^2, not the area factor of the device file: the caller gives the area
     _field(fields, solved={"potential": [0.0, 100.0, 200.0], "undepleted": [100.0, 200.0]})
-    area = device_json("HPK-Si-PiN")["area_factor"]
+    area = 0.25
+    assert area != device_json("HPK-Si-PiN")["area_factor"]
     (fields / "100.0V.undepleted.json").write_text(
         json.dumps({"undepleted_width_um": 20.0, "specific_resistance_ohm_cm2": 26.0, "specific_capacitance_pF": 527.0})
     )
@@ -101,9 +103,9 @@ def test_the_undepleted_bulk_of_a_field_is_taken_with_the_area_factor(fields: Pa
         json.dumps({"undepleted_width_um": 0.0, "specific_resistance_ohm_cm2": 0.0, "specific_capacitance_pF": None})
     )
 
-    resistance, capacitance = solved_undepleted(fields, 100.0)
-    assert resistance == pytest.approx(26.0 / area)
-    assert capacitance == pytest.approx(527.0e-12 * area)
-    assert solved_undepleted(fields, 200.0) is None
-    with pytest.raises(FileNotFoundError, match=r"no undepleted bulk at 50.0 V.*raser field HPK-Si-PiN -bias 50.0"):
-        solved_undepleted(fields, 50.0)
+    resistance, capacitance = solved_undepleted(fields, 100.0, area)
+    assert resistance == pytest.approx(26.0 / area, rel=1e-12)
+    assert capacitance == pytest.approx(527.0e-12 * area, rel=1e-12, abs=0)
+    assert solved_undepleted(fields, 200.0, area) is None
+    with pytest.raises(FileNotFoundError, match=r"no undepleted bulk at 50.0 V.*: solve it with `raser field HPK-Si-PiN -bias 50.0"):
+        solved_undepleted(fields, 50.0, area)

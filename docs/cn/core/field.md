@@ -44,7 +44,7 @@ $$U_{\text{SRH}} = \frac{np - n_i^2}{\tau_p\,(n + n_1) + \tau_n\,(p + p_1)}, \qq
 
 其中 $n_i$ 为本征载流子浓度（$\text{cm}^{-3}$，由 [model.md](model.md) 的 `BAND_STRUCTURE` 在温度 $T$ 下给出），$\tau_n$、$\tau_p$ 为寿命（$\text{s}$）。
 
-代码对应关系：`physics_drift_diffusion.CreateSiliconDriftDiffusion` 依次建立 `CreatePE`（式 1）、`CreateBernoulli` 与 `CreateElectronCurrent`/`CreateHoleCurrent`（式 4、5）、`CreateSRH`（式 3、6）、`CreateECE`/`CreateHCE`（式 2）。`create_parameter.create_parameter` 按 DEVSIM 区域材料 `Silicon`、`SiliconCarbide`、`Diamond`、`gas` 写入常数。迁移率模型按名字注册，器件文件按名字选用，每种材料有缺省选用的模型（见 [model.md](model.md)）；DEVSIM 求解中各材料现在缺省选用的是与场强、掺杂无关的常数迁移率，取区域参数 `mu_n`、`mu_p`（Si `1450`/`500`，SiC `1100`/`114`，Diamond `110`/`1100`，单位 $\text{cm}^2/(\text{V}\cdot\text{s})$）。寿命取 `SRH_LIFETIME`（Si `7e-3`/`7e-3` s，SiC `2.5e-6`/`0.5e-6` s，Diamond `5.6e-7`/`2.4e-7` s）；SiC 的电子寿命取自 [20]，空穴寿命 `0.5e-6` s 由组里的时间分辨光致发光测量确认 [21]。
+代码对应关系：`physics_drift_diffusion.CreateSiliconDriftDiffusion` 依次建立 `CreatePE`（式 1）、`CreateBernoulli` 与 `CreateElectronCurrent`/`CreateHoleCurrent`（式 4、5）、`CreateSRH`（式 3、6）、`CreateECE`/`CreateHCE`（式 2）。`create_parameter.create_parameter` 按 DEVSIM 区域材料 `Silicon`、`SiliconCarbide`、`Diamond`、`gas` 写入常数。迁移率模型按名字注册，器件文件按名字选用，每种材料有缺省选用的模型（见 [model.md](model.md)）；DEVSIM 求解中各材料现在缺省选用的是与场强、掺杂无关的常数迁移率，取区域参数 `mu_n`、`mu_p`（Si `1450`/`500`，SiC `1100`/`114`，Diamond `1714`/`2064`，单位 $\text{cm}^2/(\text{V}\cdot\text{s})$）。寿命取 `SRH_LIFETIME`（Si `7e-3`/`7e-3` s，SiC `2.5e-6`/`0.5e-6` s，Diamond `5.6e-7`/`2.4e-7` s）；SiC 的电子寿命取自 [20]，空穴寿命 `0.5e-6` s 由组里的时间分辨光致发光测量确认 [21]。
 
 所有电极按欧姆接触处理（各调用处 `set_contact_type` 均为 `None`）：电极节点上 $n = n_0$、$p = n_i^2/n_0$（$N_{\text{net}} > 0$）或 $p = p_0$、$n = n_i^2/p_0$（$N_{\text{net}} \le 0$），电势 $\psi = V_{\text{bias}} + V_T \ln(n_0/n_i)$ 或 $\psi = V_{\text{bias}} - V_T \ln(p_0/n_i)$，其中 $n_0 = 10^{-10} + \tfrac12\bigl|N_{\text{net}} + \sqrt{N_{\text{net}}^2 + 4n_i^2}\bigr|$，$p_0$ 同式但 $N_{\text{net}}$ 取负。方程组与接触条件改写自 DEVSIM 示例 [3]。
 
@@ -162,25 +162,31 @@ $$\text{导电} \iff \rho < \rho_0 \ \ \text{或}\ \ \bigl(|N_{\text{net}}| > 0 
 
 ### 器件电路参数
 
-器件在电子学网表中表示为电容、电阻与感应电流源组成的网络（`DeviceCircuit`）。单电极平面器件的拓扑为：耗尽层电容 $C_{\text{dep}}$ 接在电极 `<e>_pad` 与耗尽层背面之间，感应电流源与它并联；未耗尽体区为 $R_{\text{und}} \parallel C_{\text{und}}$，接在耗尽层背面与地之间；可选的偏置电阻 $R_{\text{bias}}$ 从 `<e>_pad` 接地，可选的耦合电容 $C_{\text{c}}$ 接在 `<e>_pad` 与读出端 `<e>_port` 之间。
+器件在电子学网表中表示为电容、电阻与感应电流源组成的网络（`DeviceCircuit`）。每个读出电极 `<e>` 的耗尽层电容 $C_{\text{dep}}$ 接在 `<e>_pad` 与耗尽层背面的节点 `undepleted` 之间，感应电流源与它并联；所有读出电极共用这一个 `undepleted` 节点。未耗尽体区为 $R_{\text{und}} \parallel C_{\text{und}}$，接在 `undepleted` 与地之间。可选的偏置电阻 $R_{\text{bias}}$ 从 `<e>_pad` 接地，可选的耦合电容 $C_{\text{c}}$ 接在 `<e>_pad` 与读出端 `<e>_port` 之间。
 
 结电容 $C_{\text{dep}}$ 由 `junction_capacitance` 依次取：器件文件 `capacitance_pF`（实测值）、场在该偏压求得的电容（`<V>V.cv.json` 的比电容乘 `area_factor`）、`Detector.capacitance` 的平行板估计（读出面积除以 `depletion_depth`，缺省 `l_z`）；三者都没有时抛出 `ValueError`。场电容只来自单点电容子任务在该偏压写出的 `<V>V.cv.json`（记入 `solved.capacitance`）；只求扫描与权重场的场节点里结电容取平行板估计。
 
-未耗尽体区按 Riegler 的集总 $R \parallel C$ 模型 [10]，由一维场求得：
+未耗尽体区按 Riegler 的集总 $R \parallel C$ 模型 [10] 处理，一维、二维、三维器件用同一组式子 [22]。场给出比电阻 $r$ 与比电容 $c$（单位面积），电路乘器件面积 $A$：
 
-$$R_{\text{und}} = \frac{1}{A}\sum_{k} w_k\,\bar\rho_k, \qquad C_{\text{und}} = \frac{\varepsilon A}{W_{\text{und}}}, \qquad W_{\text{und}} = \sum_k w_k \tag{20}$$
+$$R_{\text{und}} = \frac{r}{A}, \qquad C_{\text{und}} = c\,A, \qquad c = \frac{\varepsilon}{W_{\text{und}}} \tag{20}$$
+
+$$\text{1D:}\quad r = \sum_{k} w_k\,\bar\rho_k, \quad W_{\text{und}} = \sum_k w_k; \qquad \text{2D、3D:}\quad r = \frac{1}{S}\sum_{i} \rho_i\,V_i, \quad W_{\text{und}} = \frac{1}{S}\sum_i V_i \tag{20a}$$
 
 其中：
 
-- 求和遍及相邻两节点都属于未耗尽体区的网格区间 $k$；体区节点的条件是有净掺杂、$n + p > 0.5|N_{\text{net}}|$ 且 $\rho \ge 10\ \Omega\cdot\text{cm}$（电极下的重掺杂层不算）；
-- $w_k$：区间宽度，$\text{cm}$；$\bar\rho_k$：两端节点电阻率的平均，$\Omega\cdot\text{cm}$；$W_{\text{und}}$：未耗尽宽度；
-- $\varepsilon$：区域参数 `Permittivity`，$\text{F/cm}$；$A$：`area_factor`，$\text{cm}^2$。
+- 体区节点的条件是有净掺杂、$n + p > 0.5|N_{\text{net}}|$ 且 $\rho \ge 10\ \Omega\cdot\text{cm}$（电极下的重掺杂层不算）；
+- 1D：求和遍及相邻两节点都属于未耗尽体区的网格区间 $k$；$w_k$ 为区间宽度（cm），$\bar\rho_k$ 为两端节点电阻率的平均（$\Omega\cdot\text{cm}$）；
+- 2D、3D：求和遍及未耗尽体区节点 $i$；$V_i$ 为节点体积（DEVSIM 的 `NodeVolume`，2D 为 $\text{cm}^2$，3D 为 $\text{cm}^3$），$\rho_i$ 为节点电阻率；$S$ 为网格在电极平面内的跨度（2D 为横向宽度 cm，3D 为横向面积 $\text{cm}^2$）；$W_{\text{und}}$ 为未耗尽层的平均厚度；
+- $r$：$\Omega\cdot\text{cm}^2$；$c$：$\text{F/cm}^2$；$\varepsilon$：区域参数 `Permittivity`，$\text{F/cm}$；
+- $A$：1D 取 `area_factor`，2D、3D 取 $l_x l_y$，$\text{cm}^2$。
 
-全耗尽时 $W_{\text{und}} = 0$，耗尽层背面直接接地。器件文件可以用 `undepleted_resistance_ohm` 与 `undepleted_capacitance_pF` 成对给定这两个值，优先于场。
+全耗尽时 $W_{\text{und}} = 0$，`undepleted` 节点直接接地。器件文件可以用 `undepleted_resistance_ohm` 与 `undepleted_capacitance_pF` 成对给定 $R_{\text{und}}$、$C_{\text{und}}$，优先于场。
 
-条形电极行（`field_circuit` 读到 `Capacitance_<V>V.json`）中，相隔 $k$ 个位置的两条之间接电容 $C_k = \tfrac12 C_{\text{neighbour}k}\,L$，$k \le$ `neighbours_coupled`，$L$ 为条长 `l_y`（换成 cm）；每条对地电容为 $C_{\text{total}}L$（或 `capacitance_pF`）减去它到行内其他条的互容之和。
+一维的集总模型是精确的。二维、三维中共用节点只保留所有电极同相的那一部分，对所有电极信号之和是精确的，对单个电极在成形时间远大于 $\max(\tau_0, 2\tau_r)$ 时趋于精确，对相邻电极的信号不准（$\tau_r = \varepsilon\rho$，$\tau_0 = \tau_r\,l_z/d_0$，$d_0 = l_z - W_{\text{und}}$ 为耗尽深度）。二维、三维器件有未耗尽层时，组装器件电路的一步打印一条警告，给出偏压、$d_0$、$\tau_r$ 与 $\tau_0$，说明偏压过低、未耗尽层的集总参数对相邻电极不准。
 
-阻性电荷共享层（`resistive_layer`）把层切成宽为间距的晶胞，每个晶胞是一个节点，对地接耗尽层电容；相邻晶胞之间接层电阻：
+条形电极行（`field_circuit` 读到 `Capacitance_<V>V.json`）中，相隔 $k$ 个位置的两条之间接电容 $C_k = \tfrac12 C_{\text{neighbour}k}\,L$，$k \le$ `neighbours_coupled`，$L$ 为条长 `l_y`（换成 cm）；每条接到 `undepleted` 的电容为 $C_{\text{total}}L$（或 `capacitance_pF`）减去它到行内其他条的互容之和。只为击中条附近的一段条搭电路时（`part_of_row`），段外的 $n$ 根条在虚地上，它们的这份电容合成 $n$ 倍行中部一根条的值，接在 `undepleted` 与地之间（`C_undepleted_rest`）。
+
+阻性电荷共享层（`resistive_layer`）把层切成宽为间距的晶胞，每个晶胞是一个节点，经耗尽层电容接到 `undepleted`；相邻晶胞之间接层电阻：
 
 $$C_{\text{cell}} = c_A\,w\,l, \qquad R_{\text{row}} = \frac{R_\square}{l}\,w\,\Bigl(1 - \frac{m}{2}\Bigr), \qquad R_{\text{grid}} = R_\square\,\frac{w_\parallel}{w_\perp}\Bigl(1 - \frac{m}{2}\Bigr) \tag{21}$$
 
@@ -248,7 +254,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 | `eps_0` | `8.8541878128e-14` | F/cm | 同上，及各材料 `Permittivity` | 无 |
 | `T0` | `300.0` | K | 同上，区域参数 | 无 |
 | `vel_mean` | `1e7` | cm/s | 缺陷俘获的热速度 $v_{\text{th}}$ | 无 |
-| `mu_n`, `mu_p` | Si `1450`/`500`；SiC `1100`/`114`；Diamond `110`/`1100` | $\text{cm}^2/(\text{V}\cdot\text{s})$ | 常数迁移率 | 无（`parameter` 可覆盖任一区域参数） |
+| `mu_n`, `mu_p` | Si `1450`/`500`；SiC `1100`/`114`；Diamond `1714`/`2064` | $\text{cm}^2/(\text{V}\cdot\text{s})$ | 常数迁移率 | 无（`parameter` 可覆盖任一区域参数） |
 | `taun`, `taup` | Si `7e-3`/`7e-3`；SiC `2.5e-6`/`0.5e-6`；Diamond `5.6e-7`/`2.4e-7` | s | `SRH_LIFETIME` | 无 |
 | `n1`, `p1` | $n_i$ | $\text{cm}^{-3}$ | SRH 陷阱取本征能级 | 无 |
 | `n_i`（`gas`） | `1e-9` | $\text{cm}^{-3}$ | 权重场介质 | 无 |
@@ -341,7 +347,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 `save_milestone` 按维数与是否权重场分派，跳过材料为 `"Aluminum"` 或 `"air"` 的区域：
 
 1. **节点量**：逐区域收集坐标与 `Potential`、`NetDoping`、`Electrons`、`Holes`、`TrappingRate_n`、`TrappingRate_p`；DEVSIM 场另算 `Conductive`（式 19）。
-2. **未耗尽体区**（仅 1D DEVSIM 场）：按式 (20) 的体区条件求 $W_{\text{und}}$ 与比电阻 $\sum w_k\bar\rho_k$，写 `<V>V.undepleted.json`，比电容为 $10^{12}\varepsilon/W_{\text{und}}$（$\text{pF/cm}^2$），全耗尽时为 `null`；记入 `solved.undepleted`。
+2. **未耗尽体区**（DEVSIM 场，1D、2D、3D）：按式 (20a) 求 $W_{\text{und}}$ 与比电阻 $r$，写 `<V>V.undepleted.json`，比电容为 $10^{12}\varepsilon/W_{\text{und}}$（$\text{pF/cm}^2$），全耗尽时为 `null`；记入 `solved.undepleted`。
 3. **画图**：电势、电子与空穴俘获率、电场（DEVSIM 场取网格边中点的边电场；TCAD 1D/2D 取 `ElectricField_0`，3D 取三分量的模）。
 4. **写 pickle**：每个量一个文件；`NetDoping` 只在 $V = 0$ 或 TCAD 场时写。`is_flip` 为真时 2D 的两坐标互换。
 
@@ -349,8 +355,8 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 
 1. **场节点**：偏压、辐照注量、场模式、所选网格及其文件的哈希与 `read` 记下的器件部分（求解期间读到的器件属性、器件文件的键及其值，如 `doping`、`bias`、`irradiation`）都是场节点的输入，节点号由它们的指纹给出（见 [../stages/field.md](../stages/field.md)）；改了其中任何一项就得到新节点。本包从给定的场节点目录 `field/<节点号>/` 读取。
 2. **资产检查**：`solved.potential` 或 `solved.weighting` 中没有该偏压时抛出 `FileNotFoundError`。
-3. **电容与未耗尽层**：`solved_capacitance` 返回 `specific_capacitance_pF × area_factor × 1e-12`（F）；`solved_undepleted` 返回 $(R/A,\ C\cdot A\cdot10^{-12})$（$\Omega$、F），$A$ 为 `area_factor`，未耗尽宽度为 `0` 时返回 `None`；对应偏压未求解时抛出 `FileNotFoundError`。
-4. **电路取值**（`field_circuit`）：条形器件只列一个读出电极且 `read_ele_num > 1` 时读 `Capacitance_<V>V.json`，文件不存在时抛出 `FileNotFoundError`；其余器件在 `solved.capacitance` 有该偏压时取场电容；1D 器件取未耗尽层。
+3. **电容与未耗尽层**：`solved_capacitance` 返回 `specific_capacitance_pF × area_factor × 1e-12`（F）；`solved_undepleted` 返回 $(r/A,\ c\cdot A\cdot10^{-12})$（$\Omega$、F），$A$ 见式 (20)，未耗尽宽度为 `0` 时返回 `None`；对应偏压未求解时抛出 `FileNotFoundError`。
+4. **电路取值**（`field_circuit`）：条形器件只列一个读出电极且 `read_ele_num > 1` 时读 `Capacitance_<V>V.json`，文件不存在时抛出 `FileNotFoundError`；其余器件在 `solved.capacitance` 有该偏压时取场电容；所有器件取未耗尽层。
 
 ### 插值与缓存
 
@@ -395,7 +401,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 - `create_parameter.py`：DEVSIM 区域常数。
 - `model_create.py`：DEVSIM 节点、边、接触模型的封装（取自 DEVSIM）。
 - `weighting.py`：把导电节点并入电极。
-- `conductive.py`：导电判定与一维未耗尽体区。
+- `conductive.py`：导电判定与未耗尽体区。
 - `save_milestone.py`：存盘、画图与 `node.json` 记录（`save_record`、`save_solved`）。
 - `saved_point.py`：从存盘点求单点小信号电容。
 - `reading.py`：`Reading` 包装器，记下求解期间读取的器件部分。
@@ -493,7 +499,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 | `TrappingRate_n_<V>V.pkl`, `TrappingRate_p_<V>V.pkl` | 电子、空穴俘获率 | cm；$\text{s}^{-1}$ |
 | `Conductive_<V>V.pkl` | 导电标志，`1.0` 或 `0.0` | cm；无 |
 | `NetDoping_0V.pkl`（TCAD 为 `NetDoping_<V>V.pkl`） | 净掺杂 | cm；$\text{cm}^{-3}$ |
-| `<V>V.undepleted.json` | 1D DEVSIM 场：`voltage_V`、`undepleted_width_um`、`specific_resistance_ohm_cm2`、`specific_capacitance_pF`（全耗尽为 `null`）、`per`（`"cm^2"`） | V、$\mu\text{m}$、$\Omega\cdot\text{cm}^2$、$\text{pF/cm}^2$ |
+| `<V>V.undepleted.json` | DEVSIM 场：`voltage_V`、`undepleted_width_um`、`specific_resistance_ohm_cm2`、`specific_capacitance_pF`（全耗尽为 `null`）、`per`（`"cm^2"`） | V、$\mu\text{m}$、$\Omega\cdot\text{cm}^2$、$\text{pF/cm}^2$ |
 | `<V>V.cv.json` | 单点电容子任务写出：`voltage_V`、`specific_capacitance_pF`、`per`（`"cm^2"`、`"cm"`、`"device"`）、`area_factor`、`frequency_Hz` | V、pF/单位、—、Hz |
 | `weightingfield/<contact>/Potential_<V>V.pkl` | 权重势 | cm；无 |
 | `weightingfield/<contact>/Capacitance_<V>V.json` | 拼接行：`unit`（`"F/cm"`）、`of`、`total`、`to`（`neighbour<k>` 及不读出的电极）、`neighbours_coupled` | F/cm |
@@ -540,3 +546,4 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 - [19] J. D. Jackson, *Classical Electrodynamics*, 3rd ed., Wiley (1999), sec. 3.12
 - [20] A. Das, S. P. Duttagupta, “TCAD simulation for alpha-particle spectroscopy using SiC Schottky diode”, Radiat. Prot. Dosim. 167 (2015) 443, doi:10.1093/rpd/ncu369
 - [21] Z. Li et al., “Mechanisms of proton irradiation-induced defects on the electrical performance of 4H-SiC PIN detectors”, JINST 21 (2026) P03010, doi:10.1088/1748-0221/21/03/P03010, arXiv:2503.09016
+- [22] S. Mägdefessel, R. Mori, N. Sorgenfrei, U. Parzefall, “Understanding the frequency dependence of capacitance measurements of irradiated silicon detectors”, arXiv:2301.09371, eqs. (2), (3)

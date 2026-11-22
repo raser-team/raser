@@ -18,7 +18,9 @@ SOURCE_ROOT = Path(__file__).resolve().parents[2] / "src"
 
 
 @pytest.fixture
-def work_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fields_ready: None) -> Path:
+def work_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fields_ready: None
+) -> Path:
     root = tmp_path / "work"
     monkeypatch.setenv("RASER_WORK_PATH", str(root))
     monkeypatch.delenv("RASER_PROJECT_PATH", raising=False)
@@ -97,8 +99,8 @@ def test_global_batch_before_a_command_with_jobs_submits_each_job_itself(
         lambda *args, use_cluster, mem, **kwargs: submitted.append((use_cluster, mem)),
     )
 
-    assert main(["-bb", "cce", "HPK-Si-PiN", "-s", "2", "--seed", "1"]) == 0
-    assert main(["-b", "cce", "HPK-Si-PiN", "-s", "2", "--seed", "2", "-mem", "3"]) == 0
+    assert main(["-bb", "signal", "HPK-Si-PiN", "-s", "2", "--seed", "1"]) == 0
+    assert main(["-b", "signal", "HPK-Si-PiN", "-s", "2", "--seed", "2", "-mem", "3"]) == 0
 
     assert submitted == [(True, 2), (True, 3)]
 
@@ -110,10 +112,13 @@ def test_global_test_before_a_command_with_jobs_is_its_dry_run(
         jobs, "run_indexed_jobs", lambda *args, **kwargs: pytest.fail("submitted")
     )
 
-    assert main(["-t", "-b", "cce", "HPK-Si-PiN", "-s", "2", "--seed", "1"]) == 0
+    assert main(["-t", "-b", "signal", "HPK-Si-PiN", "-s", "2", "--seed", "1"]) == 0
 
-    folder = work_root / "HPK-Si-PiN" / "cce" / "seed_1"
-    slices = [f"  {name:<15}jobs [0, 1]" for name in ("deposit", "field", "current", "readout", "reconstruction")]
+    folder = work_root / "HPK-Si-PiN" / "signal" / "seed_1"
+    slices = [
+        f"  {name:<15}jobs [0, 1]"
+        for name in ("deposit", "field", "current", "readout", "reconstruction")
+    ]
     assert capsys.readouterr().out.splitlines() == [f"{folder}: jobs [0, 1]", *slices]
     assert not work_root.exists()
 
@@ -129,14 +134,17 @@ def test_inside_an_experiment_folder_the_command_and_device_come_from_its_config
             ([*prefix, *tail[:-2]], use_cluster, mem)
         ),
     )
-    first = ["cce", "HPK-Si-PiN", "--scan", "voltage=200,300", "-s", "1", "--seed", "1"]
+    first = ["signal", "HPK-Si-PiN", "--scan", "voltage=200,300", "-s", "1", "--seed", "1"]
     assert main(first) == 0
-    experiment = work_root / "HPK-Si-PiN" / "cce"
+    experiment = work_root / "HPK-Si-PiN" / "signal"
     monkeypatch.chdir(experiment)
     capsys.readouterr()
 
     assert main(["-s", "2", "--seed", "2", "--dry-run"]) == 0
-    slices = [f"  {name:<15}jobs [0, 1]" for name in ("deposit", "field", "current", "readout", "reconstruction")]
+    slices = [
+        f"  {name:<15}jobs [0, 1]"
+        for name in ("deposit", "field", "current", "readout", "reconstruction")
+    ]
     assert capsys.readouterr().out.splitlines() == [
         f"{experiment / 'seed_2'}: jobs [0, 1]",
         *slices,
@@ -145,25 +153,37 @@ def test_inside_an_experiment_folder_the_command_and_device_come_from_its_config
     ]
     submitted.clear()
     assert main(["-bb", "-s", "2", "--seed", "3"]) == 0
-    every = ["--job-slices", "deposit,field,current,readout,reconstruction"]  # each voltage is measured anew
-    assert submitted == [(["cce", "HPK-Si-PiN", *every], True, 2)] * 2
+    every = [
+        "--job-slices",
+        "deposit,field,current,readout,reconstruction",
+    ]  # each voltage is measured anew
+    assert submitted == [(["signal", "HPK-Si-PiN", *every], True, 2)] * 2
 
 
 @pytest.mark.parametrize("command", ["reconstruction", "reco"])
 def test_a_stage_command_given_inside_an_experiment_folder_is_not_taken_for_its_options(
-    work_root: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture, command: str
+    work_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+    command: str,
 ) -> None:
     experiment = work_root / "HPK-Si-PiN" / "signal"
     experiment.mkdir(parents=True)
-    (experiment / "config.json").write_text(json.dumps({"workflow": "signal", "device": "HPK-Si-PiN"}))
+    (experiment / "config.json").write_text(
+        json.dumps({"workflow": "signal", "device": "HPK-Si-PiN"})
+    )
     monkeypatch.chdir(experiment)
 
     assert main([command, str(experiment), "--seed", "1", "--dry-run"]) == 0
 
-    assert capsys.readouterr().out.splitlines()[0].startswith(f"{experiment / 'seed_1'}: ")
+    assert (
+        capsys.readouterr().out.splitlines()[0].startswith(f"{experiment / 'seed_1'}: ")
+    )
 
 
-def test_the_version_is_the_one_of_the_package(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
+def test_the_version_is_the_one_of_the_package(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
     import raser
 
     monkeypatch.setattr(raser, "__version__", "9.9")
@@ -189,14 +209,20 @@ def test_the_version_is_the_one_of_the_package(monkeypatch: pytest.MonkeyPatch, 
     ],
 )
 def test_a_missing_dependency_is_one_sentence_and_no_traceback(
-    work_root: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture, raised: str, said: str
+    work_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+    raised: str,
+    said: str,
 ) -> None:
     from raser.stages import field
     from raser.supports.dependency import MissingDependency
 
     def execute(*args, **kwargs):
         if raised == "missing":
-            raise MissingDependency("devsim is not installed", "Install it with pip install devsim")
+            raise MissingDependency(
+                "devsim is not installed", "Install it with pip install devsim"
+            )
         raise ModuleNotFoundError("No module named 'ROOT'", name="ROOT")
 
     monkeypatch.setattr(field, "execute", execute)
@@ -207,7 +233,9 @@ def test_a_missing_dependency_is_one_sentence_and_no_traceback(
     assert out.err.strip() == said and "Traceback" not in out.err + out.out
 
 
-def test_another_module_not_found_is_raised_as_it_is(work_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_another_module_not_found_is_raised_as_it_is(
+    work_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from raser.stages import field
 
     def execute(*args, **kwargs):
@@ -217,3 +245,66 @@ def test_another_module_not_found_is_raised_as_it_is(work_root: Path, monkeypatc
 
     with pytest.raises(ModuleNotFoundError, match="numpyy"):
         main(["field", "HPK-Si-PiN"])
+
+
+class _Point:
+    def __init__(self, name: str, value: str, dist: str) -> None:
+        self.name, self.value = name, value
+        self.dist = type("Dist", (), {"name": dist})()
+
+
+def _registered(monkeypatch: pytest.MonkeyPatch, points: list[_Point]) -> None:
+    from raser.cli import raser as cli
+
+    monkeypatch.setattr(
+        cli.importlib.metadata,
+        "entry_points",
+        lambda group: points if group == cli.GROUP else [],
+    )
+
+
+def test_the_experiments_of_the_source_tree_and_of_other_packages_are_commands(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from raser.cli.raser import experiments
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[project.entry-points."raser.experiments"]\nsignal = "raser_bench.signal"\n',
+        encoding="utf-8",
+    )
+    # raser installed from this tree as well: its own entry points are those of the tree
+    _registered(
+        monkeypatch,
+        [
+            _Point("signal", "raser_bench.signal", "raser"),
+            _Point("mine", "my_lab.mine", "my-lab"),
+        ],
+    )
+
+    assert experiments(tmp_path) == {
+        "signal": "raser_bench.signal",
+        "mine": "my_lab.mine",
+    }
+    assert experiments(None) == {"signal": "raser_bench.signal", "mine": "my_lab.mine"}
+
+
+@pytest.mark.parametrize(
+    ("points", "message"),
+    [
+        (
+            [_Point("mine", "a.mine", "lab-a"), _Point("mine", "b.mine", "lab-b")],
+            "mine is registered by lab-a and by lab-b",
+        ),
+        ([_Point("readout", "a.readout", "lab-a")], "readout is a command of raser"),
+        ([_Point("rdo", "a.rdo", "lab-a")], "rdo is a command of raser"),
+    ],
+)
+def test_an_experiment_takes_a_name_no_other_command_has(
+    monkeypatch: pytest.MonkeyPatch, points: list[_Point], message: str
+) -> None:
+    from raser.cli.raser import experiments
+
+    _registered(monkeypatch, points)
+
+    with pytest.raises(SystemExit, match=message):
+        experiments(None)

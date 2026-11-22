@@ -23,7 +23,7 @@ When looking up a component, the project folder's own component takes priority; 
 Below is the verbatim `device_alone.py` from the library:
 
 ```python
-"""The device alone in vacuum, the source 17 mm above its top face.
+"""The device alone in vacuum, the source 17 mm upstream of its front surface.
 
 What surrounds the device in Geant4; reading it imports no Geant4."""
 
@@ -32,14 +32,13 @@ G4SETUP = {
     "description": "The device alone in vacuum",
     "geant4_model": "device",
     "object": {},
-    "source": {"at": [0, 0, -17000], "towards": [0, 0, 0], "angle": 0},
+    "along_beam": ["source", {"gap": 17000}, {"slot": "Device"}],
     "world": "G4_Galactic",
     "maxstep": 2,
-    "g4_vis": False,
 }
 ```
 
-When surrounding geometric bodies are present, they are listed by box name under `object["elemental"]` (Geant4 NIST materials) or `object["binary_compounds"]` (binary compounds). For example, an aluminum foil in `time_resolution.py`:
+When surrounding geometric bodies are present, they are listed by box name under `object["elemental"]` (Geant4 NIST materials) or `object["binary_compounds"]` (binary compounds) and positioned in `along_beam`. For example, an aluminum foil in `time_resolution.py`:
 
 ```python
 "object": {
@@ -51,9 +50,6 @@ When surrounding geometric bodies are present, they are listed by box name under
             "side_y": 5000,
             "side_z": 10,
             "colour": [1, 0.1, 0.8],
-            "position_x": 0,
-            "position_y": 0,
-            "position_z": -15000,
         },
     },
 },
@@ -126,9 +122,35 @@ When no setup component is specified, the code uses the built-in default diction
 | `description` | None (optional) | None | Text description of the setup geometry |
 | `geant4_model` | `"device"` (required for Geant4 sources) | None | Geometry model identifier; imports an external GDML when set to `"gdml_import"`, otherwise builds surrounding boxes from `object` |
 | `world` | `"G4_Galactic"` (required for Geant4 sources) | None | Geant4 NIST material name of the world cube |
-| `maxstep` | `2` (required) | `um` | Maximum step limit inside the `"Device"` logical volume (also read by `toy_mip` when `packets` is not specified) |
-| `source` | `{"at": [0, 0, -17000], "towards": [0, 0, 0], "angle": 0}` (required for Geant4 sources) | `um` for `at`, `towards`; `degree` for `angle` | Source position `at`, aim point `towards`, and incidence tilt angle `angle` in Geant4 coordinates (`angle` defaults to `0`) |
-| `object` | `{}` (required for Geant4 sources) | None | Surrounding geometry dictionary; `{}` when there are no surrounding objects; may contain `"elemental"` and `"binary_compounds"` sub-dictionaries |
+| `maxstep` | `2` (required) | `um` | Maximum step limit inside the device active-layer logical volume (also read by `toy_mip` when `packets` is not specified) |
+| `source` | `{"angle": 0}` (optional) | `degree` | Keeps only the incidence tilt angle `angle` (default `0`), used only for single-slot setups to rotate the source about the device front-surface center; beam emission direction is $+z$ |
+| `object` | `{}` (required for Geant4 sources) | None | Surrounding geometry dictionary; `{}` when there are no surrounding objects; may contain `"elemental"` and `"binary_compounds"` sub-dictionaries, with each object defining only material, dimensions, hole, and color and placed via `along_beam` |
+| `along_beam` | `["source", {"gap": 17000}, {"slot": "Device"}]` (required, except `"gdml_import"`) | None | A line starting from `"source"` and pointing downstream along $+z$, ordering the source, gaps, objects, and device slots (supporting side-by-side lists); which device goes into each slot is specified by the experiment, and the placement formulas are given in [Energy Deposition and Ionization](../core/deposit.md#line-along-the-beam) |
+
+#### Keys for `along_beam` Items
+
+`along_beam` lists items in order along $+z$ starting from `"source"`, with adjacent items having no `gap` between them flush against each other:
+
+```python
+"along_beam": [
+    "source",
+    {"gap": 1995}, "Al",
+    {"gap": 4978.5},
+    {"slot": "ref"}, "pcb1",
+    {"gap": 8183.5},
+    {"slot": "dut"}, "pcb2",
+]
+```
+
+| Item Kind | Key | Default | Unit | Meaning |
+| --- | --- | --- | --- | --- |
+| `"source"` | None (string) | None (required first item) | None | Source; must be the first item of `along_beam`, has thickness `0`, and carries the world coordinate origin |
+| `{"gap": d}` | `gap` | None | `um` | Gap of length $d \ge 0$ along $z$ |
+| `"<object name>"` or `{"object": "<object name>", ...}` | `object`, `offset` | `offset` defaults to `[0, 0]` | `um` for `offset` | A geometry object in `object`, occupying its thickness `side_z` along $z$ and laterally centered at `offset`; shorthand `"<object name>"` equals `offset = [0, 0]` |
+| `{"slot": "<slot name>", ...}` | `slot`, `facing`, `offset`, `rotation_z`, `colour` | `facing` defaults to `"upstream"`, `offset` to `[0, 0]`, `rotation_z` to `0`, `colour` to `[1, 0.1, 0.8]` | `um` for `offset`, `degree` for `rotation_z` | A device (for a setup with only one device, the slot name is `"Device"`), occupying the total thickness $l_z + t$ of all layers in its geometry along $z$; `facing` is `"upstream"` (front surface facing the source) or `"downstream"` (flipped $180^\circ$ about the $y$ axis, front surface facing downstream); `rotation_z` about the $z$ axis is restricted to `0`, `90`, `180`, `270`; `colour` is the visualization RGB color list `[r, g, b]` (`0` to `1`) |
+| `[item, item, ...]` | items in list | None | None | Side-by-side items whose front faces align at the same $z$, occupying the thickness of the thickest item along $z$ and staggered laterally via each item's `offset` |
+
+If the first item of `along_beam` is not `"source"`, if a `gap` is negative, if an object name is not in `object`, if the same object or slot appears twice, if `facing` is neither `"upstream"` nor `"downstream"`, if `rotation_z` has an invalid value, if side-by-side items overlap transversely, or if the slot names do not match the experiment's device table, `ValueError` is raised.
 
 #### Keys for the Two `object` Geometry Categories
 
@@ -140,8 +162,7 @@ When no setup component is specified, the code uses the built-in default diction
 | `compound_name` | `binary_compounds` (required) | None | Compound material name; compounds sharing a name within the same run must have identical composition and density |
 | `density` | `binary_compounds` (required) | `g/cm^3` | Compound density |
 | `natoms_1`, `natoms_2` | `binary_compounds` (required) | None | Atomic-count shares of the two elements (multiplied by atomic masses in code to convert to mass fractions) |
-| `side_x`, `side_y`, `side_z` | Both (required) | `um` | Full box dimensions along $x$, $y$, and $z$ |
-| `position_x`, `position_y`, `position_z` | Both (required) | `um` | Box center position in the Geant4 world coordinate system |
+| `side_x`, `side_y`, `side_z` | Both (required) | `um` | Full box dimensions along $x$, $y$, and $z$ (`side_z` is thickness) |
 | `colour` | Both (required) | None | Visualization RGB color list `[r, g, b]` (dimensionless, `0` to `1`) |
 | `tub` | Optional for `elemental`, required for `binary_compounds` (use `{}` for no hole) | `um` | Cylindrical hole subtracted from the box center along the $z$ axis, containing radius `"tub_radius"` and half-length `"tub_depth"` |
 
@@ -175,7 +196,7 @@ When no setup component is specified, the code uses the built-in default diction
 | --- | --- | --- | --- |
 | `par_type` | None (required for `beam` and monoenergetic `decay_source` without `nuclides`) | None | Geant4 particle name (such as `"e-"`, `"mu-"`, `"pi-"`, `"proton"`, `"alpha"`) or a list of particle names sampled with equal probability |
 | `par_energy` | None (required together with `par_type`) | `MeV` | Particle kinetic energy, or a list of kinetic energies of the same length as `par_type` |
-| `par_randx`, `par_randy` | `0`, `0` | `um` | Half-widths of uniform random offsets added to the $x$ and $y$ components of the emission direction vector `towards - at` (in `um`) |
+| `par_randx`, `par_randy` | `0`, `0` | `um` | Half-widths of uniform random offsets added to the $x$ and $y$ components of the emission direction vector ($\mathbf{r}_{\text{out}} - \mathbf{r}_{\text{in}}$, in `um`) |
 | `particles` | None (optional) | `um` for `offset` | List of particle dictionaries for a multi-particle bunch; all particles in the list are emitted simultaneously in every event; each item may set a translation `"offset"` (default `[0, 0, 0]` `um`) and override `par_type`, `par_energy`, `par_randx`, and `par_randy` |
 | `nuclides` | None (required for nuclide-decay `decay_source`) | None | List of radioactive nuclides `[Z, A]` at rest; each event selects one nuclide with equal probability for a single decay |
 | `par_radius` | `0` | `um` | Radius of the circular planar decay source perpendicular to the emission axis |
@@ -236,17 +257,17 @@ All remaining parameters (default world half-side length, maximum generated-even
 
 ### Geant4 Setup Construction and Coordinate Transformation (`simulate_deposits.py`, `geant4/`)
 
-1. **Merging setup and source configurations (`read_g4setup`, `g4_configuration`)**: `read_g4setup` (`loader.py`) executes `<name>.py` to obtain the `G4SETUP` dictionary and records the script `"sha256"` (raising `ValueError` if pointed at a `.json` file); when no setup is provided, `DEVICE_ALONE` is used. `g4_configuration` checks that the source dictionary does not contain placement keys `par_in`, `par_out`, or `par_angle`, and extracts `at`, `towards`, and `angle` from the setup's `source` dictionary into `par_in` (`um`), `par_out` (`um`), and `par_angle` (`degree`), respectively. Legacy keys in setup examples such as `g4_vis` and `total_events` are overridden by runtime options or ignored during merging; geometry visualization is controlled by the `-g4_vis` option of the [`deposit`](../stages/deposit.md) stage.
+1. **Merging setup and source configurations (`read_g4setup`, `g4_configuration`)**: `read_g4setup` (`loader.py`) executes `<name>.py` to obtain the `G4SETUP` dictionary and records the script `"sha256"` (raising `ValueError` if pointed at a `.json` file); when no setup is provided, `DEVICE_ALONE` is used. `g4_configuration` checks that the source dictionary does not contain placement keys `par_in`, `par_out`, or `par_angle`, sets `par_in` to the world origin `[0, 0, 0]` and `par_out` to an aiming point along $+z$ (the device front-surface center `[0, 0, P_z]` for a single slot), and extracts `angle` (default `0`) from the setup's optional `source` dictionary (default `{}`) into `par_angle` (`degree`). Geometry visualization is controlled by the `-g4_vis` option of the [`deposit`](../stages/deposit.md) stage.
 2. **Computing world size and building geometry (`world_half_side`, `GeneralDetectorConstruction`, `GDMLDetectorConstruction`)**:
-   - `world_half_side` finds the maximum extent `reach` (`um`) across the device boundary $\max(l_x/2, l_y/2, l_z)$, all `object` box boundaries $|p_u| + s_u/2$ ($u \in \{x, y, z\}$), and all source origins $|c| + \text{par\_radius}$: if $\text{reach} \le 25000\ \mu\text{m}$, the world cube half-side length is $25000\ \mu\text{m}$; otherwise it is $2 \times \text{reach}$.
-   - The Geant4 coordinate origin is placed at the center of the device top face, in `um`; the device logical volume `"Device"` occupies $x \in [-l_x/2, l_x/2]$, $y \in [-l_y/2, l_y/2]$, $z \in [0, l_z]$, with $z < 0$ above the top face.
-   - `GeneralDetectorConstruction` places `"Device"` and the boxes in `object["elemental"]` and `object["binary_compounds"]` into the world volume in order. `position_x`, `position_y`, and `position_z` are box center coordinates; to place the bottom face of a box at distance $d$ (`um`) above the device top face, set $\text{position\_z} = -(d + \text{side\_z}/2)$. When a box has a non-empty `tub`, `G4SubtractionSolid` subtracts a cylindrical hole of radius `tub_radius` and half-length `tub_depth` (`um`) along the $z$ axis from the box center. If `geant4_model == "gdml_import"`, `GDMLDetectorConstruction` is used instead to import the external GDML geometry specified by `gdml.file`.
-3. **Incidence tilt rotation (`tilted`)**: When `source.angle` (denoted $\theta$, in `degree`) is non-zero, `tilted` verifies that the source origin satisfies $z_0 < 0$ or $z_0 > l_z$ and $z_1 \ne z_0$ (raising `ValueError` otherwise), and computes the x-coordinate where the line from `at` to `towards` intersects the device entrance face $z_{\text{face}} = 0$ (when $z_0 < 0$) or $z_{\text{face}} = l_z$ (when $z_0 > l_z$):
-   $$x_{\text{pivot}} = x_0 + \frac{z_{\text{face}} - z_0}{z_1 - z_0}(x_1 - x_0) \tag{1}$$
-   It then rotates the source origin `par_in` and aim point `par_out` (including each particle's origin and aim point in `particles`) by angle $\theta$ about the axis passing through $(x_{\text{pivot}}, 0, z_{\text{face}})$ parallel to the $y$ axis:
+   - `world_half_side` centers the world cube at the midpoint $(0, 0, L_{\text{col}}/2)$ of the `along_beam` line and finds the maximum extent `reach` (`um`) across half the line's total length $L_{\text{col}}/2$, every item's transverse half-size plus `offset`, and the source disk radius `par_radius`: if $\text{reach} \le 25000\ \mu\text{m}$, the world cube half-side length is $25000\ \mu\text{m}$; otherwise it is $2 \times \text{reach}$.
+   - The Geant4 world coordinate origin $(0, 0, 0)$ is placed on the source with the $z$ axis pointing downstream along the beam, in `um`. Starting from `"source"` ($z = 0$), accumulating thicknesses and `gap`s along `along_beam` yields the front-face position $z_i$ of each item: for each slot, an active-layer logical volume named after the slot (slot name `"Device"` for a single device) and logical volumes for layers outside the active layer (see [Detector Components](../components/device.md); deposition is recorded only in the active layer) are built and placed according to `facing` (`"upstream"` facing the source, or `"downstream"` flipped $180^\circ$ about the $y$ axis facing downstream), `offset`, and `rotation_z`; in multi-slot setups the source cannot be tilted (`angle` must be `0`), and `toy_mip` tracks start from the world origin `(0, 0, 0)` along $+z$ and pass through all slots without setting `start`, `end`, or `position_range_um`.
+   - `GeneralDetectorConstruction` places the devices of all slots and the referenced boxes in `object["elemental"]` and `object["binary_compounds"]` into the world volume in `along_beam` order; each box spans $[z_i, z_i + \text{side\_z}]$ along $z$ with transverse center at `offset`. When a box has a non-empty `tub`, `G4SubtractionSolid` subtracts a cylindrical hole of radius `tub_radius` and half-length `tub_depth` (`um`) along the $z$ axis from the box center. If `geant4_model == "gdml_import"`, `GDMLDetectorConstruction` is used instead to import the external GDML geometry specified by `gdml.file` (without using `along_beam`).
+3. **Incidence tilt rotation (`tilted`)**: When `source.angle` (denoted $\theta$, in `degree`) is non-zero (used only for single-slot setups; a multi-slot setup with non-zero `angle` raises `ValueError`), `tilted` rotates the source origin and aiming point about the single-slot device front-surface center $(x_{\text{pivot}}, P_y, z_{\text{face}}) = (P_x, P_y, P_z)$:
+   $$x_{\text{pivot}} = P_x, \qquad z_{\text{face}} = P_z \tag{1}$$
+   It rotates the source origin `par_in` and aim point `par_out` (including each particle's origin and aim point in `particles`) by angle $\theta$ about the axis passing through $(x_{\text{pivot}}, P_y, z_{\text{face}})$ parallel to the $y$ axis:
    $$\begin{pmatrix} x' \\ y' \\ z' \end{pmatrix} = \begin{pmatrix} (x - x_{\text{pivot}})\cos\theta + (z - z_{\text{face}})\sin\theta + x_{\text{pivot}} \\ y \\ -(x - x_{\text{pivot}})\sin\theta + (z - z_{\text{face}})\cos\theta + z_{\text{face}} \end{pmatrix} \tag{2}$$
-   where $(x_0, y_0, z_0)$ and $(x_1, y_1, z_1)$ are `par_in` and `par_out` (`um`) before rotation, $(x, y, z)$ and $(x', y', z')$ are coordinates (`um`) before and after rotation, and surrounding geometry objects remain fixed.
-4. **Step limit, energy-window filtering, and coordinate translation (`GeneralSteppingAction`, `GeneralEventAction`, `GeneralG4Interaction`)**: Individual particle step lengths inside `"Device"` are limited by `maxstep` (`um`). Every step taken inside `"Device"` is recorded with its midpoint position $\frac{1}{2}(\mathbf{r}_{\text{in}} + \mathbf{r}_{\text{out}})$, start position $\mathbf{r}_{\text{in}}$ (`um`), global time (`s`), and deposited energy (`MeV`); when writing the deposit file, `deposits.py` keeps only steps with deposited energy greater than $0$. At the end of each event, it is counted as a recorded event only if the total deposited energy inside the device is greater than $0$ and falls within `[edep_min, edep_max]` (`MeV`). After the Geant4 run finishes, `GeneralG4Interaction` translates every step's midpoint and start point from Geant4 coordinates to detector coordinates: $x \leftarrow x + l_x/2$, $y \leftarrow y + l_y/2$, with $z$ unchanged, moving the origin to a corner of the top face so the domain becomes $x \in [0, l_x]$, $y \in [0, l_y]$, $z \in [0, l_z]$ (`um`).
+   where $(x, y, z)$ and $(x', y', z')$ are coordinates (`um`) before and after rotation, and slots and surrounding geometry objects remain fixed.
+4. **Step limit, energy-window filtering, and coordinate translation (`GeneralSteppingAction`, `GeneralEventAction`, `GeneralG4Interaction`)**: Individual particle step lengths inside each slot's active-layer logical volume are limited by `maxstep` (`um`), and every step is recorded with its midpoint position $\frac{1}{2}(\mathbf{r}_{\text{in}} + \mathbf{r}_{\text{out}})$, start position $\mathbf{r}_{\text{in}}$ (`um`), global time (`s`), and deposited energy (`MeV`); when writing the deposit file, `deposits.py` keeps only steps with deposited energy greater than $0$. Event recording is decided by the per-slot energy windows `windows`, the logical expression `require`, and the coincidence timing window `coincidence_window_ns` (see [Energy Deposition and Ionization](../core/deposit.md#recording-conditions-for-multiple-devices); a slot that is not hit in an event has no deposit steps in that event). After the Geant4 run finishes, `GeneralG4Interaction` inverse-transforms every step's midpoint and start point from Geant4 world coordinates according to that slot's `facing`, `offset`, and `rotation_z` into that slot device's own device coordinates (origin at a corner of the device front surface, with the active layer spanning $x \in [0, l_x]$, $y \in [0, l_y]$, $z \in [0, l_z]$ `um`), and writes the slot name (`"Device"` for a single device) as the detector name in the deposit file.
 
 ### Radioactive Sources, Beams, and Ionization Pair Conversion (`nuclide_source.py`, `primary_generator_action.py`, `mip_track.py`, `ionization.py`)
 
@@ -294,10 +315,11 @@ All remaining parameters (default world half-side length, maximum generated-even
 
 | Component Name | Description | Source | Applicable Devices or Experiments |
 | --- | --- | --- | --- |
-| `device_alone` | Device placed alone in vacuum (`"G4_Galactic"`), source `17 mm` above the top face, `maxstep = 2 um` | `description`: `The device alone in vacuum` | Default setup for [`deposit`](../stages/deposit.md), [`signal`](../bench/signal.md), [`bmos`](../apps/bmos.md) |
-| `Sr90_collimator` | In air (`"G4_AIR"`), a `5 mm` thick brass (`"G4_BRASS"`) collimator with a `1 mm` diameter central hole (`tub_radius = 500 um`) between source and device | `description`: `In air, a brass block 5 mm thick with a hole 1 mm across between the Sr-90 source (z = -17 mm, above the top face) and the device: the block spans z = -16.5 to -11.5 mm` | [`signal`](../bench/signal.md) |
+| `device_alone` | Device placed alone in vacuum (`"G4_Galactic"`), source `17 mm` upstream of the device front surface, `maxstep = 2 um` | `description`: `The device alone in vacuum` | Default setup for [`deposit`](../stages/deposit.md), [`signal`](../bench/signal.md), [`bmos`](../apps/bmos.md) |
+| `Sr90_collimator` | In air (`"G4_AIR"`), a `5 mm` thick brass (`"G4_BRASS"`) collimator with a `1 mm` diameter central hole (`tub_radius = 500 um`) between source and device | `description`: `In air, a brass block 5 mm thick with a hole 1 mm across between the Sr-90 source and the device` | [`signal`](../bench/signal.md) |
 | `pcb_readout_gdml` | PCB readout board setup importing external `pcb_readout.gdml` (`"geant4_model": "gdml_import"`) | File docstring: `The readout board of the PCB, imported from pcb_readout.gdml` | [`signal`](../bench/signal.md) |
-| `time_resolution` | Between the source and device under test, places `Al` (`10 um`), reference device `HPK-Si-LGAD` (centered at `z = -10000 um`, see [`timeres`](../bench/timeres.md)), and upper/lower `pcb1`, `pcb2` boards with `500 um` radius holes | File docstring: `The setup of the time-resolution experiment: a reference silicon device and boards` | Default setup for [`timeres`](../bench/timeres.md) |
+| `telescope` | In vacuum (`"G4_Galactic"`), 8 slots `ref1`, `ref2`, `ref3`, `dut1`, `dut2`, `ref4`, `ref5`, `ref6` arranged along the beam with `rotation_z` all `0`, `maxstep = 2 um` | File docstring | Default setup for [`telescope`](../bench/telescope.md) |
+| `time_resolution` | `along_beam` places `Al` (`10 um`), the reference silicon device (slot `ref`), the upper apertured board `pcb1` (`1500 um`), the DUT (slot `dut`), and the lower apertured board `pcb2` (`1500 um`) sequentially along the beam with `gap = 1995`, `4978.5`, `8183.5 um` (see [`timeres`](../bench/timeres.md)) | File docstring: `The setup of the time-resolution experiment: a reference silicon device and boards` | Default setup for [`timeres`](../bench/timeres.md) |
 
 ### Built-in Sources and Beams
 
@@ -314,6 +336,8 @@ All remaining parameters (default world half-side length, maximum generated-even
 | Straight-line MIP (`toy`) | `toy/MIP_pixel_edge` | `50`-segment straight MIP from `[600.0, 450.0, 0.0]` to `[600.0, 450.0, 300.0] um`, `landau_sampling = true` | `description`: `Straight toy MIP crossing a pixel boundary.` | `general_pixel` ($300\ \mu\text{m}$ thick pixel boundary test) |
 | Straight-line MIP (`toy`) | `toy/MIP_pixel_edge_fast` | `5`-segment straight MIP from `[600.0, 450.0, 0.0]` to `[600.0, 450.0, 300.0] um`, `landau_sampling = false` | `description`: `Low-statistics toy MIP crossing a pixel boundary for field-shape checks.` | `general_pixel` (fast field-shape check) |
 | Straight-line MIP (`toy`) | `toy/MIP_strip_edge` | Straight MIP across depth `0.0` to `67.3 um`, start $x \in [150.0, 270.0]\ \mu\text{m}$, $y = 270.0\ \mu\text{m}$, $x$-slope standard deviation `10.0 mrad`, `landau_sampling = true` | `description`: `Straight toy MIP crossing a strip boundary.` | `SiC_LGAD_strip` ($67.3\ \mu\text{m}$ thick strip boundary test) |
+| Particle beam (`beam`) | `beam/electron_5GeV_spread` | `5000 MeV` electron beam (`"e-"`), transverse aim spread half-width `par_randx = par_randy = 750 um` | Beam from original `telescope.json` | Default source for [`telescope`](../bench/telescope.md) |
+| Straight-line MIP (`toy`) | `toy/MIP_telescope` | Straight-line MIP starting from the world origin where the source sits along $+z$ and passing through all slots, slope standard deviation `1.0 mrad` in both $x$ and $y$, `landau_sampling = false` | Newly added | Fast run for [`telescope`](../bench/telescope.md) |
 | Bunch source (`bmos`) | `bunch` | Simultaneously emits three `80 MeV` protons per event at `offset` `[-1, 1, 0]`, `[0, 1, 0]`, and `[1, 1, 0] um` | `description`: `A bunch of three 80 MeV protons side by side, 1 um apart along x and 1 um off the axis along y` | Default source for [`bmos`](../apps/bmos.md) |
 
 ### Built-in Lasers and Absorption Coefficient Tables

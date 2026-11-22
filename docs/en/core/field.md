@@ -44,7 +44,7 @@ $$U_{\text{SRH}} = \frac{np - n_i^2}{\tau_p\,(n + n_1) + \tau_n\,(p + p_1)}, \qq
 
 where $n_i$ is the intrinsic carrier concentration ($\text{cm}^{-3}$, given by `BAND_STRUCTURE` in [model.md](model.md) at temperature $T$), and $\tau_n$, $\tau_p$ are the lifetimes ($\text{s}$).
 
-Code correspondence: `physics_drift_diffusion.CreateSiliconDriftDiffusion` sets up in order `CreatePE` (Eq. 1), `CreateBernoulli` and `CreateElectronCurrent`/`CreateHoleCurrent` (Eqs. 4, 5), `CreateSRH` (Eqs. 3, 6), and `CreateECE`/`CreateHCE` (Eq. 2). `create_parameter.create_parameter` writes constants for DEVSIM region materials `Silicon`, `SiliconCarbide`, `Diamond`, and `gas`. Mobility models are registered by name and selected by name in the device file, with each material having a default model (see [model.md](model.md)); in the DEVSIM solve, each material currently defaults to a constant mobility independent of electric field and doping, taken from region parameters `mu_n`, `mu_p` (Si `1450`/`500`, SiC `1100`/`114`, Diamond `110`/`1100`, in $\text{cm}^2/(\text{V}\cdot\text{s})$). Lifetimes are taken from `SRH_LIFETIME` (Si `7e-3`/`7e-3` s, SiC `2.5e-6`/`0.5e-6` s, Diamond `5.6e-7`/`2.4e-7` s); the electron lifetime of SiC is taken from [20], and the hole lifetime `0.5e-6` s is confirmed by our group's time-resolved photoluminescence measurements [21].
+Code correspondence: `physics_drift_diffusion.CreateSiliconDriftDiffusion` sets up in order `CreatePE` (Eq. 1), `CreateBernoulli` and `CreateElectronCurrent`/`CreateHoleCurrent` (Eqs. 4, 5), `CreateSRH` (Eqs. 3, 6), and `CreateECE`/`CreateHCE` (Eq. 2). `create_parameter.create_parameter` writes constants for DEVSIM region materials `Silicon`, `SiliconCarbide`, `Diamond`, and `gas`. Mobility models are registered by name and selected by name in the device file, with each material having a default model (see [model.md](model.md)); in the DEVSIM solve, each material currently defaults to a constant mobility independent of electric field and doping, taken from region parameters `mu_n`, `mu_p` (Si `1450`/`500`, SiC `1100`/`114`, Diamond `1714`/`2064`, in $\text{cm}^2/(\text{V}\cdot\text{s})$). Lifetimes are taken from `SRH_LIFETIME` (Si `7e-3`/`7e-3` s, SiC `2.5e-6`/`0.5e-6` s, Diamond `5.6e-7`/`2.4e-7` s); the electron lifetime of SiC is taken from [20], and the hole lifetime `0.5e-6` s is confirmed by our group's time-resolved photoluminescence measurements [21].
 
 All electrodes are treated as ohmic contacts (`set_contact_type` is `None` at every call site): at electrode nodes, $n = n_0$, $p = n_i^2/n_0$ (for $N_{\text{net}} > 0$) or $p = p_0$, $n = n_i^2/p_0$ (for $N_{\text{net}} \le 0$), and the potential is $\psi = V_{\text{bias}} + V_T \ln(n_0/n_i)$ or $\psi = V_{\text{bias}} - V_T \ln(p_0/n_i)$, where $n_0 = 10^{-10} + \tfrac12\bigl|N_{\text{net}} + \sqrt{N_{\text{net}}^2 + 4n_i^2}\bigr|$, and $p_0$ has the same expression with $N_{\text{net}}$ negated. The equations and contact conditions are adapted from DEVSIM examples [3].
 
@@ -162,25 +162,31 @@ where $\rho$ is the resistivity ($\Omega\cdot\text{cm}$), $\rho_0$ = `RESISTIVIT
 
 ### Device Circuit Parameters
 
-In the electronics netlist, the device is represented as a network of capacitors, resistors, and induced current sources (`DeviceCircuit`). For a single-electrode planar device, the topology places the depletion-layer capacitance $C_{\text{dep}}$ between electrode `<e>_pad` and the back of the depletion layer, with the induced current source in parallel; the undepleted bulk is $R_{\text{und}} \parallel C_{\text{und}}$ connected between the back of the depletion layer and ground; an optional bias resistor $R_{\text{bias}}$ connects `<e>_pad` to ground, and an optional coupling capacitor $C_{\text{c}}$ connects `<e>_pad` to the readout port `<e>_port`.
+In the electronics netlist, the device is represented as a network of capacitors, resistors, and induced current sources (`DeviceCircuit`). For each readout electrode `<e>`, the depletion-layer capacitance $C_{\text{dep}}$ is connected between `<e>_pad` and node `undepleted` at the back of the depletion layer, with the induced current source in parallel; all readout electrodes share this single `undepleted` node. The undepleted bulk is $R_{\text{und}} \parallel C_{\text{und}}$ connected between `undepleted` and ground. An optional bias resistor $R_{\text{bias}}$ connects `<e>_pad` to ground, and an optional coupling capacitor $C_{\text{c}}$ connects `<e>_pad` to the readout port `<e>_port`.
 
 The junction capacitance $C_{\text{dep}}$ is obtained by `junction_capacitance` in order of preference from: `capacitance_pF` in the device file (measured value), the capacitance solved by the field at that bias voltage (specific capacitance in `<V>V.cv.json` times `area_factor`), and the parallel-plate estimate of `Detector.capacitance` (readout area divided by `depletion_depth`, defaulting to `l_z`); if none of the three is available, a `ValueError` is raised. Field capacitance comes only from `<V>V.cv.json` written by the single-point capacitance subtask at that bias (recorded in `solved.capacitance`); in field nodes where only the sweep and weighting field were solved, the junction capacitance falls back to the parallel-plate estimate.
 
-The undepleted bulk follows Riegler's lumped $R \parallel C$ model [10], computed from a 1D field:
+The undepleted bulk is modeled by Riegler's lumped $R \parallel C$ model [10], using the same set of equations for 1D, 2D, and 3D devices [22]. The field provides the specific resistance $r$ and specific capacitance $c$ (per unit area), which the circuit multiplies by the device area $A$:
 
-$$R_{\text{und}} = \frac{1}{A}\sum_{k} w_k\,\bar\rho_k, \qquad C_{\text{und}} = \frac{\varepsilon A}{W_{\text{und}}}, \qquad W_{\text{und}} = \sum_k w_k \tag{20}$$
+$$R_{\text{und}} = \frac{r}{A}, \qquad C_{\text{und}} = c\,A, \qquad c = \frac{\varepsilon}{W_{\text{und}}} \tag{20}$$
+
+$$\text{1D:}\quad r = \sum_{k} w_k\,\bar\rho_k, \quad W_{\text{und}} = \sum_k w_k; \qquad \text{2D, 3D:}\quad r = \frac{1}{S}\sum_{i} \rho_i\,V_i, \quad W_{\text{und}} = \frac{1}{S}\sum_i V_i \tag{20a}$$
 
 where:
 
-- the sum runs over mesh intervals $k$ whose two adjacent nodes both belong to the undepleted bulk; a bulk node must have non-zero net doping, $n + p > 0.5|N_{\text{net}}|$, and $\rho \ge 10\ \Omega\cdot\text{cm}$ (heavily doped layers beneath electrodes are excluded);
-- $w_k$: interval width, $\text{cm}$; $\bar\rho_k$: average resistivity of the two endpoint nodes, $\Omega\cdot\text{cm}$; $W_{\text{und}}$: undepleted width;
-- $\varepsilon$: region parameter `Permittivity`, $\text{F/cm}$; $A$: `area_factor`, $\text{cm}^2$.
+- a bulk node must have non-zero net doping, $n + p > 0.5|N_{\text{net}}|$, and $\rho \ge 10\ \Omega\cdot\text{cm}$ (heavily doped layers beneath electrodes are excluded);
+- 1D: the sum runs over mesh intervals $k$ whose two adjacent nodes both belong to the undepleted bulk; $w_k$ is the interval width (cm), and $\bar\rho_k$ is the average resistivity of the two endpoint nodes ($\Omega\cdot\text{cm}$);
+- 2D, 3D: the sum runs over undepleted bulk nodes $i$; $V_i$ is the node volume (DEVSIM's `NodeVolume`, in $\text{cm}^2$ for 2D and $\text{cm}^3$ for 3D), and $\rho_i$ is the node resistivity; $S$ is the mesh span in the electrode plane (lateral width in cm for 2D, lateral area in $\text{cm}^2$ for 3D); $W_{\text{und}}$ is the average thickness of the undepleted layer;
+- $r$: $\Omega\cdot\text{cm}^2$; $c$: $\text{F/cm}^2$; $\varepsilon$: region parameter `Permittivity`, $\text{F/cm}$;
+- $A$: `area_factor` for 1D, and $l_x l_y$ for 2D and 3D, $\text{cm}^2$.
 
-At full depletion $W_{\text{und}} = 0$, and the back of the depletion layer is connected directly to ground. The device file may specify both values as the pair `undepleted_resistance_ohm` and `undepleted_capacitance_pF`, which takes precedence over the field.
+At full depletion $W_{\text{und}} = 0$, and the `undepleted` node is connected directly to ground. The device file may specify $R_{\text{und}}$ and $C_{\text{und}}$ as the pair `undepleted_resistance_ohm` and `undepleted_capacitance_pF`, which takes precedence over the field.
 
-In a row of strip electrodes (when `field_circuit` reads `Capacitance_<V>V.json`), two strips separated by $k$ positions are connected by a capacitance $C_k = \tfrac12 C_{\text{neighbour}k}\,L$ for $k \le$ `neighbours_coupled`, where $L$ is the strip length `l_y` (converted to cm); each strip's capacitance to ground is $C_{\text{total}}L$ (or `capacitance_pF`) minus the sum of its mutual capacitances to all other strips in the row.
+The lumped model is exact in 1D. In 2D and 3D, the shared node retains only the in-phase part across all electrodes: it is exact for the sum of all electrode signals, approaches exactness for a single electrode when the shaping time is much greater than $\max(\tau_0, 2\tau_r)$, and is inaccurate for signals on neighboring electrodes ($\tau_r = \varepsilon\rho$, $\tau_0 = \tau_r\,l_z/d_0$, where $d_0 = l_z - W_{\text{und}}$ is the depletion depth). When a 2D or 3D device has an undepleted layer, the device-circuit assembly step prints a warning reporting the bias voltage, $d_0$, $\tau_r$, and $\tau_0$, noting that the bias is too low and the lumped undepleted-layer parameters are inaccurate for neighboring electrodes.
 
-A resistive charge-sharing layer (`resistive_layer`) divides the layer into cells of width equal to the pitch; each cell is a node with a depletion-layer capacitance to ground, and adjacent cells are connected by layer resistances:
+In a row of strip electrodes (when `field_circuit` reads `Capacitance_<V>V.json`), two strips separated by $k$ positions are connected by a capacitance $C_k = \tfrac12 C_{\text{neighbour}k}\,L$ for $k \le$ `neighbours_coupled`, where $L$ is the strip length `l_y` (converted to cm); each strip's capacitance to `undepleted` is $C_{\text{total}}L$ (or `capacitance_pF`) minus the sum of its mutual capacitances to all other strips in the row. When building the circuit only for a section of strips near the hit strip (`part_of_row`), the $n$ strips outside the section are at virtual ground, so their corresponding capacitance is lumped into $n$ times the value of a central strip in the row and connected between `undepleted` and ground (`C_undepleted_rest`).
+
+A resistive charge-sharing layer (`resistive_layer`) divides the layer into cells of width equal to the pitch; each cell is a node connected via a depletion-layer capacitance to `undepleted`, and adjacent cells are connected by layer resistances:
 
 $$C_{\text{cell}} = c_A\,w\,l, \qquad R_{\text{row}} = \frac{R_\square}{l}\,w\,\Bigl(1 - \frac{m}{2}\Bigr), \qquad R_{\text{grid}} = R_\square\,\frac{w_\parallel}{w_\perp}\Bigl(1 - \frac{m}{2}\Bigr) \tag{21}$$
 
@@ -248,7 +254,7 @@ The quantities in the table below are written into the code. The "Key" column st
 | `eps_0` | `8.8541878128e-14` | F/cm | Same as above, and `Permittivity` of each material | None |
 | `T0` | `300.0` | K | Same as above, region parameter | None |
 | `vel_mean` | `1e7` | cm/s | Thermal velocity $v_{\text{th}}$ for defect capture | None |
-| `mu_n`, `mu_p` | Si `1450`/`500`; SiC `1100`/`114`; Diamond `110`/`1100` | $\text{cm}^2/(\text{V}\cdot\text{s})$ | Constant mobility | None (`parameter` can override any region parameter) |
+| `mu_n`, `mu_p` | Si `1450`/`500`; SiC `1100`/`114`; Diamond `1714`/`2064` | $\text{cm}^2/(\text{V}\cdot\text{s})$ | Constant mobility | None (`parameter` can override any region parameter) |
 | `taun`, `taup` | Si `7e-3`/`7e-3`; SiC `2.5e-6`/`0.5e-6`; Diamond `5.6e-7`/`2.4e-7` | s | `SRH_LIFETIME` | None |
 | `n1`, `p1` | $n_i$ | $\text{cm}^{-3}$ | SRH traps placed at the intrinsic level | None |
 | `n_i` (`gas`) | `1e-9` | $\text{cm}^{-3}$ | Dielectric for weighting field | None |
@@ -341,7 +347,7 @@ When solving for the electric field, `solver_section.main` executes in the follo
 `save_milestone` dispatches by dimension and whether a weighting field is being saved, skipping regions whose material is `"Aluminum"` or `"air"`:
 
 1. **Nodal quantities**: collects coordinates per region together with `Potential`, `NetDoping`, `Electrons`, `Holes`, `TrappingRate_n`, and `TrappingRate_p`; for DEVSIM fields, also computes `Conductive` (Eq. 19).
-2. **Undepleted bulk** (1D DEVSIM fields only): computes $W_{\text{und}}$ and specific resistance $\sum w_k\bar\rho_k$ using the bulk criterion in Eq. (20), writes `<V>V.undepleted.json` with specific capacitance $10^{12}\varepsilon/W_{\text{und}}$ ($\text{pF/cm}^2$), or `null` at full depletion, and records the bias in `solved.undepleted`.
+2. **Undepleted bulk** (DEVSIM fields, 1D, 2D, and 3D): computes $W_{\text{und}}$ and specific resistance $r$ using Eq. (20a), writes `<V>V.undepleted.json` with specific capacitance $10^{12}\varepsilon/W_{\text{und}}$ ($\text{pF/cm}^2$), or `null` at full depletion, and records the bias in `solved.undepleted`.
 3. **Plotting**: plots potential, electron and hole trapping rates, and electric field (edge electric field at mesh edge midpoints for DEVSIM fields; `ElectricField_0` for TCAD 1D/2D and the 3-component norm for TCAD 3D).
 4. **Writing pickles**: one file per quantity; `NetDoping` is written only at $V = 0$ or for TCAD fields. When `is_flip` is true, the two 2D coordinates are swapped.
 
@@ -349,8 +355,8 @@ When solving for the electric field, `solver_section.main` executes in the follo
 
 1. **Field node**: bias voltage, irradiation fluence, field mode, the selected mesh and its file hashes, and the device parts recorded in `read` (device attributes, device file keys and values such as `doping`, `bias`, and `irradiation` read during the solve) are all inputs of the field node, whose node ID is given by their fingerprint (see [../stages/field.md](../stages/field.md)); changing any of them produces a new node. This package reads from the given field node directory `field/<node_id>/`.
 2. **Asset checks**: raises `FileNotFoundError` if the requested bias is absent from `solved.potential` or `solved.weighting`.
-3. **Capacitance and undepleted layer**: `solved_capacitance` returns `specific_capacitance_pF × area_factor × 1e-12` (F); `solved_undepleted` returns $(R/A,\ C\cdot A\cdot10^{-12})$ ($\Omega$, F), where $A$ is `area_factor`, returning `None` when the undepleted width is `0`; raises `FileNotFoundError` if the corresponding bias has not been solved.
-4. **Circuit lookup** (`field_circuit`): for a strip device listing a single readout electrode with `read_ele_num > 1`, reads `Capacitance_<V>V.json`, raising `FileNotFoundError` if missing; for other devices, takes the field capacitance if that bias is in `solved.capacitance`; for 1D devices, reads the undepleted layer.
+3. **Capacitance and undepleted layer**: `solved_capacitance` returns `specific_capacitance_pF × area_factor × 1e-12` (F); `solved_undepleted` returns $(r/A,\ c\cdot A\cdot10^{-12})$ ($\Omega$, F), where $A$ is as in Eq. (20), returning `None` when the undepleted width is `0`; raises `FileNotFoundError` if the corresponding bias has not been solved.
+4. **Circuit lookup** (`field_circuit`): for a strip device listing a single readout electrode with `read_ele_num > 1`, reads `Capacitance_<V>V.json`, raising `FileNotFoundError` if missing; for other devices, takes the field capacitance if that bias is in `solved.capacitance`; for all devices, reads the undepleted layer.
 
 ### Interpolation and Caching
 
@@ -395,7 +401,7 @@ On constructing `DevsimField(device_name, voltage, read_out_contact, bounds, res
 - `create_parameter.py`: DEVSIM region constants.
 - `model_create.py`: wrappers for DEVSIM node, edge, and contact models (from DEVSIM).
 - `weighting.py`: merges conductive nodes into electrodes.
-- `conductive.py`: conductive classification and 1D undepleted bulk parameters.
+- `conductive.py`: conductive classification and undepleted bulk parameters.
 - `save_milestone.py`: disk saving, plotting, and `node.json` recording (`save_record`, `save_solved`).
 - `saved_point.py`: single-point small-signal capacitance from a saved point.
 - `reading.py`: `Reading` wrapper tracking device parts read during solving.
@@ -493,7 +499,7 @@ Files are written to the field node directory `work/<device>/field/<node_id>/`. 
 | `TrappingRate_n_<V>V.pkl`, `TrappingRate_p_<V>V.pkl` | Electron and hole trapping rates | cm; $\text{s}^{-1}$ |
 | `Conductive_<V>V.pkl` | Conductive flag, `1.0` or `0.0` | cm; None |
 | `NetDoping_0V.pkl` (`NetDoping_<V>V.pkl` for TCAD) | Net doping | cm; $\text{cm}^{-3}$ |
-| `<V>V.undepleted.json` | 1D DEVSIM field: `voltage_V`, `undepleted_width_um`, `specific_resistance_ohm_cm2`, `specific_capacitance_pF` (`null` at full depletion), `per` (`"cm^2"`) | V, $\mu\text{m}$, $\Omega\cdot\text{cm}^2$, $\text{pF/cm}^2$ |
+| `<V>V.undepleted.json` | DEVSIM field: `voltage_V`, `undepleted_width_um`, `specific_resistance_ohm_cm2`, `specific_capacitance_pF` (`null` at full depletion), `per` (`"cm^2"`) | V, $\mu\text{m}$, $\Omega\cdot\text{cm}^2$, $\text{pF/cm}^2$ |
 | `<V>V.cv.json` | Written by the single-point capacitance subtask: `voltage_V`, `specific_capacitance_pF`, `per` (`"cm^2"`, `"cm"`, `"device"`), `area_factor`, `frequency_Hz` | V, pF/unit, —, Hz |
 | `weightingfield/<contact>/Potential_<V>V.pkl` | Weighting potential | cm; None |
 | `weightingfield/<contact>/Capacitance_<V>V.json` | Stitched row: `unit` (`"F/cm"`), `of`, `total`, `to` (`neighbour<k>` and non-readout electrodes), `neighbours_coupled` | F/cm |
@@ -540,3 +546,4 @@ Files are written to the field node directory `work/<device>/field/<node_id>/`. 
 - [19] J. D. Jackson, *Classical Electrodynamics*, 3rd ed., Wiley (1999), sec. 3.12
 - [20] A. Das, S. P. Duttagupta, “TCAD simulation for alpha-particle spectroscopy using SiC Schottky diode”, Radiat. Prot. Dosim. 167 (2015) 443, doi:10.1093/rpd/ncu369
 - [21] Z. Li et al., “Mechanisms of proton irradiation-induced defects on the electrical performance of 4H-SiC PIN detectors”, JINST 21 (2026) P03010, doi:10.1088/1748-0221/21/03/P03010, arXiv:2503.09016
+- [22] S. Mägdefessel, R. Mori, N. Sorgenfrei, U. Parzefall, “Understanding the frequency dependence of capacitance measurements of irradiated silicon detectors”, arXiv:2301.09371, eqs. (2), (3)

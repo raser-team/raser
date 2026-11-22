@@ -17,15 +17,25 @@ Omitting the path uses the current folder; providing a path accepts either a rel
 
 ### Amplitude-Threshold Triggering
 
-The `HPK-Si-PiN` example triggers on an amplitude threshold: events whose waveform crosses the threshold are recorded in `trigger.h5`, and those that do not are discarded.
+Following the group's bench measurement settings, the `HPK-Si-PiN` example uses edge triggering on `CH1` of `MXR608A`: falling edge, level $-2\ \text{mV}$. Events whose digital waveform on `CH1` crosses downward past the level are recorded in `trigger.h5`, and those that do not are discarded. To change the level:
+
+```bash
+raser trig --set digitizer.device.trigger.level_V=-0.005
+```
+
+Because this modifies the trigger condition, only a new `trigger` node is produced, while `digitizer` and earlier nodes are reused as normal.
+
+### Coincidence Between Multiple Devices
+
+The two- and three-device setups of `timeres` use the standalone trigger device `coincidence`: each slot is assigned a threshold, and whether the whole event is recorded is decided from the logic expression and coincidence window, with every position recording the same set of events. See [Trigger Components](../components/trigger.md#coincidence-conditions) for the syntax.
 
 ## Rules
 
 ### Execution Flow
 
 1. Read `digitizer.h5` from the `digitizer` node (converting quantized codes back to voltage in $\text{V}$ using `lsb_V` and `offset_V`), together with the `trigger` section and the trigger conditions from the trigger component.
-2. Evaluate each event against the trigger condition to decide which events are recorded.
-3. Write the `event` (`int64`) dataset of recorded event IDs into `nodes/trigger/<node_id>/trigger.h5` (one file `trigger.<position>.h5` per position in the same node in multi-position experiments), and write this stage's plots.
+2. Evaluate each event against the trigger condition to decide which events are recorded: when `trigger.device` is `null`, use each position's oscilloscope edge or pattern trigger; otherwise use the coincidence condition of the standalone trigger device. See [Trigger (`core/trigger`)](../core/trigger.md) for the equations.
+3. Write the `event` (`int64`) dataset of recorded event IDs and `trigger_time` ($\text{s}$) into `nodes/trigger/<node_id>/trigger.h5` (one file `trigger.<position>.h5` per position in the same node in multi-position experiments), and write this stage's plots.
 
 The fingerprint of this stage's node is composed of the setting values used from the `trigger` section, the part of the trigger component used, and the node ID of the upstream `digitizer` node.
 
@@ -33,11 +43,11 @@ The fingerprint of this stage's node is composed of the setting values used from
 
 ### Settings
 
-Settings of this stage itself live in the `trigger` section of `config.json`; use `--set trigger.<key>=<value>` to modify a setting and `--scan trigger.<key>=<value1>,<value2>` to scan it. Components for standalone trigger devices are stored under `components/trigger/` and selected via the slot `trigger.device`, with their internal quantities addressed as "section.slot.key" (`--set trigger.device.<key>=<value>`, `--scan trigger.device.<key>=<value1>,<value2>`); `name` cannot be modified with `--set` or `--scan`—to switch devices, write `--set trigger.device=<component_name>`, and to scan devices, write `--scan trigger.device=<component_name1>,<component_name2>`, which replaces the entire slot with that component file and drops any previously overridden keys. When a single instrument handles both sampling and triggering (such as the `MXR608A` oscilloscope), its settings are stored once under [`components/digitizer/`](../components/digitizer.md) and read by both `digitizer` and `trigger`, with its trigger conditions in the slot `digitizer.device` addressed as `digitizer.device.<key>` (for example, `digitizer.device.trigger_level_V`); see [Trigger Components (`components/trigger`)](../components/trigger.md). Common run parameters are documented in [Command-Line Interface (`raser`)](../cli.md), and configuration sections and scanning in [Experiments, Scan Points, and Seeds](../lifecycle/experiments.md).
+The `trigger` section of `config.json` has only one key, the slot `device`: `null` means using the trigger condition of the oscilloscope in `digitizer.device`; otherwise it is the component name of a standalone trigger device or an object with `name`. An error is raised if this key is missing. Settings of this stage itself live in the `trigger` section of `config.json`; use `--set trigger.<key>=<value>` to modify a setting and `--scan trigger.<key>=<value1>,<value2>` to scan it. Components for standalone trigger devices are stored under `components/trigger/` and selected via the slot `trigger.device`, with their internal quantities addressed as "section.slot.key" (`--set trigger.device.<key>=<value>`, `--scan trigger.device.<key>=<value1>,<value2>`); `name` cannot be modified with `--set` or `--scan`—to switch devices, write `--set trigger.device=<component_name>`, and to scan devices, write `--scan trigger.device=<component_name1>,<component_name2>`, which replaces the entire slot with that component file and drops any previously overridden keys. When a single instrument handles both sampling and triggering (such as the `MXR608A` oscilloscope), its settings are stored once under [`components/digitizer/`](../components/digitizer.md) and read by both `digitizer` and `trigger`, with its trigger conditions in the slot `digitizer.device` addressed as `digitizer.device.trigger.<key>` (for example, `digitizer.device.trigger.level_V`); see [Trigger Components (`components/trigger`)](../components/trigger.md). Common run parameters are documented in [Command-Line Interface (`raser`)](../cli.md), and configuration sections and scanning in [Experiments, Scan Points, and Seeds](../lifecycle/experiments.md).
 
 ### Files Read and Written
 
 - **Read: `digitizer.h5` in the `digitizer` node** (`digitizer.<position>.h5` in multi-position experiments): Digital waveforms (quantized codes `code` together with `sampling_period`, `lsb_V`, `offset_V`, `bits`, etc.), written by the [Digitization Stage (`stages/digitizer`)](digitizer.md), read-only for this stage.
-- **Write: `nodes/trigger/<node_id>/trigger.h5`** (`trigger.<position>.h5` in the same node in multi-position experiments): List of recorded events containing the dimensionless `int64` dataset `event` of shape `(recorded,)`, storing the event IDs that pass the trigger condition; downstream [Event Reconstruction Stage (`stages/reconstruction`)](reconstruction.md) uses it to read the digital waveforms of those events from `digitizer.h5`.
+- **Write: `nodes/trigger/<node_id>/trigger.h5`** (`trigger.<position>.h5` in the same node in multi-position experiments): List of recorded events containing the dimensionless `int64` dataset `event` of shape `(recorded,)`, storing the event IDs that pass the trigger condition, the `float64` dataset `trigger_time` ($\text{s}$) of the same shape, storing the trigger times, and the attribute `events_seen`, giving the total number of events in `digitizer.h5`; downstream [Event Reconstruction Stage (`stages/reconstruction`)](reconstruction.md) uses it to read the digital waveforms of those events from `digitizer.h5`.
 - **Write: this stage's plots and `nodes/trigger/<node_id>/node.json`**: The node also contains this stage's plots and `node.json`, recording this stage's inputs, code version, runtime environment, and run status. A partially written node carries the `.part` suffix and is renamed to its final name only after writing finishes.
 - **Write: `points.json` and `points/<point>/trigger/<job>`**: The parameter table records the `trigger` node ID used by each point; the view symlink points to `../../../nodes/trigger/<node_id>`.
