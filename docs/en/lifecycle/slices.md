@@ -1,175 +1,141 @@
-# Slices, Staleness Checks, Completion Markers, and Status Inspection
+# Slices and Reruns
 
-`src/raser/lifecycle/slices.py`, `src/raser/lifecycle/status.py`, `src/raser/lifecycle/workflow.py`, and `src/raser/stages/chain.py` split each job by stage into slices (`Slice`), and manage inter-slice `needs` dependencies, slice input snapshots and staleness checks, `.done` completion markers, slice reruns, and `raser status` progress queries.
+`src/raser/lifecycle/slices.py`, `src/raser/lifecycle/status.py`, `src/raser/lifecycle/workflow.py`, and `src/raser/stages/chain.py` manage dependencies among stages in the chain, result reuse, and `raser status`. They receive the scan points and sectioned configuration expanded by [Experiments, Scan Points, and Seeds](experiments.md) together with the stage composition declared by each experiment class; chain assembly is described in [Simulation Chain and Stage Entry Points (`stages`)](../stages/README.md). This module fingerprints each stage's inputs, decides which nodes are reused and which must be newly computed, and runs stages in dependency order within a single job. Jobs needing new computation are handed to [Jobs, Logs, Locks, Resuming, and Cluster Submission](jobs.md) to run locally or on a cluster; written nodes are read by downstream stages and [Statistical Analysis Stage (`stages/analysis`)](../stages/analysis.md).
 
-## Inputs
+## Behavior
 
-### Slice Definitions (`Slice` and `Shared`) and Simulation Chain Expansion
+### Stages in the Chain
 
-`Slice` (`src/raser/lifecycle/slices.py`) defines one execution segment of a single job:
+There are eight stages in the chain, with equal standing. Each stage reads results written by its upstream stages:
 
-| Field | Type | Default | Description |
-| --- | --- | --- | --- |
-| `name` | `str` | Required | Slice name, corresponding to the prefix of its slice data file and `.done` marker file |
-| `run` | `Callable` | Required | Execution function `run(options) -> dict \| None`; its return value is written to the slice's `.done` file |
-| `keys` | `tuple` | `()` | Tuple of experiment option names that directly affect this slice's output |
-| `kinds` | `tuple` | `()` | Tuple of component file kinds that directly affect this slice's output |
-| `new_events` | `bool` | `True` | Whether scanning options of this slice generates independent events; when `True` (without `--same-seeds`), each scan point runs its upstream slices independently; when `False`, scan points share the same upstream slices |
-| `shared` | `Shared \| None` | `None` | Cross-experiment shared resource interface (containing the three callbacks `ready`, `start`, and `stamp`) |
-| `needs` | `tuple \| None` | `None` | Tuple of upstream slice names whose outputs this slice directly reads; `None` means the preceding slice in the list, and `()` means no upstream slice dependencies |
-
-`src/raser/stages/chain.py` constructs the slice sequence for the standard simulation chain:
-
-- Single device, single position:
-
-| Slice Name | `needs` | `keys` | `kinds` | `new_events` | `shared` |
-| --- | --- | --- | --- | --- | --- |
-| `deposit` | `()` | `source`, `g4setup`, `events_per_job`, `generated_per_job`, `generated_limit`, `edep_min`, `edep_max`, `fano` | `source`, `g4setup` | `True` | `None` |
-| `field` | `()` | `voltage`, `irradiation` | `()` | `True` | [`field.SHARED`](../stages/field.md) |
-| `current` | `("deposit", "field")` | `plots` | `()` | `True` | `None` |
-| `readout` | `("current", "field")` | `amplifier`, `sheet_resistance` | `()` | `False` | `None` |
-| `reconstruction` | `("readout",)` | `threshold`, `amplitude_threshold`, `fractions`, `edge` | `()` | `False` | `None` |
-
-- Multiple devices or multiple positions: the first slice is `deposit`; each device gets its own field slice (named `field.<device>` when there is more than 1 device, each with its own shared field interface); each position generates `current.<position>`, `readout.<position>`, and `reconstruction.<position>` in order.
-
-### Dependency Propagation and Parameter Ownership
-
-Each slice traces backward along `needs` to all of its upstream slices: any option or component file read by the slice itself or by any of its upstream slices is recorded in that slice's input snapshot under `run.json["slices"]`. Keys not explicitly assigned to a specific slice (such as `device.*`) belong to all root slices (`deposit` and `field`).
-
-### Run Records and On-Disk Marker Files
-
-Staleness checks, slice reruns, and `raser status` read the following files and keys:
-
-- `<experiment_folder>/config.json`: Reads experiment settings and scan lists.
-- `<seed_or_point_folder>/run.json`: Reads `"slices"` (each slice's parameter snapshot and shared slice digest), `"held_in"` (the scan-point directory where each slice is actually stored), `"commit"`, `"settings"`, `"seed"`, `"point"`, `"same_seeds"`, `"jobs"`, and `"waiting"`.
-- `<slice_holder_folder>/batch/<slice_name>_<index>.done`: Completion marker and optional JSON return value for a single job on the corresponding slice.
-- `<seed_or_point_folder>/batch/job_<index>.done`: Completion marker indicating that all slices of a single job have finished.
-- `<seed_or_point_folder>/batch/job_<index>.lock`, `batch/job_<index>.log`, `batch/<slice_name>_<index>.submitted`: Read by `raser status` to determine real-time job status (see [Jobs and Cluster Submission](jobs.md)).
-
-## Outputs
-
-### Stage Slice Data Files `batch/<slice_name>_<index>.h5`
-
-Each slice reads and writes its slice data files under `batch/` in the folder holding that slice (specified by `held_in`):
-
-| File Path | Written by Slice |
+| Stage | Upstream stage results read |
 | --- | --- |
-| `batch/deposit_<job>.h5` | [`deposit`](../stages/deposit.md) |
-| `batch/current_<job>.h5` or `batch/current.<position>_<job>.h5` | [`current`](../stages/current.md) / `current.<position>` |
-| `batch/readout_<job>.h5` or `batch/readout.<position>_<job>.h5` | [`readout`](../stages/readout.md) / `readout.<position>` |
-| `batch/reconstruction_<job>.h5` or `batch/reconstruction.<position>_<job>.h5` | [`reconstruction`](../stages/reconstruction.md) / `reconstruction.<position>` |
+| `field` | None |
+| `deposit` | None |
+| `current` | `field`, `deposit` |
+| `readout` | `field`, `current` |
+| `digitizer` | `readout` |
+| `trigger` | `digitizer` |
+| `reconstruction` | `trigger` |
+| `analysis` | `deposit`, `current`, `reconstruction` |
 
-### Completion Markers `batch/<name>_<index>.done` and Outputs Set Aside as `.stale`
+`field` and `deposit` are independent of each other and form the two roots of the chain. A device's field is an asset of that device, stored in `work/<device>/field/` and shared across all experiments on that device.
 
-- **Slice completion marker `batch/<slice_name>_<index>.done`**: Written under `batch/` in the folder holding the slice. An executed slice writes `.done.part` first and atomically replaces it: an empty file when there is no return value, or JSON when a value is returned (for example, the `field` slice records the shared field directory path, a multi-position run with no depositions at a position records `{"events": 0}`, and early termination on zero depositions records `{"ended": true}`); downstream slices skipped because an upstream slice `ended` create an empty `.done` marker directly via `touch()`.
-- **Whole-job completion marker `batch/job_<index>.done`**: Once all slices of the job have finished, an empty `batch/job_<index>.done` is created under the current seed or scan-point folder.
-- **Outputs set aside as `.stale`**: If `run.json` is modified by another concurrent command while a slice is running, the newly generated slice output is renamed to `<original_filename>.stale` and the user is prompted to rerun the command.
+To run only up to a specific stage in the chain, invoke that stage's command, for example `raser readout [path]`, `raser digitizer [path]` (`digi`), or `raser trigger [path]` (`trig`). The program fills in missing upstream stages and stops at that stage. See [Command-Line Interface (`raser`)](../cli.md) for the command list.
 
-### Staleness Checks and Slice Reruns
+### Nodes and Fingerprints
 
-On each command invocation, the program compares the newly computed input snapshots and shared slice digests for all slices against the existing `run.json`:
+One result computed by a stage for a given set of inputs is a node, stored in `<experiment>/nodes/<stage>/<node_id>/`. A node's inputs consist of four items:
 
-- Only slices whose input snapshot or shared slice digest changed—along with their downstream slices—have their `.done` markers cleared and are rerun in place. A slice displays `reused` only when its inputs are unchanged and all requested job indices already have `.done` markers; otherwise it displays the pending job indices.
-- If CLI `settings` changed, or all non-shared slices need to rerun, or (under the default check when no custom `outdated` callback is provided) the code `commit` changed, contains uncommitted changes `+dirty`, or any other recorded field changed, the entire run is marked stale (for example, the `field` workflow checks only CLI `settings`, options, device `"field"` configuration, and the device values actually read by the solver): seeded runs rename the old seed directory to `<label>_<YYYY_mmdd_HHMMSS>` and keep it aside, while unseeded runs replace it in place.
+- the setting values used by this stage;
+- the part of the component files used by this stage;
+- the node IDs of its upstream nodes;
+- the seeds of the measurement stages (`deposit`, `current`), and `readout`'s own seed (NGspice noise).
 
-### What Happens in the Example
+The fingerprint is computed from these inputs, and the fingerprint is the node ID. The node folder contains the files written by this stage and a `node.json`. `node.json` records the inputs verbatim, and additionally records the code version, runtime environment, and run status. A device's field is likewise a node, stored under `work/<device>/field/`.
 
-In the [Getting Started](../getting-started.md) example, first run with `--dry-run`:
+Upstream node IDs are inputs to downstream stages. When a node changes, every stage that reads it directly or indirectly receives a new node ID, while the node IDs of all other stages remain unchanged. For example, changing only one setting in the `readout` section reuses the `field`, `deposit`, and `current` nodes as usual, while `readout` and the downstream `digitizer`, `trigger`, `reconstruction`, and `analysis` stages are computed as new nodes.
+
+### Reuse
+
+Nodes with the same fingerprint are reused regardless of which scan point or run computed them. Rerunning the same command verbatim (with the same `--seed`) directly reuses completed nodes and computes only the missing ones.
+
+Nodes are append-only. Changing a setting back points the view back to the original node and reuses it directly. For example, changing the number of events per job from 20 to 40 computes everything into new nodes while leaving the old nodes intact; changing it back to 20 points the views back to the old nodes and reuses all of them directly.
+
+### Sharing Nodes Across Scan Points
+
+When a scan affects only downstream settings, upstream nodes are shared across scan points. Changing bias voltage is a new measurement, so each bias is measured separately.
+
+Scan two things simultaneously on `signal`: `field.voltage=100,200`, and two values of a resistor in `readout`.
+
+| Stage | Number of nodes | Reason |
+| --- | --- | --- |
+| `deposit`, `current` | 2 | Changing bias is a new measurement, so each bias is measured separately; only `readout` reads the resistor, so both resistor values share these two nodes |
+| `readout` and downstream | 4 | Two bias values times two resistor values |
+
+When `--same-seeds` is passed, jobs with the same index across scan points share random seeds, so upstream results unaffected by the scan are reused across points.
+
+On each run, the program computes the parameter table `points.json` from `config.json`: one row per scan point, recording the values of all scan axes and the node ID used for each stage.
+
+### Views
+
+`<experiment>/points/<point>/<stage>` is a symlink pointing to the node. Point names are derived from scan-axis values, such as `voltage_100`, serving as human-readable entry points. After changing settings or adding a scan axis, the point name may stay the same while the node it points to updates accordingly, so parameters and results always match.
+
+### Code Version
+
+When the code version differs from the one recorded in a node, only a notice is printed and the result is still reused as usual.
+
+### Locking
+
+Each node is locked individually. A node being written carries a `.part` suffix and is renamed to its final name only when writing finishes, so every node with a final name is a complete result.
+
+### Early Termination
+
+When a stage leaves nothing computable for downstream stages, the job ends there. For example, if `deposit` records zero events, downstream stages are marked done directly.
+
+### Checking Progress
+
+`raser status [path]` prints the project's parameter table: the status and node ID of each experiment, scan point, and stage.
 
 ```bash
-raser signal HPK-Si-PiN --scan voltage=100,200 -s 2 -evt 200 --seed 1 --dry-run
+raser status work/my-PiN
 ```
 
-The terminal prints the pending slices and job indices for each scan point:
+Each cell shows the status and node ID of that point at that stage. Status is formatted as `<completed_jobs>/<total_jobs> done`, for example `2/2 done`; unfinished jobs are listed by job index grouped by status after a semicolon. A job has seven possible statuses:
 
-```text
-work/HPK-Si-PiN/signal/voltage_100/seed_1: jobs [0, 1]
-  deposit        jobs [0, 1]
-  field          jobs [0, 1]
-  current        jobs [0, 1]
-  readout        jobs [0, 1]
-  reconstruction jobs [0, 1]
-work/HPK-Si-PiN/signal/seed_1: jobs [0, 1]
-  deposit        jobs [0, 1]
-  field          jobs [0, 1]
-  current        jobs [0, 1]
-  readout        jobs [0, 1]
-  reconstruction jobs [0, 1]
-```
+- **`done`**: This job's result at this stage has finished writing.
+- **`running`**: Currently running.
+- **`submitted`**: Submitted to the cluster, and the scheduler confirms it is still on the cluster.
+- **`uncertain`**: Submitted, but querying the scheduler failed or timed out after `120 s`, so its state cannot be confirmed.
+- **`failed`**: Submitted but no longer found on the cluster while the result is unfinished; or a local job left a log without completing.
+- **`waiting`**: An upstream stage has not finished writing, or a required field is not ready yet.
+- **`not started`**: All upstream stages have finished writing, and this job has not been started, has not been submitted, and has no failure log.
 
-This output shows:
+Adding `--dry-run` before running prints only the scan points, stages, and job statuses to be run and returns immediately.
 
-- The experiment expands into two scan points: `100 V` corresponds to `voltage_100/seed_1`, and the default bias `200 V` corresponds to `seed_1` under the experiment root.
-- Each scan point runs two jobs (`0` and `1`), and each job passes sequentially through five slices: `deposit`, `field`, `current`, `readout`, and `reconstruction`. Before launching jobs, `field` checks whether the shared field in `work/HPK-Si-PiN/field/` is ready; when it is not ready, `raser field` is invoked automatically to solve the `100 V` and `200 V` fields, and the shared field digest (`"23679e6b10596a26"` in `seed_1/run.json` of the example) is written into `"shared"` for `field` and its downstream slices `current`, `readout`, and `reconstruction`.
-- Because `voltage` belongs to the `field` slice (and `--same-seeds` is not enabled), the two bias points each store their own outputs for all 5 slices independently (all 5 slices map to the empty string `""` in `held_in`).
+## Rules
 
-After all jobs finish, run `raser status work/HPK-Si-PiN/signal` to inspect progress:
+### Propagation of Node IDs
 
-```text
-work/HPK-Si-PiN/signal/voltage_100/seed_1:
-  deposit     2/2 done
-  field       2/2 done
-  current     2/2 done
-  readout     2/2 done
-  reconstruction2/2 done
-work/HPK-Si-PiN/signal/seed_1:
-  deposit     2/2 done
-  field       2/2 done
-  current     2/2 done
-  readout     2/2 done
-  reconstruction2/2 done
-```
+1. A stage has only four inputs: the setting values used by this stage, the part of the component files it uses, the node IDs of the upstream nodes it directly reads, and the seeds of the measurement stages (`deposit`, `current`) as well as `readout`'s own seed (NGspice noise).
+2. The node ID is the fingerprint of these four inputs. The code version, runtime environment, and run status are recorded separately in `node.json`.
+3. Upstream node IDs enter downstream inputs, so changes propagate downward along the table in "Stages in the Chain": when a stage's node ID changes, the node IDs of stages that read it change too, all the way to the end of the chain.
 
-Both jobs for both scan points have completed every slice (`2/2 done`).
+### Reuse and Sharing
 
-### `raser status <experiment>` Status Definitions
+1. Before computing a stage for a scan point, its node ID is computed first. If a node with that node ID already exists, it is reused directly.
+2. If two scan points have identical inputs at a stage, their node IDs are identical and both points share that single node.
+3. Nodes are append-only. Changing settings back restores the original node ID and points the view back to the original node.
+4. When the code version differs from the one recorded in a node, the node is still reused as usual and only a notice is printed.
 
-`raser status` inspects `.done`, `.lock`, `.submitted`, `.log`, and shared-slice readiness for each job of every slice (or sliceless workflow), classifying each job into one of the following 7 statuses (while also noting cases such as missing `run.json`, runs that are `out of date` compared to the current `config.json`, or runs `waited for by` other commands):
+## Software Implementation
 
-| Status | Condition |
-| --- | --- |
-| `done` | `batch/<slice>_<i>.done` exists under the folder holding that slice (`batch/job_<i>.done` for sliceless workflows) |
-| `running` | Not done, and another process currently holds `batch/job_<i>.lock` in that folder |
-| `submitted` | Not done and not running locally, `batch/<slice>_<i>.submitted` exists, and the cluster scheduler confirms the job is still in the cluster |
-| `uncertain` | `batch/<slice>_<i>.submitted` exists, and the cluster scheduler cannot be queried (command error or timeout exceeding 120 s) |
-| `failed` | `batch/<slice>_<i>.submitted` exists but the scheduler confirms the job is no longer in the cluster (the `.submitted` file is automatically deleted); or `batch/job_<i>.log` exists and, for a sliced workflow, the log is missing the normal completion line `"raser: the job ran its slices"` |
-| `waiting` | An upstream slice has unfinished jobs; for scan points requested by the current `config.json`, also `waiting` when a required shared slice is not ready yet (extra on-disk points discovered outside `config.json` check only upstream slices and marker files) |
-| `not started` | All upstream slices are done (or there are no upstream slices), and the job has not been started, has not been submitted, and has no failure log |
+### Module and File Responsibilities
 
-## Options
+- `src/raser/lifecycle/slices.py`: Dependency queries among stages (who reads whom, transitive closure of upstream stages), and running stages one by one in dependency order within a single job.
+- `src/raser/lifecycle/workflow.py`: Deciding which results are reused and which are newly computed, coordinating sharing across scan points, and ordering scan-point execution.
+- `src/raser/lifecycle/status.py`: The `raser status` subcommand.
+- `src/raser/stages/chain.py`: Assembling the stages into the standard chain.
 
-| Command / Argument | Default | Unit | Description |
+## Interface
+
+### Options
+
+| Option | Default | Unit | Meaning |
 | --- | --- | --- | --- |
-| `raser status <experiment>` | Required | None | Inspect job progress across scan points and slices under the experiment folder `<experiment>` (such as `work/<device>/<command>`) |
-| `raser deposit <target>` (alias `dep`) | Required | None | Run `<target>` (an experiment folder, or `work/<device>/signal` for a device name) up through the `deposit` slice |
-| `raser current <target>` (alias `cur`) | Required | None | Run the simulation chain of `<target>` up through the `current` (or all `current.<position>`) slice(s) |
-| `raser readout <target>` (alias `rdo`) | Required | None | Run the simulation chain of `<target>` up through the `readout` (or all `readout.<position>`) slice(s) |
-| `raser reconstruction <target>` (alias `reco`) | Required | None | Run the simulation chain of `<target>` up through the `reconstruction` (or all `reconstruction.<position>`) slice(s) |
+| `raser status [path]` | None | None | Prints the project's parameter table: status and node ID of each experiment, scan point, and stage |
+| `--seed` | None | None | Integer random seed to make simulation results reproducible |
+| `--same-seeds` | Off | None | Makes jobs with the same index across scan points share random seeds so upstream results unaffected by the scan are reused across points |
+| `--dry-run` | Off | None | Prints only the scan points, stages, and job statuses to be run and returns immediately |
 
-The stage commands `raser deposit|current|readout|reconstruction` also accept all options of that stage and its upstream stages (see [CLI Overview](../cli.md)) as well as the shared run options in [Experiments and Scan Points](experiments.md).
+`--set` and `--scan` use `"section.key"` as the address, for example `--set field.voltage=100` and `--scan field.voltage=100,200`; see [Experiments, Scan Points, and Seeds](experiments.md) for scan syntax.
 
-## Common Errors
+### Files Read and Written
 
-- `SystemExit: <target>: neither an experiment folder (a folder with a config.json) nor a device; give one of them, e.g. work/<device>/cce or HPK-Si-PiN`: The `<target>` passed to a stage command is neither an experiment folder containing `config.json` nor a matching device file (only `FileNotFoundError` is caught; if the target exists but is not a readable device file, the original exception propagates).
-- `SystemExit: <folder>: the experiment <workflow> has no <stage> slice; its slices: <names>`: The target experiment's workflow slice list does not contain the requested `<stage>`.
-- `ValueError: no slice <until> in <named>`: The requested cutoff slice name `until` matches neither the full name of any slice in the current workflow nor the stage-name prefix before the first `.` of any slice.
-- ``FileNotFoundError: no field of <det_name> ready for this run: solve it with `raser field <det_name>` ``: No ready electric field matching the device, bias voltage, and irradiation fluence was found when executing the `field` slice.
-- `RuntimeError: <piece.name> was made in this process and is still not ready for a point of <root>: waiting would not help`: After the local process finished building a shared slice, the shared slice is still not ready.
-- `RuntimeError: <piece.name> of job <index> needs <earlier.name>, which is not done in <folder>`: During slice startup checks, an upstream slice is missing its `.done` marker in its holding folder.
-- `RuntimeError: run.json changed while <piece.name> of job <index> ran: its output is set aside as .stale and not marked done; run the command again`: `run.json` was modified by a concurrent command while the slice was running, so the newly generated output file has been renamed to `.stale`.
-- `SystemExit: <k> of <n> points failed:\n  <folder>: jobs <waiting> wait for <needed>`: A shared slice or cross-scan-point upstream slice needed by jobs of a scan point has not finished yet.
-- `SystemExit: <k> of <n> points failed:\n  <folder>: jobs <running> run there now; the new settings did not take effect there; run the command again when they are done`: When a run folder needs to rerun stale slices, running jobs inside that folder still hold `batch/job_<i>.lock`.
+- `<experiment>/config.json`: Read-only in this module. Lists all settings used by the run, separated into the eight sections `field`, `deposit`, `current`, `readout`, `digitizer`, `trigger`, `reconstruction`, and `analysis`; see [Experiments, Scan Points, and Seeds](experiments.md) for the format.
+- `<experiment>/points.json`: Parameter table. Computed from `config.json` on each run, one row per scan point, listing scan-axis values and the node ID used for each stage. Printed by `raser status`.
+- `<experiment>/nodes/<stage>/<node_id>/`: Node directory. Contains the files written by this stage and `node.json`; carries a `.part` suffix while being written.
+- `work/<device>/field/<node_id>/`: Device field node referenced by all experiments on that device.
+- `<experiment>/points/<point>/<stage>`: View, a symlink pointing to the node.
 
-## Related Pages
-
-- [Getting Started](../getting-started.md)
-- [Architecture Overview](../architecture.md)
-- [CLI Overview](../cli.md)
-- [Experiments and Scan Points](experiments.md)
-- [Jobs and Cluster Submission](jobs.md)
-- [Field Stage](../stages/field.md)
-- [Deposit Stage](../stages/deposit.md)
-- [Current Stage](../stages/current.md)
-- [Readout Stage](../stages/readout.md)
-- [Reconstruction Stage](../stages/reconstruction.md)
-- [Analysis Stage](../stages/analysis.md)
+Formats of data files written by each stage inside its node are documented in [Field Solving and Loading (`core/field`)](../core/field.md), [Energy Deposition and Ionization (`core/deposit`)](../core/deposit.md), [Carrier Drift and Induced Current (`core/current`)](../core/current.md), [Electronics Readout (`core/readout`)](../core/readout.md), [Digitizer (`core/digitizer`)](../core/digitizer.md), [Trigger Stage (`stages/trigger`)](../stages/trigger.md), and [Event Reconstruction (`core/reconstruction`)](../core/reconstruction.md).

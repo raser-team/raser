@@ -1,215 +1,176 @@
 # Architecture Overview
 
-This page summarizes RASER's source directory layers and module dependency directions, how simulation chain stages connect, what data and completion markers are handed off between slices, how experiment workflows assemble stages, and where each stage writes plot outputs. Parameter, option table, and interface details are in [lifecycle/](lifecycle/experiments.md), [stages/](stages/README.md), and the `core/` pages.
+This page describes RASER's source layout, experiment class mechanism, projects and configuration, how results are stored, the eight-stage simulation chain, components and physical models, and where assets live. Details of file formats, fields, units, and options are in [stages/README.md](stages/README.md), [lifecycle/experiments.md](lifecycle/experiments.md), [core/model.md](core/model.md), [components/device.md](components/device.md), and their respective pages.
 
-## Source Directory Layers and Dependency Direction
+## Layout
 
-Under `src/raser/`, there are 8 subpackages. One-way dependencies between modules and independence between experiments are enforced during `make lint` by `importlinter` contracts in `pyproject.toml` (arrows indicate import and dependency direction):
+```text
+src/
+├── raser/        # core library: core, stages, lifecycle, components, cli, supports, and the experiment base class to inherit from
+├── raser_bench/  # benchmark classes: signal, timeres, tct, telescope
+└── raser_app/    # application classes: bmos, cflm, hbf, pimg
+examples/         # configured example projects, in the repository only, alongside work/
+work/             # user projects
+```
 
 ```mermaid
 flowchart TD
-    CLI["raser.cli<br/>Unified command-line entry"] --> APPS["raser.apps<br/>Specialized applications: bmos, cflm"]
-    CLI --> BENCH["raser.bench<br/>Benchmark experiments: cce, signal, tct, telescope, timeres"]
-    CLI --> STAGES["raser.stages<br/>Stage wrappers and standalone workflows"]
-    CLI --> LIFECYCLE["raser.lifecycle<br/>Experiments, slices, and job scheduling"]
+    BENCH["raser_bench<br/>signal, timeres, tct, telescope"] --> RASER
+    APP["raser_app<br/>bmos, cflm, hbf, pimg"] --> RASER
 
-    APPS --> STAGES
-    APPS --> LIFECYCLE
-    BENCH --> STAGES
-    BENCH --> LIFECYCLE
-
-    STAGES --> LIFECYCLE
-    STAGES --> CORE
-    STAGES --> COMPONENTS["raser.components<br/>Devices, sources, lasers, Geant4 setups, and amplifiers"]
-    LIFECYCLE --> CORE
-    LIFECYCLE --> COMPONENTS
-
-    subgraph CORE["raser.core (Physics and numerical computation, top-down one-way layering)"]
+    subgraph RASER["raser (core library and experiment base class)"]
         direction TB
-        C_ANA["analysis"] --> C_RECO["reconstruction"] --> C_DIG["digitizer"] --> C_RDO["readout"] --> C_CUR["current"] --> C_DEP["deposit"] --> C_FLD["field"] --> C_DEV["device"] --> C_MOD["model"]
+        CLI["cli"] --> STAGES["stages"]
+        CLI --> LIFECYCLE["lifecycle"]
+        STAGES --> LIFECYCLE
+        STAGES --> CORE["core<br/>analysis → reconstruction → digitizer → readout → current → deposit → field → device → model"]
+        STAGES --> COMPONENTS["components"]
+        LIFECYCLE --> CORE
+        LIFECYCLE --> COMPONENTS
+        CORE --> SUPPORTS["supports"]
+        COMPONENTS --> SUPPORTS
+        LIFECYCLE --> SUPPORTS
+        STAGES --> SUPPORTS
+        CLI --> SUPPORTS
     end
-
-    CORE --> SUPPORTS["raser.supports<br/>Paths, output checks, dependencies, and process support"]
-    COMPONENTS --> SUPPORTS
-    LIFECYCLE --> SUPPORTS
-    STAGES --> SUPPORTS
-    CLI --> SUPPORTS
 ```
 
-Responsibilities and boundaries of each layer are as follows:
+- **Single distribution**: `pip install raser` installs all three packages `raser`, `raser_bench`, and `raser_app` together.
+- **One-way dependency**: `raser_bench` and `raser_app` import `raser`; `raser` contains only the library and mechanisms, while concrete benchmarks and applications live in the two parallel packages. Layering is checked by the `import-linter` contracts in `pyproject.toml`.
+- **Full names of benchmarks and applications**: Among benchmark classes, `timeres` is Time Resolution and `tct` is Transient Current Technique; among application classes, `bmos` is Beam Monitor Online System, `cflm` is CEPC Fast Luminosity Monitor, `hbf` is Hydrogen–Boron Fusion (p–¹¹B), and `pimg` is Proton Imaging.
 
-- **`raser.cli`** ([cli.md](cli.md)): Sole top-level CLI entry point. Parses global options, auto-completes commands in experiment directories, and dispatches arguments to the target module. Lower layers are called one-way from it.
-- **`raser.bench` and `raser.apps`**: Benchmark experiments (`cce`, `signal`, `tct`, `telescope`, `timeres`) and specialized applications (`bmos`, `cflm`) remain independent of each other. Each assembles workflows from `stages` and `lifecycle`.
-- **`raser.stages`** ([stages/README.md](stages/README.md)): Wraps physics calculations into composable lifecycle slices, stage commands (`dep`, `cur`, `rdo`, `reco`), and standalone workflows (`field`, `analysis`), independent of specific experiments.
-- **`raser.lifecycle`** ([lifecycle/experiments.md](lifecycle/experiments.md), [lifecycle/slices.md](lifecycle/slices.md), [lifecycle/jobs.md](lifecycle/jobs.md)): Manages experiment directories, `config.json`, `run.json`, parameter scans, slice reuse, and local/cluster job scheduling.
-- **`raser.core`**: Pure physics and numerical computation layer, decoupled from the CLI and scheduling layers. Its 9 stage subpackages form a strict one-way hierarchy: `model` → `device` → `field` → `deposit` → `current` → `readout` → `digitizer` → `reconstruction` → `analysis`. Upper subpackages may only import lower ones.
-- **`raser.components` and `raser.supports`** ([supports/README.md](supports/README.md)): Provide built-in and external component lookup/loading, plus shared infrastructure for paths, output boundaries, dependency hints, and process cleanup.
+## Experiments Are Python Classes
 
-## Simulation Chain: How Stages Connect
+- **Inheriting the experiment base class**: Each benchmark or application is a Python class inheriting from the `raser` experiment base class. The class declares which stages it consists of, which devices it has, what role each device plays (for example, device under test or reference device), and default values.
+- **Device under test as the subject**: The device given on the command line replaces the device under test. For example, `telescope` uses TAICHU as the reference by default, and the command line swaps the device under test placed in the middle.
+- **Benchmark class outputs**: Placed under the device's project, i.e., `work/<device>/<bench>/`, keeping all benchmark results for the same device together.
+- **Application class outputs**: Placed under `work/<app>/`; the device can be a scan axis (multiple device axes are supported) to compare the results obtained with different devices installed.
+- **Custom experiment registration**: A user's own benchmark or application is written as such a class, placed in the user's own package (registered via entry points) or inside the user's project folder (auto-discovered), and registered by name; the official `raser_bench` and `raser_app` use the exact same mechanism.
 
-In a standard single-device, single-position simulation, each job passes sequentially through five slices: `deposit`, `field`, `current`, `readout`, and `reconstruction`. After all jobs finish, the standalone `analysis` workflow aggregates results across scan points:
+## project
 
-```mermaid
-flowchart LR
-    DEV["Component definitions<br/>device / source / g4setup"] --> DEP["deposit<br/>Energy deposition and ionization pairs"]
-    DEV --> FLD["field (shared across experiments)<br/>work/&lt;device&gt;/field/"]
-    DEP -- "deposit_&lt;job&gt;.h5" --> CUR["current<br/>Carrier drift and induced current"]
-    FLD -- "Potential / weighting field / trapping rate / conductive region" --> CUR
-    CUR -- "current_&lt;job&gt;.h5" --> RDO["readout<br/>Equivalent circuit and amplifier waveform"]
-    FLD -- "CV / undepleted bulk / inter-strip coupling capacitance" --> RDO
-    RDO -- "readout_&lt;job&gt;.h5" --> RECO["reconstruction<br/>Baseline / amplitude / timing / cluster"]
-    DEP -. "deposit_&lt;job&gt;.h5 (truth)" .-> ANA["analysis (standalone workflow)<br/>&lt;experiment&gt;/analysis/"]
-    CUR -. "current_&lt;job&gt;.h5 (efficiency)" .-> ANA
-    RECO -. "reconstruction_&lt;job&gt;.h5" .-> ANA
-```
+- **project**: A device folder or an application folder under `work/`.
+- **examples**: Each example under `examples/` is a project, such as `examples/HPK-Si-PiN/` (containing `signal/`, `timeres/`, etc., each with a complete `config.json`) and `examples/bmos/`.
+- **Sectioned configuration file**: `config.json` in each experiment folder specifies all settings used for the run, sectioned by stage (one section each for `field`, `deposit`, `current`, `readout`, `digitizer`, `trigger`, `reconstruction`, and `analysis`). `--set` and `--scan` use `"section.key"` as the address, for example `--set field.voltage=100` and `--scan field.voltage=100,200`. Every setting used by a run comes from the configuration file.
+- **Creating a new project**: `raser new --from <example> <path>` copies the entire example project to `<path>` with a complete configuration, independent of the example thereafter. For example, `raser new --from HPK-Si-PiN work/my-PiN`.
+- **Referencing a device**: If the project folder contains its own device file, that file is used; when only a name is given, it is looked up in the component library.
 
-Chain handoff and reuse follow these rules:
+Details of configuration merging, scan-point expansion, and job scheduling are in [lifecycle/experiments.md](lifecycle/experiments.md) and [lifecycle/jobs.md](lifecycle/jobs.md).
 
-- **Field shared across experiments (`field`)**: Experiments on the same device share solved results in `work/<device>/field/`. Inputs that determine whether a field can be reused or must be recomputed include: experiment options `voltage` (mapped to `device.bias.voltage`) and `irradiation`, solver settings under `"field"` in the device definition plus attributes, JSON keys, and auxiliary mesh/doping files actually read by the solver, field solving options `irradiation_flux` and `mode`, linear solver setting `-umf`, and external TCAD import file `-ext`. `run.json` records these inputs, the full device snapshot, code version `commit`, and the list of solved biases for downstream `current` and `readout` checks (see [stages/field.md](stages/field.md)).
-- **Multi-device and multi-position expansion**: When an experiment contains multiple devices, it expands per device into `field.<device>`. When the total number of positions exceeds `1` (for example, `cflm` has one device and 24 positions and still shares `field`), it expands per position into `current.<position>`, `readout.<position>`, and `reconstruction.<position>`, reading and writing position-suffixed slice files when deposition events exist at that position (see [stages/README.md](stages/README.md)).
-- **Parameter scans and upstream slice reuse**: When `--scan` scans only downstream electronics or reconstruction parameters (such as `amplifier`, `threshold`, `amplitude_threshold`, `edge`), or when `--same-seeds` is enabled and upstream slices do not read the scanned parameter, scan points reuse upstream slice files from the baseline point and rerun only affected downstream slices (see [lifecycle/slices.md](lifecycle/slices.md)).
-- **Cross-point statistical summary (`analysis`)**: `raser analysis <experiment>` aggregates `deposit_<job>.h5`, `current_<job>.h5`, and `reconstruction_<job>.h5` from finished jobs across all scan points, computes charge collection efficiency and time resolution, and writes results to `<experiment>/analysis/` (see [stages/analysis.md](stages/analysis.md)).
+## Results
 
-## Relationship Between Experiments and Stages
-
-The CLI entry point uses `Workflow` to assemble lifecycle management (`config.json`, scan-point and seed directory expansion, job scheduling) with concrete stage slices or single-job functions:
-
-```mermaid
-flowchart LR
-    CMD["raser &lt;command&gt;"] --> LC["lifecycle<br/>config.json / scan points / seeds / run.json / jobs"]
-    LC --> CHAIN["Standard or expanded slice chain<br/>signal, cce, timeres, bmos, cflm, dep|cur|rdo|reco"]
-    LC --> SHORT["Trimmed slice chain<br/>tct (current, readout)<br/>telescope taichu_v1 (deposit, current)"]
-    LC --> JOB["Sliceless single job<br/>telescope taichu_v2"]
-    LC --> STANDALONE["Standalone resource workflows<br/>field -> work/&lt;device&gt;/field/<br/>analysis -> &lt;experiment&gt;/analysis/"]
-```
-
-All 10 registered `Workflow`s in the repository are assembled as follows (see each workflow's document for options and run details):
-
-| Workflow name | Module | Assembled stages or execution mode | Page |
-| --- | --- | --- | --- |
-| `signal` | `raser.bench.signal` | 5 slices: `deposit`, `field`, `current`, `readout`, `reconstruction` | [bench/signal.md](bench/signal.md) |
-| `cce` | `raser.bench.cce` | 5 slices (defaults: `g4setup="charge_collection"`, `events_per_job=10000`, `plots=0`) | [bench/cce.md](bench/cce.md) |
-| `timeres` | `raser.bench.timeres` | 5 slices (defaults: `g4setup="time_resolution"`, `events_per_job=10000`, `plots=0`) | [bench/timeres.md](bench/timeres.md) |
-| `bmos` | `raser.apps.bmos` | 5 slices (defaults: `source="bunch"`, `plots=0`) | [apps/bmos.md](apps/bmos.md) |
-| `cflm` | `raser.apps.cflm` | `deposit`, `field`, and `current.<pad>`, `readout.<pad>`, `reconstruction.<pad>` for 24 pads (74 slices total) | [apps/cflm.md](apps/cflm.md) |
-| `tct` | `raser.bench.tct` | 2 slices: `current`, `readout` (laser pulse directly produces initial current) | [bench/tct.md](bench/tct.md) |
-| `telescope taichu_v1` | `raser.bench.telescope` | 2 slices: `deposit`, `current` (writes `current.Layer_0` through `Layer_5` across 6 chip layers) | [bench/telescope.md](bench/telescope.md) |
-| `telescope taichu_v2` | `raser.bench.telescope` | Sliceless `job` mode (default 1 job, supports `-s N`): pixel pitch scan and spatial resolution fit | [bench/telescope.md](bench/telescope.md) |
-| `field` | `raser.stages.field` | Single-job mode: solves electric field, weighting field, and IV/CV; with `-ext`, imports a single-bias TCAD field solution and solves weighting potential | [stages/field.md](stages/field.md) |
-| `analysis` | `raser.stages.analysis` | Single-job mode: summarizes efficiency and time resolution across all scan points of an experiment and writes to `<experiment>/analysis` | [stages/analysis.md](stages/analysis.md) |
-
-## Files Handed Off Between Slices
-
-### Shared Field Directory (`work/<device>/field/`)
-
-Irradiation fluence scan points reside in corresponding subdirectories under this directory. Writers, readers, and units of each file are listed below (full fields in [stages/field.md](stages/field.md) and [core/field.md](core/field.md)):
-
-| File name | Writer | Reader | Content and units |
-| --- | --- | --- | --- |
-| `run.json` | `lifecycle`, `stages/field`, `core/field` | `stages/field`, `core/field` | `point`, `commit`, `options` (`irradiation_flux`, `mode`), `files.device`, `settings` (`umf`, `imported`), `read` (snapshot of device attributes and keys read by the solver), `axes`, `solved` (lists of solved biases [V] for `potential`, `weighting`, `undepleted`, `capacitance`) |
-| `Potential_<V>V.pkl` | `core/field` | `current` | Mesh node potential `values` [V], coordinates `points` [cm], and `metadata` (`voltage` [V], `dimension`) at bias `<V>` [V] |
-| `TrappingRate_n_<V>V.pkl`, `TrappingRate_p_<V>V.pkl` | `core/field` | `current` | Electron and hole trapping rates `values` [1/s] and coordinates `points` [cm] |
-| `NetDoping_0V.pkl` (TCAD import writes `NetDoping_<V>V.pkl`) | `core/field` | `core/field` (`DevsimField`) | Net doping concentration `values` [cm$^{-3}$] and coordinates `points` [cm] |
-| `Electrons_<V>V.pkl`, `Holes_<V>V.pkl` | `core/field` | — | Electron and hole concentrations `values` [cm$^{-3}$] and coordinates `points` [cm] |
-| `Conductive_<V>V.pkl` | `core/field` | `stages/field`, `current` | Node conductive flag `values` (`1.0` or `0.0`) and coordinates `points` [cm] |
-| `weightingfield/<contact>/Potential_<V>V.pkl` | `core/field` | `current` | Dimensionless weighting potential `values`, coordinates `points` [cm], and `metadata` for readout electrode `<contact>` at `<V>` [V] |
-| `weightingfield/<contact>/Capacitance_<V>V.json` | `core/field` | `readout` | Strip inter-cell coupling capacitance: `unit` (`"F/cm"`), `of`, `total` [F/cm], `to` (capacitance to each neighbor [F/cm]), `neighbours_coupled` |
-| `<V>V.cv.json` | `stages/field` (`-cv`) | `readout` | Capacitance at bias `<V>` [V]: `voltage_V` [V], `specific_capacitance_pF` (`pF/cm$^2$`, `pF/cm`, or `pF` for `per` = `"cm^2"`, `"cm"`, or `"device"`), `area_factor`, `frequency_Hz` [Hz] |
-| `<V>V.undepleted.json` | `core/field` (1D devices) | `readout` | Undepleted bulk parameters for 1D planar devices: `voltage_V` [V], `undepleted_width_um` [um], `specific_resistance_ohm_cm2` [Ohm·cm$^2$], `specific_capacitance_pF` [pF/cm$^2$] (`null` when undepleted width is `0`), `per` (`"cm^2"`) |
-
-### Job Slice Data and Completion Markers (`batch/`)
-
-Under `batch/` in each scan-point seed directory, job `<job>` (0-based integer index) reads and writes the following slice files and markers (full layout in [stages/README.md](stages/README.md)):
-
-| File name | Written by slice | Read by stage | HDF5 attributes (`attrs`), datasets (`datasets`), and units |
-| --- | --- | --- | --- |
-| `deposit_<job>.h5` | `deposit` | `current`, `analysis` | **attrs**: `generated_events`, `recorded_events`, `generated_fraction`, `edep_min` [MeV] (if set), `edep_max` [MeV] (if set)<br/>**datasets**: per event `event` (int64), `count` (int64); per deposition step `detector` (string), `x`/`y`/`z` [um] (local step midpoint coordinates), `x_start`/`y_start`/`z_start` [um] (if present), `t` [s], `t_fwhm` [s] (if present), `e` [MeV], `pairs` (float64) |
-| `current_<job>.h5` (multi-position `current.<position>_<job>.h5`) | `current` | `readout`, `analysis` | **attrs**: `electrodes`, `dt` [s]<br/>**datasets**: per event `event` (int64), `t0` [s], `count` (int64), `pairs` (pre-multiplication pairs), `sensitive_pairs` and `carriers_without_field` (written during field drift, omitted in telescope layer files), `charge` [C] `(events, electrodes)`, `stored` (int64); per stored electrode `index` (int64); per time bin `current` [A] (1D flattened) |
-| `readout_<job>.h5` (multi-position `readout.<position>_<job>.h5`) | `readout` | `reconstruction` | **attrs**: `electrodes`, `dt` [s], `pulse_edge` (`"rising"` / `"falling"` array), `device_circuit` (equivalent circuit JSON string)<br/>**datasets**: per event `event` (int64), `t0` [s], `count` (int64), `stored` (int64); per stored electrode `index` (int64); per sample point `voltage` [V] (1D flattened, bin-center voltage) |
-| `reconstruction_<job>.h5` (multi-position `reconstruction.<position>_<job>.h5`) | `reconstruction` | `analysis` | **attrs**: `electrodes`, `threshold` [V], `amplitude_threshold` [V], `fractions`, `edge`<br/>**datasets**: per event `event` (int64), `selected` (bool), `cluster_size` (int64), `cluster_center` (float64); per event and electrode `(events, electrodes)`: `traced` (bool), `baseline` [V], `noise` [V], `amplitude` [V], `above` (bool), `ToA` [s], `ToT` [s], `CoG` [s], `area` [V s]; per event, electrode, and fraction `(events, electrodes, fractions)`: `CFD` [s] |
-| `<slice>_<job>.done`, `job_<job>.done` | `lifecycle` | `lifecycle`, `analysis` | `job_<job>.done` is an empty file; `<slice>_<job>.done` is empty if the slice returns nothing, or JSON text if it returns a value (e.g., `field` records the field directory path; early exit with zero depositions records `{"ended": true}`) |
-
-### Analysis Stage Summary Outputs (`analysis/`)
-
-`raser analysis <experiment>` writes cross-job and cross-point summary files under `<experiment>/analysis/` (see [stages/analysis.md](stages/analysis.md)):
-
-| File name | Location and condition | Content and units |
-| --- | --- | --- |
-| `result.json` | Each scan-point directory `<point>/` (directly under `analysis/` root when there is no scan or values equal defaults) | `reconstruction` (written when recorded events exist; threshold in mV), `collection` (dimensionless mean efficiency and spread when at least 2 events exist; otherwise `events` and `error`), `timing` (time resolutions for each timing quantity under `timing.times.<name>` [s] when samples are sufficient; otherwise `error`) |
-| `events.h5` | Same as above (created when recorded events exist) | Selected event datasets: `job`, `event`, `ToA` [s], `ToT` [s], `truth` [s], `CoG` [s], `CFD<percent>` columns generated from actual `fractions` (such as default `CFD10`...`CFD90` [s]), `amplitude` [V], `baseline` [V], `noise` [V] |
-| `points.json` | `<experiment>/analysis/` root directory (created when more than `1` scan point finishes) | Summary list of scan points, including scan parameters, efficiency, and time resolution (time resolution in s) |
-
-## Abbreviated Example Experiment Folder Tree
-
-After running `raser signal HPK-Si-PiN --scan voltage=100,200 -s 2 -evt 200 --seed 1` and `raser analysis work/HPK-Si-PiN/signal` in the [Getting Started](getting-started.md) example, the `200 V` (device default bias) point lands under `signal/seed_1/` and `analysis/` root, the `100 V` point lands under `voltage_100/`, and the shared field is in `work/HPK-Si-PiN/field/`:
+The results of an experiment are stored in two layers: content-addressed nodes underneath, and human-readable views organized by scan point on top. Parameters and results are matched by fingerprint rather than by folder name. Examples run in place inside `examples/` and store results in their own project, just like an SWB project; projects under `work/` behave the same way.
 
 ```text
-work/HPK-Si-PiN/
-├── field/                                     # Written by field workflow (or auto field solve), shared across experiments
-│   ├── config.json                            # lifecycle: field directory config
-│   ├── run.json                               # lifecycle + stages/field + core/field: solve metadata and solved biases
-│   ├── Potential_200V.pkl                     # core/field: electric potential (plus 0V, 100V and carrier/trapping/conductive .pkl)
-│   ├── 200.0V.undepleted.json                 # core/field: 1D undepleted bulk parameters (plus 0.0V, 100.0V)
-│   ├── HPK-Si-PiN_iv.png                      # core/field: IV curve (plus CV and field profile plots)
-│   └── weightingfield/top/Potential_200V.pkl  # core/field: weighting potential node data at 200 V (plus 100V)
-└── signal/                                    # Experiment root (also holds default bias 200 V point)
-    ├── config.json                            # lifecycle: experiment settings and scan config
-    ├── seed_1/                                # 200 V point (default bias point sits under experiment root)
-    │   ├── run.json                           # lifecycle: run options, file snapshots, slice summary, and held_in
-    │   ├── plots/job_0/event_4/...            # current: drift path and induced current plots for first 100 recorded events
-    │   └── batch/
-    │       ├── deposit_0.h5 ...               # deposit: job 0 energy deposition (plus deposit_1.h5)
-    │       ├── current_0.h5 ...               # current: job 0 induced current (plus current_1.h5)
-    │       ├── readout_0.h5 ...               # readout: job 0 readout waveforms (plus readout_1.h5)
-    │       ├── reconstruction_0.h5 ...        # reconstruction: job 0 reconstruction table (plus reconstruction_1.h5)
-    │       ├── deposit_0.done ...             # lifecycle: slice completion markers (field_0.done stores shared field path)
-    │       ├── job_0.done, job_0.log          # lifecycle: job 0 completion marker and stdout log (plus job_1)
-    ├── voltage_100/seed_1/                    # 100 V scan point (same internal structure as seed_1/)
-    └── analysis/                              # Written by analysis workflow
-        ├── config.json                        # lifecycle: analysis workflow config
-        ├── run.json                           # lifecycle: analysis run record
-        ├── batch/job_0.done, job_0.log        # lifecycle: analysis job marker and log
-        ├── result.json                        # analysis: efficiency and time resolution summary for 200 V
-        ├── events.h5                          # analysis: selected event table for 200 V
-        ├── efficiency.png ...                 # analysis: 4 single-point distribution plots for 200 V
-        ├── points.json                        # analysis: cross-point comparison table for 100 V and 200 V
-        ├── points.png                         # analysis: efficiency and time resolution vs. bias plot
-        └── voltage_100/                       # result.json, events.h5, and single-point plots for 100 V
+work/HPK-Si-PiN/                      # device project
+├── field/                            # field nodes for this device, shared across experiments
+│   └── <node_id>/
+└── signal/                           # an experiment
+    ├── config.json                   # settings, sectioned by stage
+    ├── points.json                   # parameter table
+    ├── nodes/                        # nodes, separated by stage
+    │   ├── deposit/<node_id>/        #   files written by this stage, plus a node.json
+    │   ├── current/<node_id>/
+    │   └── …
+    ├── points/                       # views, all symlinks
+    │   ├── voltage_100/
+    │   │   ├── deposit -> ../../nodes/deposit/<node_id>
+    │   │   └── …
+    │   └── voltage_200/
+    └── analysis/                     # cross-point statistics and trend plots
 ```
 
-## Plot Output Locations by Stage
+### Nodes
 
-Stages that produce plot outputs and their file locations are listed below:
+One result computed by a stage for a given set of inputs is a node. Its inputs consist of four items:
 
-| Stage | Plot location | Main plot files and formats |
+- the setting values used by this stage;
+- the part of the component files used by this stage;
+- the node IDs of its upstream nodes;
+- the seeds of the measurement stages (deposit, current), and readout's own seed (NGspice noise).
+
+A fingerprint is computed from these inputs, and that fingerprint is the node ID. `node.json` inside the node folder records the inputs verbatim; the code version, runtime environment, and run status are also recorded there, but do not enter the fingerprint. A device's field is likewise a node, stored under `work/<device>/field/` and referenced by all experiments on that device.
+
+### Parameter Table
+
+On each run, the program computes `points.json` from `config.json`: one row per scan point, listing the value of each scan axis and the node ID used for each stage. `raser status` prints this table, with each cell showing the status and node ID of that point at that stage.
+
+### Views
+
+`points/<point>/<stage>` is a symlink pointing to the node. Point names are derived from scan-axis values, such as `voltage_100`, serving as human-readable entry points; if settings change or a scan axis is added, the point name may stay the same while the node it points to updates accordingly, so parameters and results always match.
+
+### Reuse
+
+Nodes with the same fingerprint are reused regardless of which scan point or run computed them. When a scan only affects downstream settings, upstream nodes are shared across scan points. Nodes are append-only: changing a setting back points the view back to the original node without recomputation.
+
+### Locking
+
+Each node is locked individually. A node being written carries a `.part` suffix and is renamed to its final name only after writing completes, so an interruption never leaves a partial result behind.
+
+### Staleness
+
+When the code version differs from the one recorded in a node, only a notice is printed and the result is still reused as usual.
+
+### Example
+
+Scan two things simultaneously on `signal`: `field.voltage=100,200`, and two values of a resistor in `readout`.
+
+| Stage | Number of nodes | Reason |
 | --- | --- | --- |
-| `field` | `work/<device>/field/` (irradiation scans in subdirectories; weighting fields in `weightingfield/<contact>/`) | `<device>_iv.png`, `simIV*` (`.pdf` / `.root`), `<device>_cv.png`, `<device>_c^-2v.png`, `simCV*` (`.pdf` / `.root`), `<device>_noise.png`, `simnoise*` (with `-noise`), potential/field/carrier/trapping-rate/weighting-field distribution plots (`.png` / `.pdf` / `.root`) |
-| `deposit` | Run directory (seed or scan-point folder) | When `-g4_vis` is enabled and `--g4-vis-driver` is `TSG`, `TSG_FILE`, `TSG_OFFSCREEN` (case-insensitive) or starts with `OGL`, writes `g4_geometry` image (`.png` for those three TSG drivers, vector image for `OGL`) |
-| `current` | `<point>/<seed>/plots/job_<job>/event_<event>/` (multi-position: `job_<job>_<position>`) | For the first `--plots` recorded events per job: carrier drift path (`<det_model>_drift_path.pdf`, `.root`), electrode induced current for electrodes with non-zero current components (`No_<N>electrode_basic_infor.pdf`, `.root`), and charge collection plot for strip/pixel devices (`cce.pdf`, `.root`) |
-| `analysis` | `<experiment>/analysis/<point>/` (under `<experiment>/analysis/` when there is no scan or values equal defaults) | `amplitude.png` when recorded events exist, `efficiency.png` when at least 2 efficiency values exist, `time_difference.png` and `resolution_of_fraction.png` when timing samples are sufficient; `points.png` in `<experiment>/analysis/` root when multiple scan points vary a single numeric scan variable |
+| deposit, current | 2 | Changing bias is a new measurement, so each bias is measured separately; only readout reads the resistor, so both resistor values share these two nodes |
+| readout and downstream | 4 | Two bias values times two resistor values |
 
-## Related Pages
+Then change the number of events per job from 20 to 40: all fingerprints change, everything is computed into new nodes, and the old nodes remain. Changing it back to 20 points the views back to the old nodes, and nothing needs to be recomputed.
 
-- [README.md](README.md)
-- [getting-started.md](getting-started.md)
-- [cli.md](cli.md)
-- [lifecycle/experiments.md](lifecycle/experiments.md)
-- [lifecycle/slices.md](lifecycle/slices.md)
-- [lifecycle/jobs.md](lifecycle/jobs.md)
-- [stages/README.md](stages/README.md)
-- [stages/field.md](stages/field.md)
-- [stages/deposit.md](stages/deposit.md)
-- [stages/current.md](stages/current.md)
-- [stages/readout.md](stages/readout.md)
-- [stages/reconstruction.md](stages/reconstruction.md)
-- [stages/analysis.md](stages/analysis.md)
-- [core/model.md](core/model.md)
-- [core/device.md](core/device.md)
-- [core/field.md](core/field.md)
-- [core/deposit.md](core/deposit.md)
-- [core/current.md](core/current.md)
-- [core/readout.md](core/readout.md)
-- [core/digitizer.md](core/digitizer.md)
-- [core/reconstruction.md](core/reconstruction.md)
-- [core/analysis.md](core/analysis.md)
-- [supports/README.md](supports/README.md)
+## Chain
+
+```mermaid
+flowchart LR
+    FLD["1. field"] --> CUR["3. current"]
+    DEP["2. deposit"] --> CUR
+    FLD --> RDO["4. readout"]
+    CUR --> RDO
+    RDO --> DIG["5. digitizer"]
+    DIG --> TRG["6. trigger"]
+    TRG --> RECO["7. reconstruction"]
+    DEP --> ANA["8. analysis"]
+    CUR --> ANA
+    RECO --> ANA
+```
+
+The eight stages are `field`, `deposit`, `current`, `readout`, `digitizer`, `trigger`, `reconstruction`, and `analysis`, with equal standing. Each stage is a complete workflow in itself that can be run standalone or assembled backward from a target stage; commands and options are managed by each stage itself and dispatched by `cli`:
+
+1. `field`: computes the electric field, weighting field, and IV/CV in the device.
+2. `deposit`: computes particle energy deposition with Geant4.
+3. `current`: drifts carriers in the fields and computes induced currents on the electrodes.
+4. `readout`: feeds the current into the device equivalent circuit and front-end amplifier to obtain waveforms.
+5. `digitizer`: converts waveforms into digital waveforms according to the sampling and quantization of an oscilloscope or digitizer board.
+6. `trigger`: decides which events are recorded according to the conditions of real trigger hardware.
+7. `reconstruction`: extracts hit time and amplitude from waveforms, and performs track fitting in beam tests.
+8. `analysis`: summarizes efficiency and time resolution.
+
+- **Ownership of results and plots**: `analysis` is responsible for the results of the whole experiment; each scan point has its own results, and plots summarizing points and trends are written directly under `<experiment>/analysis/`. Each stage's own plots are placed in that stage's own output.
+- **Shared field**: A device's field is an asset of that device, stored in `work/<device>/field/` and shared by all experiments on it.
+- **Staleness notices and node fingerprints**: Staleness checking only notifies: when the code version differs from the one recorded in a node, a notice is printed and the existing result is reused as usual. The identity of each stage node is determined by the fingerprint of the inputs it reads (`node.json`), and the node IDs used by each scan point are recorded in `points.json`.
+
+Data files read and written by each stage and slice dependency rules are in [stages/README.md](stages/README.md) and [lifecycle/slices.md](lifecycle/slices.md).
+
+## Components
+
+- **Component directory**: Components live in `raser/components/`, installed with the package, containing definitions only. `device/` holds devices; the rest are organized into folders by the stage that reads them: `deposit/` (Geant4 setups, radioactive sources and beams, lasers), `readout/` (front-end amplifiers and termination circuits), `digitizer/` (sampling and quantization settings; when one instrument handles both sampling and triggering, such as an oscilloscope, a single configuration is stored here and read by both `digitizer` and `trigger`), and `trigger/` (trigger conditions).
+- **Provenance and validation**: Every component states its provenance; components corresponding to real devices are compared against measurements; users can add their own designs to the component library.
+- **Separation of geometry and mesh**: Device geometry (layer thicknesses and materials, which face carries the electrodes) is an intrinsic property of the device written in the device file, and Geant4 uses the same geometry. The mesh belongs to `field`: one device can have several meshes, and which one to use is specified by `field` options.
+- **Physical models and algorithm switches**: Physical model code lives in `raser.core.model`, with each model registered by name; user models are registered the same way. Device files select models by name. Every physical algorithm has an on/off switch.
+- **Experimental setup paradigm**: Each experiment's setup is built following the standard paradigm used in academia for that experiment.
+
+Component definitions and physical model formulas are in [components/device.md](components/device.md), the other `components/` pages, and [core/model.md](core/model.md).
+
+## Assets
+
+Some results do not belong to a single experiment, but are referenced repeatedly by many experiments; these results are called assets. An asset stays with what it depends on: assets depending only on a device live in that device's project; assets depending only on a circuit or setup each get their own folder and are referenced by experiments just like a device.
+
+| Asset | Computed by | Depends on | Stored at | Used by |
+| --- | --- | --- | --- | --- |
+| Device parameter circuit diagram: junction capacitance, coupling capacitance, and undepleted layer, labeled with values | field | Device and bias voltage | `work/<device>/field/` | readout, connected into the device circuit |
+| Front-end circuit schematic and impulse response | readout | Circuit and its parameters | `work/<circuit_name>/` | readout of each experiment |
+| Phase-space file from the radioactive source to the plane just before the first device | deposit | Source and geometry up to that plane | `work/<setup_name>/` | deposit of each experiment, launching particles from that plane |

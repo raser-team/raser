@@ -1,97 +1,352 @@
 # Electronics Readout (`core/readout`)
 
-`src/raser/core/readout/` takes the electrode induced currents from [carrier transport](current.md) and the equivalent circuit `DeviceCircuit` from [device field](field.md), invokes `ngspice` to solve the transient voltage response and frequency-domain noise spectra of the device circuit and front-end amplifier chain, synthesizes time-domain thermal noise and pulse edge polarity, and outputs `readout_<job>.h5` to [event reconstruction](reconstruction.md). The module also provides `append_waveforms` / `read_waveforms` / `read_circuit_values` read/write interfaces, short-circuit current calculation, and amplifier-stage schematic drawing functions. See [../stages/readout.md](../stages/readout.md) for CLI and slice options.
+`src/raser/core/readout/` takes the time-domain electrode induced currents (`current_<job>.h5`) written by [carrier drift and induced current](current.md), the device equivalent circuit `DeviceCircuit` constructed by [device field](field.md), the bias and readout electrode configuration from [device definition](device.md), and the SPICE subcircuit files (`.cir`) from [front-end readout circuit components](../components/readout.md). The package combines the device equivalent circuit and the front-end amplifier chain into a single `ngspice` netlist, solves the transient output voltage and frequency-domain voltage noise spectrum of each readout channel, synthesizes time-domain Gaussian thermal noise, determines the pulse-edge polarity, and writes `readout_<job>.h5` (it also provides interfaces for short-circuit current solving at device outputs and schematic drawing of amplifier stages). The output voltage waveforms and pulse-edge directions are passed to [event reconstruction](reconstruction.md) (or to the [digitizer](digitizer.md)).
 
-```mermaid
-flowchart LR
-    CUR["read_currents<br/>electrodes, dt, current [A]"] --> NET["write_netlist / solve<br/>DeviceCircuit + PWL current source<br/>+ amplifier stages & final load"]
-    CIR["DeviceCircuit (core/field)<br/>+ named_chain (afe/*.cir)"] --> NET
-    NET -- "ngspice tran" --> TRAN["Channel transient waveform<br/>(part_of local expansion + PART_EDGE filtering)"]
-    NET -- "ngspice noise (27 °C)" --> NOISE["noise_spectra + noise_from_spectrum<br/>Complex Gaussian spectrum irfft time-domain noise"]
-    TRAN --> SUM["Output voltage waveform + pulse_edges"]
-    NOISE --> SUM
-    SUM --> H5["append_waveforms / read_waveforms<br/>readout_&lt;job&gt;.h5"]
-    H5 --> RECO["core/reconstruction"]
-```
+## Physics
 
-## Inputs and Front-End Amplifier Chain Parsing
+### Current Source Injection into Device Circuit Nodes
 
-- **Upstream data and circuit objects**: Receives `electrodes`, `dt` (s), and per-event `event`, `t0` (s), `current` (shape `(electrodes, bins)`, in A) returned by `read_currents`, together with `Detector` (see [device.md](device.md)), `DeviceCircuit` (see [field.md](field.md)), and integer `noise_seed` for adding frequency-sampled thermal noise.
-- **Front-end amplifier chain (`circuit.py`)**: `named_chain(name)` splits the `amplifier` name on `"+"`, loads SPICE subcircuits via `component_path("afe", f"{part}.cir")` (see [../components/afe.md](../components/afe.md) and [../supports/README.md](../supports/README.md)), and assembles them with `read_chain(paths)`:
-  - The last item in the sequence is the one-port load `load` (`.subckt <name> <in>`), and the remaining items from device to load are two-port amplifier stages `stages` (`.subckt <name> <in> <out>`); when a stage repeats in the chain, a numeric suffix starting from `2` is appended (e.g. `Gali52`, `Gali52_2`).
-  - SPICE elements and parameters supported by `read_subcircuit(path)` are listed below (non-comment lines outside `.subckt` are stored in `"models"`). `spice_number` supports prefixes `t` (`1e12`), `g` (`1e9`), `meg` (`1e6`), `k` (`1e3`), `m` (`1e-3`), `u` (`1e-6`), `n` (`1e-9`), `p` (`1e-12`), `f` (`1e-15`):
+As carriers drift and multiply in the depleted layer of the device, they induce time-binned currents on the readout electrodes. In the equivalent circuit, the induced current on each readout electrode is represented as an independent piecewise-linear (PWL) current source connected across the corresponding node pair $(n_{\text{from},k}, n_{\text{to},k})$ of the device circuit, with a zero-current bin prepended before the first time bin so that the circuit starts from a quiescent steady state:
 
-| Element Type | Dict Keys Recognized | Unit | Description |
+$$t_{-1} = \frac{1}{2}\Delta t, \qquad t_m = \left(m + \frac{3}{2}\right)\Delta t \quad (m = 0, 1, \dots, n_{\text{bin}} - 1) \tag{1}$$
+
+$$I_k(t_{-1}) = 0, \qquad I_k(t_m) = \bar{I}_{k,m} \tag{2}$$
+
+where:
+
+- $\Delta t$: time-bin width of the induced current (code variable `dt`), $\text{s}$;
+- $n_{\text{bin}}$: number of time bins in a single event (code variable `bins`), bins;
+- $t_{-1}$: center time of the prepended quiescent bin relative to the simulation start ($t = 0$), $\text{s}$; `ngspice` treats the initial value of a PWL source at its earliest time point as a steady DC current flowing for all $t \le 0$, so it is fixed to zero at $t_{-1}$;
+- $t_m$: center time of the $m$-th induced-current bin relative to the simulation start, $\text{s}$;
+- $\bar{I}_{k,m}$: average induced current of the $k$-th electrode in the $m$-th time bin (code variable `currents[k - 1, m]`), $\text{A}$;
+- $I_k(t)$: piecewise-linear current injected across the node pair $(n_{\text{from},k}, n_{\text{to},k})$ of the $k$-th electrode current source, $\text{A}$; positive values mean current flowing inside the current source from $n_{\text{from},k}$ to $n_{\text{to},k}$ (in a planar device, from the back-side node of the depleted layer to the readout electrode pad node).
+
+The bin centers and PWL current-source netlist lines are generated by `_bin_centres` and `_current_sources` in `spice.py`. The device equivalent circuit `DeviceCircuit` and its current-source node map `circuit.sources` are built by `planar_circuit`, `device_circuit`, `device_row`, and `device_grid` in [device field](field.md), covering depletion-layer junction capacitance, undepleted-layer parallel RC, inter-strip mutual capacitance, bias resistance, AC coupling capacitance, and resistive charge-sharing layer networks. For semiconductor detector equivalent circuits and induced-current injection models, see Ref. [1]; for SPICE independent piecewise-linear source definitions, see Ref. [2].
+
+### Coupled Transient Solving of the Device Circuit and Amplifier Chain
+
+After the induced current is injected into the device circuit nodes, it splits among the electrode capacitance network and bias branches and enters the front-end amplifier subcircuit stages and final termination load through the device output nodes. The device equivalent circuit, an independent cascade of amplifier-stage instances for each output channel, and the termination load are assembled in the same `ngspice` netlist to form a lumped-circuit system of differential-algebraic equations. Output node voltages are solved over the transient interval $[0, T_{\text{tran}}]$ including the prepended quiescent bin and sampled back onto the induced-current bin centers by piecewise-linear interpolation:
+
+$$T_{\text{tran}} = (n_{\text{bin}} + 1)\,\Delta t \tag{3}$$
+
+$$V_{r,m} = V_r(t_j) + \frac{t_m - t_j}{t_{j+1} - t_j}\bigl[V_r(t_{j+1}) - V_r(t_j)\bigr] \quad (t_j \le t_m \le t_{j+1}) \tag{4}$$
+
+where:
+
+- $T_{\text{tran}}$: total duration of the `ngspice` transient analysis, $\text{s}$;
+- $\Delta t$: time-bin width and step parameter of the `ngspice` `tran` command, $\text{s}$;
+- $t_j, t_{j+1}$: adjacent discrete time points written by the `ngspice` transient solver (code variable `solved_times`), $\text{s}$;
+- $V_r(t_j)$: transient voltage at time $t_j$ on the output node of readout channel $r$ (the node `out<r>` shared between the last amplifier stage output and the load input when the chain has amplifier stages, or the device output node `circuit.outputs` when the chain has only a load), $\text{V}$;
+- $V_{r,m}$: channel output voltage linearly interpolated to the center $t_m$ of the $m$-th time bin, $\text{V}$.
+
+Cascaded netlist construction and transient solving are implemented by `_chain`, `write_netlist`, `_transient`, `_run`, and `solve` in `spice.py`; `write_short_circuit_netlist` and `short_circuit_currents` additionally solve the transient short-circuit current with each device output shorted to ground through a zero-voltage source `Vshort<r> <output> 0 0`. Front-end amplifier chains are loaded from [front-end readout circuit components](../components/readout.md) via `named_chain` in `circuit.py`, and the default amplifier chain in [../stages/readout.md](../stages/readout.md) is `"SantaCruz+Gali52+Termination50"`. For SPICE modified nodal analysis and transient numerical integration, see Refs. [2, 3].
+
+### Frequency-Domain Thermal Noise from a Given Spectrum and Time-Domain Synthesis
+
+Noisy resistors and active device models in the device circuit and front-end amplifier chain generate stationary Gaussian electronic noise at the operating temperature. The code first computes the single-sided output voltage noise amplitude spectral density $S_V(f)$ at discrete frequencies using `ngspice` small-signal frequency-domain noise analysis, then integrates the noise power in each frequency band via the trapezoidal rule on an extended-record frequency grid of length $M_{\text{rec}}$ times the waveform bin count, draws independent complex Gaussian Fourier coefficients, and takes the inverse real discrete Fourier transform (`np.fft.irfft`), truncating to the first $n_{\text{bin}}$ samples to synthesize the time-domain noise:
+
+$$P(f_l) = \sum_{j=0}^{l-1} \frac{S_V^2(f_{j+1}) + S_V^2(f_j)}{2}\,(f_{j+1} - f_j) \quad (l = 0, 1, \dots, L - 1) \tag{5}$$
+
+$$\Delta P_k = P\!\left(f_k + \frac{1}{2}\Delta f\right) - P\!\left(\max\!\left(f_k - \frac{1}{2}\Delta f,\, 0\right)\right) \quad \left(k = 0, 1, \dots, \left\lfloor \frac{N_{\text{rec}}}{2} \right\rfloor\right) \tag{6}$$
+
+$$\sigma_k = \frac{1}{2}\,N_{\text{rec}}\sqrt{\Delta P_k} \tag{7}$$
+
+$$X_k = \begin{cases} \mathcal{N}\!\left(0,\, N_{\text{rec}}^2 \Delta P_0\right), & k = 0 \\[4pt] \mathcal{N}(0, \sigma_k^2) + \mathrm{i}\,\mathcal{N}(0, \sigma_k^2), & 0 < k < \dfrac{N_{\text{rec}}}{2} \\[4pt] \mathcal{N}\!\left(0,\, N_{\text{rec}}^2 \Delta P_{N_{\text{rec}}/2}\right), & k = \dfrac{N_{\text{rec}}}{2}\ (\text{when } N_{\text{rec}}\ \text{is even}) \end{cases} \tag{8}$$
+
+$$v_{\text{noise}}[m] = \frac{1}{N_{\text{rec}}} \sum_{n=0}^{N_{\text{rec}}-1} \widetilde{X}_n\,\mathrm{e}^{\mathrm{i} 2\pi n m / N_{\text{rec}}} \quad (m = 0, 1, \dots, n_{\text{bin}} - 1) \tag{9}$$
+
+where:
+
+- $f_0 < f_1 < \dots < f_{L-1}$: strictly increasing sampled frequency sequence of the single-sided noise spectrum (code variable `frequencies_hz`), $\text{Hz}$;
+- $S_V(f_l)$: single-sided output voltage noise amplitude spectral density at frequency $f_l$ (code variable `density`), $\text{V}/\sqrt{\text{Hz}}$; the spectral density is set to zero outside $[f_0, f_{L-1}]$;
+- $P(f)$: cumulative noise power (variance) from $0\ \text{Hz}$ to frequency $f$, $\text{V}^2$, linearly interpolated by `np.interp` between sampled frequencies and held constant at the ends with $P(f \le f_0) = 0$ and $P(f \ge f_{L-1}) = P(f_{L-1})$;
+- $N_{\text{rec}} = M_{\text{rec}}\,n_{\text{bin}}$: number of points in the extended time-domain record (code variable `record`), where the extension factor is $M_{\text{rec}} = 256$ (code constant `RECORD`, dimensionless);
+- $\Delta f = 1 / (N_{\text{rec}}\,\Delta t)$: Fourier frequency step of the extended record (code variable `step_hz`), $\text{Hz}$; $f_k = k\,\Delta f$ are the real-FFT frequency grid centers (code variable `centres`), $\text{Hz}$;
+- $\Delta P_k$: noise power within the band extending half a step below and above $f_k$ (code variable `in_band`), $\text{V}^2$; the DC component $k = 0$ collects all power below $\Delta f / 2$, so low-frequency noise slower than the waveform duration appears as an event-by-event baseline offset;
+- $\sigma_k$: standard deviation of the independent zero-mean Gaussian draws for the real and imaginary parts of each interior complex frequency bin (code variable `sigma`), $\text{V}$; under the $1/N_{\text{rec}}$ normalization convention of `np.fft.irfft`, each interior frequency contributes $4\langle(\operatorname{Re} X_k)^2\rangle / N_{\text{rec}}^2 = \Delta P_k$ to the time-domain variance, and the real DC and Nyquist components each contribute $\langle X_k^2\rangle / N_{\text{rec}}^2 = \Delta P_k$;
+- $X_k$: single-sided complex Fourier coefficients (code variable `spectrum`), $\text{V}$; $\widetilde{X}_n$ is the conjugate-symmetric two-sided spectrum;
+- $v_{\text{noise}}[m]$: synthesized time-domain Gaussian noise voltage at the center of the $m$-th time bin, $\text{V}$.
+
+The frequency-domain noise spectrum is solved by `output_noise_spectrum` in `spice.py` and `noise_spectra` in `job.py` via `ngspice` at a fixed temperature of $27\ ^\circ\text{C}$ over the frequency band from $10^3\ \text{Hz}$ (`LOWEST_NOISE_HZ`) to $0.5 / \Delta t$; band-power integration and random time-domain synthesis are implemented by `band_power` and `noise_from_spectrum` in `spectral_noise.py`. The `noise_seed` argument of `write_waveforms` is required and is passed in by the stage from `readout`'s own seed (NGspice noise), which enters the `readout` node's fingerprint; an integer adds noise, whereas `None` writes noiseless waveforms. For thermal noise in conductors and frequency-domain transfer noise analysis, see Refs. [2, 4, 5]; for generating stationary Gaussian noise time series from a single-sided power spectral density via inverse Fourier transform of complex Gaussian spectra, see Ref. [6].
+
+### Output Pulse Polarity
+
+The direction in which a readout channel's output voltage pulse departs from its quiescent baseline (upward for positive pulses `"rising"`, downward for negative pulses `"falling"`) is jointly determined by the sign of the carriers collected by the readout electrode and the net transfer polarity of the front-end amplifier chain. A readout electrode at a higher potential than the opposite electrode collects electrons (negative charge), whereas one at a lower potential collects holes (positive charge); the amplifier chain responds to a positive input charge with either a non-inverting positive swing or an inverting negative swing, and the product of the two signs gives the output pulse polarity:
+
+$$V_{\text{above}} = \begin{cases} V_{\text{bias}}, & \text{if the readout electrode is } \text{bias.electrode} \\ -V_{\text{bias}}, & \text{other readout electrodes (non-bias electrodes grounded)} \end{cases} \tag{10}$$
+
+$$s_q = \begin{cases} -1, & V_{\text{above}} > 0\ (\text{collecting electrons}) \\ +1, & V_{\text{above}} < 0\ (\text{collecting holes}) \end{cases}, \qquad s_{\text{chain}} = \operatorname{sgn}\!\bigl(V_{\text{probe}}(t^*) - V_{\text{probe}}(t_0)\bigr) \tag{11}$$
+
+$$\text{edge} = \begin{cases} \text{"rising"}, & s_q \cdot s_{\text{chain}} > 0 \\ \text{"falling"}, & s_q \cdot s_{\text{chain}} < 0 \end{cases} \tag{12}$$
+
+where:
+
+- $V_{\text{bias}}$: bias voltage configured in the device file's `bias.voltage`, $\text{V}$;
+- $V_{\text{above}}$: potential difference of the readout electrode relative to the other electrode (code variable `above`), $\text{V}$;
+- $s_q \in \{-1, +1\}$: sign of the carrier charge collected by the readout electrode (return value of `collected_charge_sign`, dimensionless);
+- $V_{\text{probe}}(t)$: transient output voltage of the amplifier chain when a positive probe charge $Q_{\text{probe}} = +10^{-15}\ \text{C}$ is injected into a planar probe circuit of junction capacitance $C_{\text{probe}} = 10^{-12}\ \text{F}$, $\text{V}$; $V_{\text{probe}}(t_0)$ is the quiescent output voltage in the first bin (index `0`) prior to charge injection, and $t^* = \arg\max_t |V_{\text{probe}}(t) - V_{\text{probe}}(t_0)|$ is the time of maximum absolute deviation from the quiescent value;
+- $s_{\text{chain}} \in \{-1, +1\}$: net transfer polarity sign of the amplifier chain for a positive input charge (return value of `chain_sign`, $+1$ for non-inverting and $-1$ for inverting, dimensionless);
+- $\text{edge}$: output pulse polarity label of the readout channel (return value of `pulse_edges`, `"rising"` or `"falling"`).
+
+Collected-charge sign determination, amplifier-chain polarity probing, and generation of the per-channel polarity list are implemented by `collected_charge_sign`, `chain_sign`, and `pulse_edges` in `pulse_edge.py`, with the planar probe circuit constructed by `planar_circuit("probe", 1e-12)` in [device field](field.md). The `pulse_edge` argument of `write_waveforms` defaults to `None` ([../stages/readout.md](../stages/readout.md) passes the result of `pulse_edges` when calling it) and is written into `readout_<job>.h5` for [event reconstruction](reconstruction.md) to invert pulse polarity. For detector readout polarity and front-end pulse response, see Ref. [1].
+
+## Algorithm
+
+### Built-in Constants
+
+The table below lists all built-in constants and hard-coded numerical values in `job.py`, `spice.py`, `spectral_noise.py`, `pulse_edge.py`, `circuit.py`, and `schematic.py`. They are module constants or fixed function parameters with no corresponding keys in device files or `.cir` component files:
+
+| Constant or Fixed Parameter | Value | Unit | Definition Location and Meaning |
 | --- | --- | --- | --- |
-| Resistor `R` | `"between"`, `"ohm"`, optional `"noiseless": True` | $\Omega$ | Marked noiseless when trailing `noisy=0` is present |
-| Capacitor `C` | `"between"`, `"farad"` | F | Terminal nodes and capacitance value |
-| Inductor `L` | `"between"`, `"henry"` | H | Terminal nodes and inductance value |
-| DC Voltage Source `V` | `"between"`, `"volt"` | V | Terminal nodes and DC voltage |
-| Voltage-Controlled Voltage Source `E` | `"between"`, `"follows"`, `"gain"` | None | Controlling node pair and voltage gain |
-| Subcircuit Instance `X` | `"model"`, `"nodes"` | None | External device or model subcircuit call |
+| `LOWEST_NOISE_HZ` | `1e3` | $\text{Hz}$ | `job.py`, lower frequency bound of `ngspice` frequency-domain noise analysis (upper bound is $0.5 / \Delta t$) |
+| `PART_EDGE` | `1e-3` | dimensionless | `job.py`, threshold ratio of channel swing to the event's maximum swing for storing output waveforms and stopping local strip-row circuit expansion |
+| `PER_DECADE` | `50` | points/decade | `spice.py`, number of logarithmically spaced frequency points per decade in `ngspice` `noise` analysis |
+| Prepended quiescent bin point `(t, I)` | `(dt / 2, 0)` | $\text{s}$, $\text{A}$ | `spice.py`, zero-current anchor prepended to every PWL current source by `_current_sources` |
+| Noise-analysis AC source and temperature | `dc 0 ac 1`, `27` | $\text{A}$, $^\circ\text{C}$ | `spice.py`, small-signal source amplitude injected by `write_noise_netlist` and default `ngspice` noise-analysis temperature |
+| `RECORD` | `256` | dimensionless | `spectral_noise.py`, ratio of the frequency-domain synthesis record length to the waveform bin count `bins` in `noise_from_spectrum` |
+| `NO_ANSWER_V` | `1e-9` | $\text{V}$ | `pulse_edge.py`, minimum output swing threshold for `chain_sign` to consider an amplifier chain responsive to the probe charge |
+| `chain_sign` probe parameters | `dt = 10e-12`, `bins = 2000`, `1e-15` $\text{C}$ injected in bin `5`, capacitance `1e-12` $\text{F}$ | $\text{s}$, bins, $\text{C}$, $\text{F}$ | `pulse_edge.py`, single-electrode planar probe input used to test the net polarity of an amplifier chain |
+| `SCALES` | `t`: `1e12`, `g`: `1e9`, `meg`: `1e6`, `k`: `1e3`, `m`: `1e-3`, `u`: `1e-6`, `n`: `1e-9`, `p`: `1e-12`, `f`: `1e-15` | dimensionless | `circuit.py`, scaling factors for SPICE element value prefixes parsed by `spice_number` |
+| `COLLECTOR`, `EMITTER` | `(2, 1)`, `(2, -1)` | grid steps | `schematic.py`, grid offsets of an NPN transistor's collector and emitter relative to its base coordinates |
+| Schematic layout and export parameters | default span `2.0`, bypass lateral shift step `1.5`, `dpi = 160` | grid steps, grid steps, $\text{dpi}$ | `schematic.py`, default element span, collision-avoidance shift step for parallel branches, and `savefig` export resolution |
 
-## Transient Solving, Local Expansion, Noise, and Pulse Edge
+### Subcircuit Chain Parsing and Netlist Assembly
 
-- **Transient netlist solving (`spice.py`)**: `write_netlist` and `solve` replicate the amplifier stages and load for each output channel and write the induced current into piecewise-linear sources `I<k> <from> <to> PWL(...)`. The netlist prepends 1 zero-current bin before the first time bin so the circuit starts from rest (bin `m` center is at `(m + 1.5) * dt`), runs `ngspice -b` with `tran <dt> <dt * (bins + 1)>`, exports voltages (`out<k>` when stages exist, or the device output node for load-only chains), and interpolates back to the induced-current bin centers, returning an `(outputs, bins)` array (in V).
-- **Strip-row local circuit expansion and active-channel filtering (`job.py`)**: When `part_of` is given, the local circuit expands outward from hit electrodes with induced current starting at `margin = 1` on each side and doubling iteratively until the maximum voltage difference between consecutive solves on channels reaching `PART_EDGE = 1e-3` of the largest channel swing is `< 1e-3 * largest`, or until the local circuit covers the whole row. Each event stores only channels whose maximum absolute voltage swing is `>= PART_EDGE * largest` (with `largest > 0`).
-- **Frequency-domain noise analysis and time-domain synthesis (`spice.py`, `job.py`, `spectral_noise.py`)**: When `noise_seed` is an integer, `noise_spectra` runs `ngspice` `noise` analysis (27 °C) from `LOWEST_NOISE_HZ = 1e3` Hz to `0.5 / dt` Hz at `PER_DECADE = 50` points per decade to obtain single-sided voltage noise spectral density ($\text{V}/\sqrt{\text{Hz}}$); channels in the same `circuit.alike` group reuse the noise spectrum of the middle channel `group[len(group) // 2]`. `noise_from_spectrum` uses `np.random.default_rng([noise_seed, event.event, place[name]])` on a frequency grid `RECORD = 256` times the waveform length, computes band power via `band_power`, samples a complex Gaussian spectrum, takes `np.fft.irfft`, and adds the first `bins` points onto the output waveform.
-- **Pulse edge polarity determination (`pulse_edge.py`)**: `collected_charge_sign(my_d, electrode)` determines collected electrons (`-1`) or holes (`+1`) from `bias.electrode` and `bias.voltage`. `chain_sign(chain)` injects `1 fC` of charge on a `1 pF` planar circuit (`dt = 10e-12` s, `2000` bins, current in bin `5`) to solve the amplifier chain response, returning `+1` if the maximum swing relative to initial baseline `voltage[0]` is upward and `-1` if downward. `pulse_edges` multiplies the two signs and records `> 0` as `"rising"` and `< 0` as `"falling"`.
+`circuit.py` and `spice.py` parse `.cir` component files and assemble `ngspice` netlists in the following steps:
 
-## `readout_<job>.h5` File Format and Standalone Interfaces
+1. **Parse a single-stage SPICE file (`read_subcircuit`, `spice_number`)**:
+   - Take the filename stem `name = Path(path).stem` as the target main subcircuit name. Read the file line by line, stripping trailing schematic layout hints at `";"` and trimming surrounding whitespace; skip blank lines and comment lines starting with `"*"`.
+   - All non-blank, non-comment raw lines **outside** the `.subckt <name> <ports...>` to `.ends` block are appended verbatim in order to the list `models` (preserving auxiliary `.subckt` and `.MODEL` definitions such as transistors).
+   - **Inside** the main subcircuit block, parse each element according to the uppercase first character of its first token and store it in `elements[words[0]]`:
+     - `"X"`: `{"model": words[-1], "nodes": words[1:-1]}`;
+     - `"E"` with `len(words) == 6`: `{"between": words[1:3], "follows": words[3:5], "gain": spice_number(words[5])}`;
+     - `"R"` with `len(words) == 5` and `words[4].lower() == "noisy=0"`: `{"between": words[1:3], "ohm": spice_number(words[3]), "noiseless": True}`;
+     - First letter in `{"R": "ohm", "C": "farad", "L": "henry", "V": "volt"}` with `len(words) >= 4`: `{"between": words[1:3], <quantity>: spice_number(words[-1])}` (allowing `dc` before the value on voltage sources).
+     - Any other line cannot be recognized and immediately raises `ValueError("Cannot read the element <line> of <path>")`; if a value does not match the regular expression `([-+]?\d*\.?\d+(?:e[-+]?\d+)?)(meg|[tgkmunpf])?[a-z]*`, `spice_number` raises `ValueError("<text> is not a SPICE number")`.
+   - After reading the file, check the main subcircuit port list `ports`: if `.subckt <name>` was not found or `len(ports) not in (1, 2)`, raise `ValueError("<path> has to hold .subckt <name> with the nodes in, or in and out")`. Map `ports` to `dict(zip(("in", "out"), ports))` and return it.
+2. **Assemble amplifier stages and final load chain (`named_chain`, `read_chain`)**:
+   - `named_chain(name)` splits the chain name on `"+"`, resolves each file path via `component_path("afe", f"{part}.cir")`, and calls `read_chain(paths)`.
+   - `read_chain` splits the path sequence into preceding amplifier stages `*stage_paths` and the final load `load_path`:
+     - Iterate over `stage_paths`: if a stage has `"out" not in stage["ports"]`, raise `ValueError("<path> has no output: it can only be the load, the last of the chain, not its part <place> of <len>")`. The stage name defaults to `path.stem`; if it collides with an earlier stage name, append an incrementing suffix starting from `2`, `f"{path.stem}_{number}"` (e.g. `Gali52`, `Gali52_2`).
+     - Read `load = read_subcircuit(load_path)`: if `"out" in load["ports"]`, raise `ValueError("<load_path> is the last of the chain and has to be a load, with the node in alone")`. Return `{"stages": stages, "load": load}`.
+3. **Serialize a subcircuit dictionary back to SPICE text (`subcircuit`)**:
+   - Check ports: if `ports.get("out") == ports["in"]`, raise `ValueError("The stage <name> has the node <in> as input and as output; give the output a node of its own")`.
+   - Emit `.subckt <name> <in> [<out>]`. Iterate over `stage["elements"]`:
+     - If `"model"` is present, emit `X_<designator> <nodes...> <model>`;
+     - If `"gain"` is present, emit `E_<designator> <between...> <follows...> <gain:.9g>`;
+     - For all other elements, count matching physical-quantity keys (`"ohm"`, `"farad"`, `"henry"`, `"volt"`): if the count is not `1`, raise `ValueError("Element <designator> of <name> has to carry one of ['ohm', 'farad', 'henry', 'volt'], a gain or a model, not ...")`; if `"noiseless": True` is set on a quantity other than `"ohm"`, raise `ValueError("Element <designator> of <name> is noiseless: only a resistor can be")`. Emit `<LETTER>_<designator> <first> <second> <value:.9g>[ noisy=0]`.
+   - Emit `.ends <name>` at the end.
+4. **Assemble the full transient netlist (`_chain`, `_current_sources`, `_transient`, `write_netlist`)**: `write_netlist` first calls `_current_sources` to generate the current-source lines (so its validation runs before stage-name validation), then calls `_chain` to generate the amplifier stages, load, and device circuit lines, placing the current-source lines after `circuit.lines`.
+   - **Validate stage names**: In `_chain(chain, circuit)`, if `"load" in chain["stages"]`, raise `ValueError('A stage cannot be named "load"')`.
+   - **Title line and external model deduplication**: Write `" > ".join(["device", *stages, "load"])` on the first line. Collect `"models"` blocks from all amplifier stages and the load in order, keeping only the first occurrence of identical model blocks, and expand them verbatim near the top of the netlist.
+   - **Subcircuit definitions and per-channel cascaded instances**: Emit `subcircuit(name, stage)` for each amplifier stage and `subcircuit("load", chain["load"])` for the final load. Then, for the $k$-th device output node `output` in `circuit.outputs.values()` ($k = 1, \dots, N_{\text{out}}$):
+     - If `stages` is non-empty, build the node list `nodes = [output, "in<k>_2", ..., "in<k>_<N_stages>", "out<k>"]` and instantiate `X<k>_<j> <nodes[j-1]> <nodes[j]> <stage_name>` ($j = 1, \dots, N_{\text{stages}}$); if `stages` is empty, `nodes = [output]`;
+     - Instantiate the final load `Xload<k> <nodes[-1]> load` and record `nodes[-1]` as the output node to be observed for that channel.
+   - **Device equivalent circuit and PWL current sources**: `_chain` appends `circuit.lines` at the end, followed by the current-source lines produced by `_current_sources(electrodes, dt, currents, circuit)` (which was already invoked before `_chain`):
+     - If `not dt > 0`, raise `ValueError("The bin width must be positive, not <dt> s")`;
+     - If `len(electrodes) != len(currents)`, raise `ValueError("<len(currents)> currents for <len(electrodes)> electrodes")`;
+     - If `sorted(electrodes) != sorted(circuit.sources)`, raise `ValueError("The currents are of the electrodes <electrodes>; the device has current sources for <sources>")`;
+     - According to Eqs. (1) and (2), emit `I<k> <source_from> <source_to> PWL(<dt/2:.9g> 0 <t_0:.9g> <i_0:.9g> ...)` for the $k$-th electrode (starting at `1`).
+   - **Control block (`_transient`)**: Append `.save v(<node_1>) ...` (saving only the exported output node vectors so multi-channel netlists do not exhaust memory), `.control`, `tran <dt:.9g> <dt * (bins + 1):.9g>`, `wrdata <raw> v(<node_1>) ...`, `.endc`, and `.end`.
 
-`append_waveforms`, `read_waveforms`, and `read_circuit_values` in `src/raser/core/readout/waveforms.py` read and write HDF5 waveform files:
+The short-circuit current netlist `write_short_circuit_netlist` contains only the device circuit and shorting branches: its first line is `device > short`, a zero-voltage source `Vshort<k> <output> 0 0` is placed on each device output node after the current sources, and `_transient` saves and exports the branch current vectors `i(Vshort<k>)`.
 
-### File Attributes
+### Invoking `ngspice`, Time Stepping, and Output Sampling
+
+1. **Locate the executable (`_ngspice`)**: Call `shutil.which("ngspice")`. If it returns `None`, raise `MissingDependency("ngspice is not installed", "Install it with conda install -c conda-forge ngspice on x86 Linux, or with env/install-ngspice.sh on macOS arm64 and Linux aarch64")`.
+2. **Batch solving and bin-center interpolation (`_run`, `solve`, `short_circuit_currents`)**:
+   - Inside a temporary directory created by `tempfile.TemporaryDirectory()`, write the netlist to `run.cir` and execute `subprocess.run([_ngspice(), "-b", str(netlist)], check=True, capture_output=True, text=True)` in batch mode (a nonzero exit code from `ngspice` raises `subprocess.CalledProcessError`).
+   - Read the `wrdata` output file `out.raw` with `np.loadtxt(raw, dtype=np.float64, ndmin=2)`. Because `ngspice`'s `wrdata` writes a time column before every exported vector, column `0` (`solved_times = data[:, 0]`) holds the solved timestamps, while the output-channel voltages (or short-circuit currents) reside in the odd columns `column = 1, 3, 5, ...`.
+   - For each odd column, call `np.interp(since_start, solved_times, data[:, column])` to linearly interpolate onto the bin centers $t_m = (m + 1.5)\,\Delta t$ ($m = 0, \dots, n_{\text{bin}} - 1$) per Eq. (4), returning a 2D `float64` array of shape `(outputs, bins)`.
+3. **Adaptive local circuit expansion for strip rows (`_solve_part`, `job.py`)**:
+   - When `write_waveforms` receives a non-`None` callback `part_of(hit, margin)` (used for repeating single-contact strip-row detectors; see `part_of_row` in [field.md](field.md)) and the event has a non-empty list `hit` of electrodes with nonzero current, the solver dynamically expands a local subcircuit around the hit strips:
+   - Initialize the boundary margin `margin = 1`, construct the local circuit `part = part_of(hit, margin)`, and call `_solve` to obtain the output-voltage dictionary `before`.
+   - Enter a loop: on each iteration double the margin `margin *= 2` and build a wider local circuit `wider = part_of(hit, margin)`:
+     - If `list(wider.outputs) == list(part.outputs)` (the local circuit has reached both ends of the row and cannot grow further), immediately return `before`;
+     - Solve `after = _solve(chain, currents, event, wider)` and compute each channel's maximum absolute voltage swing $S_r = \max_m |V_{r,m}|$ and the global maximum swing $V_{\max} = \max_r S_r$;
+     - Over all channels to be stored satisfying $S_r \ge \text{PART\_EDGE} \cdot V_{\max}$ ($\text{PART\_EDGE} = 10^{-3}$), compute the maximum voltage change between two consecutive expansions (treating newly included channels absent from the previous step as starting from `0.0`):
+       $$\Delta V_{\text{moved}} = \max_{r:\, S_r \ge 10^{-3} V_{\max}}\ \max_{m} \bigl|V^{\text{after}}_{r,m} - V^{\text{before}}_{r,m}\bigr|$$
+     - Update `part, before = wider, after`; if $\Delta V_{\text{moved}} < 10^{-3} V_{\max}$, convergence is reached and `after` is returned.
+
+### Frequency-Domain Noise Solving and Random-Stream Synthesis
+
+`noise_seed` is the seed of the `readout` stage, distributed to stages from the command-line `--seed` and `--same-seeds` via [experiments, scan points, and seeds](../lifecycle/experiments.md). When `noise_seed` passed to `write_waveforms` is an integer, the noise spectra are solved and per-channel time-domain noise is drawn as follows:
+
+1. **Symmetric channel grouping and noise netlist solving (`noise_spectra`, `write_noise_netlist`, `output_noise_spectrum`)**:
+   - For each symmetric channel group `group` in `circuit.alike`, map every output channel in the group to the middle channel `group[len(group) // 2]`; channels not in any group map to themselves. Deduplicate in the order of `circuit.outputs` to obtain the list `analysed` of channels that actually need `ngspice` analysis.
+   - `write_noise_netlist` calls `_chain(chain, circuit)` to emit the netlist containing the **full device circuit** and all channel amplifier chains, and attaches a small-signal reference source `I1 <source_from> <source_to> dc 0 ac 1` across the first node pair in `circuit.sources.values()`.
+   - In the `.control` block, for the $k$-th channel in `analysed` (starting from `1`), write in sequence:
+     - `noise v(<node>) I1 dec 50 <lowest_hz:.9g> <highest_hz:.9g>`, where $f_{\min} = \text{LOWEST\_NOISE\_HZ} = 10^3\ \text{Hz}$ and $f_{\max} = 0.5 / \Delta t$;
+     - `setplot noise<2*k - 1>` (each `noise` command generates two plots: the odd-numbered one is the spectral density and the even-numbered one is the integrated total noise);
+     - `wrdata <raw_k> onoise_spectrum`.
+   - Execute the noise netlist with `ngspice -b`, read the frequency column ($\text{Hz}$) and single-sided output voltage noise amplitude spectral density column ($\text{V}/\sqrt{\text{Hz}}$) for each analyzed channel, and expand back via the symmetry mapping into an array `densities` of shape `(len(circuit.outputs), frequencies)`.
+   - The `ngspice` frequency-domain noise analysis runs at $27\ ^\circ\text{C}$, covering `LOWEST_NOISE_HZ = 1e3` $\text{Hz}$ to $0.5 / \Delta t$; each output channel provides its own total output noise spectrum.
+2. **Band-power integration and inverse transform of complex Gaussian spectra (`band_power`, `noise_from_spectrum`)**:
+   - `band_power(frequencies_hz, density)` computes `steps = np.diff(frequencies_hz)`: if `frequencies_hz.size < 2` or `np.any(steps <= 0)`, raise `ValueError("A noise spectrum needs at least two increasing frequencies")`. Compute trapezoidal cumulative power by Eq. (5) and return the `np.interp` interpolator.
+   - `noise_from_spectrum(frequencies_hz, density, bins, dt, generator)` creates the frequency grid `centres = np.fft.rfftfreq(record, d=dt)` of length $N_{\text{rec}} = 256\,n_{\text{bin}}$, and computes band powers `in_band` and `sigma` via Eqs. (6) and (7).
+   - Following Eq. (8), draw the real parts `generator.normal(0.0, sigma)` and imaginary parts `generator.normal(0.0, sigma)` across all frequency bins using `generator`, overwrite the DC bin `spectrum[0]` with `generator.normal(0.0, record * np.sqrt(in_band[0]))`, and when `record % 2 == 0` overwrite the Nyquist bin `spectrum[-1]` with `generator.normal(0.0, record * np.sqrt(in_band[-1]))`.
+   - Return `np.fft.irfft(spectrum, n=record)[:bins]` per Eq. (9).
+3. **Independent random stream per event and per channel (`write_waveforms`)**:
+   - For each retained output channel `name` in event `event`, construct an independent NumPy random generator from a three-integer seed list:
+     $$\text{generator} = \text{np.random.default\_rng}\bigl([\text{noise\_seed},\, \text{event.event},\, \text{place}[\text{name}]]\bigr)$$
+     where `place[name]` is the fixed index of that channel in the full `circuit.outputs` ($0, 1, \dots, N_{\text{out}} - 1$).
+   - This ensures that the noise sequence of any channel in any event is uniquely determined by `(noise_seed, event.event, place[name])`, independent of which other channels are stored for that event, and that the noise sequences of any two distinct channels are statistically independent.
+
+### Pulse Polarity Determination and Waveform File Writing
+
+1. **Pulse-edge polarity determination (`pulse_edges`, `collected_charge_sign`, `chain_sign`)**:
+   - Extract the list of readout contact names `contacts = [contact["name"] for contact in my_d.read_out_contact]`. If `len(contacts) == 1`, replicate it as `contacts * len(outputs)`; if after expansion `len(contacts) != len(outputs)`, raise `ValueError("<det_name> lists the read-out electrodes <contacts>, not one for each of the outputs <outputs>")`.
+   - `chain_sign(chain)` constructs an all-zero current array of shape `(1, 2000)` with $\Delta t = 10^{-11}\ \text{s}$, sets `current[0, 5] = 1e-15 / dt` ($10^{-4}\ \text{A}$), and calls `solve` on `planar_circuit("probe", 1e-12)` to obtain `voltage`. Compute the deviation from the first bin `swing = voltage - voltage[0]` and take the signed value at maximum absolute deviation `largest = swing[np.argmax(np.abs(swing))]`: if `abs(largest) < NO_ANSWER_V` ($10^{-9}\ \text{V}$), raise `ValueError("The chain moves its output by <largest:.3g> V for 1 fC: it does not answer, so the way its pulses go is not known")`; otherwise return `+1` for `largest > 0` and `-1` for `largest < 0`. When this error occurs, check that the signal in any custom amplifier stage can propagate from the `in` port through its elements to the `out` port (whether node names match, whether the sensing nodes of a voltage-controlled source `E` are connected to signal nodes, whether the gain is `0`, or whether the output is shorted to ground), and whether the output can swing by at least $10^{-9}\ \text{V}$ within the probe's $2000 \times 10\ \text{ps} = 20\ \text{ns}$ window.
+   - For each `contact`, `collected_charge_sign(my_d, contact)` computes `above` via Eq. (10): if `above == 0`, raise `ValueError("<electrode> of <det_name> and its other electrode are at one potential")`; return `-1` for `above > 0` and `+1` for `above < 0`. By Eq. (12), a positive product yields `"rising"` and a negative product yields `"falling"`.
+2. **Event loop, channel swing filtering, and noise addition (`write_waveforms`)**:
+   - Read the entire batch of induced currents with `read_currents(currents_path)`; if the target `waveforms_path` already exists, remove it first with `os.remove(waveforms_path)`.
+   - Iterate over each event `event` in `currents.events`:
+     - Find the list of electrodes with nonzero current `hit = [name for name, current in zip(currents.electrodes, event.current, strict=True) if np.any(current)]`;
+     - If `hit` is empty (a no-signal event), set `solved = {}`; otherwise call `_solve` on the full circuit when `part_of is None`, or `_solve_part` on the locally expanded circuit when `part_of` is not `None`;
+     - Compute the maximum absolute voltage swing per solved channel `swing = {name: np.abs(voltage).max() for name, voltage in solved.items()}` and the maximum `largest = max(swing.values(), default=0.0)`;
+     - Filter channels in the order of `circuit.outputs` satisfying `name in solved and largest > 0 and swing[name] >= PART_EDGE * largest` into `names`, and assemble the voltage matrix `voltage` of shape `(len(names), bins)` (for no-signal events, `names = []` and `voltage` has shape `(0, bins)`);
+     - If `noise_seed is not None` and `names` is non-empty, generate `noise_from_spectrum` per channel and add it to `voltage`;
+     - Call `append_waveforms` to write the event to the HDF5 file.
+3. **Waveform file validation and append writing (`append_waveforms`, `read_waveforms`, `read_circuit_values`)**:
+   - **Input validation**: `append_waveforms` takes `names = electrodes if record.electrodes is None else list(record.electrodes)`. If `names` contains any name not in `electrodes` or any duplicates, raise `ValueError("the event <event> has traces of <names>, not each once of the electrodes <electrodes>")`. Convert `record.voltage` to a `float64` array: if `voltage.ndim != 2 or voltage.shape[0] != len(names)`, raise `ValueError("voltage has shape <shape>, expected (<len(names)>, bins)")`. If `pulse_edge is not None` and either `len(pulse_edge) != len(electrodes)` or not all entries belong to `{"rising", "falling"}`, raise `ValueError("pulse_edge <pulse_edge> is not one of rising and falling for each of the electrodes <electrodes>")`.
+   - **Table creation or existing-file layout check**: If the file does not yet exist, create the HDF5 file, write attributes `electrodes`, `dt`, optional `device_circuit` (`json.dumps(circuit_values)`), and optional `pulse_edge`, and create 1D extensible datasets `event`, `t0`, `count`, `stored`, `index`, and `voltage` (with `compression="gzip"`). If the file already exists, first call `_check_layout` to verify that all `DATASETS = ("event", "t0", "count", "stored", "index", "voltage")` are present and `file["voltage"].ndim == 1`, raising `ValueError("<path> is a readout file of an older layout (no ...): run the readout again")` otherwise; then verify that the file attributes `electrodes` and `dt` match those passed in, raising `ValueError("<path> holds waveforms of electrodes <in_file> with dt <dt_file> s, not of <electrodes> with dt <dt> s")` on mismatch.
+   - **Append rows**: Append `event`, `t0`, `count = voltage.shape[1]`, and `stored = len(names)` to their respective datasets, append `[electrodes.index(name) for name in names]` to `index`, and append the flattened `voltage.reshape(-1)` to `voltage`.
+   - **Reading back (`read_waveforms`)**: First run `_check_layout`; if the `"pulse_edge"` attribute is missing, raise `ValueError("<path> has no pulse_edge: the readout of this version did not write it; run the readout again")`. If this error or the older-layout error occurs, rerun the `readout` slice following [slices and reruns](../lifecycle/slices.md) so the new file replaces the old one at the same path. Then walk through `stored` and `count` per event to slice the 1D `index` and `voltage` arrays, reconstruct the list of `EventWaveforms`, and return `Waveforms`.
+
+### Amplifier-Stage Schematic Grid Layout and Drawing
+
+`draw(path, figure_path)` in `schematic.py` generates a schematic diagram of an amplifier stage or load from a `.cir` file:
+
+1. **Extract end-of-line layout hints (`read_hints`)**: Read the text after `;` on each line inside the main `.subckt <stem>` block and store it in the dictionary `hints[designator]`.
+2. **Automatically infer layout hints for unannotated elements (`arrange`, `_main_path`)**:
+   - Split elements into grounded elements `grounded` and non-grounded connections `links` (subcircuit instances `X` and voltage-controlled sources `E` are marked as active amplifying elements `active = True`). If a subcircuit instance `X` has no end-of-line hint in the file, raise `ValueError("What <name>, an instance of <model>, is cannot be told from its nodes: say it behind the element, as in '; npn'")`; if the negative control terminal and negative output terminal of a voltage-controlled source `E` do not both connect to ground (node `"0"`), `_amplifier` raises `ValueError("<name> can only be drawn as 'amp' where it is a source that follows a voltage to ground and gives one to ground")`.
+   - If the subcircuit has an `"out"` port, `_main_path` performs depth-first search from `"in"` to `"out"` (active elements traversed one-way, passive elements two-way), selecting the path that traverses the most active amplifying elements and, on ties, the fewest total elements as the main path; if no path reaches `"out"`, raise `ValueError("No way leads from the input of the stage to its output")`.
+   - Place elements left-to-right along the main path (keeping explicit file hints unchanged; otherwise assigning `"amp"` to active `E` elements and `"right"` or `"left"` to passive elements, reserving rightward spacing `room(node) = 2 * max(beside - 1, 0)` based on the number of grounded elements and bypass branches attached to each node).
+   - Iteratively place remaining passive elements: grounded elements hang `"down"` (or `"up"`) offset rightward by `2 * beside`; elements whose two endpoint nodes are already placed bridge those nodes, stepping sideways by `1.5` grid steps until `_taken` determines there is no overlap with existing elements or wires; the first element of a branch anchored on the main path extends upward to `top = ceil(max_y) + 1` above the current maximum coordinate (if the rightward collision-avoidance step `aside > room(node)`, raise `ValueError("There is no free place for <name> to go up from the node <node>: say behind it where to draw it")`), and subsequent elements of the branch extend rightward. If an iteration places no remaining element, raise `ValueError("Where to draw the elements <left> cannot be told from the stage: say it behind them")`.
+3. **Compute grid coordinates and orthogonal wires (`layout`)**:
+   - If `hints` contains element names absent from `stage["elements"]`, raise `ValueError("The drawing hints <unknown> are of no element of the stage")`.
+   - Place the input port node at the origin `(0.0, 0.0)`. Parse each element's direction and step count in hint order (`_step` requires direction in `{"right", "left", "up", "down"}` and at most 2 tokens, defaulting to `2.0` steps, raising `ValueError` otherwise; any extra hint after a comma must start with `"shift"`, raising `ValueError` otherwise; the main hint of a subcircuit instance `X` must be `"npn"` with exactly 3 nodes—collector, base, emitter—raising `ValueError` otherwise).
+   - Any element with one known endpoint coordinate is placed immediately, assigning coordinates to an unknown node via the first element reaching it; if a non-ground end does not coincide with its node's existing coordinate, `_wire` generates an orthogonal wire running straight first and then bending. If an iteration places no new element, raise `ValueError("The elements <left> hang on no node that the input reaches: they cannot be drawn")`.
+4. **Symbol rendering and image export (`draw`, `value_text`)**:
+   - Render element symbols with Matplotlib (rectangle for resistors, parallel vertical plates for capacitors, four semicircular arcs for inductors, circle with `"+"` for voltage sources, triangle for `"amp"` amplifiers, bipolar transistor with emitter arrow for `"npn"`), three-bar ground symbols, text labels `<name>\n<value_text>` (appending a newline `"no noise"` for noiseless resistors), solid black dots at junctions of three or more segments, and open circles at the `"in"` and `"out"` ports; save to `figure_path` at figure size `(0.75 * width + 1, 0.75 * height + 1)` inches and `dpi=160`.
+
+## Software Implementation
+
+### Module and Function Responsibilities
+
+- `circuit.py`: parses and rewrites front-end amplifier SPICE subcircuit files. `spice_number` parses SPICE numbers with scale prefixes; `read_subcircuit` parses a single `.cir` file into a dictionary of ports, elements, and external models; `read_chain` and `named_chain` assemble multi-stage amplifier and final-load chains; `subcircuit` serializes a subcircuit dictionary back into SPICE `.subckt` text.
+- `spice.py`: assembles full netlists and drives `ngspice` batch solving. `_bin_centres`, `_current_sources`, `_chain`, `_transient`, `write_netlist`, `write_short_circuit_netlist`, and `write_noise_netlist` generate transient, short-circuit current, and frequency-domain noise netlists; `_ngspice` and `_run` invoke `ngspice -b` and perform interpolated sampling; `solve`, `short_circuit_currents`, and `output_noise_spectrum` are the external solving entry points.
+- `spectral_noise.py`: synthesizes time-domain Gaussian noise from a single-sided amplitude spectral density. `band_power` builds the trapezoidal cumulative noise-power interpolator, and `noise_from_spectrum` draws complex Gaussian spectra on the extended frequency grid and applies `irfft` to produce a single time-domain noise waveform.
+- `pulse_edge.py`: determines the output pulse polarity of each readout channel. `collected_charge_sign` determines the collected carrier sign from the device bias, `chain_sign` probes whether an amplifier chain is non-inverting or inverting using a $1\ \text{pF}$ planar probe circuit, and `pulse_edges` returns the per-channel list of `"rising"` or `"falling"`.
+- `job.py`: coordinates single-job batch processing from induced-current files to readout waveform files. `_solve` and `_solve_part` run full-circuit or adaptively expanded strip-row local solving per event; `noise_spectra` reuses symmetric-channel noise spectra according to `circuit.alike`; `write_waveforms` runs event-by-event solving, channel filtering, independent-stream noise addition, and file writing.
+- `waveforms.py`: defines the `EventWaveforms` and `Waveforms` dataclasses along with `_check_layout`, `append_waveforms`, `read_waveforms`, and `read_circuit_values` for sparse append writing and reading of `readout_<job>.h5`.
+- `schematic.py`: provides `read_hints`, `arrange`, `layout`, `value_text`, and `draw` to render `.cir` subcircuit files into schematic images.
+
+### Core Data Structures
+
+- Subcircuit and amplifier-chain dictionaries (`circuit.py`): `read_subcircuit` returns `{"ports": {"in": <str>, Optional["out"]: <str>}, "elements": {<designator>: <dict>}, Optional["models"]: list[str]}`, where resistance `"ohm"` is in $\Omega$, capacitance `"farad"` is in $\text{F}$, inductance `"henry"` is in $\text{H}$, DC voltage source `"volt"` is in $\text{V}$, and voltage-controlled voltage source `"gain"` is dimensionless; `read_chain` and `named_chain` return `{"stages": {<name>: <stage_dict>}, "load": <load_dict>}`.
+- `DeviceCircuit` (defined in `src/raser/core/field/device_circuit.py`, see [field.md](field.md)): frozen dataclass containing device SPICE element lines `lines: tuple[str, ...]`, induced-current source node-pair mapping `sources: dict[str, tuple[str, str]]`, readout-channel output-node mapping `outputs: dict[str, str]`, and symmetric output-channel groups sharing noise spectra `alike: tuple[tuple[str, ...], ...]`.
+- `EventWaveforms` (`waveforms.py`): single-event readout waveform record containing event ID `event: int` (dimensionless), left edge time of the first time bin `t0: float` ($\text{s}$), bin-center output voltage matrix of stored channels `voltage: np.ndarray` (shape `(stored_electrodes, bins)`, `float64`, $\text{V}$), and the channel name list corresponding to the rows of `voltage`, `electrodes: list[str] | None` (`None` on write means all `electrodes` of the file are included).
+- `Waveforms` (`waveforms.py`): full-file waveform container returned by `read_waveforms`, containing all output channel names `electrodes: list[str]`, time-bin width `dt: float` ($\text{s}$), event waveform list `events: list[EventWaveforms]`, and pulse-edge direction list `pulse_edge: list[str]` matching `electrodes` (each entry `"rising"` or `"falling"`).
+
+## Interface
+
+For the command-line entry point and slice scheduling options (such as `-amp`/`--amplifier` and `--sheet-resistance`), see [../stages/readout.md](../stages/readout.md); for parameter extraction and construction of the device equivalent circuit `DeviceCircuit`, see [field.md](field.md); for detailed descriptions and schematics of front-end readout circuit components, see [../components/readout.md](../components/readout.md). Users can set only the device file keys, `.cir` component file keys, and amplifier-stage element value overrides listed below; all other parameters on this page (`LOWEST_NOISE_HZ`, `PART_EDGE`, `PER_DECADE`, noise-analysis temperature, `RECORD`, `NO_ANSWER_V`, and probe circuit parameters) are hard-coded.
+
+Overriding amplifier-stage element values: the description of each amplifier stage read by `read_subcircuit` (pure numeric values under element names) is written into the `readout` node's `node.json`, and experiment `config.json` as well as command-line `--set` and `--scan` address and override these values via `readout.<stage_name>.<element_name>`, for example `--set readout.ChargeSensitiveCremat.Cf=2e-12` or `--scan readout.ChargeSensitiveCremat.Cf=1.4e-12,2e-12,3e-12`. `<stage_name>` is the stage's name in the chain, i.e., the `.cir` filename stem, with suffixes starting from `_2` when the same file appears more than once in the chain (`Gali52_2`); `<element_name>` is the element designator inside the `.cir` file (e.g. `Cf`, `Rf`, `E1`). Values are plain SI numbers—resistance in $\Omega$, capacitance in $\text{F}$, inductance in $\text{H}$, DC voltage source in $\text{V}$, and voltage-controlled voltage source gain (dimensionless)—written in decimal notation such as `2e-12`; SPICE prefix notation (`2p`) is used inside `.cir` files. To change circuit topology (adding or removing elements or changing nodes), copy the `.cir` file under a new name (keeping the filename stem equal to the `.subckt` name), place it in the project's `components/afe/`—component lookup searches the project before the built-in library—and use the new name in the chain.
+
+### Keys Read from Device Files
+
+| Key or Derived Attribute | Default | Unit | Meaning |
+| --- | --- | --- | --- |
+| `det_name` | stem of the device filename | none | Device name, used in `pulse_edge.py` error messages |
+| `bias.electrode` | none (required) | none | Name of the biased electrode (all other electrodes are grounded), read by `collected_charge_sign` |
+| `bias.voltage` | none (required) | $\text{V}$ | Bias voltage; together with `bias.electrode`, determines whether a readout electrode collects electrons (`-1`) or holes (`+1`) |
+| `read_out_contact` | none (required) | none | List of readout electrode dictionaries, each containing `"name"`; expanded to all output channels if length `1`, otherwise must have length `len(circuit.outputs)` |
+| `capacitance_pF`, `bias_resistance_ohm`, `coupling_capacitance_pF`, `undepleted_resistance_ohm`, `undepleted_capacitance_pF`, `resistive_layer` | see [field.md](field.md) | $\text{pF}$, $\Omega$ | Read by `circuit_parameters.py` in [field.md](field.md) to build the `DeviceCircuit` and `circuit_values` passed into this package (written to the `device_circuit` attribute of `readout_<job>.h5`) |
+
+### Keys in Component Files
+
+#### Element Syntax and Layout Hints
+
+Each `.cir` component file must contain one main subcircuit `.subckt <filename> ...` matching the filename stem (the ground node is fixed to `"0"`), and all non-comment lines outside the main subcircuit are stored verbatim in `"models"`. Declarations, element-line syntax, and end-of-line `;` schematic layout hints supported inside the main subcircuit are as follows:
+
+| Key or Element-Line Format | Default | Unit | Meaning |
+| --- | --- | --- | --- |
+| `.subckt <filename> in out` / `.subckt <filename> in` | none (required) | none | Main subcircuit port declaration: preceding amplifier stages must declare two ports `in out`, while the final termination load must declare only the single port `in` |
+| `R<name> <node1> <node2> <value>` | none | $\Omega$ | Resistor with thermal noise (parsed as `{"between": [n1, n2], "ohm": R}`) |
+| `R<name> <node1> <node2> <value> noisy=0` | none | $\Omega$ | Resistor without thermal noise (parsed as `{"between": [n1, n2], "ohm": R, "noiseless": True}`) |
+| `C<name> <node1> <node2> <value>` | none | $\text{F}$ | Capacitor (parsed as `{"between": [n1, n2], "farad": C}`) |
+| `L<name> <node1> <node2> <value>` | none | $\text{H}$ | Inductor (parsed as `{"between": [n1, n2], "henry": L}`) |
+| `V<name> <pos_node> <neg_node> [dc] <value>` | none | $\text{V}$ | DC voltage source (parsed as `{"between": [n+, n-], "volt": V}`) |
+| `E<name> <out+> <out-> <follow+> <follow-> <gain>` | none | dimensionless | Voltage-controlled voltage source (parsed as `{"between": [o+, o-], "follows": [f+, f-], "gain": G}`) |
+| `X<name> <nodes...> <subcircuit_model_name>` | none | none | Instance calling a subcircuit defined outside the main subcircuit in the same file (parsed as `{"model": <model_name>, "nodes": [...]}`) |
+| `; <direction> [<steps>]` | automatic layout (`2.0` when direction is given) | grid steps | `schematic.py` layout hint: specifies the direction (`right`, `left`, `up`, `down`) and grid-step span from the element's first node to its second node |
+| `; <main_hint>, shift <direction> [<steps>]` | no shift (`2.0` when direction is given) | grid steps | `schematic.py` layout hint: translates the entire element and connects it back to both nodes with orthogonal wires |
+| `; npn` | none (required for drawing `X` instances) | none | `schematic.py` layout hint: draws a three-node `X` instance (collector, base, emitter in order) as an NPN bipolar transistor symbol with the base on the left |
+| `; amp` | used automatically for ground-referenced `E` on the main path | grid steps (fixed `2.0` rightward) | `schematic.py` layout hint: draws a voltage-controlled voltage source `E` whose negative control and output nodes are grounded as a triangular amplifier symbol |
+
+Element values support scientific notation and case-insensitive SPICE prefixes: `t` ($10^{12}$), `g` ($10^{9}$), `meg` ($10^{6}$), `k` ($10^{3}$), `m` ($10^{-3}$), `u` ($10^{-6}$), `n` ($10^{-9}$), `p` ($10^{-12}$), and `f` ($10^{-15}$); trailing unit letters immediately following the prefix are ignored.
+
+#### Built-in Components
+
+`components/readout/` (source directory `src/raser/components/afe/`, see [../components/readout.md](../components/readout.md) for details) contains the following 5 SPICE components:
+
+| Component Name | Ports | Circuit Description |
+| --- | --- | --- |
+| `BroadBandCividec` | 2 (amplifier stage: `in`, `out`) | CIVIDEC C2 broadband non-inverting current amplifier, bandwidth `1 MHz - 2 GHz`, gain `40 dB` |
+| `ChargeSensitiveCremat` | 2 (amplifier stage: `in`, `out`) | Cremat CR-110-R2.2 charge-sensitive preamplifier, unloaded gain `1.4 V/pC`, decay time `140 us` |
+| `Gali52` | 2 (amplifier stage: `in`, `out`) | Mini-Circuits GALI-52+ inverting gain block, low-frequency gain `22.66 dB`, pole `1.41 GHz` |
+| `SantaCruz` | 2 (amplifier stage: `in`, `out`) | UC Santa Cruz single-channel LGAD readout board, inverting transimpedance stage with `475 Ohm` feedback based on `BFR840L3RHESD` |
+| `Termination50` | 1 (termination load: `in`) | `50 Ohm` termination resistor to ground |
+
+![BroadBandCividec schematic](../images/afe-schematic-BroadBandCividec.png)
+
+CIVIDEC C2 broadband current amplifier with bandwidth `1 MHz - 2 GHz` and gain `40 dB`. `Rbias` provides the `1 MΩ` input DC bias and `Cin` is a `1 nF` AC coupling capacitor; the `50 Ohm` input impedance is split into two parallel resistors—a noisy `Rn` (`325.4 Ohm`) and a noiseless `Rq` (`59.08 Ohm`, `noisy=0`)—so that the input current noise integrated over the `2 GHz` single-pole bandwidth matches the manufacturer's `0.4 uA rms` specification. `E1` has a gain of `200`, which becomes `100` (`40 dB`) after the voltage divider formed by the `50 Ohm` output resistor `Rout` and the `50 Ohm` load; `Rp` (`1 Ohm`) and `Cp` (`79.58 pF`) set the `2 GHz` single pole.
+
+![ChargeSensitiveCremat schematic](../images/afe-schematic-ChargeSensitiveCremat.png)
+
+Cremat CR-110-R2.2 charge-sensitive preamplifier with unloaded gain `1.4 V/pC` and decay time `140 us`. Input capacitance `Cin` (`12.24 pF`) and equivalent input voltage-noise resistance `Rs` (`43.1 Ohm`) precede the first stage `E1` of inverting gain `-3000`, bridged by the parallel feedback network `Cf` (`1.4 pF`) and `Rf` (`100 MOhm`) and followed by the noiseless pole `Rp` (`1 kOhm`, `noisy=0`) and `Cp` (`401.3 pF`), before driving the output through the second stage `E3` of gain `+2` and the `50 Ohm` output resistor `Rout`.
+
+### Input and Output File Formats
+
+`write_waveforms` calls `read_currents(currents_path)` from [current.md](current.md) to read the upstream `current_<job>.h5` attributes `electrodes` (string array) and `dt` (`float64`, $\text{s}$), together with each event's `event` (`int64`), `t0` (`float64`, $\text{s}$), and time-domain induced currents `current` (`float64`, $\text{A}$) reconstructed to full-electrode shape `(len(electrodes), count)`.
+
+The output file `readout_<job>.h5` is written event by event via `append_waveforms`, storing only those output channels that have nonzero induced current in the event and whose maximum voltage swing reaches at least `PART_EDGE = 1e-3` times the event's largest channel swing; `read_waveforms` reconstructs `EventWaveforms` using the channel list actually stored for each event. When reading directly with h5py, the channel indices of event $e$ are `index[a:a + stored[e]]`, where $a$ is the sum of `stored` over the first $e$ events; the waveform of its $j$-th stored channel is `voltage[b + j*count[e] : b + (j+1)*count[e]]`, where $b$ is the sum of `stored * count` over the first $e$ events; if a channel index is absent from that event's `index` slice, that channel was not stored for that event.
+
+**`readout_<job>.h5` File Attributes**
 
 | Attribute | Type | Unit | Meaning |
 | --- | --- | --- | --- |
-| `electrodes` | `string[]` | None | List of all readout output channel names in the circuit |
-| `dt` | `float64` | s | Time-bin width |
-| `pulse_edge` | `string[]` | None | Pulse edge polarity per channel matching `electrodes` order, `"rising"` or `"falling"` |
-| `device_circuit` | `string` (JSON) | F, $\Omega$, $\text{F/m}^2$ | Dict of device equivalent circuit parameters and their sources (parsed by `read_circuit_values`) |
+| `electrodes` | string array | none | List of all readout output channel names defined by `circuit.outputs` |
+| `dt` | `float64` | $\text{s}$ | Time-bin width (identical to `dt` in the input `current_<job>.h5`) |
+| `pulse_edge` | string array (optional on write, required on read) | none | Output pulse polarity corresponding one-to-one with `electrodes`; each entry is `"rising"` or `"falling"` |
+| `device_circuit` | JSON string (optional) | $\text{F}$, $\Omega$, $\text{F/m}^2$ | Dictionary of device equivalent-circuit element values and their sources, parsed and returned by `read_circuit_values` (written when `write_waveforms` receives `circuit_values`; `read_circuit_values` returns `None` when the attribute is absent) |
 
-### Datasets
+**`readout_<job>.h5` Datasets**
 
 | Dataset | Shape and Type | Unit | Meaning |
 | --- | --- | --- | --- |
-| `event` | `(events,)`, `int64` | None | Geant4 event IDs |
-| `t0` | `(events,)`, `float64` | s | Left edge of the first time bin for the event |
-| `count` | `(events,)`, `int64` | bins | Number of time bins in each stored waveform for the event |
-| `stored` | `(events,)`, `int64` | count | Number of readout channels with stored waveforms in the event (`0` for signal-less events) |
-| `index` | `(sum(stored),)`, `int64` | None | `0`-based index in the `electrodes` attribute for each stored channel |
-| `voltage` | `(sum(stored * count),)`, `float64` (gzip) | V | Bin-center output voltages concatenated sequentially by event and stored channel |
+| `event` | `(events,)`, `int64` | none | Event ID (matches `event` in the input `current_<job>.h5`) |
+| `t0` | `(events,)`, `float64` | $\text{s}$ | Left edge time of the first time bin of the event |
+| `count` | `(events,)`, `int64` | bins | Number of time bins in each stored waveform of the event (equals `bins`) |
+| `stored` | `(events,)`, `int64` | count | Number of output channels whose waveforms are stored for the event (`0` for no-signal events) |
+| `index` | `(sum(stored),)`, `int64` | none | 0-based index of each stored output channel in the `electrodes` attribute, partitioned by `stored` across events |
+| `voltage` | `(sum(stored * count),)`, `float64` (gzip) | $\text{V}$ | Output voltage at the `count` bin centers of each stored channel, concatenated end-to-end by event and stored channel order |
 
-### Standalone Python Helper Functions
+### Plot Output
 
-- **Short-circuit current (`spice.py`)**: `short_circuit_currents(electrodes, dt, currents, circuit)` and `write_short_circuit_netlist` short device outputs to ground (`Vshort<k> <output> 0 0`) and return an `(outputs, bins)` array of short-circuit currents (A).
-- **Amplifier stage schematic drawing (`schematic.py`)**: `draw(path, figure_path)` parses layout hints after `;` on SPICE subcircuit lines (directions `right`/`left`/`up`/`down` with step count [default 2], offset `shift <way> <steps>`, transistor `npn`, amplifier `amp`), arranges grid coordinates via `read_hints`, `arrange`, and `layout`, and saves the schematic to `figure_path` (`dpi=160`).
+`draw(path, figure_path)` in `schematic.py` renders a single `.cir` subcircuit file into a schematic image file:
 
-## Readout Waveforms in the Example (`HPK-Si-PiN`)
-
-In the [Getting Started](../getting-started.md) example, `HPK-Si-PiN` at `200 V` uses the default front-end chain `SantaCruz+Gali52+Termination50` and writes `work/HPK-Si-PiN/signal/seed_1/batch/readout_0.h5`: attributes record `electrodes = ['top']`, `dt = 5e-12` s, `pulse_edge = ['falling']`, and `device_circuit` records `"junction_capacitance": {"farad": 3.44162280284e-12, "from": "device file"}` (all other circuit items are `null`); among `200` events, `196` non-empty waveforms are stored (`index` length `196`, `voltage` length `245196`).
-
-## Common Errors
-
-| Exception Type | Error Message | Trigger Condition |
+| Filename | Content | Units |
 | --- | --- | --- |
-| `MissingDependency` | `ngspice is not installed. Install it with conda install -c conda-forge ngspice on x86 Linux, or with env/install-ngspice.sh on macOS arm64 and Linux aarch64` | `ngspice` not found on `PATH` (`spice.py`) |
-| `ValueError` | `<text> is not a SPICE number` / `Cannot read the element <line> of <path>` / `<path> has to hold .subckt <name> with the nodes in, or in and out` | SPICE file syntax or port definition is invalid (`circuit.py`) |
-| `ValueError` | `<path> has no output: it can only be the load, the last of the chain, not its part <place> of <len>` / `<load_path> is the last of the chain and has to be a load, with the node in alone` | An amplifier stage lacks `out`, or the final load has an `out` port (`circuit.py`) |
-| `ValueError` | `The stage <name> has the node <in> as input and as output; give the output a node of its own` / `Element <designator> of <name> has to carry one of ['ohm', 'farad', 'henry', 'volt'], a gain or a model, not ...` / `Element <designator> of <name> is noiseless: only a resistor can be` | Invalid subcircuit dict structure (`circuit.py`) |
-| `ValueError` | `<electrode> of <det_name> and its other electrode are at one potential` / `The chain moves its output by <largest> V for 1 fC: it does not answer, so the way its pulses go is not known` / `<det_name> lists the read-out electrodes <contacts>, not one for each of the outputs <outputs>` | Bias voltage is `0`, amplifier chain output swing is `< 1e-9 V`, or readout contact count mismatches output count (`pulse_edge.py`) |
-| `ValueError` | `A noise spectrum needs at least two increasing frequencies` | Frequency array has length `< 2` or non-increasing steps (`spectral_noise.py`) |
-| `ValueError` | `The bin width must be positive, not <dt> s` / `<len(currents)> currents for <len(electrodes)> electrodes` / `The currents are of the electrodes <electrodes>; the device has current sources for <sources>` / `A stage cannot be named "load"` | Netlist parameter validation failure (`spice.py`) |
-| `ValueError` | `<path> is a readout file of an older layout ...: run the readout again` / `<path> has no pulse_edge: the readout of this version did not write it; run the readout again` / `the event <event> has traces of <names>, not each once of the electrodes <electrodes>` / `voltage has shape <shape>, expected (<len>, bins)` / `pulse_edge <pulse_edge> is not one of rising and falling for each of the electrodes <electrodes>` / `<path> holds waveforms of electrodes <in_file> with dt <dt> s, not of <electrodes> with dt <dt> s` | Waveform file read/write or format validation failure (`waveforms.py`) |
-| `ValueError` | Layout hint syntax error, element not connected to input, no path from input to output, subcircuit instance missing `; npn`, or no free grid slot for branch | Schematic grid layout validation failure (`schematic.py`) |
+| `figure_path` passed to `draw` (documentation images are `afe-schematic-<component>.png`) | Subcircuit schematic containing the title `<filename_stem>`, port circles (`in`, `out`), element symbols, designator and formatted value labels (`value_text`, with `no noise` on noiseless resistors), ground symbols, and orthogonal connecting wires (axes hidden, `dpi=160`) | Internal layout coordinates are dimensionless grid steps (input port `in` at `(0.0, 0.0)`); figure size is `(0.75 * width + 1, 0.75 * height + 1)` $\text{in}$ |
 
-## Related Pages
+## References
 
-- [Getting Started](../getting-started.md)
-- [../stages/readout.md](../stages/readout.md)
-- [device.md](device.md)
-- [field.md](field.md)
-- [current.md](current.md)
-- [digitizer.md](digitizer.md)
-- [reconstruction.md](reconstruction.md)
-- [../components/afe.md](../components/afe.md)
-- [../supports/README.md](../supports/README.md)
+- [1] W. Riegler, “An application of extensions of the Ramo-Shockley theorem to signals in silicon sensors”, Nucl. Instrum. Methods Phys. Res. A 940 (2019) 453, doi:10.1016/j.nima.2019.06.056
+- [2] L. W. Nagel, *SPICE2: A Computer Program to Simulate Semiconductor Circuits*, Memorandum No. ERL-M520, Electronics Research Laboratory, University of California, Berkeley (1975), https://www2.eecs.berkeley.edu/Pubs/TechRpts/1975/9602.html
+- [3] C.-W. Ho, A. E. Ruehli, P. A. Brennan, “The Modified Nodal Approach to Network Analysis”, IEEE Trans. Circuits Syst. 22 (1975) 504, doi:10.1109/TCS.1975.1084079
+- [4] J. B. Johnson, “Thermal Agitation of Electricity in Conductors”, Phys. Rev. 32 (1928) 97, doi:10.1103/PhysRev.32.97
+- [5] H. Nyquist, “Thermal Agitation of Electric Charge in Conductors”, Phys. Rev. 32 (1928) 110, doi:10.1103/PhysRev.32.110
+- [6] S. O. Rice, “Mathematical Analysis of Random Noise”, Bell Syst. Tech. J. 23 (1944) 282, doi:10.1002/j.1538-7305.1944.tb00874.x

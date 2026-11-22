@@ -1,95 +1,244 @@
 # Energy Deposition Stage (`stages/deposit`)
 
-`src/raser/stages/deposit.py` wraps the particle-source simulation and ionization pair conversion from [../core/deposit.md](../core/deposit.md) into `deposit`, the starting slice of the simulation chain, and provides the stage CLI entry point `raser deposit <target>` (short alias `raser dep <target>`). `deposit` has no upstream slice dependencies in the simulation chain. It generates energy-deposit steps and electron-hole pair data `deposit_<job>.h5` for each job, delivers them to the [`current`](current.md) slice for carrier drift, and provides the earliest deposit time `truth` for the final [`analysis`](analysis.md) slice. If a single job records `0` valid events, it writes `deposit_<job>.h5` and ends subsequent slices for that job; if `-g4_vis` is enabled, it exports the Geant4 geometry image and ends the job.
+`src/raser/stages/deposit.py` is dispatched by `raser deposit` (short alias `raser dep`) of [Simulation Chain and Stage Entry Points (`stages`)](README.md) or by benchmark and application experiment commands, standing at the front of the eight-stage simulation chain alongside the shared [Field Solving Stage (`stages/field`)](field.md). This stage reads the `deposit` section of `config.json`, the device definition `files["device"]` from [Detector Components (`components/device`)](../components/device.md), and the particle source or beam configuration `files["source"]` and Geant4 setup script `files["g4setup"]` from [Energy Deposition Components (`components/deposit`)](../components/deposit.md). It invokes [Device Model (`core/device`)](../core/device.md) to construct a `Detector` instance, then calls [Energy Deposition and Ionization (`core/deposit`)](../core/deposit.md) to simulate particle energy deposit steps inside the detector and convert deposited energy into electron-hole pairs, writing the energy deposition HDF5 data file and `node.json` under the node directory `nodes/deposit/<node_id>/` (and optionally drawing the Geant4 geometry and track plot `g4_geometry.png` inside the node or opening an interactive window to inspect the setup), with the view symlink `points/<point>/deposit` pointing to that node. The written deposit-step coordinates, times, energies, and electron-hole pair counts are passed downstream to the [Carrier Transport and Induced Current Stage (`stages/current`)](current.md) for carrier drift, while each event's earliest deposit time (`truth`) is passed to the [Statistical Analysis Stage (`stages/analysis`)](analysis.md) for time-resolution computation.
 
-```mermaid
-flowchart LR
-    IN["Device JSON + source JSON<br/>+ g4setup (.py) + job seed"] --> MODE{"Run mode"}
-    MODE -- "Standard simulation" --> SIM["Particle transport &amp; pair calculation<br/>(-evt / -gen, --edep-min/max, fano)"]
-    SIM --> H5["batch/deposit_&lt;job&gt;.h5<br/>+ batch/deposit_&lt;job&gt;.done"]
-    H5 -- "recorded &gt; 0" --> CUR["current slice"]
-    H5 -. "earliest deposit time truth" .-> ANA["analysis workflow"]
-    H5 -- "recorded = 0" --> END["Record ended: true, end job"]
-    MODE -- "-g4_vis" --> VIS["Export g4_geometry image and exit"]
+## Behavior
+
+### Running the Deposit Stage Standalone and Node Reuse
+
+`raser deposit` (or `raser dep`) runs up through the `deposit` stage on the experiment in the current folder or at the given path. The command syntax is:
+
+```bash
+raser deposit [path] [<source>] [options...]
+raser dep [path] [<source>] [options...]
 ```
 
-## Inputs (What It Reads)
+Omitting the path operates on the current experiment folder; passing a relative or absolute path targets an experiment folder containing `config.json`. In standard mode, the `deposit` stage computes a fingerprint as `<node_id>` from the setting values used by this stage, the parts of the component files it uses, and the random seed, then runs particle transport and ionization conversion using that seed; each node is locked individually, carries the `.part` suffix while partially written, and is renamed upon completion to the final node directory `nodes/deposit/<node_id>/` containing the energy deposition HDF5 data file and `node.json` (which records the inputs, code version, runtime environment, and run status). When `deposit.plots` is greater than `0` and a Geant4 source (`"beam"` or `"decay_source"`) is used, the same Geant4 run uses the offscreen driver `TSG_OFFSCREEN` to render the device, surrounding setup, and tracks of the first `deposit.plots` recorded events into `g4_geometry.png` under that node's output directory. The program also updates the parameter table `points.json` at the experiment root and points the view symlink `points/<point>/deposit` to `../../nodes/deposit/<node_id>`. In subsequent full-chain or downstream stage runs across any scan point or invocation, any `deposit` node with an identical input fingerprint is reused; reverting settings points the view back to the old node; if the code version differs from the one recorded in `node.json`, only a notice is printed and existing results are still reused. See [Slices and Reruns](../lifecycle/slices.md) for node and reuse rules.
 
-- **Target argument `<target>`**: Path to an experiment folder containing `config.json`, or a device name (automatically maps to the `work/<device>/signal` experiment directory).
-- **Device and component configuration**:
-  - `files["device"]`: Reads device geometry dimensions and materials via `Detector` (see [../core/device.md](../core/device.md) and [../components/device.md](../components/device.md)).
-  - `files["source"]`: Particle source or beam component JSON (see [../components/source.md](../components/source.md)).
-  - `files.get("g4setup")`: `G4SETUP` dictionary exported by the Geant4 setup script; defaults to built-in `DEVICE_ALONE` (see [../components/g4setup.md](../components/g4setup.md)).
-- **Job seed and slice options**: Job random `seed` injected by the lifecycle, event count (`events_per_job` and `generated_per_job` are mutually exclusive and one must be set), generation limit `generated_limit`, total deposited energy window `edep_min`/`edep_max`, Fano fluctuation flag `fano`, and visualization switches `g4_vis`/`g4_vis_driver`.
+For example, running `2` energy-deposition jobs for the `signal` experiment on device `HPK-Si-PiN`, recording `200` valid events per job:
 
-## Outputs (What It Writes)
+```bash
+raser deposit work/HPK-Si-PiN/signal -s 2 -evt 200 --seed 1
+```
 
-- **Deposit slice file `batch/deposit_<job>.h5` and completion marker `batch/deposit_<job>.done`**: Written under `batch/` in the scan-point seed directory holding the `deposit` slice. If a single job records `0` events, `deposit_<job>.done` writes `{"ended": true}` and skips all downstream slices for that job.
-- **Geant4 geometry visualization (`-g4_vis`)**: When `--g4-vis-driver` (case-insensitive) is `"TSG"`, `"TSG_FILE"`, or `"TSG_OFFSCREEN"`, exports `g4_geometry.png` under the seed or scan-point folder; when starting with `"OGL"`, exports vector image `g4_geometry`, then exits the job. Other driver names starting with `"TSG"` raise `ValueError`.
+This command targets the experiment folder `work/HPK-Si-PiN/signal`, runs only through the `deposit` stage, writes the energy deposition HDF5 data file, `node.json`, and `g4_geometry.png` under `work/HPK-Si-PiN/signal/nodes/deposit/<node_id>/`, updates `work/HPK-Si-PiN/signal/points.json`, and creates the `points/<point>/deposit` symlink.
 
-### Outputs in the Example (`HPK-Si-PiN`)
+When running a full-chain bias scan command:
 
-In the [Getting Started](../getting-started.md) example, when running `raser signal HPK-Si-PiN --scan voltage=100,200 -s 2 -evt 200 --seed 1`, the `deposit` slice uses the `decay/Sr90` radioactive source, `device_alone` geometry, and `fano = true`, collecting `200` valid deposit events each for jobs `0` and `1` at both bias points and writing empty `deposit_<job>.done` markers. Taking `work/HPK-Si-PiN/signal/seed_1/batch/deposit_0.h5` as an example:
+```bash
+raser signal HPK-Si-PiN --scan field.voltage=100,200 -s 2 -evt 200 --seed 1
+```
 
-- **File attributes (`attrs`)**:
-  - `generated_events = 7359` (total Geant4 generated events)
-  - `recorded_events = 200` (valid recorded events with nonzero energy deposit inside the device)
-  - `generated_fraction = 0.017037086855465844` (simulated solid-angle fraction of source emission directions; if `--edep-min` or `--edep-max` is set, the corresponding attributes are also written in `MeV`)
+The `deposit` stage uses the default `decay/Sr90` radioactive source, `device_alone` setup, and `fano = true` to collect valid events for both the `100 V` (view `points/voltage_100/deposit`) and `200 V` (view `points/voltage_200/deposit`) scan points and write them into their respective `deposit` nodes. Taking the energy deposition HDF5 file written by a single job collecting `200` valid events as an example, the file attributes (`attrs`) are `generated_events = 7359` (total Geant4 generated events, in events), `recorded_events = 200` (valid recorded events with nonzero deposition in the device, in events), and `generated_fraction = 0.017037086855465844` (solid-angle fraction corresponding to the `15`-degree emission half-cone angle of `Sr90`, dimensionless; energy-window attributes `edep_min` and `edep_max` are written only when `--edep-min` or `--edep-max` is set), and the dataset (`datasets`) structure and example shapes are:
 
-- **Dataset (`datasets`) list**:
-
-| Dataset Name | Example Shape | Type | Unit | Description |
+| Dataset name | Example shape | Type | Unit | Meaning |
 | --- | --- | --- | --- | --- |
 | `event` | `(200,)` | `int64` | None | Geant4 event ID of each recorded event |
-| `count` | `(200,)` | `int64` | steps | Number of deposit steps in each recorded event |
-| `detector` | `(5476,)` | `object` (variable-length string) | None | Name of the detector logical volume containing the deposit step |
-| `x`, `y`, `z` | `(5476,)` | `float64` | $\mu\text{m}$ | Local coordinates of the deposit step midpoint (step start under `cflm`) |
-| `x_start`, `y_start`, `z_start` | `(5476,)` | `float64` | $\mu\text{m}$ | Local coordinates of the deposit step start (optional columns) |
+| `count` | `(200,)` | `int64` | steps | Number of deposit steps contained in each recorded event |
+| `detector` | `(5476,)` | `object` (variable-length string) | None | Logical volume name of the detector containing the deposit step |
+| `x`, `y`, `z` | `(5476,)` | `float64` | `μm` | Local coordinates of the deposit-step midpoint (step start coordinates under `cflm`) |
+| `x_start`, `y_start`, `z_start` | `(5476,)` | `float64` | `μm` | Local coordinates of the deposit-step start (optional columns) |
 | `t` | `(5476,)` | `float64` | `s` | Global time of the deposit step |
 | `e` | `(5476,)` | `float64` | `MeV` | Deposited energy |
 | `pairs` | `(5476,)` | `float64` | pairs | Converted number of electron-hole pairs |
 
-Physics branches (Geant4, `toy_mip`, laser deposition), ionization conversion constants, and full format details such as `t_fwhm` are documented in [../core/deposit.md](../core/deposit.md).
+Here `5476` is the sum of `count` across the `200` recorded events; `x`, `y`, `z`, etc. are stored flattened across deposit steps, and the `current` stage slices them back into per-event deposit-step lists using `count` and passes `pairs` to the carrier drift calculation.
 
-## Options
+### Running by Recorded or Generated Events and Early Exit on Zero Events
 
-Options for `raser deposit` and the `deposit` stage of the simulation chain are listed below (workflow default overrides are in [README.md](README.md), and common run options are in [../cli.md](../cli.md)):
+A single job chooses exclusively between `events_per_job` (`-evt`) and `generated_per_job` (`-gen`). With `-evt`, the particle source keeps generating events until the number of recorded events with nonzero total deposited energy inside the device satisfying the `--edep-min`/`--edep-max` energy window reaches the target count (generating at most `--generated-limit` source events). With `-gen`, the particle source generates the fixed number of source events and stops; the actual number of valid recorded events may be lower than that count, or even `0`.
 
-| Option / Key | Default | Unit | Description |
+When a single job records `0` valid events (for instance, generating a small number of events with `-gen` where none hit the device or fall within the energy window), the `deposit` stage still writes the energy deposition HDF5 file recording `generated_events` inside the node, and then raises `Ended` to terminate the job early. The lifecycle catches this exception, records the early-exit state, and skips all downstream stages for that job.
+
+### Geant4 Setup and Track Visualization (`-g4_vis`)
+
+Enabling `-g4_vis` on the command line puts the job into Geant4 visualization mode. The program uses the value of `-evt` or `-gen` as the number of generated events, opens an interactive window or exports the setup and tracks as a PNG image according to `--g4-vis-driver`, and immediately exits via `SystemExit` once the window closes or the image is exported.
+
+To inspect the Geant4 setup and tracks on a headless terminal, use the short alias `raser dep` with the offscreen driver:
+
+```bash
+raser dep work/HPK-Si-PiN/signal -evt 5 -g4_vis --g4-vis-driver TSG_OFFSCREEN
+```
+
+This generates `5` events, exports the geometry and tracks to `g4_geometry.png` in the current run directory, and exits; on a local machine with a graphical display, omit `--g4-vis-driver TSG_OFFSCREEN` to open an interactively rotatable Qt window using the default `TSG_QT_GLES`.
+
+## Rules
+
+### Built-in Constants and Chain Configuration Constants
+
+The table below lists all built-in constants and module-level configuration constants related to the `deposit` stage in `src/raser/stages/deposit.py`, `src/raser/stages/chain.py`, and `src/raser/stages/stage_commands.py`:
+
+| Constant name | Value | Unit | Definition location and meaning |
 | --- | --- | --- | --- |
-| `source` | `"decay/Sr90"` | None | Signal source or beam component name/path (positional argument) |
-| `--g4setup` | `"device_alone"` | None | Geant4 setup script name/path |
-| `-evt`, `--events-per-job` | `1` | events | Number of valid events to record per job (mutually exclusive with `-gen`) |
-| `-gen`, `--generated-per-job` | `None` | events | Total number of events generated by the particle source per job (alternative to `-evt`) |
-| `--generated-limit` | `None` (`10_000_000` at runtime) | events | Maximum total events generated to collect `-evt` recorded events |
-| `--edep-min` | `None` | MeV | Minimum total deposited energy in the device required to record an event |
-| `--edep-max` | `None` | MeV | Maximum total deposited energy in the device required to record an event |
-| `fano` | `True` | None | Whether to enable Fano fluctuation sampling for ionized pairs (set via `config.json` `"set"` or `--set`/`--scan`) |
-| `-g4_vis` | `False` | None | Enable Geant4 geometry and track visualization, then end the job after exporting the image |
-| `--g4-vis-driver` | `"OGL"` | None | Geant4 visualization driver name used by `-g4_vis` |
+| `GENERATED_LIMIT` | `10_000_000` | events | `core/deposit/generation.py` (imported by `stages/deposit.py`); maximum number of source events generated per job when using `events_per_job` and `generated_limit` is `None` |
+| `DEPOSIT_DEFAULTS` | `{"source": "decay/Sr90", "g4setup": "device_alone", "events_per_job": 1, "fano": True}` | None / None / events / None | `stages/chain.py`; default settings table for the `deposit` stage in the standard simulation chain |
+| `DEPOSIT_KEYS` | `("source", "g4setup", "events_per_job", "generated_per_job", "generated_limit", "edep_min", "edep_max", "fano", "plots")` | None | `stages/chain.py`; tuple of setting keys belonging to the `deposit` stage for computing node fingerprints |
+| `COMPONENTS` | `{"source": "source", "g4setup": "g4setup"}` | None | `stages/chain.py`; mapping from component kinds loaded by `deposit` in the standard simulation chain to their setting keys |
+| `READERS` | `{"g4setup": read_g4setup}` | None | `stages/chain.py`; mapping of custom readers for non-JSON component kinds |
+| `STAGES["deposit"]` | `("dep", "the energy deposited by the source", (chain.deposit_arguments,))` | None | `stages/stage_commands.py`; short alias, help text, and tuple of argument-mounting functions for the `raser deposit` subcommand |
 
-## Common Errors
+### Stage Command Target Resolution and Dispatch (`stage_commands.py`)
 
-| Exception Type | Error Message | Trigger Condition |
-| --- | --- | --- |
-| `ValueError` | `events_per_job (...) and generated_per_job (...): a job records a number of events or generates one, so exactly one of them is set` | Both `events_per_job` and `generated_per_job` are provided or both are missing |
-| `SystemExit` | `<target>: neither an experiment folder ...` / `<folder>: the experiment <workflow> has no deposit slice; its slices: ...` | Target is neither an experiment directory with `config.json` nor a valid device, or the workflow has no `deposit` slice (see [README.md](README.md)) |
+When running `raser deposit [path] ...` (or `raser dep [path] ...`), `stage_commands.run("deposit", kwargs)` proceeds through the following steps:
 
-Errors from Geant4 simulation, laser deposition, visualization drivers, and `deposit_<job>.h5` I/O are documented in [../core/deposit.md](../core/deposit.md).
+1. **Resolve target path (`_experiment(target)`)**:
+   - Uses the current folder when no path is given; when `<target>` is supplied, sets `folder = Path(target).expanduser()` and `config = folder / "config.json"`.
+   - If `config.is_file()` is true, reads the JSON as `record` and returns `(folder.resolve(), record["workflow"].split(), record.get("device"))`.
+2. **Validate that the target experiment class includes the `deposit` stage**:
+   - Looks up the experiment class corresponding to the target experiment (each benchmark or application is a Python class inheriting from the `raser` experiment base class that declares which stages it comprises) and collects its list of stage names `names`.
+   - Checks whether `"deposit"` is in `{name.split(".")[0] for name in names}`. If not (for example, running `raser deposit` on a `tct` experiment folder that has only `current` and `readout` stages), raises `SystemExit`:
+     ```text
+     <folder>: the experiment <workflow> has no deposit slice; its slices: <names>
+     ```
+     Cause: that experiment does not include a `deposit` stage; use one of the stage names listed at the end of the message or run the original experiment command instead.
+3. **Construct run options and expand cluster target path**:
+   - Computes the project root `project = folder.parents[len(words) - 1]`.
+   - Constructs `options = {**kwargs, "det_name": device, "until": "deposit", "_entry_command_prefix": (words[0],)}`.
+   - If `(folder / "config.json").is_file()` is true, takes `argv = kwargs.get("_argv") or []`, replaces any token equal to `kwargs["target"]` with `str(folder)`, and stores it in `options["_argv"]`.
+4. **Enter project context and experiment directory to run**:
+   - Saves the current directory `here = os.getcwd()` and enters `project_root_context(project, kwargs["_components_of"][words[0]])`.
+   - If `folder.is_dir()` is true, executes `os.chdir(folder)`; invokes `execute(workflow, options)` to launch the lifecycle, and restores the original working directory via `os.chdir(here)` in a `finally` block.
 
-## Related Pages
+### Assembling the `deposit` Stage in the Simulation Chain and Helper Callbacks (`chain.py`)
 
-- [Getting Started](../getting-started.md)
-- [Core Physics and Numerics: `core/deposit`](../core/deposit.md)
-- [Simulation Chain Overview](README.md)
-- [Device Definition](../core/device.md)
-- [Device Component Library](../components/device.md)
-- [Source Component Library](../components/source.md)
-- [Laser Component Library](../components/laser.md)
-- [Geant4 Setup Component Library](../components/g4setup.md)
-- [Current Stage](current.md)
-- [Analysis Stage](analysis.md)
-- [CLI Overview](../cli.md)
-- [Experiments and Scan Points](../lifecycle/experiments.md)
-- [Slices and Status Inspection](../lifecycle/slices.md)
-- [Paths and Runtime Supports](../supports/README.md)
+1. **Integration into the eight-stage chain and execution entry point (`_deposits`)**:
+   - The eight-stage simulation chain consists in order of `field`, `deposit`, `current`, `readout`, `digitizer`, `trigger`, `reconstruction`, and `analysis`. `deposit` has no upstream stages, reads `DEPOSIT_KEYS` settings along with `"source"` and `"g4setup"` component definitions, and as a measurement stage includes its random seed in the node fingerprint.
+   - The default execution callback `_deposits(kwargs)` executes `from . import deposit` at runtime and calls `deposit.deposits(kwargs)` (experiments with custom deposition such as `cflm` pass their own `deposit` function while keeping the stage name `"deposit"`).
+2. **Loading the `g4setup` script snapshot (`read_g4setup(selector)`)**:
+   - When preparing the `files["g4setup"]` component snapshot to record in node inputs, the main command invokes `READERS["g4setup"]` (i.e., `read_g4setup`).
+   - If `selector` is an explicit path ending in `.json`, or if traversing `component_roots()` for `g4setup/<selector>.py` encounters a `g4setup/<selector>.json` file in the first matching root, raises `ValueError`:
+     ```text
+     ValueError: <stale>: a g4setup is a script now; write it as <name>.py with its keys in G4SETUP
+     ```
+     Cause: Geant4 setups have been migrated to Python scripts; rewrite it as a `.py` file exporting a `G4SETUP` dictionary and remove the `.json` file from the same directory.
+   - Once validated, reads the `.py` file's byte stream, computes its SHA-256 hash, executes it in an isolated module namespace, and returns `{**module.G4SETUP, "file": str(selector), "sha256": module.SHA256}`.
+3. **Forwarding per-job visualization arguments (`job_command(kwargs)`)**:
+   - If `kwargs.get("g4_vis")` is true, returns `["-g4_vis", "--g4-vis-driver", kwargs["g4_vis_driver"]]` to append to single-job commands; otherwise returns `[]`.
+
+### Single-Job `deposit` Stage Execution Flow (`deposit.py`)
+
+Upon entering the `deposit` stage of a single job, the lifecycle has already written the measurement stage's random seed (in $[1, 2^{31}-1]$; when `--same-seeds` is enabled, jobs with the same index across scan points share the same random seed) into `kwargs["seed"]` (see [Experiments, Scan Points, and Seeds](../lifecycle/experiments.md) for sectioned configuration, scan expansion, and random seeding rules). Each node is locked individually, carries the `.part` suffix while partially written, and is renamed to `nodes/deposit/<node_id>/` only upon completion. `deposits(kwargs)` executes in the following strict order:
+
+1. **Construct the device model and read event-count options**:
+   - Reads `files = kwargs["_files"]` and constructs the device object with `my_d = bdv.Detector(kwargs["det_name"], files["device"])`.
+   - Reads `events = kwargs.get("events_per_job")` and `generated = kwargs.get("generated_per_job")`.
+2. **Validate mutual exclusion of recorded vs. generated event counts**:
+   - If `(events is None) == (generated is None)` is true (both are `None` or both are non-`None`), immediately raises `ValueError`:
+     ```text
+     ValueError: events_per_job (<events>) and generated_per_job (<generated>): a job records a number of events or generates one, so exactly one of them is set
+     ```
+     Cause: a job may specify either a target recorded event count or a generated event count, not both or neither (for example, after manually editing the `deposit` section of `config.json`); set exactly one of them in the configuration or command.
+   - Reads `limit = kwargs.get("generated_limit")`.
+3. **Dispatch `-g4_vis` visualization mode**:
+   - If `kwargs.get("g4_vis")` is true:
+     - Takes `driver = kwargs["g4_vis_driver"]` and initializes `picture = None`.
+     - If `driver.upper() in ("TSG", "TSG_FILE", "TSG_OFFSCREEN")`, sets `picture = os.path.join(kwargs["_run_path"], "g4_geometry")`.
+     - Calls `view_geometry(my_d, files["source"], files.get("g4setup"), int(events if generated is None else generated), kwargs["seed"], driver, picture)`.
+     - Immediately executes `raise SystemExit` once `view_geometry` returns, terminating the job process.
+4. **Prepare track-plot path and event count for standard runs (`_picture(kwargs)`)**:
+   - When `kwargs.get("g4_vis")` is false, calls `_picture(kwargs)`, which computes `drawn = int(kwargs.get("plots") or 0)`.
+   - If `not drawn` (i.e., `drawn == 0`), returns `(None, 0)`.
+   - If `drawn != 0`, prepares the image output path `g4_geometry` inside this stage's node output directory `nodes/deposit/<node_id>/` and returns that path together with `drawn`.
+5. **Call `write_simulated_deposits` to simulate and persist**:
+   - Calls `output(kwargs, "deposit")` to obtain the HDF5 energy-deposition output path inside `nodes/deposit/<node_id>/`.
+   - Calls `recorded = write_simulated_deposits(output(kwargs, "deposit"), my_d, files["source"], files.get("g4setup"), None if events is None else int(events), kwargs["seed"], kwargs.get("edep_min"), kwargs.get("edep_max"), kwargs["fano"], None if generated is None else int(generated), GENERATED_LIMIT if limit is None else int(limit), *_picture(kwargs))`.
+   - According to `files["source"]["kind"]`, `write_simulated_deposits` runs Geant4 transport (`"beam"`, `"decay_source"`) or straight-line minimum-ionizing-particle calculation (`"toy_mip"`), filters valid events by `edep_min`/`edep_max`, converts energy to electron-hole pairs via `ionized_pairs`, writes results into the HDF5 file, and returns the recorded event count `recorded`.
+6. **Check recorded event count and finalize node persistence**:
+   - If `not recorded` (i.e., `recorded == 0`), executes `raise Ended`. The lifecycle catches `Ended`, records the early-exit status, and skips all subsequent stages for this job.
+   - If `recorded > 0`, `deposits(kwargs)` returns `None`; the lifecycle renames the finished `.part` node to the final node directory `nodes/deposit/<node_id>/` (containing `node.json`), and updates `points.json` and the view symlink `points/<point>/deposit`.
+
+## Software Implementation
+
+### Source File Responsibilities
+
+- `src/raser/stages/deposit.py`: Implements the `deposit` stage job function `deposits(kwargs)` and standard-run track-plot path helper `_picture(kwargs)`, performing `Detector` construction, event-count mutual-exclusion validation, `-g4_vis` visualization dispatch, `write_simulated_deposits` invocation, and raising `Ended` on zero events.
+- `src/raser/stages/chain.py`: Defines `DEPOSIT_DEFAULTS`, `DEPOSIT_KEYS`, `COMPONENTS`, `READERS`, CLI argument registration function `deposit_arguments(parser)`, visualization argument forwarder `job_command(kwargs)`, and lazy-import callback `_deposits(kwargs)`, assembling `"deposit"` into the simulation chain.
+- `src/raser/stages/stage_commands.py`: Registers `raser deposit` (short alias `dep`) in `STAGES["deposit"]`, resolves experiment folders via `_experiment(target)`, verifies in `run("deposit", kwargs)` that the target experiment includes the `deposit` stage, and invokes lifecycle `execute` with `until="deposit"`.
+- `src/raser/stages/files.py`: Implements `_job(kwargs)` and `output(kwargs, name)`, returning the HDF5 output file path of the `deposit` stage node.
+
+### Core Data Structures
+
+| Data structure | Field name | Type or fixed value | Unit | Meaning |
+| --- | --- | --- | --- | --- |
+| `files["g4setup"]` (return value of `read_g4setup`) | Keys of `G4SETUP` | `dict` | `μm`, degrees, `g/cm^3` | Dictionary entries exported by `G4SETUP` in the setup script (including `maxstep`, `source`, `object`, etc.) |
+| `files["g4setup"]` (return value of `read_g4setup`) | `"file"` | `str` | None | Supplied `--g4setup` component name or `.py` file path |
+| `files["g4setup"]` (return value of `read_g4setup`) | `"sha256"` | `str` | None | 64-character hexadecimal SHA-256 digest of the setup script byte stream |
+| `kwargs` (input dict to `deposits`) | `"det_name"` | `str` | None | Detector name passed to `Detector(det_name, files["device"])` |
+| `kwargs` (input dict to `deposits`) | `"_files"` | `dict` | None | Component snapshot dictionary containing `"device"`, `"source"`, and optional `"g4setup"` |
+| `kwargs` (input dict to `deposits`) | `"seed"` | `int` | None | Random seed derived by the lifecycle for this stage ($[1, 2^{31}-1]$) |
+| `kwargs` (input dict to `deposits`) | `"job_index"` | `int \| None` | None | Current job index (0-based; `_job` defaults to `0` if omitted or `None`) |
+| `kwargs` (input dict to `deposits`) | `"_run_path"` | `str` | None | Current run directory path (where `g4_geometry.png` is written in `-g4_vis` offscreen mode) |
+| `kwargs` (input dict to `deposits`) | Keys of `DEPOSIT_KEYS` | `str \| int \| float \| bool \| None` | events, `MeV` | Effective settings for this stage after merging the `deposit` section of `config.json` with command-line arguments (see Interface table below) |
+| `kwargs` (input dict to `deposits`) | `"g4_vis"`, `"g4_vis_driver"` | `bool`, `str` | None | Per-run visualization switch and Geant4 visualization driver name |
+
+## Interface
+
+### Command-Line Options and Configuration Keys
+
+Only the parameters, CLI options, and `config.json` `deposit`-section keys listed below are user-configurable in this stage (shared run parameters `-s`, `--seed`, `--same-seeds`, `-b`, `-t`, `--dry-run`, `--scan`, `--set` are documented in [Command-Line Interface (`raser`)](../cli.md) and [Experiments, Scan Points, and Seeds](../lifecycle/experiments.md)). `--set` and `--scan` use `"section.key"` addresses (such as `--set deposit.events_per_job=200` and `--scan deposit.source=decay/Sr90,bunch`). Parameters outside this table (such as stage name `"deposit"`, default generation-limit constant `GENERATED_LIMIT`, offscreen driver `TSG_OFFSCREEN` for standard runs, node paths, and image filename `g4_geometry.png`) are hardcoded. Except for `-g4_vis` and `--g4-vis-driver`, which apply only to the current invocation, all settings come from the `deposit` section of `config.json` and enter the `deposit` node fingerprint and `node.json`. Changing any of them, including `deposit.plots`, causes `deposit` and all downstream stages to compute new nodes.
+
+| Option or `"section.key"` address | Default | Unit | Meaning |
+| --- | --- | --- | --- |
+| `[path]` (positional argument for `raser deposit` / `dep` only) | Current folder | None | Path to an experiment folder containing `config.json` (defaults to the current folder when omitted) |
+| `source` (optional positional argument, config address `deposit.source`) | `"decay/Sr90"` (overridden to `"bunch"` by `bmos`) | None | Particle source or beam component name (looked up as `<name>.json` under component `source/`) or JSON file path; supports `"beam"`, `"decay_source"`, and `"toy_mip"` |
+| `--g4setup` (config address `deposit.g4setup`) | `"device_alone"` (overridden to `"time_resolution"` by `timeres`) | None | Geant4 setup script name (looked up as `<name>.py` under component `g4setup/`) or `.py` file path; defines objects around the device, maximum step length `maxstep` (`μm`), and source position and aiming direction |
+| `-evt`, `--events-per-job` (config address `deposit.events_per_job`) | `1` (overridden to `10000` by `timeres`) | events | Number of valid deposit events to record per job (integer not less than `1`); the particle source keeps generating events until this count is recorded inside the device (bounded by `--generated-limit`); mutually exclusive with `-gen` |
+| `-gen`, `--generated-per-job` (config address `deposit.generated_per_job`) | `None` | events | Total number of events generated by the particle source per job (integer not less than `1`), used instead of `-evt`; the source stops after generating this fixed count, and the actual recorded count inside the device may be lower or `0` |
+| `--generated-limit` (config address `deposit.generated_limit`) | `None` in chain config; `10_000_000` at runtime | events | Maximum number of source events a job is allowed to generate to reach `-evt` recorded events (integer not less than `1`) |
+| `--edep-min` (config address `deposit.edep_min`) | `None` (no lower bound) | `MeV` | Minimum total deposited energy inside the device required to record an event; only events with total deposited energy at or above this value are recorded |
+| `--edep-max` (config address `deposit.edep_max`) | `None` (no upper bound) | `MeV` | Maximum total deposited energy inside the device required to record an event; only events with total deposited energy at or below this value are recorded |
+| `deposit.fano` (set via `deposit` section of `config.json` or `--set`/`--scan`) | `True` | None | Controls whether Fano fluctuation sampling is enabled for ionized electron-hole pairs: `true` or `false` (`false` uses the mean number of ionized pairs directly) |
+| `deposit.plots` | `100` (overridden to `0` by `timeres`, `bmos`, `cflm`) | events | Per-job plots drawn by `deposit` itself: when greater than `0`, Geant4 sources render the geometry and tracks of the first `N` recorded events offscreen (`g4_geometry.png`) during standard runs; `0` disables plotting. `current` plots are controlled by `current.plots`; see [Carrier Transport and Induced Current Stage (`stages/current`)](current.md) |
+| `-g4_vis` (run switch `g4_vis`) | `False` | None | Per-run boolean switch; when enabled, performs only Geant4 geometry and track visualization using the event count from `-evt` or `-gen` as generated events, then exits the job |
+| `--g4-vis-driver` (run parameter `g4_vis_driver`) | `"TSG_QT_GLES"` | None | Per-run Geant4 visualization driver used with `-g4_vis`; drivers `"TSG"`, `"TSG_FILE"`, or `"TSG_OFFSCREEN"` (case-insensitive) export a PNG image and exit, while windowed drivers such as `"TSG_QT_GLES"` and `"OGL"` open an interactively rotatable window and exit when closed |
+
+Terminal errors raised when options are misconfigured or fail at runtime:
+
+- **Unsupported `"kind"` in `source`**:
+  ```text
+  ValueError: no simulation of deposits for a source of kind '<kind>'; known: ['toy_mip', 'beam', 'decay_source']
+  ```
+  Cause: `"kind"` in the source JSON is not among the three supported types; check the component file and change `"kind"` to a valid value.
+- **`--g4setup` points to or matches a legacy `.json` file**:
+  ```text
+  ValueError: <stale>: a g4setup is a script now; write it as <name>.py with its keys in G4SETUP
+  ```
+  Cause: setup definitions have moved to Python scripts; rewrite it as a `.py` file exporting a `G4SETUP` dictionary and remove any leftover `.json` file from the same directory.
+- **Conflict or out-of-range value for `-evt` (`deposit.events_per_job`) and `-gen` (`deposit.generated_per_job`)**:
+  - Both unset or both set at runtime (for example, after manual configuration edits):
+    ```text
+    ValueError: events_per_job (<events>) and generated_per_job (<generated>): a job records a number of events or generates one, so exactly one of them is set
+    ```
+    Set exactly one of the two in the configuration or command.
+  - Value less than `1`:
+    ```text
+    ValueError: the recorded events asked for are <number>: at least 1
+    ValueError: the generated events asked for are <number>: at least 1
+    ```
+    Change `-evt` or `-gen` to a positive integer at least `1`.
+- **`--generated-limit` reached before collecting `-evt`, or out-of-range value**:
+  - Generation cap hit before reaching the target recorded count:
+    ```text
+    RuntimeError: <recorded> of the <events> events asked for were recorded when the limit of <generated> generated events was reached: <ratio> of the generated events are recorded. Ask for fewer events, or raise generated_limit
+    ```
+    Cause: the recording efficiency is too low (e.g., small source solid angle, thin device, or narrow energy window); reduce `-evt`, widen the `--edep-min`/`--edep-max` energy window, or increase `--generated-limit`.
+  - Value less than `1`:
+    ```text
+    ValueError: the generated_limit asked for are <number>: at least 1
+    ```
+    Change `--generated-limit` to a positive integer at least `1`.
+- **`--g4-vis-driver` unsupported in the current environment or missing graphical session**:
+  ```text
+  RuntimeError: Geant4 refused the command '<text>' (status <status>)
+  ```
+  Cause: the driver was not compiled into the current environment, or the default windowed driver `TSG_QT_GLES` was used on a headless cluster node; switch to `--g4-vis-driver TSG_OFFSCREEN` for offscreen rendering.
+
+### Files Read and Written
+
+Except for offscreen `-g4_vis` images written in the current run directory, all outputs of the `deposit` stage live inside the node folder `nodes/deposit/<node_id>/` under the experiment directory, pointed to by the view symlink `points/<point>/deposit`. Each node is locked individually, carries the `.part` suffix while partially written, and is renamed to its final name upon completion.
+
+- **`deposit` section of `config.json` and component definitions `files["device"]`, `files["source"]`, `files["g4setup"]` (inputs; used parts recorded in `nodes/deposit/<node_id>/node.json`)**: The lifecycle reads the setting values in the `deposit` section of `config.json`, the device JSON, the source JSON, and the setup snapshot returned by `read_g4setup`, and hashes the parts used by this stage together with the measurement stage's random seed to obtain the fingerprint (`<node_id>`); the `deposit` stage reads the device, source, and setup snapshots from `kwargs["_files"]`. `files["g4setup"]` records both the script's exported `G4SETUP` and the file's `"sha256"` digest, so editing the script alters the node fingerprint and produces a new node.
+- **Energy deposition HDF5 data file under `nodes/deposit/<node_id>/` (output; written by `deposit`)**: Written in standard mode by `write_simulated_deposits` (including when `0` events are recorded) and read via the view symlink `points/<point>/deposit` by downstream [Carrier Transport and Induced Current Stage (`stages/current`)](current.md) and [Statistical Analysis Stage (`stages/analysis`)](analysis.md). HDF5 format: attributes include `generated_events` (`int`, events), `recorded_events` (`int`, events), `generated_fraction` (`float`, dimensionless), and—when an energy window is set—`edep_min` and `edep_max` (`float`, `MeV`); datasets include `(recorded_events,)` arrays `event` (`int64`, dimensionless) and `count` (`int64`, steps), plus `(sum(count),)` arrays `detector` (variable-length `str`, dimensionless; `"Device"` for a single device), `x`/`y`/`z` (`float64`, `μm`, local step midpoint in standard Geant4 or local step start in `cflm`), `t` (`float64`, `s`), `e` (`float64`, `MeV`), and `pairs` (`float64`, pairs), together with optional `(sum(count),)` datasets `x_start`/`y_start`/`z_start` (`float64`, `μm`) and `t_fwhm` (`float64`, `s`) when all recorded events carry step starts or generation time widths. See [Energy Deposition and Ionization (`core/deposit`)](../core/deposit.md) for the underlying `write_deposits` / `read_deposits` specification.
+- **`nodes/deposit/<node_id>/node.json`, `points.json`, and `points/<point>/deposit` (node record, parameter table, and view symlink; written by the lifecycle framework)**: `node.json` records verbatim the inputs that produced the node (the setting values used by this stage, the parts of component files used, upstream node IDs, and the random seed from which the fingerprint is computed), along with the code version, runtime environment, and run status. `points.json` at the experiment root records one row per scan point with its scan-axis values and the node IDs used by `deposit` and all other stages; `points/<point>/deposit` is a symlink pointing to `../../nodes/deposit/<node_id>`.
+- **`g4_geometry.png` under `nodes/deposit/<node_id>/` (output image; written by `deposit`)**: Written offscreen via `TSG_OFFSCREEN` by the `deposit` stage during standard Geant4 runs (when `-g4_vis` is off, `deposit.plots > 0`, and `source["kind"]` is `"beam"` or `"decay_source"`), stored in this stage's own node output and displaying the device, surrounding setup, and tracks of the first `deposit.plots` recorded events.
+- **`g4_geometry.png` in the current run directory (visualization output image; written by `deposit`)**: Written at the root of `kwargs["_run_path"]` when `-g4_vis` is enabled and `--g4-vis-driver` is `"TSG"`, `"TSG_FILE"`, or `"TSG_OFFSCREEN"` (case-insensitive), containing an offscreen PNG view of the Geant4 setup geometry and tracks of the specified number of generated events.

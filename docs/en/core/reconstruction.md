@@ -1,93 +1,325 @@
 # Event Reconstruction (`core/reconstruction`)
 
-`src/raser/core/reconstruction/` sits after [electronics readout](readout.md) and before [statistical analysis](analysis.md). It subtracts the baseline and estimates noise from each readout electrode's output voltage waveform, extracts pulse amplitude, time-over-threshold arrival time (`ToA`), time-over-threshold duration (`ToT`), center-of-gravity time (`CoG`), main-lobe area (`area`), constant-fraction discrimination (`CFD`), and multi-electrode cluster features, and writes the event summary table `EventTable` to `reconstruction_<job>.h5` for downstream analysis. See [../stages/reconstruction.md](../stages/reconstruction.md) for CLI and reconstruction options.
+`src/raser/core/reconstruction/` takes the events recorded by the [trigger stage](../stages/trigger.md): time-domain voltage waveforms of each electrode obtained after [digitization](digitizer.md), in the same file format as the waveform file of [electronics readout](readout.md). For each waveform, the package subtracts the pre-pulse baseline and estimates the electronic baseline noise, inverts negative pulses to positive pulses according to the chosen trigger edge of each electrode, extracts peak amplitude, leading-edge time-over-threshold arrival time (`ToA`), time-over-threshold duration (`ToT`), center-of-gravity time over threshold (`CoG`), positive main-lobe integral area (`area`), constant-fraction discrimination (`CFD`), and multi-electrode cluster size and spatial center of gravity, and writes `reconstruction_<job>.h5` (it also provides the standalone single-event reconstruction class `InputWaveform` for strip detectors). The output event summary table `EventTable` is passed to [statistical analysis](analysis.md).
 
-```mermaid
-flowchart LR
-    RDO["read_waveforms<br/>t0, dt, pulse_edge, voltage [V]"] --> BASE["net_pulse<br/>Subtract first 200-point baseline & compute noise"]
-    BASE --> POL["Flip to positive polarity via EDGE_SIGN<br/>(rising: +1, falling: -1)"]
-    POL --> FEAT["Per-electrode feature extraction<br/>amplitude, ToA, ToT, CoG, area, CFD"]
-    FEAT --> CLU["cluster (cross-electrode clustering)<br/>seed >= amplitude_threshold<br/>neighbor >= threshold"]
-    CLU --> H5["write_event_table / read_event_table<br/>reconstruction_&lt;job&gt;.h5"]
-    H5 --> ANA["core/analysis"]
-```
+## Physics
 
-## Inputs and Tunable Reconstruction Parameters
+### Baseline Subtraction and Polarity Inversion
 
-The core function `event_table` takes `Waveforms` returned by `read_waveforms` (see [readout.md](readout.md); containing file attributes `electrodes`, `dt` (s), `pulse_edge` (`"rising"` or `"falling"`), and per-event `event`, `t0` (s), and stored electrode waveforms `voltage` of shape `(stored_electrodes, bins)` in V) together with the following parameters (the stage function `reconstruct` in [../stages/reconstruction.md](../stages/reconstruction.md) accepts `threshold` and `amplitude_threshold` in `mV` and multiplies them by `1e-3` before passing to `event_table`):
+Discrete voltage waveforms produced by readout electronics contain a quiescent front-end DC offset and random electronic noise, and pulses may appear as rising edges (positive pulses) or falling edges (negative pulses) depending on the collected carrier polarity and amplifier inversion. Before feature extraction, the baseline mean and baseline noise (population standard deviation) are computed from the quiescent pre-pulse sample segment, the baseline is subtracted from the raw waveform, and the result is multiplied by the edge polarity sign so that pulses are uniformly converted into positive pulses above baseline:
 
-- **`threshold` (V)**: Threshold-crossing level used to compute `ToA`, `ToT`, `CoG`, and neighbor inclusion in clusters.
-- **`amplitude_threshold` (V)**: Pulse amplitude threshold for marking an event as `selected` and selecting cluster seed electrodes.
-- **`fractions` (tuple of floats)**: Constant-fraction discrimination fractions; every element must lie in the open interval `(0, 1)`.
-- **`edges` (list of edge polarities per electrode)**: Built by `chosen_edges(given, derived, electrodes)`. When `given` is `None`, reuses `pulse_edge` written by `readout`; if `"rising"` or `"falling"` differs from `pulse_edge`, `chosen_edges` generates a notice and the stage function `reconstruct` prints a warning.
+$$t_i = t_0 + \left(i + \frac{1}{2}\right)\Delta t \tag{1}$$
 
-## Pulse Feature Extraction and Clustering Algorithm (`event.py`, `event_table.py`)
+$$B = \frac{1}{N_{\text{base}}} \sum_{i=0}^{N_{\text{base}}-1} V_i, \qquad \sigma_{\text{noise}} = \sqrt{\frac{1}{N_{\text{base}}} \sum_{i=0}^{N_{\text{base}}-1} (V_i - B)^2} \tag{2}$$
 
-- **Bin centers and baseline noise (`net_pulse`)**: The center time of the `i`-th sample bin is `times[i] = t0 + (i + 0.5) * dt` (s). Takes the arithmetic mean of the first `BASELINE_POINTS = 200` samples as `baseline` (V) and their population standard deviation (`.std()`) as `noise` (V), returns the net waveform `samples - baseline`, and flips it to a positive-going pulse via `EDGE_SIGN` (`+1.0` for `"rising"`, `-1.0` for `"falling"`).
-- **Peak amplitude (`get_amplitude`)**: Takes the maximum sample `amplitude = samples[peak]` (V, `peak = int(np.argmax(samples))`); sets `above = False` when `amplitude < threshold` and `above = True` otherwise (`NaN` also enters the `True` branch).
-- **Time-over-threshold `ToA` (`get_ToA`) and `ToT` (`get_ToT`)**: Searches backward from `peak` for the first drop below `threshold` and linearly interpolates between the two adjacent bins to obtain `ToA` (s); searches forward from `peak` for the first drop below `threshold`, linearly interpolates, and subtracts `ToA` to obtain `ToT` (s; returns `0.0` if the waveform does not fall below threshold before the end of the record or if `ToA` is missing).
-- **Constant-fraction timing `CFD` (`get_CFD50`)**: For a given `fraction`, sets target height `target = samples[peak] * fraction` (requiring `samples[peak] > 0`) and linearly interpolates between adjacent bins satisfying `samples[i - 1] <= target <= samples[i]` searching backward from `peak` to obtain the crossing time (s).
-- **Center of gravity `CoG` (`get_CoG`) and main-lobe area `area` (`lobe_area`)**: `CoG` expands left and right from `peak` across the contiguous interval where `samples >= threshold` and computes the sample-weighted mean time (s); `area` expands left and right across the contiguous interval where `samples > 0` and computes the integral area `sum * dt` ($\text{V}\cdot\text{s}$).
-- **Multi-electrode clustering (`cluster`)**: Takes electrode indices with `amplitude >= amplitude_threshold` as `seeds`, merges each seed `k` and its immediate neighbors (`k - 1`, `k + 1`) satisfying `amplitude >= threshold` into `members`, and computes `cluster_size = len(members)` and the amplitude-weighted `cluster_center` (`0`-based electrode index; returns `(0, NaN)` when `seeds` is empty). `selected = True` when `cluster_size > 0`.
+$$v_i = s_{\text{edge}}\,(V_i - B) \tag{3}$$
 
-## `reconstruction_<job>.h5` File Format and Read/Write Functions
+where:
 
-`write_event_table` and `read_event_table` (`event_table.py`) read and write the HDF5 file corresponding to `EventTable`:
+- $t_i$: center time of the $i$-th time bin ($i = 0, 1, \dots, N-1$), $\text{s}$;
+- $t_0$: left edge time of the event's first time bin (`t0`), $\text{s}$;
+- $\Delta t$: time-bin width (`dt`), $\text{s}$;
+- $V_i$: raw output voltage sample at the center of the $i$-th time bin (`samples`), $\text{V}$;
+- $N_{\text{base}}$: number of pre-pulse baseline samples (dimensionless), fixed in code to the constant `BASELINE_POINTS = 200`;
+- $B$: pre-pulse baseline mean (`baseline`), $\text{V}$;
+- $\sigma_{\text{noise}}$: pre-pulse baseline noise population standard deviation (`noise`), $\text{V}$;
+- $s_{\text{edge}}$: trigger-edge polarity factor (dimensionless), given by `EDGE_SIGN`: $+1.0$ for `"rising"` and $-1.0$ for `"falling"`;
+- $v_i$: net voltage sample after baseline subtraction and inversion to positive polarity (`net`), $\text{V}$.
 
-### File Attributes
+Baseline subtraction and noise estimation correspond to `net_pulse(samples, baseline_points=BASELINE_POINTS)` in `event.py`, with default `baseline_points = 200`. Bin-center computation and polarity inversion are executed in `event_table` of `event_table.py`; the edge direction of each electrode is determined by `chosen_edges`, defaulting to the `pulse_edge` recorded for each electrode in the input waveform file (derived by the readout chain from the device and electronics). When the chosen edge is opposite to the actual direction of an electrode's pulse, that electrode's pulse remains below baseline: `amplitude` is the largest sample above baseline—only of the order of noise or overshoot—and is normally below `threshold`, so `above = False` and the timing and area columns are `NaN`; if an overshoot reaches `threshold`, timing quantities are computed from the overshoot. `InputWaveform` assumes its input `voltage` is already a baseline-subtracted positive pulse. For baseline restoration and noise characterization of semiconductor detector pulses, see Ref. [1].
+
+### Peak Amplitude and Fixed-Threshold Crossing Timing (ToA and ToT)
+
+Leading-edge fixed-threshold discrimination generates a timestamp when a pulse crosses a preset voltage threshold $V_{\text{th}}$. The maximum sample of the net waveform gives the peak amplitude; searching backward and forward from the peak bin for the first bin below threshold and linearly interpolating along the segment connecting the adjacent bin centers across the threshold yield the leading-edge time of arrival (`ToA`) and the trailing-edge crossing time, whose difference is the time over threshold (`ToT`):
+
+$$A = v_{i_{\text{peak}}}, \qquad i_{\text{peak}} = \operatorname{argmax}_{0 \le i < N} v_i \tag{4}$$
+
+$$t_{\text{cross}}(V_{\text{th}};\, i_{\text{below}},\, i_{\text{above}}) = t_{i_{\text{below}}} + \frac{V_{\text{th}} - v_{i_{\text{below}}}}{v_{i_{\text{above}}} - v_{i_{\text{below}}}}\bigl(t_{i_{\text{above}}} - t_{i_{\text{below}}}\bigr) \tag{5}$$
+
+$$t_{\text{ToA}} = t_{\text{cross}}\bigl(V_{\text{th}};\, i_{\text{lead}},\, i_{\text{lead}} + 1\bigr) \tag{6}$$
+
+$$t_{\text{ToT}} = t_{\text{cross}}\bigl(V_{\text{th}};\, i_{\text{trail}},\, i_{\text{trail}} - 1\bigr) - t_{\text{ToA}} \tag{7}$$
+
+where:
+
+- $A$: maximum pulse amplitude above baseline (`amplitude`), $\text{V}$;
+- $i_{\text{peak}}$: index of the peak time bin (`peak`, dimensionless; on ties for the maximum, the first index is taken);
+- $V_{\text{th}}$: fixed voltage threshold (`threshold`), $\text{V}$;
+- $i_{\text{below}}, i_{\text{above}}$: indices of adjacent time bins straddling the threshold (dimensionless), satisfying $v_{i_{\text{below}}} < V_{\text{th}} \le v_{i_{\text{above}}}$;
+- $t_{\text{cross}}$: linearly interpolated time at which the line joining two adjacent bin centers crosses $V_{\text{th}}$, $\text{s}$;
+- $i_{\text{lead}}$: first bin index with $v_i < V_{\text{th}}$ encountered when searching backward from $i_{\text{peak}} - 1$ to $0$ (dimensionless);
+- $i_{\text{trail}}$: first bin index with $v_i < V_{\text{th}}$ encountered when searching forward from $i_{\text{peak}} + 1$ to $N - 1$ (dimensionless);
+- $t_{\text{ToA}}$: leading-edge threshold-crossing arrival time (`ToA`), $\text{s}$;
+- $t_{\text{ToT}}$: duration of the pulse above threshold (`ToT`), $\text{s}$.
+
+Peak amplitude is computed by `get_amplitude` in `event.py`, and threshold-crossing interpolation, arrival time, and time over threshold are computed by `crossing`, `get_ToA`, and `get_ToT`, respectively. Timing calculations run only when $A \ge V_{\text{th}}$ (`above = True`); in [../stages/reconstruction.md](../stages/reconstruction.md), `threshold` defaults to `10.0` $\text{mV}$ ($0.01\ \text{V}$ after conversion). For leading-edge discrimination and `ToT` measurement principles, see Refs. [1, 2].
+
+### Constant-Fraction Discrimination (CFD)
+
+Fixed-threshold timing introduces amplitude time walk due to pulse-height fluctuations. Constant-fraction discrimination (`CFD`) sets the discrimination threshold to a fixed fraction $f \in (0, 1)$ of each pulse's peak amplitude, locates the pair of adjacent bins straddling the target height $f A$ on the leading edge before the peak, and linearly interpolates to eliminate time walk from amplitude variations among identically shaped pulses:
+
+$$V_{\text{CFD}} = f\,A = f\,v_{i_{\text{peak}}} \tag{8}$$
+
+$$t_{\text{CFD}}(f) = \begin{cases} t_{i-1}, & v_i = v_{i-1} \\ t_{i-1} + \dfrac{V_{\text{CFD}} - v_{i-1}}{v_i - v_{i-1}}\bigl(t_i - t_{i-1}\bigr), & v_i \ne v_{i-1} \end{cases} \tag{9}$$
+
+where:
+
+- $f$: constant-fraction discrimination fraction (`CFD` or an element of `fractions`, dimensionless), satisfying $0 < f < 1$;
+- $A = v_{i_{\text{peak}}}$: peak pulse amplitude, $\text{V}$ (requiring $A > 0$);
+- $V_{\text{CFD}}$: constant-fraction trigger target voltage (`target`), $\text{V}$;
+- $i$: first bin index satisfying $v_{i-1} \le V_{\text{CFD}} \le v_i$ encountered when searching backward from $i_{\text{peak}}$ to $1$ (dimensionless);
+- $t_{\text{CFD}}(f)$: constant-fraction timing timestamp for fraction $f$ (`CFD` or `CFD50`), $\text{s}$.
+
+Constant-fraction timing is computed by `get_CFD50(times, samples, CFD, peak)` in `event.py`. `InputWaveform` defaults to the module constant `CFD = 0.5` (corresponding to dictionary key `CFD_LABEL = "CFD50"`); `electrode_row` (called by `event_table` for every stored electrode) invokes `get_CFD50` for each fraction in `fractions`, which defaults to `[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]` in [../stages/reconstruction.md](../stages/reconstruction.md). For constant-fraction discrimination principles, see Refs. [1, 3].
+
+### Center-of-Gravity Time (CoG) and Pulse Integrals (area and charge)
+
+The temporal concentration of a pulse is characterized by the center of gravity (`CoG`) over the interval above threshold, while the total pulse strength is characterized by the main-lobe integral area (`area`) or the sum of absolute discrete samples (`charge`). Starting from the peak index $i_{\text{peak}}$, the code expands leftward and rightward across the contiguous interval $[i_{\text{first}}^{\text{th}},\, i_{\text{last}}^{\text{th}}]$ where $v_i \ge V_{\text{th}}$ and the contiguous positive main-lobe interval $[i_{\text{first}}^{0},\, i_{\text{last}}^{0}]$ where $v_i > 0$, evaluating:
+
+$$t_{\text{CoG}} = \frac{\sum_{i = i_{\text{first}}^{\text{th}}}^{i_{\text{last}}^{\text{th}}} t_i\,v_i}{\sum_{i = i_{\text{first}}^{\text{th}}}^{i_{\text{last}}^{\text{th}}} v_i} \tag{10}$$
+
+$$S_{\text{area}} = \Delta t \sum_{i = i_{\text{first}}^{0}}^{i_{\text{last}}^{0}} v_i \tag{11}$$
+
+$$Q_{\text{sum}} = \sum_{i = 0}^{N - 1} |v_i| \tag{12}$$
+
+where:
+
+- $i_{\text{first}}^{\text{th}}, i_{\text{last}}^{\text{th}}$: start and end bin indices of the contiguous interval containing $i_{\text{peak}}$ with $v_i \ge V_{\text{th}}$ (dimensionless);
+- $t_{\text{CoG}}$: sample-weighted center-of-gravity time over the interval above threshold (`CoG`), $\text{s}$;
+- $i_{\text{first}}^{0}, i_{\text{last}}^{0}$: start and end bin indices of the contiguous positive main lobe containing $i_{\text{peak}}$ with $v_i > 0$ (above baseline) (dimensionless);
+- $S_{\text{area}}$: rectangular numerical integral area of the positive main lobe (`area`), $\text{V}\cdot\text{s}$;
+- $Q_{\text{sum}}$: discrete sum of absolute sample values across the entire waveform (`InputWaveform.charge`), $\text{V}$.
+
+Center-of-gravity time is computed by `get_CoG` in `event.py` and main-lobe integral area by `lobe_area` in `event_table.py`; both are called by `electrode_row` when $A \ge V_{\text{th}}$. The discrete absolute sum Eq. (12) is computed by `get_charge` in `event.py` and is used only by `InputWaveform`. For pulse integration and centroid timing measurements, see Ref. [1].
+
+### Multi-Electrode Clustering and Spatial Center of Gravity (cluster)
+
+When charge sharing or capacitive coupling occurs between adjacent readout electrodes, a single incident particle induces above-threshold signals on multiple neighboring electrodes. Multi-electrode clustering takes electrodes whose amplitude reaches the seed threshold $V_{\text{amp}}$ as seeds and merges each seed together with its immediate left and right neighbors (differing by $1$ in the electrode list index) that exceed the neighbor threshold into the cluster member set $\mathcal{M}$, from which the cluster electrode count, summed feature, 1D electrode-index center of gravity, and spatial error relative to the true hit position are calculated:
+
+$$N_{\text{clu}} = |\mathcal{M}|, \qquad W_{\text{clu}} = \sum_{j \in \mathcal{M}} w_j, \qquad x_{\text{clu}} = \frac{\sum_{j \in \mathcal{M}} j\,w_j}{\sum_{j \in \mathcal{M}} w_j} \tag{13}$$
+
+$$\Delta x_{\text{clu}} = x_{\text{clu}} - \frac{x_{\text{true}}}{p_x} \tag{14}$$
+
+where:
+
+- $\mathcal{M}$: set of readout electrode indices merged into the cluster (starting from $0$, dimensionless);
+- $w_j$: feature weight of electrode $j$ (peak amplitude $A_j$ [$\text{V}$] in `cluster` of `event_table.py`; separately `ToT` [$\text{s}$], `amplitude` [$\text{V}$], or `charge` [$\text{V}$] in `InputWaveform` of `event.py`);
+- $N_{\text{clu}}$: number of electrodes in the cluster (`cluster_size`), count;
+- $W_{\text{clu}}$: sum of the feature over all member electrodes in the cluster (aggregated `"ToT"`, `"amplitude"`, `"charge"` in `InputWaveform`), in the same units as $w_j$;
+- $x_{\text{clu}}$: 1D weighted center of the cluster (`cluster_center` or `gravity_center_*`), in units of electrode index starting from $0$ (dimensionless);
+- $x_{\text{true}}$: true $x$ coordinate of the incident particle (`original_x`), in the same units as the electrode pitch $p_x$ (`pitch_x`);
+- $\Delta x_{\text{clu}}$: difference between the reconstructed electrode center of gravity and the normalized true coordinate (`gravity_center_*_error`), in units of electrode pitch $p_x$ (dimensionless).
+
+Clustering in the job-level event table is computed by `cluster(amplitudes, threshold, amplitude_threshold)` in `event_table.py`, which outputs only $N_{\text{clu}}$ and the amplitude-weighted $x_{\text{clu}}$; in [../stages/reconstruction.md](../stages/reconstruction.md), both `amplitude_threshold` and `threshold` default to `10.0` $\text{mV}$. The single-event class `InputWaveform` calls `get_total_amp` and `get_gravity_center_and_cluster_size` in `event.py` to evaluate Eq. (13), computes position errors via Eq. (14) in `get_total_data`, and obtains `ToA` and `CFD50` via `get_conjoined_time`; its `data` dictionary is passed to `WaveformStatistics.fill_data` in [statistical analysis](analysis.md), with keys matching those read by `fill_data` and `draw`. For charge sharing and centroid position reconstruction in microstrip detectors, see Ref. [4].
+
+## Algorithm
+
+### Built-in Constants
+
+The table below lists all built-in constants and hard-coded values in `event.py` and `event_table.py`. All are module constants or hard-coded literals inside functions, with no corresponding keys in device or component files:
+
+| Constant or Hard-Coded Name | Value (by Case) | Unit | Definition Location and Meaning |
+| --- | --- | --- | --- |
+| `BASELINE_POINTS` | `200` | samples (count) | `event.py`: number of leading samples used by `net_pulse` to compute the baseline mean `baseline` and standard deviation `noise` |
+| `EDGE_SIGN` | `"rising"`: `1.0`; `"falling"`: `-1.0` | dimensionless | `event_table.py`: polarity multiplier that flips the baseline-subtracted waveform `net` into a positive pulse |
+| `CFD` | `0.5` | dimensionless | `event.py`: default constant-fraction timing fraction in the `InputWaveform` constructor |
+| `CFD_LABEL` | `"CFD50"` | none | `event.py`: dictionary key name storing the constant-fraction timing result in `InputWaveform.data` |
+| `EVENT_COLUMNS` | `("event", "selected", "cluster_size", "cluster_center")` | none | `event_table.py`: tuple of per-event 1D dataset column names in `EventTable` |
+| `ELECTRODE_COLUMNS` | `("traced", "baseline", "noise", "amplitude", "above", "ToA", "ToT", "CoG", "area")` | none | `event_table.py`: tuple of per-event, per-electrode 2D dataset column names in `EventTable` |
+| `KINDS` | `"event"`, `"cluster_size"`: `"int64"`; `"selected"`, `"traced"`, `"above"`: `"bool"`; default for remaining columns: `"float64"` | none | `event_table.py`: NumPy dtype mapping used by `event_table` for each column |
+| `InputWaveform` multi-electrode seed thresholds | `ToT` clustering: `10e-9`; `amplitude` clustering: `amplitude_threshold`; `charge` clustering: `0.0` | $\text{s}$ / $\text{V}$ / $\text{V}$ | `event.py`: hard-coded thresholds passed by `InputWaveform.get_total_data` to `get_total_amp` and `get_gravity_center_and_cluster_size` |
+
+### Per-Electrode Edge Determination and Input Validation
+
+Before building the event table, the program determines each electrode's pulse edge through `chosen_edges` and validates all input arguments at the entry of `event_table`:
+
+1. **Determine one edge per electrode (`chosen_edges(given, derived, electrodes)`)**:
+   - If `given is None`, retain the derived edge list recorded per electrode in the readout file `list(derived)` and return an empty note list `notes = []`.
+   - If `given` is not `None` and `given not in EDGE_SIGN` (i.e., neither `"rising"` nor `"falling"`), raise `ValueError("edge <given!r>: the thresholds are set on a rising (positive pulses) or a falling (negative pulses) edge")`.
+   - If `given` is `"rising"` or `"falling"`, set every electrode's edge to `[given] * len(electrodes)`; iterate over `zip(electrodes, derived)` and, for every electrode where `edge != given`, append the notice `"edge <given> given for <name>, whose pulse is <edge>: its pulses are not seen as the readout makes them"` to `notes` and return it (the stage function `reconstruct` prints each notice without aborting the run).
+2. **Validate the electrode edge list (`event_table`)**: Check that `edges` satisfies `len(edges) == len(waveforms.electrodes)` and that every entry belongs to `EDGE_SIGN`. Otherwise raise `ValueError("edges <edges>: one of rising or falling for each of <waveforms.electrodes>")`. After validation, build the per-electrode polarity sign list `polarity = [EDGE_SIGN[edge] for edge in edges]` and electrode-name index map `place = {name: k for k, name in enumerate(waveforms.electrodes)}`.
+3. **Validate constant-fraction range (`event_table`)**: Collect `wrong = [part for part in fractions if not 0 < part < 1]`. If `wrong` is non-empty (values $\le 0$, $\ge 1$, or `NaN`), raise `ValueError("fractions <wrong>: a constant fraction lies between 0 and 1")`.
+4. **Validate non-empty event list (`event_table`)**: If `not waveforms.events` (the input `Waveforms` object holds no events), raise `ValueError("the readout holds no event")`.
+
+### Single-Electrode Baseline Subtraction, Edge Search, and Interpolated Feature Extraction
+
+`event_table` iterates over each event `record` in `waveforms.events` (with total electrode count $W = \text{len}(\text{waveforms.electrodes})$ and bin count $N = \text{record.voltage.shape}[1]$ for the current event), processing electrode waveforms in the following order:
+
+1. **Compute bin centers and prefill untraced electrodes**: Compute the length-$N$ bin-center array `times = record.t0 + (np.arange(N) + 0.5) * waveforms.dt` by Eq. (1). Initialize all $W$ electrodes with the untraced default dictionary `untraced`: `traced = False`, `above = False`, and `NaN` for all numeric columns (`baseline`, `noise`, `amplitude`, `ToA`, `ToT`, `CoG`, `area`) and all `len(fractions)` `CFD` values. Electrodes absent from `record.electrodes` (channels whose waveforms were not saved by the readout stage) keep this default state.
+2. **Subtract the leading 200-sample baseline and compute noise (`net_pulse(samples, baseline_points=200)`)**: For each stored electrode `name` (at global column index $k = \text{place}[\text{name}]$) and sample array `samples` in `zip(record.electrodes, record.voltage)`:
+   - Convert `samples` to a `float64` array;
+   - If $\text{len}(\text{samples}) \le \text{baseline\_points}$ (i.e., $N \le 200$), raise `ValueError("<len(samples)> samples, not more than the <baseline_points> of the baseline")`;
+   - Compute the mean `baseline = samples[:200].mean()` and population standard deviation `noise = samples[:200].std()` (`ddof=0`) over the first $200$ points, obtaining `net = samples - baseline`.
+3. **Invert pulse polarity and locate the peak (`get_amplitude`)**: Multiply the net waveform by the electrode's edge sign, $\text{net}^{+} = \text{polarity}[k] \cdot \text{net}$, and pass it to `electrode_row`. Call `get_amplitude` to find `peak = int(np.argmax(net+))` and `amplitude = net+[peak]`.
+4. **Threshold check and below-threshold rejection (`electrode_row`)**:
+   - If `amplitude < threshold`, reject timing and area extraction for this electrode: return `above = False`, the measured `amplitude`, and `NaN` for `ToA`, `ToT`, `CoG`, `area`, and all `len(fractions)` `CFD` entries (the caller merges `traced = True`, `baseline`, and `noise`).
+   - Otherwise (i.e., `amplitude >= threshold`; edge case: if `amplitude` is `NaN`, `NaN < threshold` is false so execution also enters this branch), set `above = True` and run steps 5 through 9 in sequence.
+5. **Leading-edge threshold search and linear interpolation (`get_ToA` and `crossing`)**:
+   - Step backward from $i = \text{peak} - 1$ down to $0$ by $-1$;
+   - At the first index $i$ with $\text{net}^{+}[i] < \text{threshold}$, immediately call `crossing(times, net+, threshold, below=i, above=i + 1)`: because $i$ is the first sample below threshold looking backward from the peak, $\text{net}^{+}[i+1] \ge \text{threshold}$ and the denominator $\text{net}^{+}[i+1] - \text{net}^{+}[i] > 0$ are guaranteed, returning the linearly interpolated crossing time via Eqs. (5) and (6);
+   - **Rejection case**: If $\text{peak} = 0$, or if $\text{net}^{+}[i] \ge \text{threshold}$ all the way down to $i = 0$ (the pulse is already above threshold at the first bin center with no rising crossing), `get_ToA` returns `None` and `electrode_row` records `ToA` as `NaN`.
+6. **Trailing-edge threshold search and `ToT` calculation (`get_ToT`)**:
+   - Internally call `start = get_ToA(times, net+, threshold, peak)`; if `start is None` (no leading-edge crossing), return `0.0` immediately;
+   - Otherwise step forward from $i = \text{peak} + 1$ up to $N - 1$ by $+1$;
+   - At the first index $i$ with $\text{net}^{+}[i] < \text{threshold}$, call `crossing(times, net+, threshold, below=i, above=i - 1)` to find the trailing-edge crossing time and return its difference with `start` (here `below = i`, `above = i - 1`, so the fraction `part` $\in (0, 1]$ multiplies the negative time difference $\text{times}[i-1] - \text{times}[i] = -\Delta t$, placing the crossing between $\text{times}[i-1]$ and $\text{times}[i]$);
+   - **Unfallen trailing-edge boundary case**: If $\text{peak} = N - 1$, or if the waveform never drops below `threshold` up to the end $i = N - 1$, `get_ToT` returns the float `0.0`.
+7. **Above-threshold interval expansion and center-of-gravity time (`get_CoG`)**:
+   - Initialize `first = peak`, `last = peak`;
+   - Decrement `first` while $\text{first} > 0$ and $\text{net}^{+}[\text{first} - 1] \ge \text{threshold}$; increment `last` while $\text{last} < N - 1$ and $\text{net}^{+}[\text{last} + 1] \ge \text{threshold}$;
+   - Slice `weights = net+[first:last + 1]` and return `np.sum(times[first:last + 1] * weights) / np.sum(weights)` per Eq. (10).
+8. **Positive main-lobe expansion and integral area (`lobe_area`)**:
+   - Initialize `first = peak`, `last = peak`;
+   - Decrement `first` while $\text{first} > 0$ and $\text{net}^{+}[\text{first} - 1] > 0$; increment `last` while $\text{last} < N - 1$ and $\text{net}^{+}[\text{last} + 1] > 0$;
+   - Return `float(np.sum(net+[first:last + 1]) * dt)` per Eq. (11).
+9. **Constant-fraction search and linear interpolation (`get_CFD50`)**:
+   For each fraction `part` in `fractions`:
+   - Compute the target height $\text{target} = \text{net}^{+}[\text{peak}] \cdot \text{part}$;
+   - **Non-positive peak rejection case**: If $\text{net}^{+}[\text{peak}] \le 0$ (possible only when `threshold <= 0`), return `None` and record the corresponding `CFD` entry as `NaN`;
+   - Otherwise step backward from $i = \text{peak}$ down to $1$ by $-1$, take adjacent samples $\text{previous\_content} = \text{net}^{+}[i - 1]$ and $\text{content} = \text{net}^{+}[i]$, and test the closed-interval condition $\text{previous\_content} \le \text{target} \le \text{content}$:
+     - If satisfied and $\text{content} == \text{previous\_content}$, return the left bin timestamp `times[i - 1]`;
+     - If satisfied and $\text{content} \ne \text{previous\_content}$, return the linearly interpolated crossing time per Eq. (9);
+   - **Miss rejection case**: If no adjacent pair down to $i = 1$ satisfies $\text{net}^{+}[i - 1] \le \text{target} \le \text{net}^{+}[i]$ (for instance, the first bin is already above `target`), return `None` and record the corresponding `CFD` entry as `NaN`.
+
+### Multi-Electrode Clustering and Event Selection Rules
+
+After computing all electrode rows for an event, `event_table` extracts `amplitudes = [row["amplitude"] for row in rows]` and calls `cluster(amplitudes, threshold, amplitude_threshold)`:
+
+1. **Find seed electrodes**: Collect all electrode indices $k \in \{0, \dots, W - 1\}$ satisfying $\text{amplitudes}[k] \ge \text{amplitude\_threshold}$ into `seeds` (untraced electrodes have `amplitude` equal to `NaN`, for which the comparison is false).
+2. **Merge immediate left and right above-threshold neighbors**: For each seed $k \in \text{seeds}$, inspect $j \in \{k - 1, k, k + 1\}$. If $j = k$, or if $0 \le j < W$ and $\text{amplitudes}[j] \ge \text{threshold}$, add $j$ to the set and sort in ascending order into `members`.
+3. **No-seed rejection and feature output**:
+   - If `members` is empty (`seeds` is empty), return `(0, NaN)`; the event gets `selected = False`, `cluster_size = 0`, and `cluster_center = NaN`;
+   - If `members` is non-empty, compute the amplitude-weighted index center of gravity using `amplitudes[j]` per Eq. (13) and return `(len(members), center)`; the event gets `selected = True`.
+4. **Assemble arrays**: After all events are processed, convert each column to a NumPy array with dtype `KINDS.get(name, "float64")`, reshape `CFD` to the 3D shape `(len(waveforms.events), W, len(fractions))`, and return the wrapped `EventTable`.
+
+`cluster` takes $k - 1$ and $k + 1$ in the 1D electrode list as immediate neighbors, and merges all seeds reaching `amplitude_threshold` together with their immediate neighbors within the same event into a single cluster.
+
+### Single-Event Standalone Reconstruction Class `InputWaveform`
+
+`InputWaveform(voltage, t0, dt, original_x, threshold, amplitude_threshold, pitch_x, pitch_y, CFD=0.5)` (`event.py`) allows Python scripts to extract single-event quantities directly from a baseline-subtracted, positive-polarity 2D voltage matrix `voltage` of shape `(read_ele_num, bins)`:
+
+1. **Single-electrode scan**: Compute `times = t0 + (np.arange(len(voltage[0])) + 0.5) * dt` by Eq. (1). For each electrode $i \in \{0, \dots, \text{read\_ele\_num} - 1\}$, call `get_amplitude(voltage[i])` to obtain `(amplitude[i], peak_time[i])` (where `peak_time[i]` stores the integer peak bin index `peak`):
+   - If $\text{amplitude}[i] < \text{threshold}$, reject the electrode, setting `amplitude[i]`, `ToT[i]`, and `charge[i]` to `0` and `ToA[i]` and `CFD50[i]` to `None`;
+   - Otherwise call `get_ToA`, `get_ToT`, `get_charge` (computing `np.sum(np.abs(voltage[i]))` via Eq. (12)), and `get_CFD50` (with fraction `CFD`).
+2. **Multi-channel feature summary (`get_total_data`)**: Initialize `self.data = {}`, unconditionally set `self.data["original_x"] = original_x` at the end, and assign the remaining 14 keys according to three cases:
+   - **Below-seed-threshold rejection case ($\max(\text{self.amplitude}) < \text{self.amplitude\_threshold}$)**: Set `"cluster_size_ToT"`, `"cluster_size_amplitude"`, and `"cluster_charge"` to `0`, and set all remaining 11 keys (`"ToA"`, `"ToT"`, `"amplitude"`, `"charge"`, `CFD_LABEL`, the 3 `"gravity_center_*"`, and the 3 `"gravity_center_*_error"`) to `None`.
+   - **Single-electrode degenerate case ($\max(\text{self.amplitude}) \ge \text{self.amplitude\_threshold}$ and $\text{read\_ele\_num} == 1$)**: Set `"ToA"`, `"ToT"`, `"amplitude"`, `"charge"`, and `CFD_LABEL` to the values of electrode `0`; set all 3 `"gravity_center_*"` and all 3 `"gravity_center_*_error"` to `0`; set `"cluster_size_ToT"`, `"cluster_size_amplitude"`, and `"cluster_charge"` to `1`.
+   - **Multi-electrode strip case ($\text{read\_ele\_num} > 1$)**:
+     - `"ToA"` and `CFD_LABEL` call `get_conjoined_time(time_list, self.amplitude)`: among all electrodes with `time_list[idx] is not None` and `amplitude[idx] > 0`, return the time of the electrode with the largest `amplitude[idx]` (`None` if no valid electrode exists; when `get_conjoined_time` is called without `amplitude_list`, it returns `min` when `remove_none(time_list)` is non-empty).
+     - Call `get_total_amp(amp_list, amp_thres)` and `get_gravity_center_and_cluster_size(amp_list, amp_thres)` separately for `(self.ToT, 10e-9)`, `(self.amplitude, self.amplitude_threshold)`, and `(self.charge, 0.0)`: if $\max(\text{amp\_list}) == 0$ or no seed electrode strictly satisfies $\text{amp\_list}[i] > \text{amp\_thres}$, the total returns `None` and the center and cluster size return `(None, 0)`; otherwise merge all seeds $i$ with $\text{amp\_list}[i] > \text{amp\_thres}$ and their left/right neighbors satisfying $\text{amp\_list}[i \pm 1] > 0$ into `new_seeds`, and evaluate the sum, weighted index centroid, and member count via Eq. (13) (where `"cluster_charge"` stores the member electrode count `len(new_seeds)` of the `charge` cluster).
+     - For the `ToT`, `amplitude`, and `charge` centroids, if not `None`, compute `gravity_center_* - original_x / pitch_x` per Eq. (14) and store it in `"gravity_center_*_error"`; otherwise store `None`.
+
+`InputWaveform` targets 1D spatial-resolution strip detectors (code comments: `only available for strip detector`, `assume strip, one dimensional spacial resolution`); multi-electrode `ToA` and `CFD50` take the timing of the maximum-amplitude channel via `get_conjoined_time`; the clustering seed thresholds for `ToT` and `charge` are hard-coded to `10e-9` $\text{s}$ and `0.0` $\text{V}$; `threshold`, `amplitude_threshold`, and `CFD` are supplied as constructor arguments.
+
+## Software Implementation
+
+### Module and Function Responsibilities
+
+- `event.py`: implements single-electrode baseline subtraction, linearly interpolated threshold crossings, constant-fraction timing, center-of-gravity time calculation, and the standalone single-event reconstruction class. `net_pulse` computes and subtracts the leading 200-sample baseline and returns baseline noise; `get_amplitude`, `crossing`, `get_ToA`, `get_ToT`, `get_CFD50`, `get_CoG`, and `get_charge` extract features from a single positive waveform; `InputWaveform`, together with `get_conjoined_time`, `get_total_amp`, `get_gravity_center_and_cluster_size`, and `remove_none`, aggregates single-event features across multiple strip channels.
+- `event_table.py`: implements job-level multi-event feature extraction, multi-electrode clustering, and `reconstruction_<job>.h5` file I/O. `lobe_area` computes the positive main-lobe integral area containing the peak; `electrode_row` assembles the threshold check and all feature columns for one electrode; `cluster` performs 1D multi-electrode clustering and computes the amplitude-weighted center; `chosen_edges` resolves and validates per-electrode trigger edges; `event_table` reconstructs an entire job's `Waveforms` into an `EventTable`; `write_event_table` and `read_event_table` perform one-shot writing and reading of the HDF5 event table file.
+
+### Core Data Structures
+
+- `EventTable` (`event_table.py`): single-job reconstruction result dataclass (`@dataclass`), supporting `len(table)` to return the number of event rows, with fields:
+  - `electrodes` (`list[str]`, unitless): list of readout electrode names matching the electrode column order of 2D and 3D datasets;
+  - `threshold` (`float`, $\text{V}$): voltage threshold above baseline for crossing times, center-of-gravity time, main-lobe area, and adding neighbor electrodes to a cluster;
+  - `amplitude_threshold` (`float`, $\text{V}$): amplitude threshold above baseline for event selection (`selected`) and cluster seed electrodes;
+  - `fractions` (`tuple[float, ...]`, dimensionless): tuple of constant-fraction timing fractions;
+  - `edges` (`list[str]`, unitless): list of trigger-edge directions used for each electrode, with entries `"rising"` or `"falling"`;
+  - `columns` (`dict[str, np.ndarray]`): dictionary mapping the 14 column names from `EVENT_COLUMNS`, `ELECTRODE_COLUMNS`, and `"CFD"` to their NumPy arrays, whose shapes, types, and units are listed in the `reconstruction_<job>.h5` dataset table below.
+- `InputWaveform` (`event.py`): standalone single-event reconstruction object with attributes:
+  - `times` (`np.ndarray`, shape `(bins,)`, $\text{s}$): bin-center timestamps;
+  - `waveforms` (`list[np.ndarray]`, length `read_ele_num`, $\text{V}$): positive-polarity voltage waveforms above baseline for each electrode;
+  - `read_ele_num` (`int`, count): number of readout electrodes;
+  - `pitch_x`, `pitch_y` (`float`, same units as `original_x`): electrode pitch along $x$ and $y$;
+  - `CFD` (`float`, dimensionless): constant-fraction timing fraction (default `0.5`);
+  - `threshold`, `amplitude_threshold` (`float`, $\text{V}$): per-electrode crossing threshold and cluster seed amplitude threshold;
+  - `original_x` (`float`, same units as `pitch_x`): true $x$ coordinate of the incident track;
+  - `peak_time` (`list[int]`, dimensionless): list of peak bin indices per electrode;
+  - `ToA`, `ToT`, `CFD50` (`list[float | None]`, $\text{s}$): per-electrode lists of arrival time, time over threshold, and 50% constant-fraction timing;
+  - `amplitude`, `charge` (`list[float]`, $\text{V}$): per-electrode lists of peak amplitude and sum of absolute sample values;
+  - `data` (`dict[str, float | int | None]`): single-event summary dictionary containing `"ToA"` ($\text{s}$), `"ToT"` ($\text{s}$), `"amplitude"` ($\text{V}$), `"charge"` ($\text{V}$), `"CFD50"` ($\text{s}$), `"gravity_center_ToT"` / `"_amplitude"` / `"_charge"` (0-based electrode index), `"cluster_size_ToT"` / `"_amplitude"` / `"cluster_charge"` (count), `"gravity_center_ToT_error"` / `"_amplitude_error"` / `"_charge_error"` (relative position error in units of `pitch_x`), and `"original_x"` (same units as `pitch_x`).
+
+## Interface
+
+Users can set only the 4 reconstruction option keys listed in the table below (in `config.json`, via `--set`, `--scan`, or on the command line); all other parameters (baseline sample count `BASELINE_POINTS = 200`, edge polarity factors `EDGE_SIGN`, and internal `InputWaveform` thresholds) are hard-coded. For the command-line entry point and slice scheduling usage, see [../stages/reconstruction.md](../stages/reconstruction.md).
+
+### Reconstruction Configuration Keys and Function Arguments
+
+`reconstruct` in [../stages/reconstruction.md](../stages/reconstruction.md) accepts `threshold` and `amplitude_threshold` in $\text{mV}$ and multiplies them by `MILLIVOLT = 1.0e-3` to convert to $\text{V}$ before passing them to `event_table`:
+
+| Key / Parameter Name | Default (`stages/chain.py`) | Unit | Meaning |
+| --- | --- | --- | --- |
+| `threshold` | `10.0` (stage option) / no default (`event_table` argument) | stage option: $\text{mV}$; `event_table` and file attribute: $\text{V}$ | Threshold above baseline for single-electrode crossing check (`above`), `ToA`, `ToT`, `CoG`, `area`, and adding neighboring electrodes to a cluster |
+| `amplitude_threshold` | `10.0` (stage option) / no default (`event_table` argument) | stage option: $\text{mV}$; `event_table` and file attribute: $\text{V}$ | Peak amplitude threshold above baseline for event selection (`selected`) and cluster seed selection |
+| `fractions` | `[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]` | dimensionless | Sequence of amplitude fractions for constant-fraction discrimination (`CFD`); every element must lie strictly in the open interval $(0, 1)$ |
+| `edge` | `None` | none | Trigger-edge direction, `"rising"`, `"falling"`, or `None`; when `None`, `chosen_edges` retains the `pulse_edge` attribute of the input waveform file |
+
+### Input Waveform File Attributes and Datasets
+
+`event_table` receives waveforms of events recorded by `trigger`, read by `read_waveforms` from [electronics readout](readout.md) as a `Waveforms(electrodes, dt, events, pulse_edge)` object; each row of the event table corresponds to one of those events. The attributes and datasets of the file are:
+
+**Input File Attributes**
 
 | Attribute | Type | Unit | Meaning |
 | --- | --- | --- | --- |
-| `electrodes` | `string[]` | None | List of electrode names, matching the electrode column order in 2D/3D datasets |
-| `threshold` | `float64` | V | Threshold (above baseline) for time-over-threshold and area |
-| `amplitude_threshold` | `float64` | V | Amplitude threshold (above baseline) for event selection and cluster seeds |
-| `fractions` | `float64[]` | None | Constant-fraction array, shape `(fractions,)` |
-| `edge` | `string[]` | None | Pulse edge direction used per electrode, `"rising"` or `"falling"` |
+| `electrodes` | string array | none | List of all readout electrode names in the circuit, determining the column order of `EventTable.electrodes` |
+| `dt` | `float64` | $\text{s}$ | Time-bin width |
+| `pulse_edge` | string array | none | Per-electrode pulse-edge direction (`"rising"` or `"falling"`) derived by the readout chain, used by `chosen_edges` as the default edge and comparison baseline |
+| `device_circuit` | JSON string (optional) | $\text{F}$, $\Omega$, $\text{F/m}^2$ | Record of device equivalent-circuit parameters |
 
-### Datasets
+**Input Datasets**
 
 | Dataset | Shape and Type | Unit | Meaning |
 | --- | --- | --- | --- |
-| `event` | `(events,)`, `int64` | None | Geant4 event IDs |
-| `selected` | `(events,)`, `bool` | None | Whether the event has a cluster (at least one electrode with `amplitude >= amplitude_threshold`) |
-| `cluster_size` | `(events,)`, `int64` | count | Number of electrodes in the cluster (`0` when no cluster) |
-| `cluster_center` | `(events,)`, `float64` | electrode index (`0`-based) | Amplitude-weighted center position of the cluster (`NaN` when no cluster) |
-| `traced` | `(events, electrodes)`, `bool` | None | Whether `readout` stored a waveform for that electrode in the event (when `False`, numeric columns are `NaN` and `above` is `False`) |
-| `baseline` | `(events, electrodes)`, `float64` | V | Mean of the first `200` samples of the waveform |
-| `noise` | `(events, electrodes)`, `float64` | V | Population standard deviation (`.std()`) of the first `200` samples of the waveform |
-| `amplitude` | `(events, electrodes)`, `float64` | V | Maximum sample value above baseline |
-| `above` | `(events, electrodes)`, `bool` | None | `False` when no waveform; `False` when `amplitude < threshold` and `True` otherwise (in current implementation, `NaN` also enters `True`; when `False`, time and area columns are `NaN`) |
-| `ToA` | `(events, electrodes)`, `float64` | s | Time when the rising edge crosses `threshold` (`NaN` if not found) |
-| `ToT` | `(events, electrodes)`, `float64` | s | Time difference from `ToA` to the falling-edge `threshold` crossing (`0` if it does not return below threshold) |
-| `CoG` | `(events, electrodes)`, `float64` | s | Sample-weighted center-of-gravity time over the contiguous interval containing the peak where samples are `>= threshold` |
-| `area` | `(events, electrodes)`, `float64` | $\text{V}\cdot\text{s}$ | Integrated area of the positive main lobe containing the peak |
-| `CFD` | `(events, electrodes, fractions)`, `float64` | s | Time when the rising edge crosses each `fractions * amplitude` (`NaN` if not found) |
+| `event` | `(events,)`, `int64` | none | Event ID, restored to `EventWaveforms.event` |
+| `t0` | `(events,)`, `float64` | $\text{s}$ | Left edge time of the first time bin of the event, restored to `EventWaveforms.t0` |
+| `count` | `(events,)`, `int64` | bins | Number of time bins $N$ in each stored waveform of the event |
+| `stored` | `(events,)`, `int64` | count | Number of electrodes $M$ with stored waveforms in the event (`0` for no-signal events) |
+| `index` | `(sum(stored),)`, `int64` | none | 0-based index of each stored electrode in `electrodes`, restored to `EventWaveforms.electrodes` |
+| `voltage` | `(sum(stored * count),)`, `float64` (gzip) | $\text{V}$ | Output voltage at bin centers for each stored electrode, sliced per event and reshaped to `(M, N)` as `EventWaveforms.voltage` |
 
-## Single-Event Waveform Class `InputWaveform` (Standalone Python Construction)
+### Output `reconstruction_<job>.h5` File Format
 
-`InputWaveform(voltage, t0, dt, original_x, threshold, amplitude_threshold, pitch_x, pitch_y, CFD=0.5)` allows users to construct single-event reconstruction objects directly in Python (`voltage` is an `(electrodes, bins)` positive pulse above baseline, `original_x` and `pitch_x` share the same unit, default `CFD_LABEL = "CFD50"`):
+The file is written in one shot by `write_event_table(path, table)` and read back as an `EventTable` object by `read_event_table(path)`.
 
-- Computes `amplitude` per electrode (sets `amplitude`, `ToT`, `charge` to `0` and `ToA`, `CFD50` to `None` when below `threshold`; `charge` is `np.sum(np.abs(samples))`), and summarizes `"ToA"`, `"ToT"`, `"amplitude"`, `"charge"`, `"CFD50"`, `"gravity_center_ToT"`, `"gravity_center_amplitude"`, `"gravity_center_charge"`, `"cluster_size_ToT"`, `"cluster_size_amplitude"`, `"cluster_charge"`, `"gravity_center_ToT_error"`, `"gravity_center_amplitude_error"`, `"gravity_center_charge_error"`, and `"original_x"` in `self.data`.
-- When the maximum amplitude is below `amplitude_threshold`, all three cluster sizes are `0` (and other quantities are `None`); for a single electrode (`read_ele_num == 1`), centroid and centroid error are `0` and cluster size is `1`; for multiple electrodes, `ToA` and `CFD50` come from the valid electrode with the largest amplitude, neighboring channels `> 0` are aggregated with seed thresholds `10e-9`, `amplitude_threshold`, and `0.0` respectively, and the difference between centroid and `original_x / pitch_x` is recorded as position error. Can be passed to `WaveformStatistics` in [analysis.md](analysis.md).
+**File Attributes**
 
-## Reconstruction Table in the Example (`HPK-Si-PiN`)
+| Attribute | Type | Unit | Meaning |
+| --- | --- | --- | --- |
+| `electrodes` | string array | none | List of readout electrode names, matching the electrode dimension order of 2D and 3D datasets |
+| `threshold` | `float64` | $\text{V}$ | Threshold (above baseline) for crossing times, center-of-gravity time, main-lobe area, and neighbor electrode clustering |
+| `amplitude_threshold` | `float64` | $\text{V}$ | Amplitude threshold (above baseline) for event selection and cluster seed electrodes |
+| `fractions` | 1D `float64` array, shape `(fractions,)` | dimensionless | Array of constant-fraction timing fractions, matching the 3rd dimension order of the `CFD` dataset |
+| `edge` | string array | none | Trigger-edge direction actually used for each electrode, with entries `"rising"` or `"falling"` (corresponding to `EventTable.edges`) |
 
-In the [Getting Started](../getting-started.md) example, `work/HPK-Si-PiN/signal/seed_1/batch/reconstruction_0.h5` at `200 V` records attributes `threshold = 0.01` V, `amplitude_threshold = 0.01` V, `edge = ['falling']`, `electrodes = ['top']`, and `fractions = [0.1, ..., 0.9]`. The datasets contain `200` events (`196` with `traced` equal to `True`), with `CFD` shaped `(200, 1, 9)`, and `selected`, `ToA`, `CoG`, etc. written for downstream `analysis`.
+**Datasets**
 
-## Common Errors
+| Dataset | Shape and Type | Unit | Meaning |
+| --- | --- | --- | --- |
+| `event` | `(events,)`, `int64` | none | Geant4 event ID |
+| `selected` | `(events,)`, `bool` | none | Whether the event contains a cluster (i.e., `cluster_size > 0`, at least one electrode with `amplitude >= amplitude_threshold`) |
+| `cluster_size` | `(events,)`, `int64` | count | Number of electrodes in the cluster (`0` when no cluster exists) |
+| `cluster_center` | `(events,)`, `float64` | electrode index (0-based) | Amplitude-weighted electrode-index center of the cluster (`NaN` when no cluster exists) |
+| `traced` | `(events, len(electrodes))`, `bool` | none | Whether the input `readout` stores a waveform for that electrode in the event; when `False`, all numeric columns of that electrode are `NaN` and `above` is `False` |
+| `baseline` | `(events, len(electrodes))`, `float64` | $\text{V}$ | Arithmetic mean of the leading `200` samples of the raw waveform |
+| `noise` | `(events, len(electrodes))`, `float64` | $\text{V}$ | Population standard deviation of the leading `200` samples of the raw waveform |
+| `amplitude` | `(events, len(electrodes))`, `float64` | $\text{V}$ | Maximum sample value after baseline subtraction and polarity inversion according to `edge` |
+| `above` | `(events, len(electrodes))`, `bool` | none | Whether the pulse reaches `threshold` (`False` when no waveform is stored or `amplitude < threshold`; when `False`, `ToA`, `ToT`, `CoG`, `area`, and `CFD` are all `NaN`) |
+| `ToA` | `(events, len(electrodes))`, `float64` | $\text{s}$ | Linearly interpolated leading-edge crossing time at `threshold` (`NaN` if no crossing is found or `above` is false) |
+| `ToT` | `(events, len(electrodes))`, `float64` | $\text{s}$ | Duration from `ToA` to the trailing-edge crossing of `threshold` (`0.0` if the waveform does not fall below threshold before the end of the record or if `ToA` is absent; `NaN` if `above` is false) |
+| `CoG` | `(events, len(electrodes))`, `float64` | $\text{s}$ | Sample-weighted center-of-gravity time over the contiguous interval containing the peak with net voltage $\ge \text{threshold}$ |
+| `area` | `(events, len(electrodes))`, `float64` | $\text{V}\cdot\text{s}$ | Rectangular integral area of the contiguous positive main lobe containing the peak with net voltage $> 0$ |
+| `CFD` | `(events, len(electrodes), len(fractions))`, `float64` | $\text{s}$ | Linearly interpolated leading-edge crossing times at each `fractions * amplitude` (`NaN` if no crossing is found, peak $\le 0$, or `above` is false) |
 
-| Exception Type | Error Message | Trigger Condition |
-| --- | --- | --- |
-| `ValueError` | `<len(samples)> samples, not more than the 200 of the baseline` | Waveform sample count is `<= 200` (`event.py`) |
-| `ValueError` | `edge <given>: the thresholds are set on a rising (positive pulses) or a falling (negative pulses) edge` | `edge` is a value other than `"rising"`, `"falling"`, or `None` (`event_table.py`) |
-| `ValueError` | `edges <edges>: one of rising or falling for each of <electrodes>` | Length of `edges` mismatches electrode count or contains an invalid element (`event_table.py`) |
-| `ValueError` | `fractions <wrong>: a constant fraction lies between 0 and 1` | `fractions` contains a value `<= 0` or `>= 1` (`event_table.py`) |
-| `ValueError` | `the readout holds no event` | Input `Waveforms.events` is an empty list (`event_table.py`) |
+The constant-fraction timestamp at fraction $f$ for the $k$-th electrode (0-based in the order of attribute `electrodes`) is `CFD[:, k, j]`, where $j$ is the index of $f$ in attribute `fractions`. `ToA`, `CoG`, and `CFD` lie on the same time axis as the input event's `t0` (Eq. (1)), while `t0` stays in the input waveform file.
 
-## Related Pages
+### Plot Output
 
-- [Getting Started](../getting-started.md)
-- [../stages/reconstruction.md](../stages/reconstruction.md)
-- [readout.md](readout.md)
-- [digitizer.md](digitizer.md)
-- [analysis.md](analysis.md)
+After aggregation, `InputWaveform.data` is plotted by `WaveformStatistics.draw` in [statistical analysis](analysis.md): Gaussian-fitted timing resolution plots, Landau-fitted amplitude and charge plots, cluster-size distributions, spatial center-of-gravity error plots, and $\eta$ calibration plots.
+
+## References
+
+- [1] H. Spieler, *Semiconductor Detector Systems*, Oxford University Press (2005), source to be added
+- [2] I. Kipnis, T. Collins, J. DeWitt, S. Dow, A. Frey, A. Grillo, R. Johnson, W. Kroeger, A. Leona, L. Luo, et al., “A time-over-threshold machine: the readout integrated circuit for the BABAR Silicon Vertex Tracker”, IEEE Trans. Nucl. Sci. 44 (1997) 289, doi:10.1109/23.603658
+- [3] D. A. Gedcke, W. J. McDonald, “Design of the Constant Fraction of Pulse Height Trigger for Optimum Time Resolution”, Nucl. Instrum. Methods 58 (1968) 253, doi:10.1016/0029-554X(68)90473-4
+- [4] R. Turchetta, “Spatial resolution of silicon microstrip detectors”, Nucl. Instrum. Methods Phys. Res. A 335 (1993) 44, doi:10.1016/0168-9002(93)90255-G
