@@ -351,6 +351,15 @@ HEMT 器件仍由 `run_hemt_transport` 自己处理它的区域和异质结界�
 11. **失败**：单步求解出任何 DEVSIM 错误时先写 `last_solvable.dd`。报错信息含 `"Convergence failure"` 或 `"negative or zero value before update"` 时令 $\Delta \leftarrow (V_t - V_c)\times$ `decrease_factor` 后重试；其他 DEVSIM 错误原样抛出。$|\Delta| < 10^{-7}\ \text{V}$ 时停止并抛出 `RuntimeError("Step size too small (less than 1e-7). Exiting loop.")`。
 12. **收尾**：在 `node.json` 写 `read`，画 IV 曲线；CV 模式画 CV 与 $1/C^2$ 曲线；打开噪声开关时画噪声曲线。
 
+### 建器件与求解两段
+
+`solver_section.main` 分成两段，场节点的节点号由前一段的结果算出（见 [`stages/field`](../stages/field.md)）。
+
+1. **建器件**（`solver_section.build(kwargs)`）：做“偏压扫描与收敛”的第 1–4 步，到 $0\ \text{V}$ 求解之前为止，返回建好的器件（`Reading` 包着的 `Detector`、求解参数、DEVSIM 里的器件名）。这一段读完求解要从器件取的全部属性、键和网格文件，包括后面才用到的 `bias.voltage`、缺陷模型和雪崩模型；求权重场时还包括 `read_out_contact`、`resistive_layer`、`p_x`、`l_z`、`read_ele_num`。
+2. **只取读到的内容**（`solver_section.read_of(kwargs)`）：收和 `main` 相同的 `kwargs`，先按求电场、再按求权重场各建一次器件，返回 `{"read": ..., "axes": [...]}`：`read` 是两次建器件读到的内容之并，格式同 `node.json` 的 `read`；`axes` 同 `mesh_axes`。返回值只含数、字符串、`null`、列表和字典，可直接写成 json。它不写任何文件、不建目录、不求解。
+3. **求解**（`solver_section.main(kwargs)`）：先 `build`，再做第 5 步起的各步。求解结束时把 `Reading` 记下的内容与建器件结束时的比一遍；多出任何一项就抛出 `RuntimeError`，写明器件名和多读的属性或键：节点号是按建器件时读到的内容算的，求解途中再读新的内容，节点号就漏了它。
+4. **补做子任务不改 `read`**：`read_of` 覆盖整套求解，所以在同一个节点上补做 IV 扫描、单点电容、权重场，`read` 都是同一份。
+
 ### 小信号电容与噪声
 
 1. **扫描中的 CV**：CV 模式（`field` 段未单独打开 IV 扫描、单点电容或权重场子任务时的整套求解）在每个曲线点先 `circuit_alter` 到该偏压，再做频率 $f$ 的交流小信号求解：

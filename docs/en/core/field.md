@@ -351,6 +351,15 @@ When solving for the electric field, `solver_section.main` executes in the follo
 11. **Failure**: on any DEVSIM error in a single step, writes `last_solvable.dd` first. If the error message contains `"Convergence failure"` or `"negative or zero value before update"`, sets $\Delta \leftarrow (V_t - V_c)\times$ `decrease_factor` and retries; any other DEVSIM error is re-raised as is. If $|\Delta| < 10^{-7}\ \text{V}$, stops and raises `RuntimeError("Step size too small (less than 1e-7). Exiting loop.")`.
 12. **Wrap-up**: writes `read` to `node.json`, plots the IV curve; in CV mode plots CV and $1/C^2$ curves; plots the noise curve when the noise switch is enabled.
 
+### Building the device and solving, in two parts
+
+`solver_section.main` has two parts, and the number of a field node is computed from the result of the first (see [`stages/field`](../stages/field.md)).
+
+1. **Building the device** (`solver_section.build(kwargs)`): does steps 1–4 of "Bias Sweep and Convergence", up to but not including the solve at $0\ \text{V}$, and returns the built device (the `Detector` wrapped in `Reading`, the solver parameters, the name of the device in DEVSIM). This part reads every attribute, key and mesh file the solve takes from the device, including those used only later: `bias.voltage`, the defect model and the avalanche model; for a weighting field also `read_out_contact`, `resistive_layer`, `p_x`, `l_z` and `read_ele_num`.
+2. **Only what is read** (`solver_section.read_of(kwargs)`): takes the same `kwargs` as `main`, builds the device once for the electric field and once for the weighting field, and returns `{"read": ..., "axes": [...]}`: `read` is the union of what the two builds read, in the format of `read` in `node.json`; `axes` is that of `mesh_axes`. The value holds only numbers, strings, `null`, lists and dictionaries and can be written as json as it is. It writes no file, makes no directory and solves nothing.
+3. **Solving** (`solver_section.main(kwargs)`): calls `build`, then does the steps from 5 on. When the solve ends, what `Reading` has noted is compared with what it had noted when the build ended; any additional item raises `RuntimeError` with the device name and the attribute or key read in addition: the node number is computed from what the build read, and something read during the solve would be missing from it.
+4. **A subtask added later leaves `read` as it is**: `read_of` covers the full solve, so an IV sweep, a capacitance at one bias or a weighting field added on the same node all have the same `read`.
+
 ### Small-Signal Capacitance and Noise
 
 1. **CV during sweep**: in CV mode (the full solve when none of the IV sweep, single-point capacitance, or weighting field subtasks is individually enabled in the `field` section), at each curve point `circuit_alter` sets the bias and runs an AC small-signal solve at frequency $f$:
