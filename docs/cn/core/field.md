@@ -417,7 +417,7 @@ $$\psi = -V\phi_w + \frac{qN}{\varepsilon_0\varepsilon_r}\,P, \qquad \mathbf{E} 
 - `simple.py`：解析 toy 场。
 - `tcad.py`：TDR 场导入与其权重场求解。
 - `tdr_reader.py`、`tdr_import.py`：读 TDR 并建 DEVSIM 器件（改写自 DEVSIM LLC 的 tdr-convert 0.1.7，Apache-2.0）。
-- `devsim_draw.py`：IV/CV/噪声曲线（`draw_iv(V, I, path)`、`draw_cv(V, C, path)`、`draw_noise(V, noise, path)`，同时写 `simIV`、`simCV`、`simnoise` 的 `.root`）与 1D/2D/3D 场分布图；1D 的剖面由 `draw_profile(x, curves, ylabel, path, name, *suffixes, log=False)` 画进 `<path>/plots`；`draw_electrons`、`draw_holes`、`draw_field` 画一维电子、空穴浓度与电场，`save_field` 把电场随深度写成表。
+- `devsim_draw.py`：IV/CV/噪声曲线（`draw_iv(V, I, path)`、`draw_cv(V, C, path)`、`draw_noise(V, noise, path)`，同时写 `simIV`、`simCV`、`simnoise` 的 `.root`）与 1D/2D/3D 场分布图；1D 的剖面由 `draw_profile(x, curves, ylabel, path, name, *suffixes, log=False, boundaries=())` 画进 `<path>/plots`，在 `boundaries` 的各深度画灰色细虚线；分界由 `doping_boundaries(depth, doping)` 取：相邻网格点净掺杂的绝对值相差 10 倍以上处取两点中点，相距不到 0.5 μm 的合并取平均。权重场求解时掺杂换成了常数，权重势、权重场两张图的分界取自场文件夹的 `NetDoping_0V.pkl`；`draw_electrons`、`draw_holes`、`draw_field` 画一维电子、空穴浓度与电场，`save_field` 把电场随深度写成表。
 - `hemt_solver_2d_transport_v1.py`：2D AlGaN/GaN HEMT 只含电子的直流转移特性求解分支，由 `solver_section.main` 转交，写 `HEMT_TRANSPORT_*` 文件。
 - `plot_hemt_transport_csv.py`：独立脚本，读 `work/AlGaN_GaN_HEMT_TRANSPORT_V1/field`（或环境变量 `RASER_HEMT_FIELD_DIR`）下最新的 `HEMT_TRANSPORT_final_profile.csv` 作图。
 

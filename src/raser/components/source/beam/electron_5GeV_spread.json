@@ -1,0 +1,9 @@
+{
+    "name" : "electron_5GeV_spread",
+    "kind" : "beam",
+    "description" : "5 GeV electrons whose directions spread uniformly by up to 1.5 mrad along x and along y, as the beam of the old telescope.json (750 um on 500 mm); par_randx and par_randy spread the point aimed at, so 390 um for a g4setup that aims at a layer 260 mm from the source, as telescope does",
+    "par_type" : "e-",
+    "par_energy" : 5000,
+    "par_randx" : 390,
+    "par_randy" : 390
+}

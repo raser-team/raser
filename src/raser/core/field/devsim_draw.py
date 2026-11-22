@@ -17,6 +17,7 @@ import ROOT
 from raser.supports import figures
 ROOT.gROOT.SetBatch(True)
 import matplotlib.pyplot
+import matplotlib.tri
 
 from raser.supports.output import output
 
@@ -178,26 +179,42 @@ def save_field(device, positions, intensities, bias_voltages,path):
         for per_x,per_E in zip(x,E):
             writer_E.writerow([float(per_x),float(per_E)])
 
-def draw1D(x,y,title,xtitle,ytitle,v,path):
-    graph = ROOT.TGraph()
-    for i in range(len(x)):
-        graph.SetPoint(i, x[i]*1e4, y[i])
-    graph.SetTitle(title)
-    canvas = ROOT.TCanvas("canvas", title, 800, 600)
-    canvas.SetLeftMargin(0.15)
-    graph.Draw("AL") 
-    graph.GetXaxis().SetTitle(xtitle)
-    graph.GetYaxis().SetTitle(ytitle)
-    canvas.Draw()
-    canvas.SaveAs(os.path.join(path, title+"{}_1d.png".format(v)))
+def doping_boundaries(depth, doping):
+    """Depths [um] of the boundaries inside the device, ascending.
 
-def draw_profile(x, curves, ylabel, path, name, *suffixes, log=False):
+    depth is the ascending depth [um]; doping is the net doping at the same
+    points, in any unit. A boundary lies midway between two neighbouring points
+    whose |doping| differs by more than a factor of ten (one of them may be 0).
+    Boundaries closer than 0.5 um to each other are merged into their mean.
+    """
+    magnitude = np.abs(np.asarray(doping, dtype=float))
+    depth = np.asarray(depth, dtype=float)
+    low = np.minimum(magnitude[:-1], magnitude[1:])
+    high = np.maximum(magnitude[:-1], magnitude[1:])
+    middles = 0.5 * (depth[:-1] + depth[1:])[(high > 10 * low) & (high > 0)]
+    merged = []
+    group = []
+    for position in middles:
+        if group and position - group[-1] >= 0.5:
+            merged.append(float(np.mean(group)))
+            group = []
+        group.append(float(position))
+    if group:
+        merged.append(float(np.mean(group)))
+    return merged
+
+
+def draw_profile(x, curves, ylabel, path, name, *suffixes, log=False, boundaries=()):
     """Draw curves against the depth into `<path>/plots` as `<name>_<suffixes>`.
 
     x is the depth [um]; curves is a list of (y, color, legend text or None),
-    y in the unit of ylabel; log makes the vertical axis logarithmic.
+    y in the unit of ylabel; log makes the vertical axis logarithmic;
+    boundaries are the depths [um] of the boundaries inside the device, each
+    drawn as a thin dashed vertical line.
     """
     figure, axis = figures.new()
+    for depth in boundaries:
+        axis.axvline(depth, color="0.5", linestyle="--", linewidth=0.8)
     for y, color, text in curves:
         axis.plot(x, y, color=color, label=text)
     if log:
@@ -208,137 +225,290 @@ def draw_profile(x, curves, ylabel, path, name, *suffixes, log=False):
         axis.legend()
     figures.save(figure, os.path.join(path, "plots"), name, *suffixes)
 
-def draw2D(x,y,value,title,v,path):
-    title = str(title)
-    graph = ROOT.TGraph2D()
-    graph_1d = ROOT.TGraph()
-    j = 0
-    y_middle = 0.5*(max(y)-min(y))
-    x_middle = 0.5*(max(x)-min(x))
-    for i in range(len(x)):
-        graph.SetPoint(i, y[i]*1e4, x[i]*1e4, value[i]) 
-        if abs(y[i]*1e4 - y_middle) < 0.1 :
-            graph_1d.SetPoint(j, x[i]*1e4, value[i])
-            j=j+1
-    canvas = ROOT.TCanvas("canvas",title, 1000, int(1000*x_middle/y_middle))
-    canvas.SetRightMargin(0.15)
-    graph.Draw("CONT4Z")
-    canvas.Draw()
-    graph.GetXaxis().SetTitle("x [um]")
-    graph.GetYaxis().SetTitle("z [um]")
-    graph.SetTitle(title)
-    canvas.SaveAs(os.path.join(path, title+"{}_2d.pdf".format(v)))
-    # Using png will cause crash in ROOT
-    canvas.SaveAs(os.path.join(path, title+"{}_2d.root".format(v)))
 
-    canvas1 = ROOT.TCanvas("canvas1", title, 1700, 1000)
-    graph_1d.Draw("AL")
-    canvas1.Draw()
-    graph_1d.GetXaxis().SetTitle("z [um]")
-    graph_1d.GetYaxis().SetTitle("Potential")
-    canvas1.SaveAs(os.path.join(path, title+"{}_1d.pdf".format(v)))
-    canvas1.SaveAs(os.path.join(path, title+"{}_1d.root".format(v)))
+PROFILE_POINTS = 400  # points of a profile line
+SLICE_POINTS = 200  # points of a 3D slice along each of its two directions
+PAIRS_PER_CHUNK = 2_000_000  # point-element pairs judged at once
+INSIDE_TOLERANCE = 1e-9  # barycentric coordinates down to this below 0 are inside
 
 
-def draw3D(x, y, z, value, title, v, path):
-    title = str(title)
-    unit_conv = 1e4  
-    z_mid = (max(z) + min(z)) / 2 
-    x_mid = (max(x) + min(x)) / 2  
-    y_mid = (max(y) + min(y)) / 2  
-    threshold = 0.5 / unit_conv  
-    
-    graph_3d_1d = ROOT.TGraph()
-    x_middle_1d = 0.5 * (max(x) - min(x)) * unit_conv 
-    y_middle_1d = 0.5 * (max(y) - min(y)) * unit_conv
-    z_1d = []
-    value_1d = []
-    for i in range(len(x)):
-        x_um = x[i] * unit_conv
-        y_um = y[i] * unit_conv
-        if abs(x_um - x_middle_1d) < 0.5 and abs(y_um - y_middle_1d) < 0.5:
-            z_1d.append(z[i] * unit_conv)  
-            value_1d.append(value[i]) 
-    sorted_data = sorted(zip(z_1d, value_1d), key=lambda d: d[0])
-    for j, (z_val, val) in enumerate(sorted_data):
-        graph_3d_1d.SetPoint(j, z_val, val)
-    canvas3d_1d = ROOT.TCanvas("canvas3d_1d", title, 1700, 1000)
-    graph_3d_1d.Draw("ALP") 
-    graph_3d_1d.GetXaxis().SetTitle("z [um]")
-    graph_3d_1d.GetYaxis().SetTitle(title.split()[0])
-    graph_3d_1d.SetTitle(f"{title}")
-    canvas3d_1d.Draw()
-    canvas3d_1d.SaveAs(os.path.join(path, f"{title}_{v}_3d_1d.pdf"))
-    canvas3d_1d.SaveAs(os.path.join(path, f"{title}_{v}_3d_1d.root"))
+def _um(x_cm):
+    """Positions [cm] of the field solver in um."""
+    return np.asarray(x_cm) * 1e-2 / figures.UNIT["um"]
 
-    graph_xy = ROOT.TGraph2D()
-    for i in range(len(x)):
-        if abs(z[i] - z_mid) < threshold: 
-            graph_xy.SetPoint(graph_xy.GetN(), 
-                             x[i] * unit_conv,  
-                             y[i] * unit_conv,  
-                             value[i])         
-    if graph_xy.GetN() > 0:
-        x_range = max(x) - min(x)
-        y_range = max(y) - min(y)
-        max_xy_range = max(x_range, y_range)
-        canvas_xy = ROOT.TCanvas("canvas_xy", f"{title}_XY", 
-                                int(2000 * x_range / max_xy_range), 
-                                int(2000 * y_range / max_xy_range),)
-        canvas_xy.SetRightMargin(0.15)
-        graph_xy.Draw("CONT4Z")
-        graph_xy.GetXaxis().SetTitle("x [um]")
-        graph_xy.GetYaxis().SetTitle("y [um]")
-        graph_xy.GetZaxis().SetTitle(f"{title.split()[0]} [unit]")
-        graph_xy.SetTitle(f"{title} (XY, z={z_mid * unit_conv:.1f}um)")
-        canvas_xy.Draw()
-        canvas_xy.SaveAs(os.path.join(path, f"{title}_{v}_XY.pdf"))
-        canvas_xy.SaveAs(os.path.join(path, f"{title}_{v}_XY.root"))
 
-    graph_yz = ROOT.TGraph2D()
-    for i in range(len(x)):
-        if abs(x[i] - x_mid) < threshold:  
-            graph_yz.SetPoint(graph_yz.GetN(), 
-                             y[i] * unit_conv,  
-                             z[i] * unit_conv, 
-                             value[i])          
-    if graph_yz.GetN() > 0:
-        y_range = max(y) - min(y)
-        z_range = max(z) - min(z)
-        max_yz_range = max(y_range, z_range)
-        canvas_yz = ROOT.TCanvas("canvas_yz", f"{title}_YZ", 
-                            int(2000 * y_range / max_yz_range), 
-                            int(2000 * z_range / max_yz_range),)
-        canvas_yz.SetRightMargin(0.15)
-        graph_yz.Draw("CONT4Z")
-        graph_yz.GetXaxis().SetTitle("y [um]")
-        graph_yz.GetYaxis().SetTitle("z [um]")
-        graph_yz.GetZaxis().SetTitle(f"{title.split()[0]} [unit]")
-        graph_yz.SetTitle(f"{title} (YZ, x={x_mid * unit_conv:.1f}um)")
-        canvas_yz.Draw()
-        canvas_yz.SaveAs(os.path.join(path, f"{title}_{v}_YZ.pdf"))
-        canvas_yz.SaveAs(os.path.join(path, f"{title}_{v}_YZ.root"))
+def _simplices(points, elements):
+    """Origin vertex, edge matrix (rows: the other vertices minus the origin)
+    and its determinant of each simplex; points (N, d), elements (M, d + 1)."""
+    points = np.asarray(points, dtype=float)
+    elements = np.asarray(elements, dtype=int)
+    if points.ndim != 2 or elements.ndim != 2 or elements.shape[1] != points.shape[1] + 1:
+        raise ValueError(
+            f"points {points.shape} and elements {elements.shape} do not make simplices: "
+            "elements must be (M, d + 1) for points (N, d)")
+    vertices = points[elements]  # (M, d + 1, d)
+    origin = vertices[:, 0, :]
+    edges = vertices[:, 1:, :] - origin[:, None, :]
+    return origin, edges, np.linalg.det(edges)
 
-    graph_xz = ROOT.TGraph2D()
-    for i in range(len(x)):
-        if abs(y[i] - y_mid) < threshold: 
-            graph_xz.SetPoint(graph_xz.GetN(), 
-                             x[i] * unit_conv, 
-                             z[i] * unit_conv,  
-                             value[i])          
-    if graph_xz.GetN() > 0:
-        x_range = max(x) - min(x)
-        z_range = max(z) - min(z)
-        max_xz_range = max(x_range, z_range)
-        canvas_xz = ROOT.TCanvas("canvas_xz", f"{title}_XZ", 
-                                int(2000 * x_range / max_xz_range), 
-                                int(2000 * z_range / max_xz_range),)
-        canvas_xz.SetRightMargin(0.15)
-        graph_xz.Draw("CONT4Z")
-        graph_xz.GetXaxis().SetTitle("x [um]")
-        graph_xz.GetYaxis().SetTitle("z [um]")
-        graph_xz.GetZaxis().SetTitle(f"{title.split()[0]} [unit]")
-        graph_xz.SetTitle(f"{title} (XZ, y={y_mid * unit_conv:.1f}um)")
-        canvas_xz.Draw()
-        canvas_xz.SaveAs(os.path.join(path, f"{title}_{v}_XZ.pdf"))
-        canvas_xz.SaveAs(os.path.join(path, f"{title}_{v}_XZ.root"))
+
+def field_strength_at_nodes(points, elements, potential):
+    """|grad potential| at the nodes of a mesh of triangles (d = 2) or tetrahedra (d = 3).
+
+    points (N, d) [cm], elements (M, d + 1) node indices, potential (N,) [V].
+    On each element the potential is linear between its nodes, which gives a
+    constant gradient; a node takes the mean of the moduli of its elements,
+    weighted by their area (volume). Returns (N,) [V/cm]; a node of no
+    element, or of degenerate elements only, is nan.
+    """
+    potential = np.asarray(potential, dtype=float)
+    elements = np.asarray(elements, dtype=int)
+    origin, edges, determinant = _simplices(points, elements)
+    if potential.shape != (len(np.asarray(points)),):
+        raise ValueError(f"potential {potential.shape} does not match {len(np.asarray(points))} points")
+    proper = determinant != 0
+    dimension = edges.shape[1]
+    factorial = float(np.prod(np.arange(1, dimension + 1)))
+    measure = np.abs(determinant[proper]) / factorial
+    drop = potential[elements[proper][:, 1:]] - potential[elements[proper][:, :1]]
+    gradient = np.linalg.solve(edges[proper], drop[:, :, None])[:, :, 0]
+    modulus = np.linalg.norm(gradient, axis=1)
+    nodes = elements[proper].ravel()
+    count = len(potential)
+    weight = np.bincount(nodes, weights=np.repeat(measure, dimension + 1), minlength=count)
+    total = np.bincount(nodes, weights=np.repeat(measure * modulus, dimension + 1), minlength=count)
+    strength = np.full(count, np.nan)
+    covered = weight > 0
+    strength[covered] = total[covered] / weight[covered]
+    return strength
+
+
+def interpolate_on_elements(points, elements, values, queries):
+    """Linear interpolation of node values on simplices at query points.
+
+    points (N, d), elements (M, d + 1), values (N,), queries (K, d), in the
+    same unit of length. A query inside an element, its boundary included
+    (barycentric coordinates down to -1e-9), takes the barycentric
+    interpolation of that element; one inside none is nan. Returns (K,).
+    """
+    values = np.asarray(values, dtype=float)
+    queries = np.asarray(queries, dtype=float)
+    elements = np.asarray(elements, dtype=int)
+    origin, edges, determinant = _simplices(points, elements)
+    if queries.ndim != 2 or queries.shape[1] != origin.shape[1]:
+        raise ValueError(f"queries {queries.shape} do not match points of dimension {origin.shape[1]}")
+    result = np.full(len(queries), np.nan)
+    proper = determinant != 0
+    elements, origin, edges = elements[proper], origin[proper], edges[proper]
+    if len(elements) == 0 or len(queries) == 0:
+        return result
+
+    # only the elements whose box meets the box of the queries are judged
+    vertices = np.asarray(points, dtype=float)[elements]
+    low, high = vertices.min(axis=1), vertices.max(axis=1)
+    meets = np.all((high >= queries.min(axis=0)) & (low <= queries.max(axis=0)), axis=1)
+    elements, origin, edges = elements[meets], origin[meets], edges[meets]
+    if len(elements) == 0:
+        return result
+
+    # lambda_1..d = (q - origin) inverse(edges); lambda_0 = 1 - their sum
+    inverse = np.linalg.inv(edges)
+    node_values = values[elements]
+    step = max(1, PAIRS_PER_CHUNK // len(elements))
+    for start in range(0, len(queries), step):
+        chunk = queries[start:start + step]
+        offset = chunk[:, None, :] - origin[None, :, :]  # (k, m, d)
+        coordinates = np.einsum("kmj,mji->kmi", offset, inverse)
+        first = 1.0 - coordinates.sum(axis=2)
+        inside = np.all(coordinates >= -INSIDE_TOLERANCE, axis=2) & (first >= -INSIDE_TOLERANCE)
+        found = inside.any(axis=1)
+        which = inside.argmax(axis=1)[found]
+        rows = np.flatnonzero(found)
+        interpolated = (
+            first[rows, which] * node_values[which, 0]
+            + np.einsum("ki,ki->k", coordinates[rows, which], node_values[which, 1:])
+        )
+        result[start + rows] = interpolated
+    return result
+
+
+def profile_positions(axes, points, electrode=None):
+    """The profile lines drawn of a 2D or 3D field.
+
+    axes is the tuple of mesh_axes, points (N, d) the nodes in that order.
+    Returns a list of (name, start, end, along): the line runs from start to
+    end (arrays of d coordinates) along the axis `along`. "Middle" is
+    (min + max) / 2 of the coordinate over the points.
+
+    - with a depth ("z" in axes): "depth" along z, at the middle of the
+      lateral coordinates, or at their mean over the electrode nodes (n, d)
+      when given; "lateral" along x, at the middle of the others;
+    - a cross section ("x", "y"): "x" along x at the middle of y, "y" along
+      y at the middle of x.
+    """
+    points = np.asarray(points, dtype=float)
+    axes = tuple(axes)
+    if points.ndim != 2 or points.shape[1] != len(axes):
+        raise ValueError(f"points {points.shape} do not match the axes {axes}")
+    low, high = points.min(axis=0), points.max(axis=0)
+    middle = (low + high) / 2
+
+    def line(along, at):
+        start, end = np.array(at, dtype=float), np.array(at, dtype=float)
+        start[axes.index(along)], end[axes.index(along)] = low[axes.index(along)], high[axes.index(along)]
+        return start, end
+
+    if "z" not in axes:
+        if axes != ("x", "y"):
+            raise ValueError(f"axes {axes} have neither a depth nor the cross section (x, y)")
+        return [(name, *line(name, middle), name) for name in ("x", "y")]
+
+    depth_at = middle.copy()
+    if electrode is not None:
+        electrode = np.asarray(electrode, dtype=float)
+        if electrode.ndim != 2 or electrode.shape[1] != len(axes) or len(electrode) == 0:
+            raise ValueError(f"electrode {electrode.shape} does not match the axes {axes}")
+        depth_at = electrode.mean(axis=0)
+    return [("depth", *line("z", depth_at), "z"), ("lateral", *line("x", middle), "x")]
+
+
+NEARLY_CONSTANT = 1e-6  # a spread this small against the values is numerical
+
+
+def value_limits(values):
+    """Limits of the axis and colour scale of a field that is constant up to
+    numerical noise, which left alone fills the ticks with digits: 5 % either
+    side of its mean. None when the field varies, for the usual limits."""
+    values = np.asarray(values, dtype=float)
+    low, high = np.nanmin(values), np.nanmax(values)
+    middle = (low + high) / 2
+    if high - low > NEARLY_CONSTANT * max(abs(low), abs(high)):
+        return None
+    if middle == 0:
+        return -1.0, 1.0
+    return middle - 0.05 * abs(middle), middle + 0.05 * abs(middle)
+
+
+def _axis_label(along):
+    return figures.label("Depth" if along == "z" else along, "um")
+
+
+def boundaries_on_line(points, doping, axes, start, end, along):
+    """Depths [um] of the boundaries inside the device along a depth profile.
+
+    points (N, d) [cm] are nodes carrying the net doping `doping` (N,), in the
+    order of `axes`; they may be the nodes of one cell of a row of cells, into
+    which the line is then folded. The line from start to end along `along`
+    is sampled at PROFILE_POINTS positions, each taking the
+    doping of its nearest node, so that steps stay steps, and the result is
+    that of doping_boundaries.
+    """
+    points = np.asarray(points, dtype=float)
+    doping = np.asarray(doping, dtype=float)
+    parameter = np.linspace(0.0, 1.0, PROFILE_POINTS)
+    line = start[None, :] + parameter[:, None] * (end - start)[None, :]
+    low, high = points.min(axis=0), points.max(axis=0)
+    for index in range(len(axes)):
+        width = high[index] - low[index]
+        if width > 0:
+            line[:, index] = low[index] + np.mod(line[:, index] - low[index], width * (1 + 1e-12))
+    nearest = np.empty(len(line), dtype=int)
+    step = max(1, PAIRS_PER_CHUNK // len(points))
+    for begin in range(0, len(line), step):
+        part = line[begin:begin + step]
+        distance = ((part[:, None, :] - points[None, :, :]) ** 2).sum(axis=2)
+        nearest[begin:begin + len(part)] = distance.argmin(axis=1)
+    return doping_boundaries(_um(line[:, axes.index(along)]), doping[nearest])
+
+
+def _along_line(points, elements, values, axes, start, end, along):
+    """The coordinate along the line [um] and the values on it."""
+    parameter = np.linspace(0.0, 1.0, PROFILE_POINTS)
+    line = start[None, :] + parameter[:, None] * (end - start)[None, :]
+    return _um(line[:, axes.index(along)]), interpolate_on_elements(points, elements, values, line)
+
+
+def draw_field_map(points, elements, values, axes, label, path, name, *suffixes, electrode=None, boundaries=()):
+    """Draw a field of a 2D or 3D device into `<path>/plots`: the slice, the
+    profile along the depth and the profile across it.
+
+    points (N, d) [cm] and elements (M, d + 1) are the mesh, values (N,) the
+    field at its nodes in the unit of `label` (an axis title such as
+    "Electric field [kV/cm]"), axes the mesh_axes of the points. The slice is
+    the whole mesh in 2D and, in 3D, the x-depth plane through the middle of y.
+    electrode (n, d) places the depth profile under that electrode;
+    boundaries are the depths [um] drawn on the depth profile as thin dashed
+    vertical lines.
+    """
+    points = np.asarray(points, dtype=float)
+    values = np.asarray(values, dtype=float)
+    axes = tuple(axes)
+    vertical = "z" if "z" in axes else "y"
+    horizontal = axes.index("x")
+    figure, (surface, first, second) = figures.new(1, 3)
+    limits = value_limits(values) or (None, None)
+
+    if len(axes) == 2:
+        triangulation = matplotlib.tri.Triangulation(
+            _um(points[:, horizontal]), _um(points[:, axes.index(vertical)]), np.asarray(elements, dtype=int))
+        shown = surface.tripcolor(
+            triangulation, values, shading="gouraud", cmap="viridis",
+            vmin=limits[0], vmax=limits[1])
+    else:
+        low, high = points.min(axis=0), points.max(axis=0)
+        across = np.linspace(low[horizontal], high[horizontal], SLICE_POINTS)
+        depth = np.linspace(low[axes.index("z")], high[axes.index("z")], SLICE_POINTS)
+        grid_across, grid_depth = np.meshgrid(across, depth)
+        queries = np.empty((grid_across.size, 3))
+        queries[:, horizontal] = grid_across.ravel()
+        queries[:, axes.index("z")] = grid_depth.ravel()
+        queries[:, axes.index("y")] = (low[axes.index("y")] + high[axes.index("y")]) / 2
+        slice_values = interpolate_on_elements(points, elements, values, queries).reshape(grid_across.shape)
+        shown = surface.pcolormesh(
+            _um(grid_across), _um(grid_depth), np.ma.masked_invalid(slice_values), shading="auto", cmap="viridis",
+            vmin=limits[0], vmax=limits[1])
+    colorbar = figure.colorbar(shown, ax=surface)
+    colorbar.set_label(label)
+    surface.set_xlabel(_axis_label("x"))
+    surface.set_ylabel(_axis_label(vertical))
+
+    for axis, (_, start, end, along) in zip(
+        (first, second), profile_positions(axes, points, electrode)
+    ):
+        if along == "z":
+            for depth in boundaries:
+                axis.axvline(depth, color="0.5", linestyle="--", linewidth=0.8)
+        position, line_values = _along_line(points, elements, values, axes, start, end, along)
+        axis.plot(position, line_values, color=figures.TOTAL)
+        if limits[0] is not None:
+            axis.set_ylim(*limits)
+        axis.set_xlabel(_axis_label(along))
+        axis.set_ylabel(label)
+    figures.save(figure, os.path.join(path, "plots"), name, *suffixes)
+
+
+def draw_depth_profiles(points, elements, curves, axes, ylabel, path, name, *suffixes, log=False, boundaries=()):
+    """Draw curves of node values along the first profile line of the mesh
+    (the depth; along x in a cross section) into `<path>/plots`.
+
+    points (N, d) [cm], elements (M, d + 1), axes the mesh_axes of the
+    points; curves is a list of (values (N,), color, legend text or None),
+    values in the unit of ylabel; log makes the vertical axis logarithmic.
+    """
+    points = np.asarray(points, dtype=float)
+    axes = tuple(axes)
+    _, start, end, along = profile_positions(axes, points)[0]
+    figure, axis = figures.new()
+    if along == "z":
+        for depth in boundaries:
+            axis.axvline(depth, color="0.5", linestyle="--", linewidth=0.8)
+    for values, color, text in curves:
+        position, line_values = _along_line(points, elements, values, axes, start, end, along)
+        axis.plot(position, line_values, color=color, label=text)
+    if log:
+        axis.set_yscale("log")
+    axis.set_xlabel(_axis_label(along))
+    axis.set_ylabel(ylabel)
+    if any(text is not None for _, _, text in curves):
+        axis.legend()
+    figures.save(figure, os.path.join(path, "plots"), name, *suffixes)
