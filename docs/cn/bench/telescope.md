@@ -62,20 +62,34 @@ r_{x,j} &= \hat{x}\!\left(z_j + \frac{l_{z,j}}{2}\right) - \bar{x}_{c,j}, & r_{y
 
 参考层默认使用 `TAICHU3`（`TAICHU3.json`）：硅（`"Si"`）像素探测器，全尺寸 $l_x = 1500\ \mu\text{m}$、$l_y = 1500\ \mu\text{m}$、$l_z = 20\ \mu\text{m}$，阵列 $60 \times 60$ 像素（共 `3600` 个），像素间距 $p_x = p_y = 25.0\ \mu\text{m}$，单像素中心矩形收集区 $10.0 \times 10.0\ \mu\text{m}$，工作温度 $300.0\ \text{K}$，默认偏压 `-1.8` $\text{V}$，受主浓度 `1e12` $\text{cm}^{-3}$、施主浓度 `0` $\text{cm}^{-3}$。
 
-示例配置用的装置是 [能量沉积组件](../components/deposit.md#库中-geant4-装置) 里的 `telescope`：真空中沿 $+z$ 等间距 $40\ \text{mm}$ 排布 8 个槽位，槽位前表面中心都在束流轴上，`rotation_z` 都为 `0`。
+示例配置用的装置是 [能量沉积组件](../components/deposit.md#库中-geant4-装置) 里的 `telescope`：真空中沿束流从源往下游排一列（写法见 [能量沉积与电离](../core/deposit.md#沿束流的一列)），源后隔 $260\ \text{mm}$ 是第一层，此后每层与前一层的背面相隔 $40\ \text{mm}$，8 个槽位都在束流轴上、前表面朝源，`rotation_z` 都为 `0`：
 
-| 槽位 | 角色 | 默认器件 | 前表面 $z$（$\text{mm}$） | `rotation_z`（度） |
+```python
+"along_beam": [
+    "source",
+    {"gap": 260000}, {"slot": "ref1"},
+    {"gap": 40000}, {"slot": "ref2"},
+    {"gap": 40000}, {"slot": "ref3"},
+    {"gap": 40000}, {"slot": "dut1"},
+    {"gap": 40000}, {"slot": "dut2"},
+    {"gap": 40000}, {"slot": "ref4"},
+    {"gap": 40000}, {"slot": "ref5"},
+    {"gap": 40000}, {"slot": "ref6"},
+]
+```
+
+| 槽位 | 角色 | 默认器件 | 前面的间隔（$\text{mm}$） | `rotation_z`（度） |
 | --- | --- | --- | --- | --- |
-| `ref1` | 参考层 | `TAICHU3` | `-140` | `0` |
-| `ref2` | 参考层 | `TAICHU3` | `-100` | `0` |
-| `ref3` | 参考层 | `TAICHU3` | `-60` | `0` |
-| `dut1` | 被测器件 | 命令行给定的器件 | `-20` | `0` |
-| `dut2` | 被测器件 | 命令行给定的器件 | `20` | `0` |
-| `ref4` | 参考层 | `TAICHU3` | `60` | `0` |
-| `ref5` | 参考层 | `TAICHU3` | `100` | `0` |
-| `ref6` | 参考层 | `TAICHU3` | `140` | `0` |
+| `ref1` | 参考层 | `TAICHU3` | `260` | `0` |
+| `ref2` | 参考层 | `TAICHU3` | `40` | `0` |
+| `ref3` | 参考层 | `TAICHU3` | `40` | `0` |
+| `dut1` | 被测器件 | 命令行给定的器件 | `40` | `0` |
+| `dut2` | 被测器件 | 命令行给定的器件 | `40` | `0` |
+| `ref4` | 参考层 | `TAICHU3` | `40` | `0` |
+| `ref5` | 参考层 | `TAICHU3` | `40` | `0` |
+| `ref6` | 参考层 | `TAICHU3` | `40` | `0` |
 
-示例配置用的束流是 `beam/electron_5GeV_spread`：$5\ \text{GeV}$ 电子从 $z = -400\ \text{mm}$ 沿 $+z$ 射出，方向在 $x$、$y$ 上各有 $\pm 750\ \mu\text{m}$ 的均匀瞄准展宽（瞄准点在 $z = 100\ \text{mm}$），覆盖参考层 $1.5 \times 1.5\ \text{mm}$ 的灵敏面。
+示例配置用的束流是 `beam/electron_5GeV_spread`：$5\ \text{GeV}$ 电子从源沿 $+z$ 射出，方向在 $x$、$y$ 上各有 $\pm 1.5\ \text{mrad}$ 的均匀展宽（`par_randx = par_randy = 390 um`，加在指向第一层前表面的 $260\ \text{mm}$ 方向向量上），在最后一层处横向散开约 $\pm 0.8\ \text{mm}$，与参考层 $1.5 \times 1.5\ \text{mm}$ 的灵敏面相当。
 
 每一层的探测器板子都垂直于束流轴 $z$ 摆放，并可在 $x$-$y$ 平面内朝四个方向之一摆放（绕 $z$ 轴旋转 $0^\circ$、$90^\circ$、$180^\circ$ 或 $270^\circ$）。按学术界束流望远镜的通用做法，这一自由度用于两类需求：
 
@@ -124,11 +138,14 @@ r_{x,j} &= \hat{x}\!\left(z_j + \frac{l_{z,j}}{2}\right) - \bar{x}_{c,j}, & r_{y
 ```bash
 raser telescope <器件>
 raser telescope <器件> --scan field.voltage=-100,-200
-raser telescope <器件> --set deposit.g4setup.devices.dut2.rotation_z=90
 raser telescope <器件> --set deposit.source=toy/MIP_telescope --set reconstruction.hits=deposit
 ```
 
-第三行把第二块被测器件转 $90^\circ$，第四行是快速跑法。
+第三行是快速跑法。改层间距、朝向或增减层，在 `config.json` 的 `deposit` 段把装置写成带 `name` 的对象、给出整列 `along_beam`，例如把第二块被测器件转 $90^\circ$：
+
+```json
+"g4setup": {"name": "telescope", "along_beam": ["source", {"gap": 260000}, {"slot": "ref1"}, {"gap": 40000}, {"slot": "ref2"}, {"gap": 40000}, {"slot": "ref3"}, {"gap": 40000}, {"slot": "dut1"}, {"gap": 40000}, {"slot": "dut2", "rotation_z": 90}, {"gap": 40000}, {"slot": "ref4"}, {"gap": 40000}, {"slot": "ref5"}, {"gap": 40000}, {"slot": "ref6"}]}
+```
 
 实验文件夹 `<project>/telescope/config.json` 按环节分段记录配置（格式见[架构总纲](../architecture.md#project)）。望远镜的器件列表写在 `telescope` 实验类里，前后各 3 层默认取 `TAICHU3`，中间默认放两块被测器件，命令行给定的器件替换被测器件。器件列表、每层朝向和每层器件各自的偏压等设置分别设。
 
@@ -157,7 +174,6 @@ raser telescope <器件> --set deposit.source=toy/MIP_telescope --set reconstruc
 | `reconstruction.hits` | `"signal"` | 无 | 击中像素从哪里来：`"signal"` 为 `trigger` 记录的数字波形过 `reconstruction.threshold`，`"deposit"` 为沉积了电子-空穴对的像素（快速跑法） |
 | `analysis.plots` | `10` | 事例 | 每个扫描点画径迹拟合图的前若干个选中事例数 |
 
-装置槽位 `deposit.g4setup` 里各槽位的位置和朝向是组件内部键，地址为 `deposit.g4setup.devices.<槽位>.position`（$\mu\text{m}$）与 `deposit.g4setup.devices.<槽位>.rotation_z`（度）。
 
 ## 输出
 

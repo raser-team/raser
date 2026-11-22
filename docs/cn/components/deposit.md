@@ -318,7 +318,7 @@ G4SETUP = {
 | `device_alone` | 器件单独放在真空（`"G4_Galactic"`）中，源在器件前表面上游 `17 mm`，`maxstep = 2 um` | `description`：`The device alone in vacuum` | [`deposit`](../stages/deposit.md)、[`signal`](../bench/signal.md)、[`bmos`](../apps/bmos.md) 默认装置 |
 | `Sr90_collimator` | 空气（`"G4_AIR"`）中在源与器件之间放置厚 `5 mm`、中心圆孔直径 `1 mm`（`tub_radius = 500 um`）的黄铜（`"G4_BRASS"`）准直器 | `description`：`In air, a brass block 5 mm thick with a hole 1 mm across between the Sr-90 source and the device` | [`signal`](../bench/signal.md) |
 | `pcb_readout_gdml` | 导入外部 `pcb_readout.gdml` 的 PCB 读出板装置（`"geant4_model": "gdml_import"`） | 文件文档字符串：`The readout board of the PCB, imported from pcb_readout.gdml` | [`signal`](../bench/signal.md) |
-| `telescope` | 真空（`"G4_Galactic"`）中沿束流排布 8 个槽位 `ref1`、`ref2`、`ref3`、`dut1`、`dut2`、`ref4`、`ref5`、`ref6`，`rotation_z` 都为 `0`，`maxstep = 2 um` | 文件文档字符串 | [`telescope`](../bench/telescope.md) 默认装置 |
+| `telescope` | 真空（`"G4_Galactic"`）中沿束流排布 8 个槽位 `ref1`、`ref2`、`ref3`、`dut1`、`dut2`、`ref4`、`ref5`、`ref6`，源后隔 `260 mm` 是第一层，此后每层与前一层背面相隔 `40 mm`，`rotation_z` 都为 `0`，`maxstep = 2 um` | 文件文档字符串 | [`telescope`](../bench/telescope.md) 默认装置 |
 | `time_resolution` | `along_beam` 沿束流依次放置 `Al`（`10 um`）、参考硅器件（槽位 `ref`）、上层开孔板 `pcb1`（`1500 um`）、被测器件（槽位 `dut`）与下层开孔板 `pcb2`（`1500 um`），间隔依次为 `1995`、`4978.5`、`8183.5 um`（见 [`timeres`](../bench/timeres.md)） | 文件文档字符串：`The setup of the time-resolution experiment: a reference silicon device and boards` | [`timeres`](../bench/timeres.md) 默认装置 |
 
 ### 库中放射源和束流
@@ -336,7 +336,7 @@ G4SETUP = {
 | 直线 MIP（`toy`） | `toy/MIP_pixel_edge` | 从 `[600.0, 450.0, 0.0]` 到 `[600.0, 450.0, 300.0] um` 的 `50` 段直线 MIP，`landau_sampling = true` | `description`：`Straight toy MIP crossing a pixel boundary.` | `general_pixel`（$300\ \mu\text{m}$ 厚像素边界测试） |
 | 直线 MIP（`toy`） | `toy/MIP_pixel_edge_fast` | 从 `[600.0, 450.0, 0.0]` 到 `[600.0, 450.0, 300.0] um` 的 `5` 段直线 MIP，`landau_sampling = false` | `description`：`Low-statistics toy MIP crossing a pixel boundary for field-shape checks.` | `general_pixel`（快速场形检查） |
 | 直线 MIP（`toy`） | `toy/MIP_strip_edge` | 深度 `0.0` 至 `67.3 um`、起点 $x \in [150.0, 270.0]\ \mu\text{m}$、$y = 270.0\ \mu\text{m}$、$x$ 向斜率标准差 `10.0 mrad` 的直线 MIP，`landau_sampling = true` | `description`：`Straight toy MIP crossing a strip boundary.` | `SiC_LGAD_strip`（$67.3\ \mu\text{m}$ 厚条形边界测试） |
-| 粒子束流（`beam`） | `beam/electron_5GeV_spread` | `5000 MeV` 电子束（`"e-"`），横向瞄准展宽半宽 `par_randx = par_randy = 750 um` | 原 `telescope.json` 的束流 | [`telescope`](../bench/telescope.md) 默认源 |
+| 粒子束流（`beam`） | `beam/electron_5GeV_spread` | `5000 MeV` 电子束（`"e-"`），横向瞄准展宽半宽 `par_randx = par_randy = 390 um`，在 `telescope` 装置里是 $\pm 1.5\ \text{mrad}$ 的方向展宽 | 原 `telescope.json` 的束流（$\pm 750\ \mu\text{m}$ 加在 $500\ \text{mm}$ 方向上，同为 $\pm 1.5\ \text{mrad}$） | [`telescope`](../bench/telescope.md) 默认源 |
 | 直线 MIP（`toy`） | `toy/MIP_telescope` | 从源所在世界原点沿 $+z$ 出发穿过全部槽位的直线 MIP，斜率标准差 $x$、$y$ 各 `1.0 mrad`，`landau_sampling = false` | 新增 | [`telescope`](../bench/telescope.md) 快速跑法 |
 | 束团源（`bmos`） | `bunch` | 每事例同时发射 3 个 `80 MeV` 质子，`offset` 分别为 `[-1, 1, 0]`、`[0, 1, 0]`、`[1, 1, 0] um` | `description`：`A bunch of three 80 MeV protons side by side, 1 um apart along x and 1 um off the axis along y` | [`bmos`](../apps/bmos.md) 默认源 |
 
